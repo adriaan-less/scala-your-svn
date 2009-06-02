@@ -1089,7 +1089,7 @@ trait Infer {
                 "  pt = "+pt)
       val targs = exprTypeArgs(tparams, tree.tpe, pt)
       val uninstantiated = new ListBuffer[Symbol]
-      val detargs = if (keepNothings) targs 
+      val detargs = if (keepNothings || (targs eq null) /*@M: adjustTypeArgs fails if targs==null, neg/t0226*/) targs 
                     else adjustTypeArgs(tparams, targs, WildcardType, uninstantiated)
       val undetparams = uninstantiated.toList
       val detparams = tparams remove (undetparams contains _)
