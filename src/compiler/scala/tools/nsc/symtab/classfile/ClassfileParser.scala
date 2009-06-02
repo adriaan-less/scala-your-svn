@@ -570,7 +570,7 @@ abstract class ClassfileParser {
                       }
                       val newtparam = makeExistential("?"+i, sym, bounds)
                       existentials += newtparam
-                      xs += newtparam.tpe
+                      xs += newtparam.tpe //@M should probably be .tpeHK
                       i += 1
                     case _ => 
                       xs += sig2type(tparams, skiptvs)

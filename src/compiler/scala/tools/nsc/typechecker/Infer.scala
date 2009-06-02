@@ -538,7 +538,7 @@ trait Infer {
       List.map2(tparams, targs) {(tparam, targ) =>
         if (targ.typeSymbol == NothingClass && (restpe == WildcardType || (varianceInType(restpe)(tparam) & COVARIANT) == 0)) {
           uninstantiated += tparam
-          tparam.tpe  
+          tparam.tpe  //@M TODO: should probably be .tpeHK
         } else if (targ.typeSymbol == RepeatedParamClass) {
           targ.baseType(SeqClass)
         } else {
@@ -1026,7 +1026,8 @@ trait Infer {
       val errors = new ListBuffer[String]
       (tparams zip targs).foreach{ case (tparam, targ) if (targ.isHigherKinded || !tparam.typeParams.isEmpty) => 
 			  val tparamsHO =  targ/*.typeSymbolDirect*/.typeParams
-				println("[CKB] "+(targ, tparamsHO.length, tparam, tparam.typeParams.length))				
+				// println("[CKB] "+(targ, tparamsHO.length, tparam, tparam.typeParams.length)) //@MDEBUG
+				// 			  (new RuntimeException().printStackTrace)//@MDEBUG
          // NOTE 2:	 must use the typeParams of the type targ, not the typeParams of the symbol of targ!!
         // @M TODO BUG: inferred type constructors are not represented properly
 

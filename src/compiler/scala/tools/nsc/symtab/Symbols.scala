@@ -1609,6 +1609,13 @@ trait Symbols {
      *    tsym.info = TypeBounds(Nothing, Number)
      *    tsym.tpe  = TypeRef(NoPrefix, T, List())
      */
+		/*@M -- tpe vs tpeHK:
+		  Symbol::tpe creates a TypeRef that has dummy type arguments to get a type of kind *
+		  Symbol::tpeHK creates a TypeRef without type arguments, but with type params --> higher-kinded if non-empty list of tpars
+		  calling tpe may hide errors or introduce spurious ones 
+		    (e.g., when deriving a type from the symbol of a type argument that must be higher-kinded)
+		  as far as I can tell, it only makes sense to call tpe in conjunction with a substitution that replaces the generated dummy type arguments by their actual types 
+		*/
     override def tpe: Type = {
       if (tpeCache eq NoType) throw CyclicReference(this, typeConstructor)
       if (tpePeriod != currentPeriod) {

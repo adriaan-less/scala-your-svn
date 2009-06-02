@@ -879,7 +879,7 @@ abstract class RefChecks extends InfoTransform {
         }
 
         case TypeApply(fn, args) =>
-          checkBounds(NoPrefix, NoSymbol, fn.tpe.typeParams, args map (_.tpe)) 
+          checkBounds(NoPrefix, NoSymbol, fn.tpe.typeParams, args map (_.tpe))
           if (isCaseApply(sym)) result = toConstructor(tree.pos, tree.tpe)
 
         case Apply(

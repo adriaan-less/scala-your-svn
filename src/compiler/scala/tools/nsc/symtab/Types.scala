@@ -1806,7 +1806,9 @@ A type's typeSymbol should never be inspected directly.
     def withTypeVars(op: Type => Boolean): Boolean = withTypeVars(op, AnyDepth)
 
     def withTypeVars(op: Type => Boolean, depth: Int): Boolean = {
-      val tvars = quantified map (tparam => new TypeVar(tparam.tpe, new TypeConstraint))
+      val tvars = quantified map (tparam => new TypeVar(tparam.tpe, new TypeConstraint)) // @M TODO
+//@M should probably change to handle HK type infer properly:
+//    val tvars = quantified map (tparam => new TypeVar(tparam))
       val underlying1 = underlying.instantiateTypeParams(quantified, tvars)
       op(underlying1) && {
         solve(tvars, quantified, quantified map (x => 0), false, depth) &&
@@ -1862,7 +1864,7 @@ A type's typeSymbol should never be inspected directly.
     /** The variable's skolemizatuon level */
     val level = skolemizationLevel
 
-    override def isHigherKinded = origin.isHigherKinded
+    override def isHigherKinded = origin.isHigherKinded //@M TODO: never called?
 
     def setInst(tp: Type) {
 //      assert(!(tp containsTp this), this)
@@ -1876,7 +1878,7 @@ A type's typeSymbol should never be inspected directly.
         true
       } else false
 
-		override def typeParams = constr0.params // @M: TODO need to treat inferred type constructors properly
+		override def typeParams = constr0.params  //@M TODO: never called?	
     override def typeSymbol = origin.typeSymbol
     override def safeToString: String = {
       def varString = "?"+(if (settings.explaintypes.value) level else "")+origin// +"#"+tid //DEBUG
@@ -2363,7 +2365,7 @@ A type's typeSymbol should never be inspected directly.
     // def hibounds = _hibounds
 
     var args: List[Type] = args0
-    var inst: Type = NoType
+    var inst: Type = NoType // @M reduce visibility?
 
     def duplicate = {
       val tc = new TypeConstraint(lo0, hi0) // @M BUG?? why don't we use lobounds/hibounds here?
@@ -2372,7 +2374,7 @@ A type's typeSymbol should never be inspected directly.
     }
 
     def cloneInternal = {
-      val tc = new TypeConstraint(origin, lobounds, hibounds, args, params) //@M TODO: which info should carry over?
+      val tc = new TypeConstraint(origin, lobounds, hibounds, args, params) //@M TODO: should args/params be cloned?
       tc.inst = inst
       tc
     }
@@ -3970,8 +3972,8 @@ A type's typeSymbol should never be inspected directly.
 					// Console.println("solveOne0(tp,up,lo,hi,lo=tp,hi=tp)="+(tparam.tpe, up, tparam2.info.bounds.lo, tparam2.info.bounds.hi, (tparam2.info.bounds.lo =:= tparam.tpe), (tparam2.info.bounds.hi =:= tparam.tpe))) //@MDEBUG
           if (tparam2 != tparam &&
               ((bound contains tparam2) ||
-               up && (tparam2.info.bounds.lo =:= tparam.tpe) ||  //@M TODO: might be affected by change to tpe in Symbol
-               !up && (tparam2.info.bounds.hi =:= tparam.tpe))) {  //@M TODO: might be affected by change to tpe in Symbol
+               up && (tparam2.info.bounds.lo =:= tparam.tpe) ||  //@M TODO: should probably be .tpeHK
+               !up && (tparam2.info.bounds.hi =:= tparam.tpe))) {  //@M TODO: should probably be .tpeHK
             if (tvar2.constr.inst eq null) cyclic = true
             solveOne(tvar2, tparam2, variance2)
           }
@@ -3983,7 +3985,7 @@ A type's typeSymbol should never be inspected directly.
                 bound.instantiateTypeParams(tparams, tvars) :: tvar.constr.hibounds
             }
             for (tparam2 <- tparams)
-              if (tparam2.info.bounds.lo =:= tparam.tpe)  //@M TODO: might be affected by change to tpe in Symbol
+              if (tparam2.info.bounds.lo =:= tparam.tpe)  //@M TODO: should probably be .tpeHK
                 tvar.constr.hibounds =
                   tparam2.tpe.instantiateTypeParams(tparams, tvars) :: tvar.constr.hibounds
           } else {
@@ -3992,7 +3994,7 @@ A type's typeSymbol should never be inspected directly.
                 bound.instantiateTypeParams(tparams, tvars) :: tvar.constr.lobounds
             }
             for (tparam2 <- tparams)
-              if (tparam2.info.bounds.hi =:= tparam.tpe)  //@M TODO: might be affected by change to tpe in Symbol
+              if (tparam2.info.bounds.hi =:= tparam.tpe)  //@M TODO: should probably be .tpeHK
                 tvar.constr.lobounds =
                   tparam2.tpe.instantiateTypeParams(tparams, tvars) :: tvar.constr.lobounds 
           }
