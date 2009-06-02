@@ -71,8 +71,7 @@ trait Infer {
    *  @param tparam ...
    *  @return       ...
    */
-  def freshVar(tparam: Symbol): TypeVar =
-    new TypeVar(tparam.tpe, new TypeConstraint)  //@M TODO: might be affected by change to tpe in Symbol
+  def freshVar(tparam: Symbol): TypeVar = new TypeVar(tparam) 
 
   //todo: remove comments around following privates; right now they cause an IllegalAccess
   // error when built with scalac
@@ -469,8 +468,12 @@ trait Infer {
               restpe
           }
           //println("try to solve "+tvars+" "+tparams)
+          /*val res =*/ 
           solvedTypes(tvars, tparams, tparams map varianceInType(varianceType), 
                       false, lubDepth(List(restpe, pt)))
+				  // println("exprTypeArgs "+", tparams = "+tparams+", restpe = "+restpe+", pt = "+pt+", result = "+res) //@MDEBUG
+				  //res
+		
         } catch {
           case ex: NoInstance => null
         }
@@ -497,7 +500,7 @@ trait Infer {
       /** Map type variable to its instance, or, if `variance' is covariant/contravariant,
        *  to its upper/lower bound */
       def instantiateToBound(tvar: TypeVar, variance: Int): Type = try {
-        //Console.println("instantiate "+tvar+tvar.constr+" variance = "+variance);//DEBUG
+        // Console.println("instantiateToBound "+tvar+tvar.constr+" variance = "+variance);  //@MDEBUG
         if (tvar.constr.inst != NoType) {
           instantiate(tvar.constr.inst)
         } else if ((variance & COVARIANT) != 0 && !tvar.constr.hibounds.isEmpty) {
@@ -587,7 +590,7 @@ trait Infer {
 
       // Then define remaining type variables from argument types.
       List.map2(argtpes, formals) {(argtpe, formal) =>
-        if (!isCompatible(argtpe.deconst.instantiateTypeParams(tparams, tvars),
+        if (!isCompatible(argtpe.deconst.instantiateTypeParams(tparams, tvars), //@M isCompatible has side-effect: isSubtype0 will register subtype checks in the tvar's bounds
                           formal.instantiateTypeParams(tparams, tvars))) {
           throw new DeferredNoInstance(() =>
             "argument expression's type is not compatible with formal parameter type" +
@@ -968,6 +971,8 @@ trait Infer {
 // NOTE: sometimes hkargs != arg.typeParams, the symbol and the type may have very different type parameters
         val hkparams = param.typeParams
 
+		//println("[CKBHK] "+(hkargs, arg, param, hkparams))
+		
         if(hkargs.length != hkparams.length) {
           if(arg == AnyClass || arg == NothingClass) (Nil, Nil, Nil) // Any and Nothing are kind-overloaded
           else (List((arg, param)), Nil, Nil)
@@ -1019,11 +1024,15 @@ trait Infer {
       }
       
       val errors = new ListBuffer[String]
-      (tparams zip targs).foreach{ case (tparam, targ) if (targ.isHigherKinded || !tparam.typeParams.isEmpty) => //println("check: "+(tparam, targ))
+      (tparams zip targs).foreach{ case (tparam, targ) if (targ.isHigherKinded || !tparam.typeParams.isEmpty) => 
+			  val tparamsHO =  targ/*.typeSymbolDirect*/.typeParams
+				println("[CKB] "+(targ, tparamsHO.length, tparam, tparam.typeParams.length))				
+         // NOTE 2:	 must use the typeParams of the type targ, not the typeParams of the symbol of targ!!
+        // @M TODO BUG: inferred type constructors are not represented properly
+
+
         val (arityMismatches, varianceMismatches, stricterBounds) = 
-          checkKindBoundsHK(targ.typeParams, targ.typeSymbolDirect, tparam, tparam.owner) // NOTE: *not* targ.typeSymbol, which normalizes
-            // NOTE 2: must use the typeParams of the type targ, not the typeParams of the symbol of targ!!
-        
+          checkKindBoundsHK(tparamsHO, targ.typeSymbolDirect, tparam, tparam.owner) // NOTE: *not* targ.typeSymbol, which normalizes
         if (!(arityMismatches.isEmpty && varianceMismatches.isEmpty && stricterBounds.isEmpty)){
           errors += (targ+"'s type parameters do not match "+tparam+"'s expected parameters: "+ 
             (for ((a, p) <- arityMismatches)
@@ -1232,12 +1241,7 @@ trait Infer {
     }
 
     def isInstantiatable(tvars: List[TypeVar]) = {
-      def cloneTypeVar(tv: TypeVar) = {
-        val tv1 = TypeVar(tv.origin, new TypeConstraint(tv.constr.lobounds, tv.constr.hibounds))
-        tv1.constr.inst = tv.constr.inst
-        tv1
-      }
-      val tvars1 = tvars map cloneTypeVar
+      val tvars1 = tvars map (_.cloneInternal)
       // Note: right now it's not clear that solving is complete, or how it can be made complete!
       // So we should come back to this and investigate.
       solve(tvars1, tvars1 map (_.origin.typeSymbol), tvars1 map (x => COVARIANT), false)  

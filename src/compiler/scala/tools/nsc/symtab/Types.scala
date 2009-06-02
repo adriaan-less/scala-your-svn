@@ -113,15 +113,15 @@ trait Types {
 
   // @M toString that is safe during debugging (does not normalize, ...)
   def debugString(tp: Type): String = tp match { 
-    case TypeRef(pre, sym, args) => "TypeRef"+(debugString(pre), sym, args map debugString) 
-    case ThisType(sym) => "ThisType("+sym+")"
-    case SingleType(pre, sym) => "SingleType"+(debugString(pre), sym)
-    case RefinedType(parents, defs) => "RefinedType"+(parents map debugString, defs.toList)
-    case ClassInfoType(parents, defs, clazz) =>  "ClassInfoType"+(parents map debugString, defs.toList, clazz)
-    case PolyType(tparams, result) => "PolyType"+(tparams, debugString(result))
-    case TypeBounds(lo, hi) => "TypeBounds "+debugString(lo)+","+debugString(hi)
-    case TypeVar(origin, constr) => "TypeVar "+origin+","+constr
-    case ExistentialType(tparams, qtpe) => "ExistentialType("+(tparams map (_.defString))+","+debugString(qtpe)+")"
+    case TypeRef(pre, sym, args) =>  debugString(pre) +"."+ sym.nameString + (args map debugString).mkString("[",", ","]") 
+    case ThisType(sym) => sym.nameString+".this"
+    case SingleType(pre, sym) => debugString(pre) +"."+ sym.nameString +".type"
+    case RefinedType(parents, defs) => (parents map debugString).mkString("", " with ", "") + defs.toList.mkString(" {", " ;\n ", "}") 
+    case ClassInfoType(parents, defs, clazz) =>  "class "+ clazz.nameString + (parents map debugString).mkString("", " with ", "") + defs.toList.mkString("{", " ;\n ", "}") 
+    case PolyType(tparams, result) => tparams.mkString("[", ", ", "] ") + debugString(result)
+    case TypeBounds(lo, hi) => ">: "+ debugString(lo) +" <: "+ debugString(hi)
+    case TypeVar(origin, constr) => "?"+origin
+    case ExistentialType(tparams, qtpe) => "forsome "+ tparams.mkString("[", ", ", "] ") + debugString(qtpe)
     case _ => tp.toString
   }
 
@@ -1480,8 +1480,8 @@ A type's typeSymbol should never be inspected directly.
       else 
         super.instantiateTypeParams(formals, actuals)
 
-    override def isHigherKinded = !typeParams.isEmpty  //@M args.isEmpty is checked in typeParams
-
+    override def isHigherKinded = !typeParams.isEmpty 	//@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
+		
     private def higherKindedArgs = typeParams map (_.typeConstructor) //@M must be .typeConstructor
     private def argsMaybeDummy = if (isHigherKinded) higherKindedArgs else args 
 
@@ -1851,7 +1851,9 @@ A type's typeSymbol should never be inspected directly.
    *  Not used after phase `typer'.
    */
   case class TypeVar(origin: Type, constr0: TypeConstraint) extends Type {
-
+		def this(tparam: Symbol) = {
+			this(tparam.tpeHK, new TypeConstraint(tparam, List(),List(),List(),tparam.typeParams))
+		}
     // var tid = { tidCount += 1; tidCount } //DEBUG
 
     /** The constraint associated with the variable */
@@ -1865,6 +1867,7 @@ A type's typeSymbol should never be inspected directly.
     def setInst(tp: Type) {
 //      assert(!(tp containsTp this), this)
       constr.inst = tp
+	    // println("setInst: "+safeToString) //@MDEBUG
     }
 
     def tryInstantiate(tp: Type): Boolean = 
@@ -1873,6 +1876,7 @@ A type's typeSymbol should never be inspected directly.
         true
       } else false
 
+		override def typeParams = constr0.params // @M: TODO need to treat inferred type constructors properly
     override def typeSymbol = origin.typeSymbol
     override def safeToString: String = {
       def varString = "?"+(if (settings.explaintypes.value) level else "")+origin// +"#"+tid //DEBUG
@@ -1884,6 +1888,8 @@ A type's typeSymbol should never be inspected directly.
     override def isStable = origin.isStable
     override def isVolatile = origin.isVolatile
     override def kind = "TypeVar"
+
+    def cloneInternal = TypeVar(origin, constr cloneInternal)
   }
 
   /** A type carrying some annotations. Created by the typechecker
@@ -2339,22 +2345,40 @@ A type's typeSymbol should never be inspected directly.
 
 // Helper Classes ---------------------------------------------------------
 
-  /** A class expressing upper and lower bounds constraints 
-   *  for type variables, as well as their instantiations */
-  class TypeConstraint(lo: List[Type], hi: List[Type]) {
+  /** A class expressing upper and lower bounds constraints, and type arguments (a list of Type's) 
+   *  for type variables, as well as their instantiations 
+	 * A TypeVar with a TypeConstraint whose args is non-empty can only be instantiated by 
+	 * a higher-kinded type that can be applied to these args
+   */ // @M TODO: remove origin (was for debugging)
+  class TypeConstraint(val origin: Symbol, lo0: List[Type], hi0: List[Type], args0: List[Type], val params: List[Symbol]) { 
+	// params are needed to keep track of variance (see e.g., mapOverArgs)
     //var self: Type = _ //DEBUG
-    def this() = this(List(), List())
-    var lobounds: List[Type] = lo
-    var hibounds: List[Type] = hi
+    def this() = this(null, List(), List(), List(), List())
+    def this(lo: List[Type], hi: List[Type]) = this(null, lo, hi, List(), List())
+    var lobounds: List[Type] = lo0
+    var hibounds: List[Type] = hi0
+    // def lobounds_= (bs: List[Type]) = {_lobounds=bs; Console.println("set bounds: "+this)}   //@MDEBUG
+    // def hibounds_= (bs: List[Type]) = {_hibounds=bs; Console.println("set bounds: "+this)}   //@MDEBUG
+    // def lobounds = _lobounds
+    // def hibounds = _hibounds
+
+    var args: List[Type] = args0
     var inst: Type = NoType
 
     def duplicate = {
-      val tc = new TypeConstraint(lo, hi)
+      val tc = new TypeConstraint(lo0, hi0) // @M BUG?? why don't we use lobounds/hibounds here?
       tc.inst = inst
       tc
     }
 
+    def cloneInternal = {
+      val tc = new TypeConstraint(origin, lobounds, hibounds, args, params) //@M TODO: which info should carry over?
+      tc.inst = inst
+      tc
+    }
+		
     override def toString =
+      (args map (_.safeToString)).mkString("[ ", ",", "] ") +
       (lobounds map (_.safeToString)).mkString("[ _>:(", ",", ") ") +
       (hibounds map (_.safeToString)).mkString("| _<:(", ",", ") ] _= ") + 
       inst.safeToString
@@ -2474,7 +2498,14 @@ A type's typeSymbol should never be inspected directly.
         else AntiPolyType(pre1, args1)
       case TypeVar(_, constr) =>
         if (constr.inst != NoType) this(constr.inst)
-        else tp
+        else { //@M tcpolyinfer
+          if(!constr.args.isEmpty)  // @M TODO: need to map over types in bounds of const? could they contain type params that need to be subst'ed?
+            constr.args = mapOverArgs(constr.args, constr.params) // !args.isEmpty implies !typeParams.isEmpty
+					// must not clone the TypeVar, as we're using it to accumulate its constraints
+					// if we duplicate here, the subtyping check (which typically uses the duplicate) will register the bounds there, 
+					// instead of in the original
+          tp
+        }
       case NotNullType(tp) =>
         val tp1 = this(tp)
         if (tp1 eq tp) tp
@@ -2866,10 +2897,17 @@ A type's typeSymbol should never be inspected directly.
         // (must not recurse --> loops)
         // 3) replacing m by List in m[Int] should yield List[Int], not just List
         case TypeRef(NoPrefix, sym, args) =>
-          subst(tp, sym, from, to) match {
-            case r @ TypeRef(pre1, sym1, args1) => 
-              if (args.isEmpty) r
-              else rawTypeRef(pre1, sym1, args)
+          val r = subst(tp, sym, from, to) 
+					if (args.isEmpty) r // the target of the substitution was not the head of a type application 
+					else r match { // if we replaced the head of a type application, use the result of subst as the head and re-apply the original arguments
+            case TypeRef(pre1, sym1, args1) => 
+              rawTypeRef(pre1, sym1, args)
+            case tv@TypeVar(_, constr) => 
+						  assert(constr.args.isEmpty || constr.args.length == args.length && List.forall2(constr.args, args)(_ =:= _)) // must never forget the args
+	            constr.args = args // must update imperatively! identity of the TypeVar matters!
+							tv  // @M: relies on the fact that types only ever get substituted to TypeVar (we never do TypeVar -> TypeVar)
+							// this simply initialises a TypeVar's arguments to the arguments of the type
+							// example: when making new typevars, you start out with C[A], then you replace C by C?, which should yield ?C[A], then A by ?A, ?C[?A]
             case r =>
               r
           }
@@ -3352,7 +3390,7 @@ A type's typeSymbol should never be inspected directly.
         case _ =>
       }
     }
-    if (ok) undoLog = (tv, tv.constr.duplicate) :: undoLog
+    if (ok) undoLog = (tv, tv.constr.duplicate) :: undoLog // @M: note that duplicate != a clone (see note in impl in TypeConstraint)
     ok
   }
 
@@ -3659,6 +3697,16 @@ A type's typeSymbol should never be inspected directly.
   /** Does type `tp1' conform to `tp2'?
    */
   private def isSubType0(tp1: Type, tp2: Type, depth: Int): Boolean = {
+	  def isSubArgs(tps1: List[Type], tps2: List[Type],
+                  tparams: List[Symbol]): Boolean = (
+      tps1.isEmpty && tps2.isEmpty
+      ||
+      !tps1.isEmpty && !tps2.isEmpty &&
+      (tparams.head.isCovariant || (tps2.head <:< tps1.head)) &&
+      (tparams.head.isContravariant || (tps1.head <:< tps2.head)) &&
+      isSubArgs(tps1.tail, tps2.tail, tparams.tail)
+    )
+
     ((tp1, tp2) match {
       case (ErrorType, _)    => true
       case (WildcardType, _) => true
@@ -3679,15 +3727,6 @@ A type's typeSymbol should never be inspected directly.
       if !(tp1.isHigherKinded || tp2.isHigherKinded) =>         
         //Console.println("isSubType " + tp1 + " " + tp2);//DEBUG
         
-        def isSubArgs(tps1: List[Type], tps2: List[Type],
-                      tparams: List[Symbol]): Boolean = (
-          tps1.isEmpty && tps2.isEmpty
-          ||
-          !tps1.isEmpty && !tps2.isEmpty &&
-          (tparams.head.isCovariant || (tps2.head <:< tps1.head)) &&
-          (tparams.head.isContravariant || (tps1.head <:< tps2.head)) &&
-          isSubArgs(tps1.tail, tps2.tail, tparams.tail)
-        );
         ((if (sym1 == sym2) phase.erasedTypes || pre1 <:< pre2
           else (sym1.name == sym2.name) && isUnifiable(pre1, pre2)) &&
          (sym2 == AnyClass || isSubArgs(args1, args2, sym1.typeParams)) //@M: Any is kind-polymorphic
@@ -3730,12 +3769,36 @@ A type's typeSymbol should never be inspected directly.
         bounds.lo <:< tp2
       case (_, BoundedWildcardType(bounds)) =>
         tp1 <:< bounds.hi
-      case (_, tv2 @ TypeVar(_, constr2)) =>
+      case (_, tv2 @ TypeVar(_, constr2)) if constr2.params.isEmpty => // first-order TypeVar
+			  // Console.println("TR <:< TV: "+(debugString(tp1), tv2)) // @MDEBUG
         if (constr2.inst != NoType) tp1 <:< constr2.inst
-        else isRelatable(tv2, tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true }
-      case (tv1 @ TypeVar(_, constr1), _) =>
+        else isRelatable(tv2, tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true } 
+      case (tv1 @ TypeVar(_, constr1), _) if constr1.params.isEmpty => // first-order TypeVar
+			  // Console.println("TV <:< TR: "+(tv1, debugString(tp2))) // @MDEBUG
         if (constr1.inst != NoType) constr1.inst <:< tp2 
         else isRelatable(tv1, tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
+			case (TypeRef(pre1, sym1, args1), tv2 @ TypeVar(_, constr2)) if constr2.args.length == args1.length => // higher-order TypeVar, e.g. List[Int] <: ?C[?A]
+	        if (constr2.inst != NoType) tp1 <:< constr2.inst
+	        else isRelatable(tv2, tp1) && { 
+						constr2.lobounds = rawTypeRef(pre1, sym1, List()) :: constr2.lobounds // track the higher-kinded version of the typeref as a bound for the TypeVar that is the head of the type application
+						// Console.println("TR <:< TV: "+(args1, constr2.args, constr2.params)) // @MDEBUG
+						// val res = 
+						isSubArgs(args1, constr2.args, constr2.params) // @M TODO: the consistency of the type params of the typeref and the typevar are checked after inference made a guess,
+						// so it's ok to use the variances (of the higher-order type params) specified by the type param that gave rise to this typevar
+						// Console.println("TR <:< TV --> "+res) // @MDEBUG
+						// res
+					}
+	    case (tv1 @ TypeVar(_, constr1), TypeRef(pre2, sym2, args2)) if constr1.args.length == args2.length  => // higher-order TypeVar, e.g. ?C[?A] <: List[Int]
+	        if (constr1.inst != NoType) constr1.inst <:< tp2 
+	        else isRelatable(tv1, tp2) && { 
+						constr1.hibounds = rawTypeRef(pre2, sym2, List()) :: constr1.hibounds  // track the higher-kinded version of the typeref as a bound for the TypeVar that is the head of the type application
+						// Console.println("TV <:< TR: "+(constr1.args, args2, constr1.params)) // @MDEBUG
+						// val res = 
+						isSubArgs(constr1.args, args2, constr1.params) // @M TODO: the consistency of the type params of the typeref and the typevar are checked after inference made a guess,
+						// so it's ok to use the variances (of the higher-order type params) specified by the type param that gave rise to this typevar
+						// Console.println("TV <:< TR --> "+res) // @MDEBUG
+						// res
+					}
       case (_, _)  if (tp1.isHigherKinded || tp2.isHigherKinded) =>
         (tp1.typeSymbol == NothingClass 
          ||
@@ -3894,14 +3957,17 @@ A type's typeSymbol should never be inspected directly.
             variances: List[Int], upper: Boolean, depth: Int): Boolean = {
     val config = tvars zip (tparams zip variances)
 
+		// println("solve: "+(tvars, tparams, variances, upper, depth)) //@MDEBUG
+		
     def solveOne(tvar: TypeVar, tparam: Symbol, variance: Int) {
       if (tvar.constr.inst == NoType) {
         val up = if (variance != CONTRAVARIANT) upper else !upper
         tvar.constr.inst = null
         val bound: Type = if (up) tparam.info.bounds.hi else tparam.info.bounds.lo
-        // Console.println("solveOne0 "+tvar+" "+config+" "+bound);//DEBUG
+        // Console.println("solveOne0 "+tvar+" "+config+" "+bound);//@MDEBUG
         var cyclic = bound contains tparam
         for ((tvar2, (tparam2, variance2)) <- config) {
+					// Console.println("solveOne0(tp,up,lo,hi,lo=tp,hi=tp)="+(tparam.tpe, up, tparam2.info.bounds.lo, tparam2.info.bounds.hi, (tparam2.info.bounds.lo =:= tparam.tpe), (tparam2.info.bounds.hi =:= tparam.tpe))) //@MDEBUG
           if (tparam2 != tparam &&
               ((bound contains tparam2) ||
                up && (tparam2.info.bounds.lo =:= tparam.tpe) ||  //@M TODO: might be affected by change to tpe in Symbol
