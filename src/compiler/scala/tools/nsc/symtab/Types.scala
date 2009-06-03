@@ -2198,6 +2198,7 @@ A type's typeSymbol should never be inspected directly.
       case TypeBounds(lo, hi) => TypeBounds(appliedType(lo, args), appliedType(hi, args))
       case ErrorType => tycon
       case WildcardType => tycon // needed for neg/t0226
+      case TypeVar(_, _) => tycon // needed for neg/t0226      
       case _ => throw new Error(debugString(tycon))
     }
 
