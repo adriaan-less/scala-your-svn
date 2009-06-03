@@ -2199,6 +2199,14 @@ A type's typeSymbol should never be inspected directly.
     if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
     else tycon match { 
       case TypeRef(pre, sym, _) => typeRef(pre, sym, args)
+      // case tv@TypeVar(_, constr) => 
+      //   // @M: relies on the fact that types only ever get substituted to TypeVar (we never do TypeVar -> TypeVar)
+      //   // this initialises a TypeVar's arguments to the arguments of the type
+      //   // example: when making new typevars, you start out with C[A], then you replace C by ?C, which should yield ?C[A], then A by ?A, ?C[?A]
+      //   // thus, we need to track a TypeVar's arguments, and map over them (see TypeMap::mapOver)
+      //   assert(constr.args.isEmpty || constr.args.length == args.length && List.forall2(constr.args, args)(_ =:= _)) // must never forget the args
+      //   constr.args = args // must update imperatively! identity of the TypeVar matters!
+      //   tv  
       case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
       case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
       case ErrorType => tycon
