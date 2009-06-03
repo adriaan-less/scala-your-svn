@@ -2190,7 +2190,7 @@ A type's typeSymbol should never be inspected directly.
   def appliedType(tycon: Type, args: List[Type]): Type =  
     if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
     else tycon match { 
-      case TypeRef(pre, sym, _) => typeRef(pre, sym, args)
+      case TypeRef(pre, sym, _) => rawTypeRef(pre, sym, args)
       case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
       case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
       case ErrorType => tycon
