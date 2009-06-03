@@ -2866,13 +2866,7 @@ A type's typeSymbol should never be inspected directly.
         // (must not recurse --> loops)
         // 3) replacing m by List in m[Int] should yield List[Int], not just List
         case TypeRef(NoPrefix, sym, args) =>
-          subst(tp, sym, from, to) match {
-            case r @ TypeRef(pre1, sym1, args1) => 
-              if (args.isEmpty) r
-              else rawTypeRef(pre1, sym1, args)
-            case r =>
-              r
-          }
+          appliedType(subst(tp, sym, from, to), args) // if args.isEmpty, appliedType is the identity
         case SingleType(NoPrefix, sym) =>
           subst(tp, sym, from, to)
         case _ =>
