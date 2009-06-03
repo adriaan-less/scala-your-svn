@@ -25,7 +25,7 @@ object Node {
   /** the empty namespace */
   val EmptyNamespace = ""
 
-  def unapplySeq(n: Node) = Some(Tuple3(n.label, n.attributes, n.child))
+  def unapplySeq(n: Node) = Some((n.label, n.attributes, n.child))
 
 }
 
@@ -46,7 +46,11 @@ abstract class Node extends NodeSeq {
 
   /** used internally. Atom/Molecule = -1 PI = -2 Comment = -3 EntityRef = -5
    */ 
-  def typeTag$: Int = 0
+  def isAtom = this.isInstanceOf[Atom[_]]
+  
+  /** The logic formerly found in typeTag$, as best I could infer it.
+   *  XXX obviously this name is ludicrous.  */
+  def collectNamespacesAndDontTransform = true
 
   /**
    *  method returning the namespace bindings of this node. by default, this
@@ -170,8 +174,8 @@ abstract class Node extends NodeSeq {
    * @param stripComment if true, strips comment nodes from result
    * @return ...
    */
-  def buildString(stripComment: Boolean): String =
-    Utility.toXML(this, stripComment)
+  def buildString(stripComments: Boolean): String =
+    Utility.toXML(this, stripComments = stripComments).toString
 
   /**
    * Same as <code>toString(false)</code>.

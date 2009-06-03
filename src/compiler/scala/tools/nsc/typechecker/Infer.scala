@@ -598,6 +598,7 @@ trait Infer {
         }
         ()
       }
+//      println("solve "+tvars+" "+(tvars map (_.constr)))
       val targs = solvedTypes(tvars, tparams, tparams map varianceInTypes(formals), 
                               false, lubDepth(formals) max lubDepth(argtpes))
 //      val res =
