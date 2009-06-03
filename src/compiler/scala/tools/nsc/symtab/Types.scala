@@ -137,6 +137,7 @@ trait Types {
     // Important to keep this up-to-date when new operations are added!
     override def isTrivial = underlying.isTrivial
     override def isHigherKinded: Boolean = underlying.isHigherKinded
+    override def typeConstructor: Type = underlying.typeConstructor    
     override def isNotNull = underlying.isNotNull
     override def isError = underlying.isError
     override def isErroneous = underlying.isErroneous
@@ -292,6 +293,9 @@ trait Types {
       case SingleType(pre, _) => pre :: pre.prefixChain
       case _ => List()
     }
+
+    /** This type, without its type arguments @M */
+    def typeConstructor: Type = this
 
     /** For a typeref, its arguments. The empty list for all other types */
     def typeArgs: List[Type] = List()
@@ -1145,6 +1149,10 @@ trait Types {
     override def isHigherKinded = 
       !parents.isEmpty && (parents forall (_.isHigherKinded)) // @MO to AM: please check this class!
 
+    //@M may result in an invalid type (references to higher-order args become dangling )
+    override def typeConstructor = 
+      copyRefinedType(this, parents map (_.typeConstructor), decls)  
+
     override def typeParams = 
       if (isHigherKinded) parents.head.typeParams
       else super.typeParams
@@ -1480,6 +1488,7 @@ A type's typeSymbol should never be inspected directly.
       else 
         super.instantiateTypeParams(formals, actuals)
 
+    override def typeConstructor = rawTypeRef(pre, sym, List())
     override def isHigherKinded = !typeParams.isEmpty 	//@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
 		
     private def higherKindedArgs = typeParams map (_.typeConstructor) //@M must be .typeConstructor
@@ -1864,8 +1873,6 @@ A type's typeSymbol should never be inspected directly.
     /** The variable's skolemizatuon level */
     val level = skolemizationLevel
 
-    override def isHigherKinded = origin.isHigherKinded //@M TODO: never called?
-
     def setInst(tp: Type) {
 //      assert(!(tp containsTp this), this)
       constr.inst = tp
@@ -1878,7 +1885,61 @@ A type's typeSymbol should never be inspected directly.
         true
       } else false
 
-		override def typeParams = constr0.params  //@M TODO: never called?	
+    /** Can this type variable be related in a constraint to type `tp'?
+     *  This is not the case if `tp' contains type skolems whose
+     *  skolemization level is higher than the level of this type variable.
+     */
+    def isRelatable(tp: Type): Boolean = {
+      var ok = true
+      for (t <- tp) {
+        t.typeSymbol match {
+          case ts: TypeSkolem => if (ts.level > level) ok = false
+          case _ =>
+        }
+      }
+      if (ok) undoLog = (this, constr.duplicate) :: undoLog // @M: note that duplicate != a clone (see note in impl in TypeConstraint)
+      ok
+    }
+
+    /** Called from isSubtype0 when a TypeVar is involved in a subtyping check.
+     * if isLowerBound is true,
+     *   registerBound returns whether this TypeVar could plausibly be a supertype of tp and, 
+     *     if so, tracks tp as a lower bound of this type variable
+     *
+     * if isLowerBound is false,
+     *   registerBound returns whether this TypeVar could plausibly be a subtype of tp and, 
+     *     if so, tracks tp as a upper bound of this type variable
+     */
+    def registerBound(tp: Type, isLowerBound: Boolean): Boolean = {
+      def checkSubtype(tp1: Type, tp2: Type) = 
+        if(isLowerBound) tp1 <:< tp2 
+        else             tp2 <:< tp1
+      def addBound(tp: Type) = 
+        if(isLowerBound) constr.lobounds = tp :: constr.lobounds
+        else             constr.hibounds = tp :: constr.hibounds
+      def checkArgs(args1: List[Type], args2: List[Type], params: List[Symbol]) = 
+        if(isLowerBound) isSubArgs(args1, args2, params)      
+        else             isSubArgs(args2, args1, params)      
+
+      if (constr.inst != NoType) // type var is already set
+        checkSubtype(tp, constr.inst)
+      else isRelatable(tp) && { 
+        if(constr.params.isEmpty) { // type var has kind *
+          addBound(tp)
+          true 
+        } else // higher-kinded type var with same arity as tp
+          (constr.args.length == tp.typeArgs.length) && { 
+            // register type constructor (the type without its type arguments) as bound
+            addBound(tp.typeConstructor)
+            // check subtyping of higher-order type vars
+            // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
+            checkArgs(tp.typeArgs, constr.args, constr.params)  
+          }
+      }
+    }
+
+    // override def isHigherKinded = origin.isHigherKinded //@M TODO: never called?
+    // override def typeParams = constr0.params  //@M TODO: never called? 
     override def typeSymbol = origin.typeSymbol
     override def safeToString: String = {
       def varString = "?"+(if (settings.explaintypes.value) level else "")+origin// +"#"+tid //DEBUG
@@ -2214,7 +2275,6 @@ A type's typeSymbol should never be inspected directly.
       case TypeBounds(lo, hi) => TypeBounds(appliedType(lo, args), appliedType(hi, args))
       case ErrorType => tycon
       case WildcardType => tycon // needed for neg/t0226
-      case TypeVar(_, _) => tycon // needed for neg/t0226      
       case _ => throw new Error(debugString(tycon))
     }
 
@@ -3377,22 +3437,6 @@ A type's typeSymbol should never be inspected directly.
     }
   }
 
-  /** Can variable `tv' be related in a constraint to type `tp'?
-   *  This is not the case if `tp' contains type skolems whose
-   *  skolemization level is higher than the level of `tv'.
-   */
-  private def isRelatable(tv: TypeVar, tp: Type): Boolean = {
-    var ok = true
-    for (t <- tp) {
-      t.typeSymbol match {
-        case ts: TypeSkolem => if (ts.level > tv.level) ok = false
-        case _ =>
-      }
-    }
-    if (ok) undoLog = (tv, tv.constr.duplicate) :: undoLog // @M: note that duplicate != a clone (see note in impl in TypeConstraint)
-    ok
-  }
-
   /** Is intersection of given types populated? That is,
    *  for all types tp1, tp2 in intersection
    *    for all common base classes bc of tp1 and tp2
@@ -3605,10 +3649,10 @@ A type's typeSymbol should never be inspected directly.
         bounds containsType tp1
       case (tv1 @ TypeVar(_, constr1), _) =>
         if (constr1.inst != NoType) constr1.inst =:= tp2
-        else isRelatable(tv1, tp2) && (tv1 tryInstantiate wildcardToTypeVarMap(tp2))
+        else tv1.isRelatable(tp2) && (tv1 tryInstantiate wildcardToTypeVarMap(tp2))
       case (_, tv2 @ TypeVar(_, constr2)) =>
         if (constr2.inst != NoType) tp1 =:= constr2.inst
-        else isRelatable(tv2, tp1) && (tv2 tryInstantiate wildcardToTypeVarMap(tp1))
+        else tv2.isRelatable(tp1) && (tv2 tryInstantiate wildcardToTypeVarMap(tp1))
       case (AnnotatedType(_,_,_), _) =>
         annotationsConform(tp1, tp2) && annotationsConform(tp2, tp1) && tp1.withoutAnnotations =:= tp2.withoutAnnotations
       case (_, AnnotatedType(_,_,_)) =>
@@ -3693,19 +3737,20 @@ A type's typeSymbol should never be inspected directly.
       tp
   }
 
+  private def isSubArgs(tps1: List[Type], tps2: List[Type],
+                tparams: List[Symbol]): Boolean = (
+    tps1.isEmpty && tps2.isEmpty
+    ||
+    !tps1.isEmpty && !tps2.isEmpty &&
+    (tparams.head.isCovariant || (tps2.head <:< tps1.head)) &&
+    (tparams.head.isContravariant || (tps1.head <:< tps2.head)) &&
+    isSubArgs(tps1.tail, tps2.tail, tparams.tail)
+  )
+
+
   /** Does type `tp1' conform to `tp2'?
    */
   private def isSubType0(tp1: Type, tp2: Type, depth: Int): Boolean = {
-	  def isSubArgs(tps1: List[Type], tps2: List[Type],
-                  tparams: List[Symbol]): Boolean = (
-      tps1.isEmpty && tps2.isEmpty
-      ||
-      !tps1.isEmpty && !tps2.isEmpty &&
-      (tparams.head.isCovariant || (tps2.head <:< tps1.head)) &&
-      (tparams.head.isContravariant || (tps1.head <:< tps2.head)) &&
-      isSubArgs(tps1.tail, tps2.tail, tparams.tail)
-    )
-
     ((tp1, tp2) match {
       case (ErrorType, _)    => true
       case (WildcardType, _) => true
@@ -3768,36 +3813,10 @@ A type's typeSymbol should never be inspected directly.
         bounds.lo <:< tp2
       case (_, BoundedWildcardType(bounds)) =>
         tp1 <:< bounds.hi
-      case (_, tv2 @ TypeVar(_, constr2)) if constr2.params.isEmpty => // first-order TypeVar
-			  // Console.println("TR <:< TV: "+(debugString(tp1), tv2)) // @MDEBUG
-        if (constr2.inst != NoType) tp1 <:< constr2.inst
-        else isRelatable(tv2, tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true } 
-      case (tv1 @ TypeVar(_, constr1), _) if constr1.params.isEmpty => // first-order TypeVar
-			  // Console.println("TV <:< TR: "+(tv1, debugString(tp2))) // @MDEBUG
-        if (constr1.inst != NoType) constr1.inst <:< tp2 
-        else isRelatable(tv1, tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
-			case (TypeRef(pre1, sym1, args1), tv2 @ TypeVar(_, constr2)) if constr2.args.length == args1.length => // higher-order TypeVar, e.g. List[Int] <: ?C[?A]
-	        if (constr2.inst != NoType) tp1 <:< constr2.inst
-	        else isRelatable(tv2, tp1) && { 
-						constr2.lobounds = rawTypeRef(pre1, sym1, List()) :: constr2.lobounds // track the higher-kinded version of the typeref as a bound for the TypeVar that is the head of the type application
-						// Console.println("TR <:< TV: "+(args1, constr2.args, constr2.params)) // @MDEBUG
-						// val res = 
-						isSubArgs(args1, constr2.args, constr2.params) // @M TODO: the consistency of the type params of the typeref and the typevar are checked after inference made a guess,
-						// so it's ok to use the variances (of the higher-order type params) specified by the type param that gave rise to this typevar
-						// Console.println("TR <:< TV --> "+res) // @MDEBUG
-						// res
-					}
-	    case (tv1 @ TypeVar(_, constr1), TypeRef(pre2, sym2, args2)) if constr1.args.length == args2.length  => // higher-order TypeVar, e.g. ?C[?A] <: List[Int]
-	        if (constr1.inst != NoType) constr1.inst <:< tp2 
-	        else isRelatable(tv1, tp2) && { 
-						constr1.hibounds = rawTypeRef(pre2, sym2, List()) :: constr1.hibounds  // track the higher-kinded version of the typeref as a bound for the TypeVar that is the head of the type application
-						// Console.println("TV <:< TR: "+(constr1.args, args2, constr1.params)) // @MDEBUG
-						// val res = 
-						isSubArgs(constr1.args, args2, constr1.params) // @M TODO: the consistency of the type params of the typeref and the typevar are checked after inference made a guess,
-						// so it's ok to use the variances (of the higher-order type params) specified by the type param that gave rise to this typevar
-						// Console.println("TV <:< TR --> "+res) // @MDEBUG
-						// res
-					}
+      case (tp, tv @ TypeVar(_,_)) =>
+        tv.registerBound(tp, true)
+      case (tv @ TypeVar(_,_), tp) =>
+        tv.registerBound(tp, false)
       case (_, _)  if (tp1.isHigherKinded || tp2.isHigherKinded) =>
         (tp1.typeSymbol == NothingClass 
          ||
