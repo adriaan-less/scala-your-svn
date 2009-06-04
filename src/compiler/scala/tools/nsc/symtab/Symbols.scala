@@ -304,10 +304,10 @@ trait Symbols {
         recursionTable get this match {
           case Some(n) =>
             if (n > settings.Yrecursion.value) {
-	      handler
-	    } else {
+              handler
+            } else {
               recursionTable += (this -> (n + 1))
-	    }
+            }
           case None =>
             recursionTable += (this -> 1)
         }
@@ -662,7 +662,10 @@ trait Symbols {
     private[Symbols] var infos: TypeHistory = null
 
     /** Get type. The type of a symbol is:
-     *  for a type symbol, the type corresponding to the symbol itself
+     *  for a type symbol, the type corresponding to the symbol itself, 
+     *    @M you should use tpeHK for a type symbol with type parameters if
+     *       the kind of the type need not be *, as tpe introduces dummy arguments
+     *       to generate a type of kind *
      *  for a term symbol, its usual type
      */
     def tpe: Type = info
@@ -678,7 +681,7 @@ trait Symbols {
         assert(infos.prev eq null, this.name)
         val tp = infos.info
         //if (settings.debug.value) System.out.println("completing " + this.rawname + tp.getClass());//debug
-	lock {
+        lock {
           setInfo(ErrorType)
           throw CyclicReference(this, tp)
         }
@@ -687,7 +690,7 @@ trait Symbols {
           phase = phaseOf(infos.validFrom)
           tp.complete(this)
           // if (settings.debug.value && runId(validTo) == currentRunId) System.out.println("completed " + this/* + ":" + info*/);//DEBUG
-	  unlock()
+          unlock()
         } finally {
           phase = current
         }
@@ -813,6 +816,13 @@ trait Symbols {
     def typeConstructor: Type =
       throw new Error("typeConstructor inapplicable for " + this)
 
+    /** @M -- tpe vs tpeHK:
+     * Symbol::tpe creates a TypeRef that has dummy type arguments to get a type of kind *
+     * Symbol::tpeHK creates a TypeRef without type arguments, but with type params --> higher-kinded if non-empty list of tpars
+     * calling tpe may hide errors or introduce spurious ones 
+     *   (e.g., when deriving a type from the symbol of a type argument that must be higher-kinded)
+     * as far as I can tell, it only makes sense to call tpe in conjunction with a substitution that replaces the generated dummy type arguments by their actual types 
+     */
     def tpeHK = if (isType) typeConstructor else tpe // @M! used in memberType
 
     /** The type parameters of this symbol, without ensuring type completion.
@@ -1609,13 +1619,6 @@ trait Symbols {
      *    tsym.info = TypeBounds(Nothing, Number)
      *    tsym.tpe  = TypeRef(NoPrefix, T, List())
      */
-		/*@M -- tpe vs tpeHK:
-		  Symbol::tpe creates a TypeRef that has dummy type arguments to get a type of kind *
-		  Symbol::tpeHK creates a TypeRef without type arguments, but with type params --> higher-kinded if non-empty list of tpars
-		  calling tpe may hide errors or introduce spurious ones 
-		    (e.g., when deriving a type from the symbol of a type argument that must be higher-kinded)
-		  as far as I can tell, it only makes sense to call tpe in conjunction with a substitution that replaces the generated dummy type arguments by their actual types 
-		*/
     override def tpe: Type = {
       if (tpeCache eq NoType) throw CyclicReference(this, typeConstructor)
       if (tpePeriod != currentPeriod) {

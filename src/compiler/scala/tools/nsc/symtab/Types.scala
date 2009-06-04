@@ -1490,7 +1490,7 @@ A type's typeSymbol should never be inspected directly.
 
     override def typeConstructor = rawTypeRef(pre, sym, List())
     override def isHigherKinded = !typeParams.isEmpty 	//@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
-		
+
     private def higherKindedArgs = typeParams map (_.typeConstructor) //@M must be .typeConstructor
     private def argsMaybeDummy = if (isHigherKinded) higherKindedArgs else args 
 
@@ -1863,7 +1863,7 @@ A type's typeSymbol should never be inspected directly.
    */
   case class TypeVar(origin: Type, constr0: TypeConstraint) extends Type {
 		def this(tparam: Symbol) = {
-			this(tparam.tpeHK, new TypeConstraint(tparam, List(),List(),List(),tparam.typeParams))
+			this(tparam.tpeHK, new TypeConstraint(List(),List(),List(),tparam.typeParams))
 		}
     // var tid = { tidCount += 1; tidCount } //DEBUG
 
@@ -1876,7 +1876,6 @@ A type's typeSymbol should never be inspected directly.
     def setInst(tp: Type) {
 //      assert(!(tp containsTp this), this)
       constr.inst = tp
-	    // println("setInst: "+safeToString) //@MDEBUG
     }
 
     def tryInstantiate(tp: Type): Boolean = 
@@ -2419,20 +2418,16 @@ A type's typeSymbol should never be inspected directly.
 
   /** A class expressing upper and lower bounds constraints, and type arguments (a list of Type's) 
    *  for type variables, as well as their instantiations 
-	 * A TypeVar with a TypeConstraint whose args is non-empty can only be instantiated by 
-	 * a higher-kinded type that can be applied to these args
-   */ // @M TODO: remove origin (was for debugging)
-  class TypeConstraint(val origin: Symbol, lo0: List[Type], hi0: List[Type], args0: List[Type], val params: List[Symbol]) { 
-	// params are needed to keep track of variance (see e.g., mapOverArgs)
+   * A TypeVar with a TypeConstraint whose args is non-empty can only be instantiated by 
+   * a higher-kinded type that can be applied to these args
+   */
+  class TypeConstraint(lo0: List[Type], hi0: List[Type], args0: List[Type], val params: List[Symbol]) { 
+    // params are needed to keep track of variance (see e.g., mapOverArgs)
     //var self: Type = _ //DEBUG
-    def this() = this(null, List(), List(), List(), List())
-    def this(lo: List[Type], hi: List[Type]) = this(null, lo, hi, List(), List())
+    def this() = this(List(), List(), List(), List())
+    def this(lo: List[Type], hi: List[Type]) = this(lo, hi, List(), List())
     var lobounds: List[Type] = lo0
     var hibounds: List[Type] = hi0
-    // def lobounds_= (bs: List[Type]) = {_lobounds=bs; Console.println("set bounds: "+this)}   //@MDEBUG
-    // def hibounds_= (bs: List[Type]) = {_hibounds=bs; Console.println("set bounds: "+this)}   //@MDEBUG
-    // def lobounds = _lobounds
-    // def hibounds = _hibounds
 
     var args: List[Type] = args0
     var inst: Type = NoType // @M reduce visibility?
@@ -2444,7 +2439,7 @@ A type's typeSymbol should never be inspected directly.
     }
 
     def cloneInternal = {
-      val tc = new TypeConstraint(origin, lobounds, hibounds, args, params) //@M TODO: should args/params be cloned?
+      val tc = new TypeConstraint(lobounds, hibounds, args, params) //@M TODO: should args/params be cloned?
       tc.inst = inst
       tc
     }
@@ -3975,8 +3970,6 @@ A type's typeSymbol should never be inspected directly.
             variances: List[Int], upper: Boolean, depth: Int): Boolean = {
     val config = tvars zip (tparams zip variances)
 
-		// println("solve: "+(tvars, tparams, variances, upper, depth)) //@MDEBUG
-		
     def solveOne(tvar: TypeVar, tparam: Symbol, variance: Int) {
       if (tvar.constr.inst == NoType) {
         val up = if (variance != CONTRAVARIANT) upper else !upper
@@ -3985,7 +3978,7 @@ A type's typeSymbol should never be inspected directly.
         //Console.println("solveOne0 "+tvar+" "+config+" "+bound);//DEBUG
         var cyclic = bound contains tparam
         for ((tvar2, (tparam2, variance2)) <- config) {
-					// Console.println("solveOne0(tp,up,lo,hi,lo=tp,hi=tp)="+(tparam.tpe, up, tparam2.info.bounds.lo, tparam2.info.bounds.hi, (tparam2.info.bounds.lo =:= tparam.tpe), (tparam2.info.bounds.hi =:= tparam.tpe))) //@MDEBUG
+					// Console.println("solveOne0(tp,up,lo,hi,lo=tp,hi=tp)="+(tparam.tpe, up, tparam2.info.bounds.lo, tparam2.info.bounds.hi, (tparam2.info.bounds.lo =:= tparam.tpe), (tparam2.info.bounds.hi =:= tparam.tpe))) //DEBUG
           if (tparam2 != tparam &&
               ((bound contains tparam2) ||
                up && (tparam2.info.bounds.lo =:= tparam.tpe) ||  //@M TODO: should probably be .tpeHK
