@@ -120,7 +120,7 @@ trait Types {
     case ClassInfoType(parents, defs, clazz) =>  "class "+ clazz.nameString + (parents map debugString).mkString("", " with ", "") + defs.toList.mkString("{", " ;\n ", "}") 
     case PolyType(tparams, result) => tparams.mkString("[", ", ", "] ") + debugString(result)
     case TypeBounds(lo, hi) => ">: "+ debugString(lo) +" <: "+ debugString(hi)
-    case TypeVar(origin, constr) => "?"+origin
+    case tv : TypeVar => tv.toString
     case ExistentialType(tparams, qtpe) => "forsome "+ tparams.mkString("[", ", ", "] ") + debugString(qtpe)
     case _ => tp.toString
   }
@@ -1815,9 +1815,9 @@ A type's typeSymbol should never be inspected directly.
     def withTypeVars(op: Type => Boolean): Boolean = withTypeVars(op, AnyDepth)
 
     def withTypeVars(op: Type => Boolean, depth: Int): Boolean = {
-      val tvars = quantified map (tparam => new TypeVar(tparam.tpe, new TypeConstraint)) // @M TODO
+      val tvars = quantified map (tparam => TypeVar(tparam.tpe, new TypeConstraint)) // @M TODO
 //@M should probably change to handle HK type infer properly:
-//    val tvars = quantified map (tparam => new TypeVar(tparam))
+//    val tvars = quantified map (tparam => TypeVar(tparam))
       val underlying1 = underlying.instantiateTypeParams(quantified, tvars)
       op(underlying1) && {
         solve(tvars, quantified, quantified map (x => 0), false, depth) &&
@@ -1858,13 +1858,27 @@ A type's typeSymbol should never be inspected directly.
 
   //private var tidCount = 0  //DEBUG
 
+  //@M 
+  // a TypeVar used to be a case class with only an origin and a constr
+  // then, constr became mutable (to support UndoLog, I guess), but pattern-matching returned the original constr0 (not clear whether that was intentional or not) //@M to Martin: was it?
+  // now, pattern-matching returns the most recent constr
+  object TypeVar {
+    def unapply(tv: TypeVar): Some[(Type, TypeConstraint)] = Some((tv.origin, tv.constr))
+    def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr, List(), List())    
+		def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint(List(),List()), List(), tparam.typeParams)
+		def apply(origin: Type, constr: TypeConstraint, args: List[Type], params: List[Symbol]) = new TypeVar(origin, constr, args, params)    
+  }
+  
   /** A class representing a type variable 
-   *  Not used after phase `typer'.
+   * Not used after phase `typer'.
+   * A higher-kinded type variable has type arguments (a list of Type's) and type paramers (list of Symbols)
+   * A TypeVar whose list of args is non-empty can only be instantiated by a higher-kinded type that can be applied to these args   
+   * NOTE:
    */
-  case class TypeVar(origin: Type, constr0: TypeConstraint) extends Type {
-		def this(tparam: Symbol) = {
-			this(tparam.tpeHK, new TypeConstraint(List(),List(),List(),tparam.typeParams))
-		}
+  class TypeVar(val origin: Type, val constr0: TypeConstraint, override val typeArgs: List[Type], override val params: List[Symbol]) extends Type {
+    // params are needed to keep track of variance (see mapOverArgs in SubstMap)
+    assert(typeArgs.isEmpty || typeArgs.length == params.length)
+		
     // var tid = { tidCount += 1; tidCount } //DEBUG
 
     /** The constraint associated with the variable */
@@ -1873,22 +1887,36 @@ A type's typeSymbol should never be inspected directly.
     /** The variable's skolemizatuon level */
     val level = skolemizationLevel
 
-    def setInst(tp: Type) {
-//      assert(!(tp containsTp this), this)
-      constr.inst = tp
-    }
+    /**
+     *  two occurrences of a higher-kinded typevar, e.g. ?CC[Int] and ?CC[String], correspond to 
+     *  *two instances* of TypeVar that share the *same* TypeConstraint
+     *  constr for ?CC only tracks type constructors anyway, so when ?CC[Int] <:< List[Int] and ?CC[String] <:< Iterable[String]
+     *  ?CC's hibounds contains List and Iterable
+     */
+    def applyArgs(newArgs: List[Type]): TypeVar = 
+      if(newArgs.isEmpty) this // SubstMap relies on this (though this check is redundant when called from appliedType...)
+      else TypeVar(origin, constr, newArgs, params) // @M TODO: interaction with undoLog??
+        // newArgs.length may differ from args.length (could've been empty before)
+      // OBSOLETE BEHAVIOUR: imperatively update args to new args
+      // this initialises a TypeVar's arguments to the arguments of the type
+      // example: when making new typevars, you start out with C[A], then you replace C by ?C, which should yield ?C[A], then A by ?A, ?C[?A]
+      // thus, we need to track a TypeVar's arguments, and map over them (see TypeMap::mapOver)
+      // OBSOLETE BECAUSE: can't update imperatively because TypeVars do get applied to different arguments over type (in asSeenFrom) -- see pos/tcpoly_infer_implicit_tuplewrapper.scala
+      // CONSEQUENCE: make new TypeVar's for every application of a TV to args,
+      //   inference may generate several TypeVar's for a single type parameter that must be inferred, 
+      //   one of them is in the set of tvars that need to be solved, and they all share the same constr instance
+    
 
-    def tryInstantiate(tp: Type): Boolean = 
-      if (constr.lobounds.forall(_ <:< tp) && constr.hibounds.forall(tp <:< _)) {
-        setInst(tp)
-        true
-      } else false
+    def setInst(tp: Type) { //println("setInst: "+(safeToString, debugString(tp))) //@MDEBUG
+//      assert(!(tp containsTp this), this)
+      constr.inst = tp      
+    }
 
     /** Can this type variable be related in a constraint to type `tp'?
      *  This is not the case if `tp' contains type skolems whose
      *  skolemization level is higher than the level of this type variable.
      */
-    def isRelatable(tp: Type): Boolean = {
+    private def isRelatable(tp: Type): Boolean = {
       var ok = true
       for (t <- tp) {
         t.typeSymbol match {
@@ -1896,7 +1924,7 @@ A type's typeSymbol should never be inspected directly.
           case _ =>
         }
       }
-      if (ok) undoLog = (this, constr.duplicate) :: undoLog // @M: note that duplicate != a clone (see note in impl in TypeConstraint)
+      if (ok) undoLog = (this, constr.duplicate) :: undoLog // @M: note that duplicate != cloneInternal (see note in impl in TypeConstraint)
       ok
     }
 
@@ -1909,7 +1937,7 @@ A type's typeSymbol should never be inspected directly.
      *   registerBound returns whether this TypeVar could plausibly be a subtype of tp and, 
      *     if so, tracks tp as a upper bound of this type variable
      */
-    def registerBound(tp: Type, isLowerBound: Boolean): Boolean = {
+    def registerBound(tp: Type, isLowerBound: Boolean): Boolean = { //println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
       def checkSubtype(tp1: Type, tp2: Type) = 
         if(isLowerBound) tp1 <:< tp2 
         else             tp2 <:< tp1
@@ -1923,25 +1951,46 @@ A type's typeSymbol should never be inspected directly.
       if (constr.inst != NoType) // type var is already set
         checkSubtype(tp, constr.inst)
       else isRelatable(tp) && { 
-        if(constr.params.isEmpty) { // type var has kind *
+        if(params.isEmpty) { // type var has kind *
           addBound(tp)
           true 
         } else // higher-kinded type var with same arity as tp
-          (constr.args.length == tp.typeArgs.length) && { 
+          (typeArgs.length == tp.typeArgs.length) && { 
             // register type constructor (the type without its type arguments) as bound
             addBound(tp.typeConstructor)
             // check subtyping of higher-order type vars
             // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
-            checkArgs(tp.typeArgs, constr.args, constr.params)  
+            checkArgs(tp.typeArgs, typeArgs, params)  
           }
       }
     }
+
+    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
+      // (new RuntimeException()).printStackTrace //@MDEBUG
+    
+      def checkIsSameType(tp: Type) = 
+        if(typeVarLHS) constr.inst =:= tp
+        else           tp          =:= constr.inst
+
+      if (constr.inst != NoType) checkIsSameType(tp)
+      else isRelatable(tp) && {
+        val newInst = wildcardToTypeVarMap(tp)
+        if (constr.lobounds.forall(_ <:< newInst) && constr.hibounds.forall(newInst <:< _)) {
+          setInst(tp)
+          true
+        } else false
+      }
+    }
+
+    
 
     // override def isHigherKinded = origin.isHigherKinded //@M TODO: never called?
     // override def typeParams = constr0.params  //@M TODO: never called? 
     override def typeSymbol = origin.typeSymbol
     override def safeToString: String = {
-      def varString = "?"+(if (settings.explaintypes.value) level else "")+origin// +"#"+tid //DEBUG
+      def varString = "?"+(if (settings.explaintypes.value) level else "")+
+                          origin+
+                          (if(typeArgs.isEmpty) "" else (typeArgs map (_.safeToString)).mkString("[ ", ", ", " ]")) // +"#"+tid //DEBUG
       if (constr.inst eq null) "<null " + origin + ">"
       else if (settings.debug.value) varString+constr.toString
       else if (constr.inst eq NoType) varString
@@ -1951,7 +2000,7 @@ A type's typeSymbol should never be inspected directly.
     override def isVolatile = origin.isVolatile
     override def kind = "TypeVar"
 
-    def cloneInternal = TypeVar(origin, constr cloneInternal)
+    def cloneInternal = TypeVar(origin, constr cloneInternal, typeArgs, params) // @M TODO: clone args/params?
   }
 
   /** A type carrying some annotations. Created by the typechecker
@@ -2259,14 +2308,7 @@ A type's typeSymbol should never be inspected directly.
     if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
     else tycon match { 
       case TypeRef(pre, sym, _) => rawTypeRef(pre, sym, args)
-      case tv@TypeVar(_, constr) => 
-        // @M: relies on the fact that types only ever get substituted to TypeVar (we never do TypeVar -> TypeVar)
-        // this initialises a TypeVar's arguments to the arguments of the type
-        // example: when making new typevars, you start out with C[A], then you replace C by ?C, which should yield ?C[A], then A by ?A, ?C[?A]
-        // thus, we need to track a TypeVar's arguments, and map over them (see TypeMap::mapOver)
-        assert(constr.args.isEmpty || constr.args.length == args.length && List.forall2(constr.args, args)(_ =:= _)) // must never forget the args
-        constr.args = args // must update imperatively! identity of the TypeVar matters!
-        tv  
+      case tv@TypeVar(_, constr) => tv.applyArgs(args)
       case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
       case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
       case st: SingletonType => appliedType(st.widen, args) // @M TODO: what to do? see bug1
@@ -2416,20 +2458,14 @@ A type's typeSymbol should never be inspected directly.
 
 // Helper Classes ---------------------------------------------------------
 
-  /** A class expressing upper and lower bounds constraints, and type arguments (a list of Type's) 
-   *  for type variables, as well as their instantiations 
-   * A TypeVar with a TypeConstraint whose args is non-empty can only be instantiated by 
-   * a higher-kinded type that can be applied to these args
+  /** A class expressing upper and lower bounds constraints, 
    */
-  class TypeConstraint(lo0: List[Type], hi0: List[Type], args0: List[Type], val params: List[Symbol]) { 
-    // params are needed to keep track of variance (see e.g., mapOverArgs)
+  class TypeConstraint(lo0: List[Type], hi0: List[Type]) { 
     //var self: Type = _ //DEBUG
-    def this() = this(List(), List(), List(), List())
-    def this(lo: List[Type], hi: List[Type]) = this(lo, hi, List(), List())
+    def this() = this(List(), List())
     var lobounds: List[Type] = lo0
     var hibounds: List[Type] = hi0
 
-    var args: List[Type] = args0
     var inst: Type = NoType // @M reduce visibility?
 
     def duplicate = {
@@ -2439,13 +2475,12 @@ A type's typeSymbol should never be inspected directly.
     }
 
     def cloneInternal = {
-      val tc = new TypeConstraint(lobounds, hibounds, args, params) //@M TODO: should args/params be cloned?
+      val tc = new TypeConstraint(lobounds, hibounds)
       tc.inst = inst
       tc
     }
 		
     override def toString =
-      (args map (_.safeToString)).mkString("[ ", ",", "] ") +
       (lobounds map (_.safeToString)).mkString("[ _>:(", ",", ") ") +
       (hibounds map (_.safeToString)).mkString("| _<:(", ",", ") ] _= ") + 
       inst.safeToString
@@ -2563,16 +2598,9 @@ A type's typeSymbol should never be inspected directly.
         val args1 = List.mapConserve(args)(this)
         if ((pre1 eq pre) && (args1 eq args)) tp
         else AntiPolyType(pre1, args1)
-      case TypeVar(_, constr) =>
+      case tv@TypeVar(origin, constr) =>
         if (constr.inst != NoType) this(constr.inst)
-        else { //@M tcpolyinfer
-          if(!constr.args.isEmpty)  // @M TODO: need to map over types in bounds of const? could they contain type params that need to be subst'ed?
-            constr.args = mapOverArgs(constr.args, constr.params) // !args.isEmpty implies !typeParams.isEmpty
-					// must not clone the TypeVar, as we're using it to accumulate its constraints
-					// if we duplicate here, the subtyping check (which typically uses the duplicate) will register the bounds there, 
-					// instead of in the original
-          tp
-        }
+        else tv.applyArgs(mapOverArgs(tv.typeArgs, tv.params))  //@M !args.isEmpty implies !typeParams.isEmpty 
       case NotNullType(tp) =>
         val tp1 = this(tp)
         if (tp1 eq tp) tp
@@ -3520,6 +3548,16 @@ A type's typeSymbol should never be inspected directly.
 
   private var subsametypeRecursions: Int = 0
 
+  /** Does this type have a prefix that begins with a type variable */
+  private def beginsWithTypeVar(tp: Type): Boolean = tp match {
+    case SingleType(pre, sym) =>
+      !(sym hasFlag PACKAGE) && beginsWithTypeVar(pre)
+    case TypeVar(_, constr) =>
+      constr.inst == NoType || beginsWithTypeVar(constr.inst)
+    case _ =>
+      false
+  }
+  
   private def isUnifiable(pre1: Type, pre2: Type) =
     (beginsWithTypeVar(pre1) || beginsWithTypeVar(pre2)) && (pre1 =:= pre2)
 
@@ -3642,12 +3680,10 @@ A type's typeSymbol should never be inspected directly.
         bounds containsType tp2
       case (_, BoundedWildcardType(bounds)) =>
         bounds containsType tp1
-      case (tv1 @ TypeVar(_, constr1), _) =>
-        if (constr1.inst != NoType) constr1.inst =:= tp2
-        else tv1.isRelatable(tp2) && (tv1 tryInstantiate wildcardToTypeVarMap(tp2))
-      case (_, tv2 @ TypeVar(_, constr2)) =>
-        if (constr2.inst != NoType) tp1 =:= constr2.inst
-        else tv2.isRelatable(tp1) && (tv2 tryInstantiate wildcardToTypeVarMap(tp1))
+      case (tv @ TypeVar(_,_), tp) =>
+        tv.registerTypeEquality(tp, true)
+      case (tp, tv @ TypeVar(_,_)) =>
+        tv.registerTypeEquality(tp, false)
       case (AnnotatedType(_,_,_), _) =>
         annotationsConform(tp1, tp2) && annotationsConform(tp2, tp1) && tp1.withoutAnnotations =:= tp2.withoutAnnotations
       case (_, AnnotatedType(_,_,_)) =>
@@ -3710,27 +3746,17 @@ A type's typeSymbol should never be inspected directly.
     if (subsametypeRecursions == 0) undoLog = List()
   }
 
-
-  /** Does this type have a prefix that begins with a type variable */
-  def beginsWithTypeVar(tp: Type): Boolean = tp match {
-    case SingleType(pre, sym) =>
-      !(sym hasFlag PACKAGE) && beginsWithTypeVar(pre)
-    case TypeVar(_, constr) =>
-      constr.inst == NoType || beginsWithTypeVar(constr.inst)
-    case _ =>
-      false
-  }
-
-  def instTypeVar(tp: Type): Type = tp match {
-    case TypeRef(pre, sym, args) =>
-      typeRef(instTypeVar(pre), sym, args)
-    case SingleType(pre, sym) =>
-      singleType(instTypeVar(pre), sym)
-    case TypeVar(_, constr) =>
-      instTypeVar(constr.inst)
-    case _ =>
-      tp
-  }
+//@M: dead code?
+  // def instTypeVar(tp: Type): Type = tp match {
+  //   case TypeRef(pre, sym, args) =>
+  //     typeRef(instTypeVar(pre), sym, args)
+  //   case SingleType(pre, sym) =>
+  //     singleType(instTypeVar(pre), sym)
+  //   case TypeVar(_, constr) =>
+  //     instTypeVar(constr.inst)
+  //   case _ =>
+  //     tp
+  // }
 
   private def isSubArgs(tps1: List[Type], tps2: List[Type],
                 tparams: List[Symbol]): Boolean = (
@@ -3893,7 +3919,7 @@ A type's typeSymbol should never be inspected directly.
   private def specializesSym(tp1: Type, sym1: Symbol, tp2: Type, sym2: Symbol): Boolean = {
     val info1 = tp1.memberInfo(sym1)
     val info2 = tp2.memberInfo(sym2).substThis(tp2.typeSymbol, tp1)
-    //System.out.println("specializes "+tp1+"."+sym1+":"+info1+sym1.locationString+" AND "+tp2+"."+sym2+":"+info2)//DEBUG
+    //System.out.println("specializes "+tp1+"."+sym1+":"+info1+sym1.locationString+" AND "+tp2+"."+sym2+":"+info2)//@MDEBUG
     sym2.isTerm && (info1 <:< info2) /*&& (!sym2.isStable || sym1.isStable) */ ||
     sym2.isAbstractType && info2.bounds.containsType(tp1.memberType(sym1)) ||
     sym2.isAliasType && tp2.memberType(sym2).substThis(tp2.typeSymbol, tp1) =:= tp1.memberType(sym1) //@MAT ok

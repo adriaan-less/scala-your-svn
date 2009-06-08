@@ -71,7 +71,7 @@ trait Infer {
    *  @param tparam ...
    *  @return       ...
    */
-  def freshVar(tparam: Symbol): TypeVar = new TypeVar(tparam) 
+  def freshVar(tparam: Symbol): TypeVar = TypeVar(tparam) 
 
   //todo: remove comments around following privates; right now they cause an IllegalAccess
   // error when built with scalac
@@ -572,6 +572,16 @@ trait Infer {
       if (formals.length != argtpes.length) {
         throw new NoInstance("parameter lists differ in length")
       }
+      
+      if (inferInfo) // @MDEBUG
+        println("methTypeArgs "+
+                "  tparams = "+tparams+"\n"+
+                "  formals = "+formals+"\n"+
+                "  restpe = "+restpe+"\n"+
+                "  restpe_inst = "+restpe.instantiateTypeParams(tparams, tvars)+"\n"+
+                "  argtpes = "+argtpes+"\n"+
+                "  pt = "+pt)
+      
       // check first whether type variables can be fully defined from
       // expected result type.
       if (!isWeaklyCompatible(restpe.instantiateTypeParams(tparams, tvars), pt)) {
