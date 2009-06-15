@@ -71,7 +71,7 @@ trait Infer {
    *  @param tparam ...
    *  @return       ...
    */
-  def freshVar(tparam: Symbol): TypeVar = new TypeVar(tparam) 
+  def freshVar(tparam: Symbol): TypeVar = TypeVar(tparam) 
 
   //todo: remove comments around following privates; right now they cause an IllegalAccess
   // error when built with scalac
@@ -534,7 +534,9 @@ trait Infer {
       List.map2(tparams, targs) {(tparam, targ) =>
         if (targ.typeSymbol == NothingClass && (restpe == WildcardType || (varianceInType(restpe)(tparam) & COVARIANT) == 0)) {
           uninstantiated += tparam
-          tparam.tpe  //@M TODO: should probably be .tpeHK
+          tparam.tpeHK  //@M tparam.tpe was wrong: we only want the type constructor, 
+            // not the type constructor applied to dummy arguments
+            // see ticket 474 for an example that crashes if we use .tpe instead of .tpeHK)
         } else if (targ.typeSymbol == RepeatedParamClass) {
           targ.baseType(SeqClass)
         } else {
@@ -570,6 +572,16 @@ trait Infer {
       if (formals.length != argtpes.length) {
         throw new NoInstance("parameter lists differ in length")
       }
+      
+      if (inferInfo) // @MDEBUG
+        println("methTypeArgs "+
+                "  tparams = "+tparams+"\n"+
+                "  formals = "+formals+"\n"+
+                "  restpe = "+restpe+"\n"+
+                "  restpe_inst = "+restpe.instantiateTypeParams(tparams, tvars)+"\n"+
+                "  argtpes = "+argtpes+"\n"+
+                "  pt = "+pt)
+      
       // check first whether type variables can be fully defined from
       // expected result type.
       if (!isWeaklyCompatible(restpe.instantiateTypeParams(tparams, tvars), pt)) {
@@ -1012,11 +1024,12 @@ trait Infer {
         else "invariant";                                                
 
       def qualify(a0: Symbol, b0: Symbol): String = if (a0.toString != b0.toString) "" else { 
-        assert(a0 ne b0)
-        assert(a0.owner ne b0.owner)
-        var a = a0; var b = b0
-        while (a.owner.name == b.owner.name) { a = a.owner; b = b.owner}
-        if (a.locationString ne "") " (" + a.locationString.trim + ")" else ""
+        if((a0 eq b0) || (a0.owner eq b0.owner)) "" 
+        else {
+          var a = a0; var b = b0
+          while (a.owner.name == b.owner.name) { a = a.owner; b = b.owner}
+          if (a.locationString ne "") " (" + a.locationString.trim + ")" else ""          
+        }
       }
       
       val errors = new ListBuffer[String]
