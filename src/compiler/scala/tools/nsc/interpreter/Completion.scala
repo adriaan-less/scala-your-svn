@@ -63,7 +63,7 @@ class Completion(val interpreter: Interpreter) extends Completor {
     def filt(xs: List[String]) = xs filter (_ startsWith stub)
 
     case class Result(candidates: List[String], position: Int) {
-      def getCandidates() = candidates.map(_.trim).removeDuplicates.sort(_ < _)
+      def getCandidates() = (candidates map (_.trim) removeDuplicates) sort (_ < _)
     }
     
     // work out completion candidates and position
@@ -88,12 +88,13 @@ class Completion(val interpreter: Interpreter) extends Completor {
       val memberKeywords = List("isInstanceOf", "asInstanceOf")      
       def doDotted(): Result = {
         lazy val pkgs = filt(membersOfPath(path))
-        lazy val ids = filt(membersOfId(path) ::: memberKeywords)
+        lazy val ids = filt(membersOfId(path))
+        lazy val idExtras = filt(memberKeywords)  // isInstanceOf and asInstanceOf
         lazy val statics = filt(completeStaticMembers(path))
         
         if (!pkgs.isEmpty) Result(pkgs, path.length + 1)
-        else if (!ids.isEmpty) Result(ids, path.length + 1)
-        else Result(statics, path.length + 1)
+        else if (!ids.isEmpty) Result(ids ::: idExtras, path.length + 1)
+        else Result(statics ::: idExtras, path.length + 1)
       }
       
       segments.size match {
@@ -158,7 +159,7 @@ object Completion
 
   private def exists(path: String) = new File(path) exists
   
-  def isValidCompletion(x: String) = !(x contains "$") && !(excludeMethods contains x)
+  def isValidCompletion(x: String) = !(x contains "$$") && !(excludeMethods contains x)
   def isClass(x: String)    = x endsWith ".class"
   def dropClass(x: String)  = x.substring(0, x.length - 6)  // drop .class
   
@@ -184,6 +185,7 @@ object Completion
     val jars = cp.removeDuplicates filter (_ endsWith ".jar")
     
     // for e.g. foo.bar.baz.C, returns (foo -> bar), (foo.bar -> baz), (foo.bar.baz -> C)
+    // and scala.Range$BigInt needs to go scala -> Range -> BigInt
     def subpaths(s: String): List[(String, String)] = {
       val segs = s.split('.')
       for (i <- List.range(0, segs.length - 1)) yield {
@@ -194,7 +196,9 @@ object Completion
     }
     
     def oneJar(jar: String): Unit = {
-      val classfiles = Completion.getClassFiles(jar).map(_.replace('/', '.'))
+      def cleanup(s: String): String = s map { c => if (c == '/' || c == '$') '.' else c } toString
+      val classfiles = Completion getClassFiles jar map cleanup
+        
       for (cl <- classfiles; (k, v) <- subpaths(cl)) {
         if (map containsKey k) map.put(k, v :: map.get(k))
         else map.put(k, List(v))

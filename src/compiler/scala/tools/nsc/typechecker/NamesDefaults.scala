@@ -165,29 +165,30 @@ trait NamesDefaults { self: Analyzer =>
         // constructor calls
 
         case Select(New(TypeTree()), _) if isConstr =>
-          val module = baseFun.symbol.owner.linkedModuleOfClass
-          val defaultQual = if (module == NoSymbol) None
-
-                            else Some(gen.mkAttributedRef(module))
-          blockWithoutQualifier(baseFun1, defaultQual)
+          blockWithoutQualifier(baseFun1, None)
 
         case Select(New(Ident(_)), _) if isConstr =>
           blockWithoutQualifier(baseFun1, None)
 
         case Select(nev @ New(sel @ Select(qual, typeName)), constr) if isConstr =>
+          // #2057
           val module = baseFun.symbol.owner.linkedModuleOfClass
           val defaultQual = if (module == NoSymbol) None
-                            else Some(gen.mkAttributedRef(module))
-          if (treeInfo.isPureExpr(qual)) {
-            blockWithoutQualifier(baseFun1, defaultQual)
-          } else {
-            val fun: Symbol => Tree =
-              sym => treeCopy.Select(baseFun1,
-                       treeCopy.New(nev,
-                         treeCopy.Select(sel, gen.mkAttributedRef(sym), typeName)),
-                       constr)
-            blockWithQualifier(qual, fun, sym => defaultQual)
-          }
+                            else Some(gen.mkAttributedSelect(qual.duplicate, module))
+          // in `new q.C()', q is always stable
+          assert(treeInfo.isPureExpr(qual), qual)
+          blockWithoutQualifier(baseFun1, defaultQual)
+
+        // super constructor calls
+
+        case Select(Super(_, _), _) if isConstr =>
+          blockWithoutQualifier(baseFun1, None)
+
+        // self constructor calls (in secondary constructors)
+
+        case Select(qual, name) if isConstr =>
+          assert(treeInfo.isPureExpr(qual), qual)
+          blockWithoutQualifier(baseFun1, None)
 
         // other method calls
 
@@ -195,7 +196,6 @@ trait NamesDefaults { self: Analyzer =>
           blockWithoutQualifier(baseFun1, None)
 
         case Select(qual, name) =>
-          assert(!isConstr, baseFun1)
           if (treeInfo.isPureExpr(qual))
             blockWithoutQualifier(baseFun1, Some(qual.duplicate))
           else
@@ -234,11 +234,7 @@ trait NamesDefaults { self: Analyzer =>
     }
 
     // begin transform
-    if (treeInfo.isSelfConstrCall(tree)) {
-      errorTree(tree, "using named or default arguments in a self constructor call is not allowed")
-    } else if (treeInfo.isSuperConstrCall(tree)) {
-      errorTree(tree, "using named or default arguments in a super constructor call is not allowed")
-    } else if (isNamedApplyBlock(tree)) {
+    if (isNamedApplyBlock(tree)) {
       context.namedApplyBlockInfo.get._1
     } else tree match {
       // we know that Apply(Apply(...)) can only be an application of a curried method;

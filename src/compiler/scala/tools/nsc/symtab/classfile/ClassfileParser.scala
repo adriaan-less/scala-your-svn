@@ -217,7 +217,9 @@ abstract class ClassfileParser {
           val index = in.getChar(start + 1)
           val name = getExternalName(in.getChar(starts(index) + 1))
           //assert(name.endsWith("$"), "Not a module class: " + name)
-          f = definitions.getModule(name.subName(0, name.length - 1))
+          f = forceMangledName(name.subName(0, name.length - 1), true)
+          if (f == NoSymbol)
+            f = definitions.getModule(name.subName(0, name.length - 1))
         } else {
           val origName = nme.originalName(name)
           val owner = if (static) ownerTpe.typeSymbol.linkedClassOfClass else ownerTpe.typeSymbol
@@ -245,19 +247,28 @@ abstract class ClassfileParser {
       f 
     }
     
-    def getNameAndType(index: Int, ownerTpe: Type): (Name, Type) = {
+    /** Return a name and a type at the given index. If the type is a method
+     *  type, a dummy symbol is created in 'ownerTpe', which is used as the
+     *  owner of its value parameters. This might lead to inconsistencies,
+     *  if a symbol of the given name already exists, and has a different
+     *  type. 
+     */
+    private def getNameAndType(index: Int, ownerTpe: Type): (Name, Type) = {
       if (index <= 0 || len <= index) errorBadIndex(index)
       var p = values(index).asInstanceOf[(Name, Type)]
       if (p eq null) {
         val start = starts(index)
         if (in.buf(start) != CONSTANT_NAMEANDTYPE) errorBadTag(start)
         val name = getName(in.getChar(start + 1))
-        var tpe  = getType(in.getChar(start + 3))
+        // create a dummy symbol for method types
+        val dummySym = ownerTpe.typeSymbol.newMethod(ownerTpe.typeSymbol.pos, name)
+        var tpe  = getType(dummySym, in.getChar(start + 3))
+
+        // fix the return type, which is blindly set to the class currently parsed
         if (name == nme.CONSTRUCTOR)
           tpe match {
-            case MethodType(params, restpe) =>
-              assert(restpe.typeSymbol == definitions.UnitClass)
-              tpe = MethodType(params, ownerTpe)
+            case MethodType(formals, restpe) =>
+              tpe = MethodType(formals, ownerTpe)
           }
 
         p = (name, tpe)
@@ -340,6 +351,21 @@ abstract class ClassfileParser {
     /** Throws an exception signaling a bad tag at given address. */
     private def errorBadTag(start: Int) =
       throw new RuntimeException("bad constant pool tag " + in.buf(start) + " at byte " + start)
+  }
+
+  /** Try to force the chain of enclosing classes for the given name. Otherwise
+   *  flatten would not lift classes that were not referenced in the source code.
+   */
+  def forceMangledName(name: Name, module: Boolean): Symbol = {
+    val parts = name.toString.split(Array('.', '$'))
+    var sym: Symbol = definitions.RootClass
+    atPhase(currentRun.flattenPhase.prev) {
+      for (part <- parts) {
+        sym = sym.info.decl(part)//.suchThat(module == _.isModule)
+      }
+    }
+//    println("found: " + sym)
+    sym
   }
 
 
@@ -616,7 +642,7 @@ abstract class ClassfileParser {
             paramtypes += objToAny(sig2type(tparams, skiptvs))
           }
           index += 1
-          val restype = if (sym != null && sym.isConstructor) {
+          val restype = if (sym != null && sym.isClassConstructor) {
             accept('V')
             clazz.tpe
           } else
@@ -763,36 +789,36 @@ abstract class ClassfileParser {
           in.skip(attrLen)
       }
     }
-    
-    def parseAnnotationArgument: Option[ConstantAnnotationArgument] = {
+
+    def parseAnnotArg: Option[ClassfileAnnotArg] = {
       val tag = in.nextByte
       val index = in.nextChar
       tag match {
         case STRING_TAG =>
-          Some(LiteralAnnotationArgument(Constant(pool.getName(index).toString())))
+          Some(LiteralAnnotArg(Constant(pool.getName(index).toString())))
         case BOOL_TAG | BYTE_TAG | CHAR_TAG | SHORT_TAG | INT_TAG |
              LONG_TAG | FLOAT_TAG | DOUBLE_TAG =>
-          Some(LiteralAnnotationArgument(pool.getConstant(index)))
+          Some(LiteralAnnotArg(pool.getConstant(index)))
         case CLASS_TAG  =>
-          Some(LiteralAnnotationArgument(Constant(pool.getType(index))))
+          Some(LiteralAnnotArg(Constant(pool.getType(index))))
         case ENUM_TAG   =>
           val t = pool.getType(index)
           val n = pool.getName(in.nextChar)
           val s = t.typeSymbol.linkedModuleOfClass.info.decls.lookup(n)
           assert(s != NoSymbol, t)
-          Some(LiteralAnnotationArgument(Constant(s)))
+          Some(LiteralAnnotArg(Constant(s)))
         case ARRAY_TAG  =>
-          val arr = new ArrayBuffer[ConstantAnnotationArgument]()
+          val arr = new ArrayBuffer[ClassfileAnnotArg]()
           var hasError = false
           for (i <- 0 until index)
-            parseAnnotationArgument match {
+            parseAnnotArg match {
               case Some(c) => arr += c
               case None => hasError = true
             }
           if (hasError) None
-          else Some(ArrayAnnotationArgument(arr.toArray))
+          else Some(ArrayAnnotArg(arr.toArray))
         case ANNOTATION_TAG =>
-          parseAnnotation(index) map (NestedAnnotationArgument(_))
+          parseAnnotation(index) map (NestedAnnotArg(_))
       }
     }
 
@@ -802,11 +828,11 @@ abstract class ClassfileParser {
     def parseAnnotation(attrNameIndex: Char): Option[AnnotationInfo] = try {
       val attrType = pool.getType(attrNameIndex)
       val nargs = in.nextChar
-      val nvpairs = new ListBuffer[(Name,ConstantAnnotationArgument)]
+      val nvpairs = new ListBuffer[(Name, ClassfileAnnotArg)]
       var hasError = false
       for (i <- 0 until nargs) {
         val name = pool.getName(in.nextChar)
-        parseAnnotationArgument match {
+        parseAnnotArg match {
           case Some(c) => nvpairs += ((name, c))
           case None => hasError = true
         }

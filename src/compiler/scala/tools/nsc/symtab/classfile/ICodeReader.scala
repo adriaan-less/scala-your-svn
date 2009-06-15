@@ -101,13 +101,11 @@ abstract class ICodeReader extends ClassfileParser {
   private def parseMember(field: Boolean): (Int, Symbol) = {
     val jflags = in.nextChar
     val name = pool.getName(in.nextChar)
-    var tpe  = pool.getType(in.nextChar)
-    if (name == nme.CONSTRUCTOR)
-      tpe match {
-        case MethodType(formals, restpe) =>
-          assert(restpe.typeSymbol == definitions.UnitClass)
-          tpe = MethodType(formals, getOwner(jflags).tpe)
-      }
+
+    val owner = getOwner(jflags)
+    val dummySym = owner.newMethod(owner.pos, name).setFlag(javaToScalaFlags(jflags))
+
+    var tpe  = pool.getType(dummySym, in.nextChar)
 
     if ("<clinit>" == name.toString) 
       (jflags, NoSymbol)
@@ -117,12 +115,12 @@ abstract class ICodeReader extends ClassfileParser {
       if (sym == NoSymbol)
         sym = owner.info.member(newTermName(name.toString + nme.LOCAL_SUFFIX)).suchThat(old => old.tpe =:= tpe);
       if (sym == NoSymbol) {
-        log("Could not find symbol for " + name + ": " + tpe/* + " in " + owner.info.decls*/)
+        log("Could not find symbol for " + name + ": " + tpe + " in " + owner.info.decls)
         log(owner.info.member(name).tpe + " : " + tpe)
         if (field)
           sym = owner.newValue(owner.pos, name).setInfo(tpe).setFlag(MUTABLE | javaToScalaFlags(jflags))
         else
-          sym = owner.newMethod(owner.pos, name).setInfo(tpe).setFlag(javaToScalaFlags(jflags))
+          sym = dummySym.setInfo(tpe)
         owner.info.decls.enter(sym)
         log("added " + sym + ": " + sym.tpe)
       }
@@ -195,11 +193,15 @@ abstract class ICodeReader extends ClassfileParser {
       log("forcing " + iface.owner + " at phase: " + phase + " impl: " + iface.implClass)
       iface.owner.info // force the mixin type-transformer
       definitions.getClass(name)
-    } else if (name.endsWith("$"))
-      definitions.getModule(name.subName(0, name.length - 1))
-    else
+    } else if (name.endsWith("$")) {
+      val sym = forceMangledName(name.subName(0, name.length -1), true)
+      if (sym == NoSymbol)
+        definitions.getModule(name.subName(0, name.length - 1))
+      else sym
+    } else {
+      forceMangledName(name, false)
       definitions.getClass(name)
-        //super.classNameToSymbol(name)
+    }
     if (sym.isModule)
       sym.moduleClass
     else

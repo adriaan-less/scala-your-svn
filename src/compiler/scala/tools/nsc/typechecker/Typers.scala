@@ -1255,7 +1255,7 @@ trait Typers { self: Analyzer =>
           error(getter.pos, getter+" is defined twice")
 
         // todo: potentially dangerous not to duplicate the trees and clone the symbols / types.
-        getter.setAnnotations(value.initialize.annotations)
+        getter.setAnnotations(value.annotations)
 
         if (value.hasFlag(LAZY)) List(stat)
         else {
@@ -1271,22 +1271,33 @@ trait Typers { self: Analyzer =>
             treeCopy.DefDef(result, result.mods, result.name,
                         result.tparams, result.vparamss, result.tpt, result.rhs)
           }
-          def setterDef: DefDef = {
-            val setr = getter.setter(value.owner)
-            setr.setAnnotations(value.annotations)
+          def setterDef(setter: Symbol): DefDef = {
+            setter.setAnnotations(value.annotations)
             val result = atPos(vdef)(
-              DefDef(setr,
-                if ((mods hasFlag DEFERRED) || (setr hasFlag OVERLOADED)) 
+              DefDef(setter,
+                if ((mods hasFlag DEFERRED) || (setter hasFlag OVERLOADED))
                   EmptyTree
-                else 
+                else
                   typed(Assign(Select(This(value.owner), value),
-                               Ident(setr.paramss.head.head)))))
+                               Ident(setter.paramss.head.head)))))
             treeCopy.DefDef(result, result.mods, result.name, result.tparams,
                             result.vparamss, result.tpt, result.rhs)
           }
-          val gs = if (mods hasFlag MUTABLE) List(getterDef, setterDef)
-                   else List(getterDef)
-          if (mods hasFlag DEFERRED) gs else vdef :: gs
+
+          val gs = new ListBuffer[DefDef]
+          gs.append(getterDef)
+          if (mods hasFlag MUTABLE) {
+            val setter = getter.setter(value.owner)
+            gs.append(setterDef(setter))
+            if (!forMSIL && (value.hasAnnotation(BeanPropertyAttr) ||
+                 value.hasAnnotation(BooleanBeanPropertyAttr))) {
+              val beanSetterName = "set" + name(0).toString.toUpperCase +
+                                   name.subName(1, name.length)
+              val beanSetter = value.owner.info.decl(beanSetterName)
+              gs.append(setterDef(beanSetter))
+            }
+          }
+          if (mods hasFlag DEFERRED) gs.toList else vdef :: gs.toList
         }
       case DocDef(comment, defn) =>
         addGetterSetter(defn) map (stat => DocDef(comment, stat))
@@ -1798,7 +1809,7 @@ trait Typers { self: Analyzer =>
           context.unit.synthetics get e.sym match {
             case Some(tree) =>
               newStats += typedStat(tree) // might add even more synthetics to the scope
-            context.unit.synthetics -= e.sym
+              context.unit.synthetics -= e.sym
             case _ =>
           }
 
@@ -2024,7 +2035,7 @@ trait Typers { self: Analyzer =>
               else {
                 assert(isNamedApplyBlock(fun1), fun1)
                 val NamedApplyInfo(qual, targs, previousArgss, _) =
-                context.namedApplyBlockInfo.get._2
+                  context.namedApplyBlockInfo.get._2
                 val (allArgs, missing) = addDefaults(args, qual, targs, previousArgss, mt.params)
                 if (allArgs.length == formals.length) {
                   // a default for each missing argument was found
@@ -2268,17 +2279,17 @@ trait Typers { self: Analyzer =>
         None
       }
 
-      /** Converts an untyped tree to a ConstantAnnotationArgument. If the conversion fails,
+      /** Converts an untyped tree to a ClassfileAnnotArg. If the conversion fails,
        *  an error message is reporded and None is returned.
        */
-      def tree2ConstArg(tree: Tree, pt: Type): Option[ConstantAnnotationArgument] = tree match {
+      def tree2ConstArg(tree: Tree, pt: Type): Option[ClassfileAnnotArg] = tree match {
         case ann @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) =>
           val annInfo = typedAnnotation(ann, mode, NoSymbol, pt.typeSymbol, true)
           if (annInfo.atp.isErroneous) {
             // recursive typedAnnotation call already printed an error, so don't call "error"
             hasError = true
             None
-          } else Some(NestedAnnotationArgument(annInfo))
+          } else Some(NestedAnnotArg(annInfo))
 
         // use of: object Array.apply[A <: AnyRef](args: A*): Array[A] = ...
         // and object Array.apply(args: Int*): Array[Int] = ... (and similar)
@@ -2296,18 +2307,17 @@ trait Typers { self: Analyzer =>
 
         case tree => typed(tree, EXPRmode, pt) match {
           case l @ Literal(c) if !l.isErroneous =>
-            Some(LiteralAnnotationArgument(c))
+            Some(LiteralAnnotArg(c))
           case _ =>
             needConst(tree)
         }
       }
-      def trees2ConstArg(trees: List[Tree], pt: Type): Option[ArrayAnnotationArgument] = {
+      def trees2ConstArg(trees: List[Tree], pt: Type): Option[ArrayAnnotArg] = {
         val args = trees.map(tree2ConstArg(_, pt))
         if (args.exists(_.isEmpty)) None
-        else Some(ArrayAnnotationArgument(args.map(_.get).toArray))
+        else Some(ArrayAnnotArg(args.map(_.get).toArray))
       }
 
-      
       // begin typedAnnotation
       val (fun, argss) = {
         def extract(fun: Tree, outerArgss: List[List[Tree]]):
@@ -2330,12 +2340,12 @@ trait Typers { self: Analyzer =>
 
         if (typedFun.isErroneous) annotationError
         else if (annType.typeSymbol isNonBottomSubClass ClassfileAnnotationClass) {
-          // annotation to be saved as java annotation
+          // annotation to be saved as java classfile annotation
           val isJava = typedFun.symbol.owner.hasFlag(JAVA)
           if (!annType.typeSymbol.isNonBottomSubClass(annClass)) {
             error(tpt.pos, "expected annotation of type "+ annClass.tpe +", found "+ annType)
           } else if (argss.length > 1) {
-            error(ann.pos, "multiple argument lists on java annotation")
+            error(ann.pos, "multiple argument lists on classfile annotation")
           } else {
             val args =
               if (argss.head.length == 1 && !isNamed(argss.head.head))
@@ -2362,7 +2372,7 @@ trait Typers { self: Analyzer =>
                   (sym.name, annArg)
                 }
               case arg =>
-                error(arg.pos, "java annotation arguments have to be supplied as named arguments")
+                error(arg.pos, "classfile annotation arguments have to be supplied as named arguments")
                 (nme.ERROR, None)
             }
 
@@ -2376,7 +2386,7 @@ trait Typers { self: Analyzer =>
             else AnnotationInfo(annType, List(), nvPairs map {p => (p._1, p._2.get)})
           }
         } else if (requireJava) {
-          error(ann.pos, "nested java annotations must be defined in java; found: "+ annType)
+          error(ann.pos, "nested classfile annotations must be defined in java; found: "+ annType)
         } else {
           val typedAnn = if (selfsym == NoSymbol) {
             typed(ann, mode, annClass.tpe)
@@ -2413,7 +2423,7 @@ trait Typers { self: Analyzer =>
 
           def annInfo(t: Tree): AnnotationInfo = t match {
             case Apply(Select(New(tpt), nme.CONSTRUCTOR), args) =>
-              AnnotationInfo(annType, args.map(AnnotationArgument(_)), List())
+              AnnotationInfo(annType, args, List())
 
             case Block(stats, expr) =>
               context.warning(t.pos, "Usage of named or default arguments transformed this annotation\n"+
@@ -2570,15 +2580,15 @@ trait Typers { self: Analyzer =>
             case ExistentialType(tparams, _) => 
               boundSyms ++= tparams
             case AnnotatedType(annots, _, _) =>
-              for (annot <- annots; arg <- annot.args; t <- arg.intTree) {
-                t match {
+              for (annot <- annots; arg <- annot.args) {
+                arg match {
                   case Ident(_) =>
                     // Check the symbol of an Ident, unless the
                     // Ident's type is already over an existential.
                     // (If the type is already over an existential,
                     // then remap the type, not the core symbol.)
-                    if (!t.tpe.typeSymbol.hasFlag(EXISTENTIAL))
-                      addIfLocal(t.symbol, t.tpe)
+                    if (!arg.tpe.typeSymbol.hasFlag(EXISTENTIAL))
+                      addIfLocal(arg.symbol, arg.tpe)
                   case _ => ()
                 }
               }

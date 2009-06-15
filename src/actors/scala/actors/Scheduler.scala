@@ -32,6 +32,7 @@ object Scheduler extends DelegatingScheduler {
                                             TimeUnit.MILLISECONDS,
                                             workQueue)
     val s = new SimpleExecutorScheduler(threadPool, true)
+    //val s = new ForkJoinScheduler
     s.start()
     s
   }
