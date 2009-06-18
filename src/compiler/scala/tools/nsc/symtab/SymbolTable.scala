@@ -12,6 +12,7 @@ import util._
 abstract class SymbolTable extends Names
                               with Symbols
                               with Types
+                              with Kinds
                               with Scopes
                               with Definitions
                               with Constants
