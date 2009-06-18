@@ -16,7 +16,7 @@ import scala.tools.nsc.util.{Position,NoPosition}
  */
 abstract class Models {
   val global: Global
-  import global._
+  import global.{Kind => _, _}
 
   def acceptPrivate = true
 
