@@ -17,14 +17,13 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
   import definitions._
   
   abstract class Kind {
-    def isSameKind(other: Kind): Boolean = this eq other
     def isSubKind(other: Kind): Boolean 
     def substSym(a: Symbol, b: Symbol): Kind
   }
   
   object IntervalKind {
     def apply: IntervalKind = this(mkTypeBounds(NothingClass.tpe, AnyClass.tpe))
-    def apply(bounds: TypeBounds): IntervalKind = this(bounds)
+    def apply(bounds: TypeBounds): IntervalKind = new IntervalKind(bounds)
     def unapply(ik: IntervalKind): Some[(TypeBounds)] = Some((ik.bounds))
   }
   
@@ -34,19 +33,14 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
 
     def substSym(a: Symbol, b: Symbol): Kind = IntervalKind(bounds.substSym(List(a),List(b)).asInstanceOf[TypeBounds]) // TODO hack
         
-    override def isSameKind(other: Kind): Boolean = super.isSameKind(other) || (other match {
-      case IntervalKind(otherBounds) => bounds =:=  otherBounds
+    def isSubKind(other: Kind): Boolean = other match {
+      case IntervalKind(otherBounds) => println("ISK_IK"+(bounds, otherBounds)); bounds <:< otherBounds
       case _ => false
-    } )
-    
-    def isSubKind(other: Kind): Boolean = isSameKind(other) || (other match {
-      case IntervalKind(otherBounds) => bounds <:< otherBounds
-      case _ => false
-    })    
+    }
     
     override def toString 
       = if((lowerBound, upperBound)==(NothingClass.tpe, AnyClass.tpe)) "*"
-        else if(lowerBound == NothingClass.tpe) "*"+ (upperBound)
+        else if(lowerBound == NothingClass.tpe) "*("+ upperBound +")"
         else "*"+ (lowerBound, upperBound)
   }
   
@@ -74,10 +68,6 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
     case class Argument(variance: Variance, kind: Kind)(val sym: Symbol) {
       def substSym(a: Symbol, b: Symbol): Argument = Argument(variance, kind substSym(a, b))(if(sym eq a) b else sym)
       
-      def isSameArg(other: Argument): Boolean 
-        = (variance eq other.variance) && 
-          (other.kind.substSym(other.sym, sym) isSameKind kind)
-
       // variance == other.variance || variance == Invariance
       // other.kind.substSym(other.sym, sym) isSubKind kind
       def conforms(other: Argument): Boolean 
@@ -93,21 +83,13 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
    */
   case class FunctionKind(arg: Argument, res: Kind) extends Kind {
     def substSym(a: Symbol, b: Symbol): Kind = FunctionKind(arg substSym(a,b), res substSym(a,b))
-
-    override def isSameKind(other: Kind): Boolean = super.isSameKind(other) || (other match {
-      case FunctionKind(otherArg, otherRes) => 
-          (arg isSameArg otherArg) && 
-          (res isSameKind (otherRes substSym(otherArg.sym, arg.sym)))
-      case _ => false
-    })
         
-        
-    def isSubKind(other: Kind): Boolean = isSameKind(other) || (other match {
-      case FunctionKind(otherArg, otherRes) => 
+    def isSubKind(other: Kind): Boolean = other match {
+      case FunctionKind(otherArg, otherRes) => println("ISK: "+(arg, otherArg, res, otherRes substSym(otherArg.sym, arg.sym))) //@MDEBUG
           (arg conforms otherArg) && 
           (res isSubKind (otherRes substSym(otherArg.sym, arg.sym)))
       case _ => false
-    })    
+    }
     
     
     override def toString = "("+ arg.sym.nameString +": "+ arg.kind +"-"+ arg.variance +"->"+ res +")"
