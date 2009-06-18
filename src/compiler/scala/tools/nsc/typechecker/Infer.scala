@@ -998,7 +998,7 @@ trait Infer {
             if (hkparam.typeParams.isEmpty) { // base-case: kind *
               if (!variancesMatch(hkarg, hkparam))
                 varianceMismatch(hkarg, hkparam)                                         
-              
+
               // instantiateTypeParams(tparams, targs) --> higher-order bounds may contain references to type arguments
               // substSym(hkparams, hkargs) --> these types are going to be compared as types of kind * 
               //    --> their arguments use different symbols, but are conceptually the same 

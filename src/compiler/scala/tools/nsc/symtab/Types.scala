@@ -1489,7 +1489,7 @@ A type's typeSymbol should never be inspected directly.
         super.instantiateTypeParams(formals, actuals)
 
     override def typeConstructor = rawTypeRef(pre, sym, List())
-    override def isHigherKinded = !typeParams.isEmpty 	//@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
+    override def isHigherKinded = !typeParams.isEmpty   //@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
 
     private def higherKindedArgs = typeParams map (_.typeConstructor) //@M must be .typeConstructor
     private def argsMaybeDummy = if (isHigherKinded) higherKindedArgs else args 
@@ -1865,8 +1865,8 @@ A type's typeSymbol should never be inspected directly.
   object TypeVar {
     def unapply(tv: TypeVar): Some[(Type, TypeConstraint)] = Some((tv.origin, tv.constr))
     def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr, List(), List())    
-		def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint(List(),List()), List(), tparam.typeParams)
-		def apply(origin: Type, constr: TypeConstraint, args: List[Type], params: List[Symbol]) = new TypeVar(origin, constr, args, params)    
+    def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint(List(),List()), List(), tparam.typeParams)
+    def apply(origin: Type, constr: TypeConstraint, args: List[Type], params: List[Symbol]) = new TypeVar(origin, constr, args, params)    
   }
   
   /** A class representing a type variable 
@@ -1878,7 +1878,7 @@ A type's typeSymbol should never be inspected directly.
   class TypeVar(val origin: Type, val constr0: TypeConstraint, override val typeArgs: List[Type], override val params: List[Symbol]) extends Type {
     // params are needed to keep track of variance (see mapOverArgs in SubstMap)
     assert(typeArgs.isEmpty || typeArgs.length == params.length)
-		
+    
     // var tid = { tidCount += 1; tidCount } //DEBUG
 
     /** The constraint associated with the variable */
@@ -2479,7 +2479,7 @@ A type's typeSymbol should never be inspected directly.
       tc.inst = inst
       tc
     }
-		
+    
     override def toString =
       (lobounds map (_.safeToString)).mkString("[ _>:(", ",", ") ") +
       (hibounds map (_.safeToString)).mkString("| _<:(", ",", ") ] _= ") + 
@@ -2598,7 +2598,7 @@ A type's typeSymbol should never be inspected directly.
         val args1 = List.mapConserve(args)(this)
         if ((pre1 eq pre) && (args1 eq args)) tp
         else AntiPolyType(pre1, args1)
-      case tv@TypeVar(origin, constr) =>
+      case tv@TypeVar(_, constr) =>
         if (constr.inst != NoType) this(constr.inst)
         else tv.applyArgs(mapOverArgs(tv.typeArgs, tv.params))  //@M !args.isEmpty implies !typeParams.isEmpty 
       case NotNullType(tp) =>
@@ -3803,8 +3803,8 @@ A type's typeSymbol should never be inspected directly.
          tp1.isInstanceOf[ImplicitMethodType] == tp2.isInstanceOf[ImplicitMethodType])
       case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
         (tparams1.length == tparams2.length &&
-         List.forall2(tparams1, tparams2) 
-           ((p1, p2) => p2.info.substSym(tparams2, tparams1) <:< p1.info) &&
+          List.forall2(tparams1, tparams2) 
+           ((p1, p2) => p2.info.substSym(tparams2, tparams1) <:< p1.info) && //@M TODO: should also check that the kinds of the type parameters conform (ticket 2066)
          res1 <:< res2.substSym(tparams2, tparams1))
       case (TypeBounds(lo1, hi1), TypeBounds(lo2, hi2)) =>
         lo2 <:< lo1 && hi1 <:< hi2
@@ -3986,7 +3986,7 @@ A type's typeSymbol should never be inspected directly.
         //Console.println("solveOne0 "+tvar+" "+config+" "+bound);//DEBUG
         var cyclic = bound contains tparam
         for ((tvar2, (tparam2, variance2)) <- config) {
-					// Console.println("solveOne0(tp,up,lo,hi,lo=tp,hi=tp)="+(tparam.tpe, up, tparam2.info.bounds.lo, tparam2.info.bounds.hi, (tparam2.info.bounds.lo =:= tparam.tpe), (tparam2.info.bounds.hi =:= tparam.tpe))) //DEBUG
+          // Console.println("solveOne0(tp,up,lo,hi,lo=tp,hi=tp)="+(tparam.tpe, up, tparam2.info.bounds.lo, tparam2.info.bounds.hi, (tparam2.info.bounds.lo =:= tparam.tpe), (tparam2.info.bounds.hi =:= tparam.tpe))) //DEBUG
           if (tparam2 != tparam &&
               ((bound contains tparam2) ||
                up && (tparam2.info.bounds.lo =:= tparam.tpe) ||  //@M TODO: should probably be .tpeHK
