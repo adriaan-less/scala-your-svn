@@ -78,12 +78,15 @@ abstract class RefChecks extends InfoTransform {
      *    1.7. If O is an abstract type then 
      *       1.7.1 either M is an abstract type, and M's bounds are sharper than O's bounds.
      *             or M is a type alias or class which conforms to O's bounds.
-     *       1.7.2 higher-order type arguments must respect bounds on higher-order type parameters  -- @M
-     *              (explicit bounds and those implied by variance annotations) -- @see checkKindBounds
+     *       1.7.2 M's kind is a subkind of O's kind (this implies 1.7.1, 
+     *                                                which is retained for backwards compatibility) //@M
+     *             if M is a type alias, the kind of its RHS must be a subkind of O's declared kind 
      *    1.8. If O and M are values, then 
      *    1.8.1  M's type is a subtype of O's type, or
      *    1.8.2  M is of type []S, O is of type ()T and S <: T, or
      *    1.8.3  M is of type ()S, O is of type []T and S <: T, or
+     *    1.8.4  If O and M are polymorphic values,    (@M: see ticket 2066)
+     *           the kinds of M's type parameters must be subkinds of the kinds of O's type parameters 
      *  2. Check that only abstract classes have deferred members
      *  3. Check that concrete classes do not have deferred definitions
      *     that are not implemented in a subclass.
@@ -247,33 +250,49 @@ abstract class RefChecks extends InfoTransform {
               overrideTypeError(); // todo: do an explaintypes with bounds here
               explainTypes(_.bounds containsType _, otherTp, memberTp)
             }
-            
+
+            // (1.7.2)
             // check overriding (abstract type --> abstract type or abstract type --> concrete type member (a type alias))
             // making an abstract type member concrete is like passing a type argument
-            val kindErrors = typer.infer.checkKindBounds(List(other), List(memberTp), self, member.owner) // (1.7.2)
-           
-            if(!kindErrors.isEmpty)
+            val overriding = inferKind(self)(memberTp, member.owner)
+            val orig = inferKind(self)(other)
+                       
+            if(!overriding.isSubKind(orig))
               unit.error(member.pos, 
-                "The kind of "+member.keyString+" "+member.varianceString + member.nameString+
-                " does not conform to the expected kind of " + other.defString + other.locationString + "." +
-                kindErrors.toList.mkString("\n", ", ", "")) 
+                member.keyString+" "+member.varianceString + member.nameString+
+                " has kind "+ overriding +", which does not conform to "+ orig +", the expected kind of " + other.defString + other.locationString + ".") 
             
             // check a type alias's RHS corresponds to its declaration
             // this overlaps somewhat with validateVariance
             if(member.isAliasType) {
-              val kindErrors = typer.infer.checkKindBounds(List(member), List(memberTp.normalize), self, member.owner)
-           
-              if(!kindErrors.isEmpty)
+              val rhs = inferKind(self)(memberTp.normalize, member.owner)
+              val decl = inferKind(self)(member)
+
+              if(!rhs.isSubKind(decl))
                 unit.error(member.pos, 
-                  "The kind of the right-hand side "+memberTp.normalize+" of "+member.keyString+" "+
-                  member.varianceString + member.nameString+ " does not conform to its expected kind."+
-                  kindErrors.toList.mkString("\n", ", ", "")) 
+                  "The right-hand side "+ memberTp.normalize +" of "+ member.keyString +" "+
+                  member.varianceString + member.nameString +" has kind "+ rhs +", which does not conform to "+ decl +", the expected kind.") 
             }
           } else if (other.isTerm) {
-            if (!overridesType(self.memberInfo(member), self.memberInfo(other))) { // 8
+            val (memberInfo, otherInfo) = (self.memberInfo(member), self.memberInfo(other))
+            if (!overridesType(memberInfo, otherInfo)) { // 8
               overrideTypeError()
-              explainTypes(self.memberInfo(member), self.memberInfo(other))
-            }
+              explainTypes(memberInfo, otherInfo)
+            }            
+            
+            //@M (1.8.4)   (see ticket 2066)
+            val overridingTps = memberInfo.typeParams
+            val origTps = otherInfo.typeParams
+            // if other and member are polymorphic, the kinds of the type parameters of member 
+            // must be subkinds of the corresponding kinds of other's type params
+            val kindErrors = (overridingTps zip origTps) flatMap {case (ovr, org) => 
+               val ovrK = inferKind(self)(ovr)
+               val orgK = inferKind(self)(org) //.substSym(origTps, overridingTps) --> this subst is performed in isSubKind
+               if(ovrK isSubKind orgK) List()
+               else List(ovr.nameString +" has kind "+ ovrK +", but expected: "+ orgK)}
+
+            if(!kindErrors.isEmpty)
+              overrideError("defines type parameters with incompatible kinds: "+kindErrors.mkString("",";\n",""))
           }
         }
       }
@@ -493,7 +512,7 @@ abstract class RefChecks extends InfoTransform {
             validateVariance(pre, variance)
             validateVarianceArgs(args, variance, sym.typeParams) //@M for higher-kinded typeref, args.isEmpty
             // However, these args respect variances by construction anyway 
-            // -- the interesting case is in type application, see checkKindBounds in Infer
+            // -- the interesting case is in type application
           case ClassInfoType(parents, decls, symbol) =>
             validateVariances(parents, variance)
           case RefinedType(parents, decls) =>

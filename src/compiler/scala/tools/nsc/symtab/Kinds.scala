@@ -7,18 +7,15 @@
 package scala.tools.nsc.symtab
 
 import scala.collection.immutable
-// import scala.collection.mutable.{ListBuffer, HashMap, WeakHashMap}
-// import scala.tools.nsc.util.{HashSet, Position, NoPosition}
-// import Flags._
- 
 
 trait Kinds {  // would've liked to use NominalBinding, but that would require rewriting Types (currently uses Symbol instead of Name)
   self: SymbolTable =>
   import definitions._
   
   abstract class Kind {
+    def map(f: Type => Type): Kind
     def isSubKind(other: Kind): Boolean 
-    def substSym(a: Symbol, b: Symbol): Kind
+    def substSym(a: List[Symbol], b: List[Symbol]): Kind
   }
   
   object IntervalKind {
@@ -31,10 +28,11 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
     def lowerBound=bounds.lo
     def upperBound=bounds.hi
 
-    def substSym(a: Symbol, b: Symbol): Kind = IntervalKind(bounds.substSym(List(a),List(b)).asInstanceOf[TypeBounds]) // TODO hack
+    def map(f: Type => Type): IntervalKind = IntervalKind(mkTypeBounds(f(lowerBound), f(upperBound)))
+    def substSym(a: List[Symbol], b: List[Symbol]): Kind = IntervalKind(bounds.substSym(a, b).asInstanceOf[TypeBounds]) // TODO hack
         
     def isSubKind(other: Kind): Boolean = other match {
-      case IntervalKind(otherBounds) => println("ISK_IK"+(bounds, otherBounds)); bounds <:< otherBounds
+      case IntervalKind(otherBounds) => bounds <:< otherBounds //  println("ISK_IK"+(bounds, otherBounds)); //@MDEBUG
       case _ => false
     }
     
@@ -61,18 +59,22 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
       override def toString = "(-)"
     }
     object Invariance extends Variance    {
-      override def conforms(other: Variance) = true
+      override def conforms(other: Variance) = true // an invariance annotation may safely be upcast to co/contra-variance
       override def toString = ""
     }
     
     case class Argument(variance: Variance, kind: Kind)(val sym: Symbol) {
-      def substSym(a: Symbol, b: Symbol): Argument = Argument(variance, kind substSym(a, b))(if(sym eq a) b else sym)
+      private def substMe(from: List[Symbol], to: List[Symbol]): Symbol =
+        (from, to) match { case (f :: frest, t :: trest)  => if (f eq sym) t else substMe(frest, trest) case _ => sym}
+      
+      def map(f: Type => Type): Argument = Argument(variance, kind map(f))(sym)
+      def substSym(a: List[Symbol], b: List[Symbol]): Argument = Argument(variance, kind substSym(a, b))(substMe(a, b))
       
       // variance == other.variance || variance == Invariance
       // other.kind.substSym(other.sym, sym) isSubKind kind
       def conforms(other: Argument): Boolean 
         = (variance conforms other.variance) && 
-          (other.kind.substSym(other.sym, sym) isSubKind kind)
+          (other.kind.substSym(List(other.sym), List(sym)) isSubKind kind) // contravariant
     }
   }
   
@@ -82,17 +84,18 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
    *  
    */
   case class FunctionKind(arg: Argument, res: Kind) extends Kind {
-    def substSym(a: Symbol, b: Symbol): Kind = FunctionKind(arg substSym(a,b), res substSym(a,b))
+    def map(f: Type => Type): FunctionKind = FunctionKind(arg map(f), res map(f))
+    def substSym(a: List[Symbol], b: List[Symbol]): Kind = FunctionKind(arg substSym(a,b), res substSym(a,b))
         
     def isSubKind(other: Kind): Boolean = other match {
-      case FunctionKind(otherArg, otherRes) => println("ISK: "+(arg, otherArg, res, otherRes substSym(otherArg.sym, arg.sym))) //@MDEBUG
+      case FunctionKind(otherArg, otherRes) =>  //println("ISK: "+(arg, otherArg, res, otherRes substSym(List(otherArg.sym), List(arg.sym)))) //@MDEBUG
           (arg conforms otherArg) && 
-          (res isSubKind (otherRes substSym(otherArg.sym, arg.sym)))
+          (res isSubKind (otherRes substSym(List(otherArg.sym), List(arg.sym)))) // covariant
       case _ => false
     }
     
     
-    override def toString = "("+ arg.sym.nameString +": "+ arg.kind +"-"+ arg.variance +"->"+ res +")"
+    override def toString = "("+ arg.sym.nameString +": "+ arg.kind +" -"+ arg.variance +"-> "+ res +")"
   }
   
   /**
@@ -107,20 +110,53 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
    *  where arg(p_i) is defined as Argument(v_i, inferKind(p_i))
    */
   object inferKind {
-      def apply(sym: Symbol)(pre: Type): Kind = this(sym.tpeHK)(pre, sym.owner)
-      def apply(tpe: Type)(pre: Type, rootOwner: Symbol): Kind = {
-        def xformAtRoot(tp: Type): Type = xform(tp, rootOwner)
-        def xform(tp: Type, owner: Symbol): Type = tp.asSeenFrom(pre, owner) 
-        
-        if(!tpe.isHigherKinded) IntervalKind(TypeBounds(xformAtRoot(tpe.bounds.lo), xformAtRoot(tpe.bounds.hi))) // asSeenFrom's type does not specify a TypeBounds is turned into a TypeBounds, thus expand it
-        else {
-          val params = tpe.typeParams
-          val args = params map { p => Argument(Variance(p), this(p)(pre))(p) }
-          val resKind = this(appliedType(tpe, params map (_.tpeHK)))(pre, rootOwner)
+      def apply(pre: Type): InferKind = new InferKind {
+        def apply(tpe: Type, owner: Symbol): Kind = {
+          if(!tpe.isHigherKinded) 
+            IntervalKind(tpe.asSeenFrom(pre, owner).bounds)  
+            // no need to substitute params to args here (which is necessary in isWithinBounds)
+            // for kinds, this substitution is performed in isSubKind
+          else {
+            val params = tpe.typeParams
+            val args = params map { p => Argument(Variance(p), apply(p))(p) }
+            val resKind = apply(appliedType(tpe, params map (_.tpeHK)), owner)
           
-          args.foldRight(resKind)((new FunctionKind(_, _))) 
+            args.foldRight(resKind)((new FunctionKind(_, _))) 
+          }
         }
       }
-    
+      
+      abstract class InferKind {
+        def apply(tpe: Type, owner: Symbol): Kind
+        def apply(sym: Symbol): Kind = apply(sym.tpeHK, sym.owner)
+      }
   }
+
+  import scala.tools.nsc.util.Position
+  def checkKinds(pos: Position, pre: Type, owner: Symbol, 
+                  tparams: List[Symbol], targs: List[Type], prefix: String, error: (Position, String)=>Unit) = {
+                    
+    val kindErrors = (tparams zip targs) flatMap {case (param, arg) => 
+       val argK = inferKind(pre)(arg, owner) 
+       val parK = inferKind(pre)(param) map (_.instantiateTypeParams(tparams, targs))
+       if(argK isSubKind parK) List()
+       else List(arg +" has kind "+ argK +", but expected kind "+ parK +" for "+ param)}
+  
+    if(!kindErrors.isEmpty)
+      error(pos, 
+           prefix +"incompatible kinds in arguments supplied to "+ tparams.head.owner +": "+ 
+           kindErrors.mkString("", ";\n", "."))
+  }
+
+    //     //println("bounds = "+bounds+", targs = "+targs+", targclasses = "+(targs map (_.getClass))+", parents = "+(targs map (_.parents)))
+    //     //println(List.map2(bounds, targs)((bound, targ) => bound containsType targ))
+    //     if (settings.explaintypes.value) {
+    //       val bounds = tparams map (tp => tp.info.instantiateTypeParams(tparams, targs).bounds)
+    //       List.map2(targs, bounds)((targ, bound) => explainTypes(bound.lo, targ))
+    //       List.map2(targs, bounds)((targ, bound) => explainTypes(targ, bound.hi))
+    //       ()
+    //     }
+    //   }
+    // }
+   
 }
