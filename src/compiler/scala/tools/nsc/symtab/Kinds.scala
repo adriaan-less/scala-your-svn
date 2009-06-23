@@ -7,6 +7,7 @@
 package scala.tools.nsc.symtab
 
 import scala.collection.immutable
+import scala.tools.nsc.util.Position
 
 trait Kinds {  // would've liked to use NominalBinding, but that would require rewriting Types (currently uses Symbol instead of Name)
   self: SymbolTable =>
@@ -132,7 +133,7 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
       }
   }
 
-  import scala.tools.nsc.util.Position
+  // check whether type application is well-kinded
   def checkKinds(pos: Position, pre: Type, owner: Symbol, 
                   tparams: List[Symbol], targs: List[Type], prefix: String, error: (Position, String)=>Unit) = {
                     
