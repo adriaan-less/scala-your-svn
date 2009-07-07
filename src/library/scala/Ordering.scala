@@ -10,6 +10,8 @@
 
 package scala
 
+import java.util.Comparator
+
 /** A trait for representing total orderings.  It is important to 
  * distinguish between a type that has a total order and a representation 
  * of total  ordering on some type.  This trait is for representing the 
@@ -38,7 +40,7 @@ package scala
  * @version 0.9.5, 2008-04-15
  */
 
-trait Ordering[T] extends PartialOrdering[T] { 
+trait Ordering[T] extends Comparator[T] with PartialOrdering[T] { 
   outer =>
  /** Returns a negative integer iff <code>x</code> comes before 
    * <code>y</code> in the ordering, returns 0 iff <code>x</code> 
@@ -100,20 +102,14 @@ object Ordering
 {
   def apply[T](implicit ord : Ordering[T]) = ord
 
-  def ordered[A <: Ordered[A]] : Ordering[A] = new Ordering[A]{
+  def ordered[A <: Ordered[A]] : Ordering[A] = new Ordering[A] {
     def compare(x : A, y : A) = x.compare(y);
   }
   
   trait UnitOrdering extends Ordering[Unit] {
     def compare(x : Unit, y : Unit) = 0;
   }
-  // XXX For the time being this is non-implicit so there remains
-  // only one default implicit conversion Unit => AnyRef (the other
-  // being any2stringadd in Predef.) See
-  //    test/files/neg/structural.scala
-  // for an example of code which is influenced by the next line.
-  // implicit object Unit extends UnitOrdering
-  object Unit extends UnitOrdering
+  implicit object Unit extends UnitOrdering
 
   trait BooleanOrdering extends Ordering[Boolean] {
     def compare(x : Boolean, y : Boolean) = (x, y) match {

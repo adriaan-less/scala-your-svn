@@ -6,11 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: Iterable.scala 15188 2008-05-24 15:01:02Z stepancheg $
+// $Id$
 
 package scala.collection.generic
 
-/** This class represents collections that can be reduced using a -= operator.
+/** This class represents collections that can be reduced using a - operator.
  *        
  *  @author   Martin Odersky
  *  @owner   Martin Odersky

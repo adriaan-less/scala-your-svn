@@ -6,7 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: Sequence.scala 16092 2008-09-12 10:37:06Z nielsen $
+// $Id$
 
 
 package scala.collection.generic
@@ -112,7 +112,7 @@ trait SequenceViewTemplate[+A,
     protected[this] val from: Int
     protected[this] val patch: Sequence[B]
     protected[this] val replaced: Int
-    private val plen = patch.length
+    private lazy val plen = patch.length
     override def iterator: Iterator[B] = self.iterator patch (from, patch.iterator, replaced)
     override def length: Int = self.length + plen - replaced
     override def apply(idx: Int): B = 

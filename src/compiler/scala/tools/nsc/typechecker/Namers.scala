@@ -373,12 +373,12 @@ trait Namers { self: Analyzer =>
               if (nme.isSetterName(name))
                 context.error(tree.pos, "Names of vals or vars may not end in `_='")
               // .isInstanceOf[..]: probably for (old) IDE hook. is this obsolete?
-              val getter = enterNewMethod(tree, name, accflags, mods).asInstanceOf[TermSymbol]
+              val getter = enterAliasMethod(tree, name, accflags, mods)
               setInfo(getter)(namerOf(getter).getterTypeCompleter(vd))
               if ((mods.flags & MUTABLE) != 0) {
-                val setter = enterNewMethod(tree, nme.getterToSetter(name),
+                val setter = enterAliasMethod(tree, nme.getterToSetter(name),
                                             accflags & ~STABLE & ~CASEACCESSOR,
-                                            mods).asInstanceOf[TermSymbol]
+                                            mods)
                 setInfo(setter)(namerOf(setter).setterTypeCompleter(vd))
               }
               tree.symbol =
@@ -406,7 +406,7 @@ trait Namers { self: Analyzer =>
             tree.symbol = enterInScope(sym)
             finishWith(tparams)
           case DefDef(mods, name, tparams, _, _, _) =>
-            tree.symbol = enterNewMethod(tree, name, mods.flags, mods)
+            tree.symbol = enterNewMethod(tree, name, mods.flags, mods, tree.pos)
             finishWith(tparams)
           case TypeDef(mods, name, tparams, _) =>
             var flags: Long = mods.flags
@@ -438,11 +438,15 @@ trait Namers { self: Analyzer =>
       tree.symbol
     }
 
-    def enterNewMethod(tree: Tree, name: Name, flags: Long, mods: Modifiers) = {
-      val sym = context.owner.newMethod(tree.pos, name).setFlag(flags)
+    def enterNewMethod(tree: Tree, name: Name, flags: Long, mods: Modifiers, pos: Position): TermSymbol = {
+      val sym = context.owner.newMethod(pos, name).setFlag(flags)
       setPrivateWithin(tree, sym, mods)
       enterInScope(sym)
+      sym
     }
+
+    def enterAliasMethod(tree: Tree, name: Name, flags: Long, mods: Modifiers): TermSymbol = 
+      enterNewMethod(tree, name, flags, mods, SyntheticAliasPosition(tree))
 
     private def addBeanGetterSetter(vd: ValDef, getter: Symbol) {
       def isAnn(ann: Tree, demand: String) = ann match {
@@ -470,9 +474,9 @@ trait Namers { self: Analyzer =>
           val getterName = if (hasBoolBP) "is" + beanName
                            else "get" + beanName
           val getterMods = Modifiers(flags, mods.privateWithin,
-                                     mods.annotations map (_.duplicate))
+                                     mods.annotations map (_.syntheticDuplicate))
           val beanGetterDef = atPos(vd.pos) {
-            DefDef(getterMods, getterName, Nil, List(Nil), tpt.duplicate,
+            DefDef(getterMods, getterName, Nil, List(Nil), tpt.syntheticDuplicate,
                    if (mods hasFlag DEFERRED) EmptyTree
                    else Select(This(getter.owner.name), name)) }
           enterSyntheticSym(beanGetterDef)
@@ -482,7 +486,8 @@ trait Namers { self: Analyzer =>
             // known. instead, uses the same machinery as for the non-bean setter:
             // create and enter the symbol here, add the tree in Typer.addGettterSetter.
             val setterName = "set" + beanName
-            val setter = enterNewMethod(vd, setterName, flags, mods).asInstanceOf[TermSymbol]
+            val setter = enterAliasMethod(vd, setterName, flags, mods)
+              .setPos(SyntheticAliasPosition(vd))
             setInfo(setter)(namerOf(setter).setterTypeCompleter(vd))
           }
         }
@@ -843,7 +848,6 @@ trait Namers { self: Analyzer =>
         // for instance, B.foo would not override A.foo, and the default on parameter b would not be inherited
         //   class A { def foo[T](a: T)(b: T = a) = a }
         //   class B extends A { override def foo[U](a: U)(b: U) = b }
-        //   (new B).foo(1)()
         sym != NoSymbol && (site.memberType(sym) matches thisMethodType(resultPt).substSym(tparams map (_.symbol), tparamSyms))
       })
 
@@ -936,13 +940,10 @@ trait Namers { self: Analyzer =>
             var deftParams = tparams map copyUntyped[TypeDef]
             val defvParamss = previous map (_.map(p => {
               // in the default getter, remove the default parameter
-              val p1 = atPos(p.pos) { ValDef(p.mods &~ DEFAULTPARAM, p.name, p.tpt.duplicate, EmptyTree) }
+              val p1 = atPos(p.pos) { ValDef(p.mods &~ DEFAULTPARAM, p.name, p.tpt.syntheticDuplicate, EmptyTree) }
               UnTyper.traverse(p1)
               p1
             }))
-            // let the compiler infer the return type of the defaultGetter. needed in "foo[T](a: T = 1)"
-            val defTpt = TypeTree()
-            val defRhs = copyUntyped(vparam.rhs)
 
             val parentNamer = if (isConstr) {
               val (cdef, nmr) = moduleNamer.getOrElse {
@@ -964,6 +965,29 @@ trait Namers { self: Analyzer =>
                 nmr
               }
             }
+
+            // If the parameter type mentions any type parameter of the method, let the compiler infer the
+            // return type of the default getter => allow "def foo[T](x: T = 1)" to compile.
+            // This is better than always inferring the result type, for example in
+            //    def f(i: Int, m: Int => Int = identity _) = m(i)
+            // if we infer the default's type, we get "Nothing => Nothing", and the default is not usable.
+            val names = deftParams map { case TypeDef(_, name, _, _) => name }
+            object subst extends Transformer {
+              override def transform(tree: Tree): Tree = tree match {
+                case Ident(name) if (names contains name) =>
+                  TypeTree()
+                case _ =>
+                  super.transform(tree)
+              }
+              def apply(tree: Tree) = {
+                val r = transform(tree)
+                if (r.find(_.isEmpty).isEmpty) r
+                else TypeTree()
+              }
+            }
+
+            val defTpt = subst(copyUntyped(vparam.tpt))
+            val defRhs = copyUntyped(vparam.rhs)
 
             val defaultTree = atPos(vparam.pos) {
               DefDef(
@@ -1099,7 +1123,7 @@ trait Namers { self: Analyzer =>
                     sym, 
                     newTyper(typer1.context.make(vdef, sym)).computeType(rhs, WildcardType), 
                     WildcardType)
-                  tpt setPos vdef.pos
+                  tpt setOriginal vdef
                   tpt.tpe 
                 }
               } else typer1.typedType(tpt).tpe

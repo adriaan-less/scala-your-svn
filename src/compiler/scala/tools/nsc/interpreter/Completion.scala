@@ -24,6 +24,7 @@ package scala.tools.nsc.interpreter
 import jline._
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
+import scala.concurrent.DelayedLazyVal
 
 // REPL completor - queries supplied interpreter for valid completions
 // based on current contents of buffer.
@@ -33,18 +34,15 @@ class Completion(val interpreter: Interpreter) extends Completor {
   import interpreter.compilerClasspath
   
   // it takes a little while to look through the jars so we use a future and a concurrent map
-  val dottedPaths = new ConcurrentHashMap[String, List[String]]
-  
-  private var doneExaminingJars = false
-  scala.concurrent.ops.future {
-    getDottedPaths(dottedPaths, interpreter)
-    doneExaminingJars = true
+  class CompletionAgent {
+    val dottedPaths = new ConcurrentHashMap[String, List[String]]
+    val topLevelPackages = new DelayedLazyVal(
+      () => enumToList(dottedPaths.keys) filterNot (_ contains '.'),
+      getDottedPaths(dottedPaths, interpreter)
+    )
   }
-  
-  // Would like to find a nicer way to do this, but this works for now
-  lazy val topLevelPackagesVal  = topLevelPackagesDef
-  def topLevelPackagesDef()     = enumToList(dottedPaths.keys) filter (x => !x.contains('.'))
-  def topLevelPackages          = if (doneExaminingJars) topLevelPackagesVal else topLevelPackagesDef
+  val agent = new CompletionAgent
+  import agent._  
 
   // One instance of a command line
   class Buffer(s: String) {
@@ -110,8 +108,19 @@ class Completion(val interpreter: Interpreter) extends Completor {
     def isValidPath(s: String) = dottedPaths containsKey s
     def membersOfPath(s: String) = if (isValidPath(s)) dottedPaths get s else Nil
     
-    def pkgsStartingWith(s: String) = topLevelPackages filter (_ startsWith s)
-    def idsStartingWith(s: String) = interpreter.unqualifiedIds filter (_ startsWith s)
+    // XXX generalize this to look through imports
+    def membersOfScala() = membersOfPath("scala")
+    def membersOfJavaLang() = membersOfPath("java.lang")
+    def membersOfPredef() = membersOfId("scala.Predef")
+    def defaultMembers = {
+      val xs = membersOfScala ::: membersOfJavaLang ::: membersOfPredef
+      val excludes = List("""Tuple\d+""".r, """Product\d+""".r, """Function\d+""".r,
+        """.*Exception$""".r, """.*Error$""".r)
+      xs filter (x => excludes forall (r => r.findFirstMatchIn(x).isEmpty))
+    }
+    
+    def pkgsStartingWith(s: String) = topLevelPackages() filter (_ startsWith s)
+    def idsStartingWith(s: String) = (interpreter.unqualifiedIds ::: defaultMembers) filter (_ startsWith s)
 
     def complete(clist: JList[String]): Int = {
       val res = analyzeBuffer(clist)
@@ -121,8 +130,8 @@ class Completion(val interpreter: Interpreter) extends Completor {
   }
   
   // jline's completion comes through here - we ask a Buffer for the candidates.
-  override def complete(_buffer: String, cursor: Int, candidates: JList[_]): Int =
-    new Buffer(_buffer).complete(candidates.asInstanceOf[JList[String]])
+  override def complete(_buffer: String, cursor: Int, candidates: JList[String]): Int =
+    new Buffer(_buffer).complete(candidates)
   
   def completeStaticMembers(path: String): List[String] = {
     import java.lang.reflect.Modifier.{ isPrivate, isProtected, isStatic }
@@ -135,11 +144,16 @@ class Completion(val interpreter: Interpreter) extends Completor {
         filter (x => isSingleton(x.getModifiers, isJava)) .
         map (_.getName) .
         filter (isValidCompletion)
+    
+    def getClassObject(path: String): Option[Class[_]] =
+      (interpreter getClassObject path) orElse
+      (interpreter getClassObject ("scala." + path)) orElse
+      (interpreter getClassObject ("java.lang." + path))
         
-    // java style, static methods
-    val js = (interpreter getClassObject path).map(getMembers(_, true)) getOrElse Nil
+    // java style, static methods    
+    val js = getClassObject(path) map (getMembers(_, true)) getOrElse Nil
     // scala style, methods on companion object
-    val ss = (interpreter getClassObject (path + "$")).map(getMembers(_, false)) getOrElse Nil
+    val ss = getClassObject(path + "$") map (getMembers(_, false)) getOrElse Nil
     
     js ::: ss
   }

@@ -6,17 +6,21 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: Traversable.scala 15188 2008-05-24 15:01:02Z stepancheg $
+// $Id$
+
+
 package scala.collection.generic
 
 // import immutable.{List, Stream, Nil} //!!!
 import mutable.{Buffer, ArrayBuffer, ListBuffer}
+import annotation.experimental
 
 /** A template trait for traversable collections.
- *  This is a base trait of all kinds of Scala collections. It implements the
- *  behavior common to all collections, in terms of a method `foreach` with signature:
+ *  This is a base trait of all kinds of Scala collections. It implements
+ *  the behavior common to all collections, in terms of a method
+ *  <code>foreach</code> with signature:<pre>
  *
- *   def foreach[U](f: Elem => U): Unit
+ *   def foreach[U](f: Elem => U): Unit</pre>
  *
  *  Collection classes mixing in this trait provide a concrete 
  *  <code>foreach</code> method which traverses all the
@@ -174,6 +178,19 @@ self =>
     val b = newBuilder
     for (x <- this) 
       if (p(x)) b += x
+    b.result
+  }
+  
+  /** Returns a new traversable based on the partial function <code>pf</code>,  
+  *  containing pf(x) for all the elements which are defined on pf.
+  *  The order of the elements is preserved.
+  *  @param pf the partial function which filters and maps the traversable.
+  *  @return the new traversable.
+  */
+  @experimental
+  def filterMap[B, That](pf: PartialFunction[Any, B])(implicit bf: BuilderFactory[B, That, This]): That = {
+    val b = bf(thisCollection)
+    for (x <- this) if (pf.isDefinedAt(x)) b += pf(x)
     b.result
   }
 

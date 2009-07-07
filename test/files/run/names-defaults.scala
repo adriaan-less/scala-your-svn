@@ -171,8 +171,13 @@ object Test extends Application {
   var argName = 1
   test5(argName = (argName = 2))
   println(argName) // should be 2
-  test5({argName = 3; ()})
+  test5({argName = 3})
   println(argName) // should be 3
+  test5((argName = 4))
+  println(argName) // should be 4
+  test5 { argName = 5 }
+  println(argName) // should be 5
+  val a = test1(a = 10, b = "2") // local values a and b exist, but not ambiuous since they're val's
 
 
   // dependent types and copy method
@@ -198,6 +203,40 @@ object Test extends Application {
   new B4()
   new B5()
 
+  // no re-naming of parameters which are free in a closure of the body (lambdalift)
+  println(test6(10)())
+  test7("jaa")
+
+  // implicits + defaults
+  {
+    implicit val implInt = 10101
+    println(test8())
+  }
+
+  println(test9)
+
+  {
+    implicit val implString = "blublu"
+    println(test9)
+  }
+
+
+  // result type of default getters: parameter type, except if this one mentions any type
+  // parameter, in which case the result type is inferred. examples:
+
+  // result type of default getter is "String => String". if it were infered, the compiler
+  // would put "Nothing => Nothing", which is useless
+  def transform(s: String, f: String => String = identity _) = f(s)
+  println(transform("my text"))
+
+  // result type of the default getter is inferred (parameter type mentions type parameter T)
+  def test10[T](x: List[T] = List(1,2)) = x
+  println(test10())
+
+  // some complicated type which mentions T
+  def test11[T[P]](x: T[T[List[T[X forSome { type X }]]]] = List(1,2)) = x
+  // (cannot call f using the default, List(1,2) doesn't match the param type)
+
 
   // DEFINITIONS
   def test1(a: Int, b: String) = println(a +": "+ b)
@@ -210,6 +249,11 @@ object Test extends Application {
     inner(c = "/")
   }
   def test5(argName: Unit) = println("test5")
+  def test6(x: Int) = { () => x }
+  def test7(s: String) = List(1).foreach(_ => println(s))
+
+  def test8(x: Int = 1)(implicit y: Int, z: String = "kldfj") = z + x + y
+  def test9(implicit x: Int = 1, z: String = "klfj") = z + x
 }
 
 
@@ -238,10 +282,11 @@ class B1 extends A1 {
 }
 
 trait N {
-  def foo[T >: String](x: Int = -1, y: T = "jupee")(z: String): String
+  def foo[T >: String](x: Int = -1, y: T = "jupee")(z: String): Object
 }
 
 abstract class M extends N {
+  // also tests #2116, specialize return type when overriding.
   def foo[T >: String](x: Int, y: T)(z: String = "1"): String
   def bar(n: Int, m: Double = 1.239): Double
 }
@@ -265,7 +310,8 @@ class A2 {
 
 
 
-// using names / defaults in self constructor call
+// using names / defaults in self constructor call.
+// overloading resolution: calling A3("string") picks the second, method with default is always less specific.
 class A3(x: String, y: Int = 10) {
   def this(a: Object) {
     this(y = 10, x = a.toString())
@@ -288,3 +334,7 @@ class B4 extends A5(10)() {
 class B5 extends A5(y = 20, x = 2)() {
   println(y)
 }
+
+// overriding default can be less specific (but has to conform to argument type!)
+class A6 { def foo(a: Object = "dlkf") = 0 }
+class B6 extends A6 { override def foo(a: Object = new Object) = 1 }

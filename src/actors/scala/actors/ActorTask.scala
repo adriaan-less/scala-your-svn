@@ -24,10 +24,10 @@ class ActorTask extends Runnable {
   private var a: Actor = null
   private var fun: () => Unit = null
 
-  def this(a: Actor, block: => Unit) {
+  def this(a: Actor, fun: () => Unit) {
     this()
     this.a = a
-    this.fun = () => { block }
+    this.fun = fun
   }
 
   def run() {
@@ -59,8 +59,6 @@ class ActorTask extends Runnable {
         a.synchronized {
           if (!a.links.isEmpty)
             a.exitLinked(t)
-          else
-            t.printStackTrace()
         }
       }
     } finally {

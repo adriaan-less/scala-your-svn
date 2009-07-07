@@ -76,23 +76,20 @@ trait Definitions {
     lazy val Delegate_scalaCallerTargets: HashMap[Symbol, Symbol] = new HashMap()
 
     // the scala value classes
-    var UnitClass: Symbol = _
-    var BooleanClass: Symbol = _
-      def Boolean_not = getMember(BooleanClass, nme.UNARY_!)
-      def Boolean_and = getMember(BooleanClass, nme.ZAND)
-      def Boolean_or  = getMember(BooleanClass, nme.ZOR)
-    var ByteClass: Symbol = _
-    var ShortClass: Symbol = _
-    var CharClass: Symbol = _
-    var IntClass: Symbol = _
-      def Int_Or  = definitions.getMember(definitions.IntClass, nme.OR)
-      def Int_And = definitions.getMember(definitions.IntClass, nme.AND)
-      def Int_==  = definitions.getMember(definitions.IntClass, nme.EQ)
-      def Int_!=  = definitions.getMember(definitions.IntClass, nme.NE)
-
-    var LongClass: Symbol = _
-    var FloatClass: Symbol = _
-    var DoubleClass: Symbol = _
+    lazy val UnitClass =    newClass(ScalaPackageClass, nme.Unit, List(AnyValClass.typeConstructor)).setFlag(ABSTRACT | FINAL)
+    lazy val BooleanClass = newValueClass(nme.Boolean, 'Z')
+    lazy val ByteClass =    newValueClass(nme.Byte, 'B')
+    lazy val ShortClass =   newValueClass(nme.Short, 'S')
+    lazy val CharClass =    newValueClass(nme.Char, 'C')
+    lazy val IntClass =     newValueClass(nme.Int, 'I')
+    lazy val LongClass =    newValueClass(nme.Long, 'L')
+    lazy val FloatClass =   newValueClass(nme.Float, 'F')
+    lazy val DoubleClass =  newValueClass(nme.Double, 'D')
+    
+    // XXX the class-specific member symbols need to be grouped somewhere
+    // associated with that class.
+    def Boolean_and = getMember(BooleanClass, nme.ZAND)
+    def Boolean_or  = getMember(BooleanClass, nme.ZOR)
 
     // the scala reference classes
     lazy val ScalaObjectClass: Symbol = getClass("scala.ScalaObject")
@@ -170,8 +167,9 @@ trait Definitions {
     lazy val UncheckedClass: Symbol = getClass("scala.unchecked")
     lazy val TailrecClass: Symbol = getClass("scala.annotation.tailrec")
     lazy val SwitchClass: Symbol = getClass("scala.annotation.switch")
-
-    var EqualsPatternClass: Symbol = _
+    lazy val ExperimentalClass: Symbol = getClass("scala.annotation.experimental")
+    
+    lazy val EqualsPatternClass: Symbol = newClass(ScalaPackageClass, nme.EQUALS_PATTERN_NAME, Nil)
 
     val MaxTupleArity = 22
     val TupleClass: Array[Symbol] = new Array(MaxTupleArity + 1)
@@ -300,8 +298,6 @@ trait Definitions {
     var Any_toString    : Symbol = _
     var Any_isInstanceOf: Symbol = _
     var Any_asInstanceOf: Symbol = _
-    var Any_isInstanceOfErased: Symbol = _
-    var Any_asInstanceOfErased: Symbol = _
 
     // members of class java.lang.{Object, String}
     var Object_eq          : Symbol = _
@@ -499,7 +495,7 @@ trait Definitions {
     }
 
     val refClass = new HashMap[Symbol, Symbol]
-    private val abbrvTag = new HashMap[Symbol, Char]
+    val abbrvTag = new HashMap[Symbol, Char]
 
     private def newValueClass(name: Name, tag: Char): Symbol = {
       val boxedName = sn.Boxed(name)
@@ -734,19 +730,7 @@ trait Definitions {
       SingletonClass = newClass(ScalaPackageClass, nme.Singleton, any)
         .setFlag(ABSTRACT | TRAIT | FINAL)
 
-      UnitClass =
-        newClass(ScalaPackageClass, nme.Unit, List(AnyValClass.typeConstructor))
-        .setFlag(ABSTRACT | FINAL)
       abbrvTag(UnitClass) = 'V'
-
-      BooleanClass = newValueClass(nme.Boolean, 'Z')
-      ByteClass =    newValueClass(nme.Byte, 'B')
-      ShortClass =   newValueClass(nme.Short, 'S')
-      CharClass =    newValueClass(nme.Char, 'C')
-      IntClass =     newValueClass(nme.Int, 'I')
-      LongClass =    newValueClass(nme.Long, 'L')
-      FloatClass =   newValueClass(nme.Float, 'F')
-      DoubleClass =  newValueClass(nme.Double, 'D')
 
       CodeClass = getClass(sn.Code)
       CodeModule = getModule(sn.Code)
@@ -756,14 +740,10 @@ trait Definitions {
       ByNameParamClass = newCovariantPolyClass(
         ScalaPackageClass, nme.BYNAME_PARAM_CLASS_NAME, tparam => AnyClass.typeConstructor)
 
-      EqualsPatternClass = newClass(ScalaPackageClass, nme.EQUALS_PATTERN_NAME, List());
-      { 
-        val tparam = newTypeParam(EqualsPatternClass, 0)
-        EqualsPatternClass.setInfo(
-          PolyType(
-            List(tparam),
-            ClassInfoType(List(AnyClass.typeConstructor), newClassScope(EqualsPatternClass), EqualsPatternClass)))
-      }
+      EqualsPatternClass setInfo PolyType(
+        List(newTypeParam(EqualsPatternClass, 0)),
+        ClassInfoType(List(AnyClass.typeConstructor), newClassScope(EqualsPatternClass), EqualsPatternClass)
+      )
       
       /* <unapply> */
       //UnsealedClass = getClass("scala.unsealed") //todo: remove once 2.4 is out.
@@ -794,11 +774,6 @@ trait Definitions {
         AnyClass, nme.isInstanceOf_, tparam => booltype) setFlag FINAL
       Any_asInstanceOf = newPolyMethod(
         AnyClass, nme.asInstanceOf_, tparam => tparam.typeConstructor) setFlag FINAL
-      Any_isInstanceOfErased = newPolyMethod(
-        AnyClass, nme.isInstanceOfErased, tparam => booltype) setFlag FINAL
-      //todo: do we need this?
-      Any_asInstanceOfErased = newPolyMethod(
-        AnyClass, nme.asInstanceOfErased, tparam => tparam.typeConstructor) setFlag FINAL
 
       // members of class java.lang.{Object, String}
       Object_== = newMethod(ObjectClass, nme.EQ, anyrefparam, booltype) setFlag FINAL

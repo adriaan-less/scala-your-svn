@@ -640,6 +640,10 @@ trait Types {
     /** Is this type completed (i.e. not a lazy type)?
      */
     def isComplete: Boolean = true
+    
+    /** Is this type a varargs parameter?
+     */
+    def isVarargs: Boolean = typeSymbol == RepeatedParamClass
 
     /** If this is a lazy type, assign a new type to `sym'. */
     def complete(sym: Symbol) {}
@@ -2451,7 +2455,10 @@ A type's typeSymbol should never be inspected directly.
       uniqueRunId = currentRunId
     }
     uniques.findEntry(tp) match {
-      case null   => uniques.addEntry(tp); tp
+      case null   => 
+        //println("new unique type: "+tp)
+        uniques.addEntry(tp); 
+        tp
       case tp1    => tp1.asInstanceOf[T]
     }
   }

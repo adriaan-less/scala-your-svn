@@ -29,6 +29,8 @@ trait Symbols {
   val emptySymbolArray = new Array[Symbol](0)
   val emptySymbolSet = Set.empty[Symbol]
 
+  /** Used for deciding in the IDE whether we can interrupt the compiler */
+  protected var activeLocks = 0
 
   /** Used to keep track of the recursion depth on locked symbols */
   private var recursionTable = Map.empty[Symbol, Int]
@@ -122,7 +124,15 @@ trait Symbols {
       setAnnotations(annot :: this.rawannots)
 
     /** Does this symbol have an annotation of the given class? */
-    def hasAnnotation(cls: Symbol) = annotations exists { _.atp.typeSymbol == cls }
+    def hasAnnotation(cls: Symbol) = 
+      getAnnotation(cls).isDefined
+
+    def getAnnotation(cls: Symbol): Option[AnnotationInfo] = 
+      annotations find (_.atp.typeSymbol == cls)
+
+    /** Remove all annotations matching the given class. */
+    def removeAnnotation(cls: Symbol): Unit = 
+      setAnnotations(annotations.remove(_.atp.typeSymbol == cls))
 
     /** set when symbol has a modifier of the form private[X], NoSymbol otherwise.
      *  Here's some explanation how privateWithin gets combined with access flags:
@@ -291,41 +301,47 @@ trait Symbols {
 
 // Locking and unlocking ------------------------------------------------------
 
-  // True if the symbol is unlocked. 
-  // True if the symbol is locked but still below the allowed recursion depth.
-  // False otherwise
-  def lockOK: Boolean = {
-    ((rawflags & LOCKED) == 0) ||
-    ((settings.Yrecursion.value != 0) &&
-     (recursionTable get this match {
-       case Some(n) => (n <= settings.Yrecursion.value)
-       case None => true }))
-  }
+    // True if the symbol is unlocked. 
+    // True if the symbol is locked but still below the allowed recursion depth.
+    // False otherwise
+    def lockOK: Boolean = {
+      ((rawflags & LOCKED) == 0) ||
+      ((settings.Yrecursion.value != 0) &&
+       (recursionTable get this match {
+         case Some(n) => (n <= settings.Yrecursion.value)
+         case None => true }))
+    }
 
-  // Lock a symbol, using the handler if the recursion depth becomes too great.
-  def lock(handler: => Unit) = {
-    if ((rawflags & LOCKED) != 0) {
-      if (settings.Yrecursion.value != 0) {
-        recursionTable get this match {
-          case Some(n) =>
-            if (n > settings.Yrecursion.value) {
-              handler
-            } else {
-              recursionTable += (this -> (n + 1))
-            }
-          case None =>
-            recursionTable += (this -> 1)
-        }
-      } else { handler }
-    } else { rawflags |= LOCKED }
-  }
+    // Lock a symbol, using the handler if the recursion depth becomes too great.
+    def lock(handler: => Unit) = {
+      if ((rawflags & LOCKED) != 0) {
+        if (settings.Yrecursion.value != 0) {
+          recursionTable get this match {
+            case Some(n) =>
+              if (n > settings.Yrecursion.value) {
+                handler
+              } else {
+                recursionTable += (this -> (n + 1))
+              }
+            case None =>
+              recursionTable += (this -> 1)
+          }
+        } else { handler }
+      } else { 
+        rawflags |= LOCKED 
+        activeLocks += 1
+      }
+    }
 
-  // Unlock a symbol
-  def unlock() = {
-    rawflags = rawflags & ~LOCKED
-    if (settings.Yrecursion.value != 0)
-      recursionTable -= this
-  }
+    // Unlock a symbol
+    def unlock() = {
+      if ((rawflags & LOCKED) != 0) {
+        activeLocks -= 1
+        rawflags = rawflags & ~LOCKED
+        if (settings.Yrecursion.value != 0)
+          recursionTable -= this
+      }
+    }
 
 // Tests ----------------------------------------------------------------------
 
@@ -815,6 +831,13 @@ trait Symbols {
       infos ne null
     }
 
+    /** Was symbol's type updated during given phase? */
+    final def hasTypeAt(pid: Phase#Id): Boolean = {
+      var infos = this.infos
+      while ((infos ne null) && phaseId(infos.validFrom) > pid) infos = infos.prev
+      infos ne null
+    }
+
     /** The type constructor of a symbol is:
      *  For a type symbol, the type corresponding to the symbol itself,
      *  excluding parameters.
@@ -983,9 +1006,11 @@ trait Symbols {
       cloneSymbol(owner)
 
     /** A clone of this symbol, but with given owner */
-    final def cloneSymbol(owner: Symbol): Symbol =
-      cloneSymbolImpl(owner).setInfo(info.cloneInfo(this))
+    final def cloneSymbol(owner: Symbol): Symbol = {
+      val newSym = cloneSymbolImpl(owner)
+      newSym.setInfo(info.cloneInfo(newSym))
         .setFlag(this.rawflags).setAnnotations(this.annotations)
+    }
 
     /** Internal method to clone a symbol's implementation without flags or type
      */
@@ -1408,12 +1433,9 @@ trait Symbols {
      *  Never adds id.
      */
     final def fullNameString(separator: Char): String = {
-      if (this == NoSymbol) return "<NoSymbol>"
-      assert(owner != NoSymbol, this)
       var str =
-        if (owner.isRoot || 
-            owner.isEmptyPackageClass || 
-            owner.isInterpreterWrapper) simpleName.toString
+        if (isRoot || isRootPackage || this == NoSymbol) this.toString
+        else if (owner.isRoot || owner.isEmptyPackageClass || owner.isInterpreterWrapper) simpleName.toString
         else owner.enclClass.fullNameString(separator) + separator + simpleName
       if (str.charAt(str.length - 1) == ' ') str = str.substring(0, str.length - 1)
       str
@@ -1532,14 +1554,14 @@ trait Symbols {
     }
 
     override def alias: Symbol =
-      if (hasFlag(SUPERACCESSOR | PARAMACCESSOR | MIXEDIN)) initialize.referenced
+      if (hasFlag(SUPERACCESSOR | PARAMACCESSOR | MIXEDIN | SPECIALIZED)) initialize.referenced
       else NoSymbol
 
     def setAlias(alias: Symbol): TermSymbol = {
       assert(alias != NoSymbol, this)
       assert(!(alias hasFlag OVERLOADED), alias)
 
-      assert(hasFlag(SUPERACCESSOR | PARAMACCESSOR | MIXEDIN), this)
+      assert(hasFlag(SUPERACCESSOR | PARAMACCESSOR | MIXEDIN | SPECIALIZED), this)
       referenced = alias
       this
     }

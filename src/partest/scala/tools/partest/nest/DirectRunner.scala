@@ -12,7 +12,7 @@ import java.io.{File, PrintStream, FileOutputStream, BufferedReader,
 import java.util.StringTokenizer
 
 import scala.actors.Actor._
-import scala.actors.Scheduler
+import scala.actors.TIMEOUT
 
 trait DirectRunner {
 
@@ -39,10 +39,6 @@ trait DirectRunner {
     val len = kindFiles.length
     val (testsEach, lastFrag) = (len/numActors, len%numActors)
     val last = numActors-1
-
-    // make sure Actor Scheduler is up and running
-    Scheduler.restart()
-
     val workers = for (i <- List.range(0, numActors)) yield {
       val toTest = kindFiles.slice(i*testsEach, (i+1)*testsEach)
       val worker = new Worker(fileManager)
@@ -57,12 +53,15 @@ trait DirectRunner {
     var logsToDelete: List[File] = List()
     var outdirsToDelete: List[File] = List()
     workers foreach { w =>
-      receive {
+      receiveWithin(600 * 1000) {
         case Results(s, f, logs, outdirs) =>
           logsToDelete = logsToDelete ::: logs.filter(_.toDelete)
           outdirsToDelete = outdirsToDelete ::: outdirs
           succs += s
           fails += f
+        case TIMEOUT =>
+          // add at least one failure
+          fails += 1
       }
     }
     logsToDelete.foreach { log =>

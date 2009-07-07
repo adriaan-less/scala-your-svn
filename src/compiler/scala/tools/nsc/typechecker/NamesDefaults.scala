@@ -23,7 +23,7 @@ trait NamesDefaults { self: Analyzer =>
   val noApplyInfo = NamedApplyInfo(None, Nil, Nil, null)
 
   def nameOf(arg: Tree) = arg match {
-    case Assign(Ident(name), rhs) => Some(name)
+    case AssignOrNamedArg(Ident(name), rhs) => Some(name)
     case _ => None
   }
   def isNamed(arg: Tree) = nameOf(arg).isDefined
@@ -115,23 +115,25 @@ trait NamesDefaults { self: Analyzer =>
       val isConstr = baseFun.symbol.isConstructor
       val blockTyper = newTyper(context.makeNewScope(tree, context.owner)(BlockScopeKind(context.depth)))
 
-      // baseFun1: the extract the function from a potential TypeApply
-      // defaultTargs: type arguments to be used for calling defaultGetters
-      // funTargs:  type arguments on baseFun, used to reconstruct TypeApply in blockWith(Out)Qualifier
-      val (baseFun1, defaultTargs, funTargs) = baseFun match {
+      // baseFun1: extract the function from a potential TypeApply
+      // funTargs: type arguments on baseFun, used to reconstruct TypeApply in blockWith(Out)Qualifier
+      // defaultTargs: type arguments to be used for calling defaultGetters. If the type arguments are given
+      //   in the source code, re-use them for default getter. Otherwise infer the default getter's t-args.
+      val (baseFun1, funTargs, defaultTargs) = baseFun match {
         case TypeApply(fun, targs) =>
           val targsInSource =
             if (targs.forall(a => context.undetparams contains a.symbol)) Nil
             else targs
-          (fun, targsInSource, targs)
+          (fun, targs, targsInSource)
 
         case Select(New(tpt @ TypeTree()), _) if isConstr =>
-          val targs = tpt.tpe match {
-            case TypeRef(pre, sym, args) if (args forall (a => context.undetparams contains a)) =>
+          val targsInSource = tpt.tpe match {
+            case TypeRef(pre, sym, args)
+            if (!args.forall(a => context.undetparams contains a.typeSymbol)) =>
               args.map(TypeTree(_))
             case _ => Nil
           }
-          (baseFun, targs, Nil)
+          (baseFun, Nil, targsInSource)
 
         case _ => (baseFun, Nil, Nil)
       }
@@ -286,6 +288,20 @@ trait NamesDefaults { self: Analyzer =>
     }
   }
 
+  def missingParams[T](args: List[T], params: List[Symbol], argName: T => Option[Name] = nameOf _): (List[Symbol], Boolean) = {
+    val namedArgs = args.dropWhile(arg => {
+      val n = argName(arg)
+      n.isEmpty || params.forall(p => p.name != n.get)
+    })
+    val namedParams = params.drop(args.length - namedArgs.length)
+    // missing: keep those with a name which doesn't exist in namedArgs
+    val missingParams = namedParams.filter(p => namedArgs.forall(arg => {
+      val n = argName(arg)
+      n.isEmpty || n.get != p.name
+    }))
+    val allPositional = missingParams.length == namedParams.length
+    (missingParams, allPositional)
+  }
 
   /**
    * Extend the argument list `givenArgs' with default arguments. Defaults are added
@@ -297,35 +313,24 @@ trait NamesDefaults { self: Analyzer =>
    * the argument list (y = "lt") is transformed to (y = "lt", x = foo$default$1())
    */
   def addDefaults(givenArgs: List[Tree], qual: Option[Tree], targs: List[Tree],
-                  previousArgss: List[List[Tree]], params: List[Symbol]): (List[Tree], List[Symbol]) = {
+                  previousArgss: List[List[Tree]], params: List[Symbol], pos: util.Position): (List[Tree], List[Symbol]) = {
     if (givenArgs.length < params.length) {
-      val namedArgs = givenArgs.dropWhile( arg => {
-        val n = nameOf(arg)
-        !(n.isDefined && params.exists(p => p.name == n.get))
-      })
-      val namedParams = params.drop(givenArgs.length - namedArgs.length)
-
-      def missing(p: Symbol): Boolean = !namedArgs.exists {
-        case Assign(Ident(name), _) => name == p.name
-        case _ => false
-      }
-
-      val missingParams = namedParams filter missing
-
-      if (missingParams forall (_.hasFlag(DEFAULTPARAM))) {
-        val defaultArgs = missingParams map (p => {
+      val (missing, positional) = missingParams(givenArgs, params)
+      if (missing forall (_.hasFlag(DEFAULTPARAM))) {
+        val defaultArgs = missing map (p => {
           var default1 = qual match {
             case Some(q) => gen.mkAttributedSelect(q.duplicate, p.defaultGetter)
             case None => gen.mkAttributedRef(p.defaultGetter)
           }
           default1 = if (targs.isEmpty) default1
-                     else TypeApply(default1, targs.map(_.duplicate)).setPos(p.pos)
+                     else TypeApply(default1, targs.map(_.duplicate)).setPos(pos)
           val default2 = (default1 /: previousArgss)((tree, args) =>
-            Apply(tree, args.map(_.duplicate)).setPos(p.pos))
-          Assign(Ident(p.name), default2)
+            Apply(tree, args.map(_.duplicate)).setPos(pos))
+          if (positional) default2
+          else atPos(pos) { AssignOrNamedArg(Ident(p.name), default2) }
         })
         (givenArgs ::: defaultArgs, Nil)
-      } else (givenArgs, missingParams filter (! _.hasFlag(DEFAULTPARAM)))
+      } else (givenArgs, missing filter (! _.hasFlag(DEFAULTPARAM)))
     } else (givenArgs, Nil)
   }
 
@@ -342,16 +347,15 @@ trait NamesDefaults { self: Analyzer =>
     // maps indicies from (order written by user) to (order of definition)
     val argPos = (new Array[Int](args.length)) map (x => -1)
     var positionalAllowed = true
-    // @LUC TODO: make faster (don't use zipWithIndex)
     val namelessArgs = for ((arg, index) <- (args.zipWithIndex)) yield arg match {
-      case Assign(Ident(name), rhs) =>
+      case a @ AssignOrNamedArg(Ident(name), rhs) =>
         val pos = params.indexWhere(p => p.name == name && !p.hasFlag(SYNTHETIC))
         if (pos == -1) {
           if (positionalAllowed) {
             argPos(index) = index
             // prevent isNamed from being true when calling doTypedApply recursively,
             // treat the arg as an assignment of type Unit
-            Block(List(), arg)
+            Assign(a.lhs, rhs).setPos(arg.pos)
           } else {
             errorTree(arg, "unknown parameter name: "+ name)
           }
@@ -368,15 +372,17 @@ trait NamesDefaults { self: Analyzer =>
           //   var x = 0
           //   f(x = 1)   <<  "x = 1" typechecks with expected type WildcardType
           val udp = typer.context.extractUndetparams()
-          val subst = new SubstTypeMap(udp, udp map (_ => WildcardType))
+          val subst = new SubstTypeMap(udp, udp map (_ => WildcardType)) {
+            override def apply(tp: Type): Type = tp match {
+              case TypeRef(_, sym, List(arg)) if (sym == ByNameParamClass) => super.apply(arg)
+              case _ => super.apply(tp)
+            }
+          }
           val res = typer.silent(_.typed(arg, subst(paramtpe))) match {
             case _: TypeError =>
               positionalAllowed = false
               argPos(index) = pos
-              // if `rhs' has the form `x = ...`, wrap it into a block, prevent
-              // treating it as named argument again.
-              if (isNamed(rhs)) Block(List(), rhs)
-              else  rhs
+              rhs
             case t: Tree =>
               errorTree(arg, "reference to "+ name +" is ambiguous; it is both, a parameter\n"+
                              "name of the method and the name of a variable currently in scope.")

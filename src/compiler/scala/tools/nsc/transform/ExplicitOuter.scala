@@ -7,18 +7,25 @@
 package scala.tools.nsc.transform
 
 import symtab._
-import Flags._
-import scala.collection.mutable.{HashMap, ListBuffer}
-import matching.{TransMatcher, PatternNodes, CodeFactory, ParallelMatching}
+import Flags.{ CASE => _, _ }
+import scala.collection.mutable.ListBuffer
+import matching.{ TransMatcher, PatternNodes, ParallelMatching }
 
 /** This class ...
  *
  *  @author  Martin Odersky
  *  @version 1.0
  */
-abstract class ExplicitOuter extends InfoTransform with TransMatcher with PatternNodes with CodeFactory with ParallelMatching with TypingTransformers {
+abstract class ExplicitOuter extends InfoTransform
+      with TransMatcher
+      with PatternNodes
+      with ParallelMatching
+      with TypingTransformers
+      with ast.TreeDSL
+{
   import global._
   import definitions._
+  import CODE._
 
   /** The following flags may be set by this phase: */
   override def phaseNewFlags: Long = notPRIVATE | notPROTECTED | lateFINAL
@@ -57,11 +64,9 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
   def outerAccessor(clazz: Symbol): Symbol = {
     val firstTry = clazz.info.decl(clazz expandedName nme.OUTER)
     if (firstTry != NoSymbol && firstTry.outerSource == clazz) firstTry
-    else {
-      val e = clazz.info.decls.elems
-      if (e == null) NoSymbol
-      else (e.iterator find (_.sym.outerSource == clazz) map (_.sym)) getOrElse NoSymbol
-    }
+    else
+      entryIterator(clazz.info.decls.elems) .
+        find (_.sym.outerSource == clazz) map (_.sym) getOrElse (NoSymbol)
   }
 
   /** <p>
@@ -120,15 +125,17 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
       if (isInner(clazz) && !(clazz hasFlag INTERFACE)) {
         decls1 = newScope(decls.toList)
         val outerAcc = clazz.newMethod(clazz.pos, nme.OUTER) // 3
-        outerAcc.expandName(clazz)
+        outerAcc expandName clazz
+        
         val restpe = if (clazz.isTrait) clazz.outerClass.tpe else clazz.outerClass.thisType
-        decls1 enter clazz.newOuterAccessor(clazz.pos).setInfo(MethodType(List(), restpe))
+        decls1 enter (clazz.newOuterAccessor(clazz.pos) setInfo MethodType(Nil, restpe))
         if (hasOuterField(clazz)) { //2
           val access = if (clazz.isFinal) PRIVATE | LOCAL else PROTECTED
           decls1 enter (
-            clazz.newValue(clazz.pos, nme.getterToLocal(nme.OUTER))
+            clazz.newValue(clazz.pos, nme getterToLocal nme.OUTER)
             setFlag (SYNTHETIC | PARAMACCESSOR | access)
-            setInfo clazz.outerClass.thisType)
+            setInfo clazz.outerClass.thisType
+          )
         }
       }
       if (!clazz.isTrait && !parents.isEmpty) {
@@ -137,9 +144,8 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
           if (mixinOuterAcc != NoSymbol) {
             if (decls1 eq decls) decls1 = newScope(decls.toList)
             val newAcc = mixinOuterAcc.cloneSymbol(clazz) 
-            newAcc.resetFlag(DEFERRED)
-            newAcc.setInfo(clazz.thisType.memberType(mixinOuterAcc))
-            decls1 enter newAcc 
+            newAcc resetFlag DEFERRED setInfo (clazz.thisType memberType mixinOuterAcc)
+            decls1 enter newAcc
           }
         }
       }
@@ -157,7 +163,6 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
    *  The class provides methods for referencing via outer.
    */
   abstract class OuterPathTransformer(unit: CompilationUnit) extends TypingTransformer(unit) {
-
     /** The directly enclosing outer parameter, if we are in a constructor */
     protected var outerParam: Symbol = NoSymbol
 
@@ -165,8 +170,8 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
      *  The result is typed but not positioned.
      */
     protected def outerValue: Tree =
-      if (outerParam != NoSymbol) gen.mkAttributedIdent(outerParam)
-      else outerSelect(gen.mkAttributedThis(currentClass))
+      if (outerParam != NoSymbol) ID(outerParam)
+      else outerSelect(THIS(currentClass))
 
     /** Select and apply outer accessor from 'base'
      *  The result is typed but not positioned.
@@ -183,13 +188,14 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
         if (outerAcc.owner == currentClass && 
             base.tpe =:= currentClass.thisType &&
             outerAcc.owner.isFinal) 
-          outerField(currentClass).suchThat(_.owner == currentClass)
+          outerField(currentClass) suchThat (_.owner == currentClass)
         else
           NoSymbol
       val path = 
         if (outerFld != NoSymbol) Select(base, outerFld)
-        else Apply(Select(base, outerAcc), List())
-      localTyper.typed(path)
+        else Apply(Select(base, outerAcc), Nil)
+        
+      localTyper typed path
     }
 
     /** The path
@@ -289,22 +295,17 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
 
     /** The definition tree of the outer accessor of current class
      */
-    def outerFieldDef: Tree = {
-      val outerFld = outerField(currentClass)
-      ValDef(outerFld, EmptyTree)
-    }
+    def outerFieldDef: Tree = VAL(outerField(currentClass)) === EmptyTree
 
     /** The definition tree of the outer accessor of current class
      */
     def outerAccessorDef: Tree = {
       val outerAcc = outerAccessor(currentClass)
-      var rhs = if (outerAcc.isDeferred) EmptyTree
-                else Select(This(currentClass), outerField(currentClass))
-      localTyper.typed {
-        atPos(currentClass.pos) {
-          DefDef(outerAcc, rhs)
-        }
-      }
+      var rhs: Tree =
+        if (outerAcc.isDeferred) EmptyTree
+        else This(currentClass) DOT outerField(currentClass)
+                
+      typedPos(currentClass.pos)(DEF(outerAcc) === rhs)
     }
 
     /** The definition tree of the outer accessor for class
@@ -315,29 +316,100 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
      *  @pre mixinClass is an inner class
      */
     def mixinOuterAccessorDef(mixinClass: Symbol): Tree = {
-      val outerAcc = outerAccessor(mixinClass).overridingSymbol(currentClass)
+      val outerAcc = outerAccessor(mixinClass) overridingSymbol currentClass
       assert(outerAcc != NoSymbol)
       val path = 
-        if (mixinClass.owner.isTerm) gen.mkAttributedThis(mixinClass.owner.enclClass)
-        else gen.mkAttributedQualifier(currentClass.thisType.baseType(mixinClass).prefix)
+        if (mixinClass.owner.isTerm) THIS(mixinClass.owner.enclClass)
+        else gen.mkAttributedQualifier(currentClass.thisType baseType mixinClass prefix)
       val rhs = ExplicitOuterTransformer.this.transform(path)
-      rhs.setPos(currentClass.pos) // see note below
-      localTyper.typed {
-        atPos(currentClass.pos) {  
-          // @S: atPos not good enough because of nested atPos in DefDef method, which gives position from wrong class!
-          DefDef(outerAcc, rhs).setPos(currentClass.pos)
-        }
-      }
+      
+      // @S: atPos not good enough because of nested atPos in DefDef method, which gives position from wrong class!
+      rhs setPos currentClass.pos
+      typedPos(currentClass.pos) { (DEF(outerAcc) === rhs) setPos currentClass.pos }
     }
+    
+    /** If FLAG is set on symbol, sets notFLAG (this exists in anticipation of generalizing). */
+    def setNotFlags(sym: Symbol, flags: Int*) {
+      val notMap = Map(
+        PRIVATE -> notPRIVATE,
+        PROTECTED -> notPROTECTED
+      )
+      for (f <- flags ; notFlag <- notMap get f ; if sym hasFlag f)
+        sym setFlag notFlag
+    }
+    
+    def matchTranslation(tree: Match) = {
+      val Match(selector, cases) = tree
+      var nselector = transform(selector)
 
+      def makeGuardDef(vs: List[Symbol], guard: Tree) = {
+        val gdname = newName(guard.pos, "gd")
+        val method = currentOwner.newMethod(tree.pos, gdname) setFlag SYNTHETIC
+        val fmls   = vs map (_.tpe)
+        val tpe    = new MethodType(method newSyntheticValueParams fmls, BooleanClass.tpe)
+        method setInfo tpe
+        
+        localTyper typed (DEF(method) === {
+          new ChangeOwnerTraverser(currentOwner, method) traverse guard
+          new TreeSymSubstituter(vs, method.paramss.head) traverse guard
+          guard
+        })
+      }
+      
+      val nguard = new ListBuffer[Tree]
+      val ncases =
+        for (CaseDef(p, guard, b) <- cases) yield {
+          val gdcall = 
+            if (guard == EmptyTree) EmptyTree
+            else {
+              val vs       = definedVars(p)
+              val guardDef = makeGuardDef(vs, guard)
+              nguard       += transform(guardDef) // building up list of guards
+              
+              localTyper typed (Ident(guardDef.symbol) APPLY (vs map Ident))
+            }
+          
+          (CASE(transform(p)) IF gdcall) ==> transform(b)
+        }
+      
+      def isUncheckedAnnotation(tpe: Type) = tpe hasAnnotation UncheckedClass
+      def isSwitchAnnotation(tpe: Type) = tpe hasAnnotation SwitchClass
+      
+      val (checkExhaustive, requireSwitch) = nselector match {
+        case Typed(nselector1, tpt) =>
+          val unchecked = isUncheckedAnnotation(tpt.tpe)
+          if (unchecked)
+            nselector = nselector1
+            
+          (!unchecked, isSwitchAnnotation(tpt.tpe))
+        case _  =>
+          (true, false)
+      }
+
+      val t = atPos(tree.pos) {
+        val context     = MatchMatrixContext(transform, localTyper, currentOwner, tree.tpe)
+        val t_untyped   = handlePattern(nselector, ncases, checkExhaustive, context)
+        
+        /* if @switch annotation is present, verify the resulting tree is a Match */
+        if (requireSwitch) t_untyped match {
+          case Block(_, Match(_, _))  => // ok
+          case _                      => 
+            unit.error(tree.pos, "could not emit switch for @switch annotated match")
+        }
+        
+        localTyper.typed(t_untyped, context.resultType) 
+      }
+
+      if (nguard.isEmpty) t
+      else Block(nguard.toList, t) setType t.tpe
+    }
+    
     /** The main transformation method */
     override def transform(tree: Tree): Tree = {
-
       val sym = tree.symbol
-      if ((sym ne null) && sym.isType) {//(9)
-        if (sym hasFlag PRIVATE) sym setFlag notPRIVATE
-        if (sym hasFlag PROTECTED) sym setFlag notPROTECTED
-      }
+      if (sym != null && sym.isType)  //(9)
+        setNotFlags(sym, PRIVATE, PROTECTED)
+
       tree match {
         case Template(parents, self, decls) =>
           val newDefs = new ListBuffer[Tree]
@@ -403,71 +475,9 @@ abstract class ExplicitOuter extends InfoTransform with TransMatcher with Patter
             }
             super.transform(treeCopy.Apply(tree, sel, outerVal :: args))
 
-        case mch @ Match(selector, cases) => // <----- transmatch hook
-          var nselector = transform(selector)
-
-          def makeGuardDef(vs: List[Symbol], guard: Tree) = {
-            import symtab.Flags._
-            val gdname = cunit.fresh.newName(guard.pos, "gd")
-            val method = currentOwner.newMethod(mch.pos, gdname) setFlag SYNTHETIC
-            val fmls   = vs map (_.tpe)
-            val tpe    = new MethodType(method newSyntheticValueParams fmls, BooleanClass.tpe)
-            method setInfo tpe
-            
-            localTyper.typed(
-              DefDef(method, {
-                new ChangeOwnerTraverser(currentOwner, method) traverse guard
-                new TreeSymSubstituter(vs, method.paramss.head) traverse guard
-                guard
-              })
-            )
-          }
-          
-          val nguard = new ListBuffer[Tree]
-          val ncases =
-            for (CaseDef(p, guard, b) <- cases) yield {
-              val gdcall = 
-                if (guard == EmptyTree) EmptyTree
-                else {
-                  val vs       = definedVars(p)
-                  val guardDef = makeGuardDef(vs, guard)
-                  nguard       += transform(guardDef) // building up list of guards
-                  
-                  localTyper.typed(Apply(Ident(guardDef.symbol), vs map Ident))
-                }
-              CaseDef(transform(p), gdcall, transform(b))
-            }
-          
-          def isUncheckedAnnotation(tpe: Type) = tpe hasAnnotation UncheckedClass
-          def isSwitchAnnotation(tpe: Type) = tpe hasAnnotation SwitchClass
-          
-          val (checkExhaustive, requireSwitch) = nselector match {
-            case Typed(nselector1, tpt) =>
-              val unchecked = isUncheckedAnnotation(tpt.tpe)
-              if (unchecked)
-                nselector = nselector1
-                
-              (!unchecked, isSwitchAnnotation(tpt.tpe))
-            case _  =>
-              (true, false)
-          }
-
-          ExplicitOuter.this.resultType = tree.tpe
-
-          val t = atPos(tree.pos) { 
-            val t_untyped = handlePattern(nselector, ncases, checkExhaustive, currentOwner, transform)(localTyper)
-            /* if @switch annotation is present, verify the resulting tree is a Match */
-            if (requireSwitch) t_untyped match {
-              case Block(_, Match(_, _))  => // ok
-              case _                      => 
-                unit.error(tree.pos, "could not emit switch for @switch annotated match")
-            }
-            
-            localTyper.typed(t_untyped, resultType) 
-          }
-
-          if (nguard.isEmpty) t
-          else Block(nguard.toList, t) setType t.tpe
+        // TransMatch hook
+        case mch: Match =>
+          matchTranslation(mch)
           
         case _ =>
           val x = super.transform(tree)

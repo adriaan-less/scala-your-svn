@@ -291,7 +291,10 @@ trait Infer {
       withDisambiguation(tp1, tp2) { global.explainTypes(tp1, tp2) }
 
     /** If types `tp1' `tp2' contain different type variables with same name 
-     *  differentiate the names by including owner information
+     *  differentiate the names by including owner information.  Also, if the
+     *  type error is because of a conflict between two identically named
+     *  classes and one is in package scala, fully qualify the name so one
+     *  need not deduce why "java.util.Iterator" and "Iterator" don't match.
      */
     private def withDisambiguation[T](tp1: Type, tp2: Type)(op: => T): T = {
 
@@ -305,13 +308,22 @@ trait Infer {
       for {
         t1 @ TypeRef(_, sym1, _) <- tp1
         t2 @ TypeRef(_, sym2, _) <- tp2
-        if sym1 != sym2 && t1.toString == t2.toString
+        if sym1 != sym2
       } {
-        val name = sym1.name
-        explainName(sym1)
-        explainName(sym2)
-        if (sym1.owner == sym2.owner) sym2.name = newTypeName("(some other)"+sym2.name)
-        patches += ((sym1, sym2, name))
+        if (t1.toString == t2.toString) { // type variable collisions
+          val name = sym1.name
+          explainName(sym1)
+          explainName(sym2)
+          if (sym1.owner == sym2.owner) sym2.name = newTypeName("(some other)"+sym2.name)
+          patches += ((sym1, sym2, name))
+        }
+        else if (sym1.name == sym2.name) { // symbol name collisions where one is in scala._
+          val name = sym1.name
+          def scalaQualify(s: Symbol) =
+            if (s.owner.isScalaPackageClass) s.name = newTypeName("scala." + s.name)
+          List(sym1, sym2) foreach scalaQualify
+          patches += ((sym1, sym2, name))
+        }
       }
 
       val result = op
@@ -747,18 +759,13 @@ trait Infer {
             }
           } else {
             // not enough arguments, check if applicable using defaults
-            val namedArgtpes = argtpes0.dropWhile {
-              case NamedType(name, _) => params.forall(_.name != name)
-              case _ => true
-            }
-            val namedParams = params.drop(argtpes0.length - namedArgtpes.length)
-            val missingParams = namedParams.filter(p => namedArgtpes.forall {
-              case NamedType(name, _) => name != p.name
-              case _ => true
-            })
-            if (missingParams.exists(!_.hasFlag(DEFAULTPARAM))) tryTupleApply
+            val missing = missingParams[Type](argtpes0, params, {
+              case NamedType(name, _) => Some(name)
+              case _ => None
+            })._1
+            if (missing.exists(!_.hasFlag(DEFAULTPARAM))) tryTupleApply
             else {
-              val argtpes1 = argtpes0 ::: missingParams.map {
+              val argtpes1 = argtpes0 ::: missing.map {
                 p => NamedType(p.name, p.tpe) // add defaults as named arguments
               }
               isApplicable(undetparams, ftpe, argtpes1, pt)
@@ -840,6 +847,8 @@ trait Infer {
       sym2 == NoSymbol || isProperSubClassOrObject(sym1.owner, sym2.owner)
 
     def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type, sym1: Symbol, sym2: Symbol): Boolean =
+      // ftpe1 / ftpe2 are OverloadedTypes (possibly with one single alternative) if they
+      // denote the type of an "apply" member method (see "followApply")
       ftpe1.isError || {
         val specificCount = (if (isAsSpecific(ftpe1, ftpe2)) 1 else 0) - 
                             (if (isAsSpecific(ftpe2, ftpe1) &&
@@ -1094,7 +1103,7 @@ trait Infer {
                 "  pt = "+pt)
       val targs = exprTypeArgs(tparams, tree.tpe, pt)
       val uninstantiated = new ListBuffer[Symbol]
-      val detargs = if (keepNothings || (targs eq null) /*@M: adjustTypeArgs fails if targs==null, neg/t0226*/) targs 
+      val detargs = if (keepNothings || (targs eq null)) targs  //@M: adjustTypeArgs fails if targs==null, neg/t0226
                     else adjustTypeArgs(tparams, targs, WildcardType, uninstantiated)
       val undetparams = uninstantiated.toList
       val detparams = tparams remove (undetparams contains _)
@@ -1549,7 +1558,6 @@ trait Infer {
               //     todo: should not return "false" when paramTypes = (Unit) no argument is given
               //     (tupling would work)
             })
-
 
           def improves(sym1: Symbol, sym2: Symbol) =
             sym2 == NoSymbol || sym2.isError ||

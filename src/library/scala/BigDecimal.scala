@@ -145,11 +145,6 @@ object BigDecimal
    *  @since 2.8
    */
   implicit def bigInt2bigDecimal(x: BigInt): BigDecimal = apply(x)
-  
-  // Anyone can subclass Number, so we can't just assume .longValue is an unrounded
-  // representation (as it cannot be for anything larger than Long.) So we also confirm
-  // that at least x thinks it's equal to x.longValue.
-  private[scala] def equalsOwnLongValue(that: Number): Boolean = that == that.longValue
 }
 
 /** 
@@ -164,7 +159,6 @@ extends java.lang.Number
 {
   def this(bigDecimal: BigDec) = this(bigDecimal, BigDecimal.defaultMathContext)
   import BigDecimal.RoundingMode._
-  import BigDecimal.equalsOwnLongValue
   
   /** Cuts way down on the wrapper noise. */
   private implicit def bigdec2BigDecimal(x: BigDec): BigDecimal = new BigDecimal(x, mc)
@@ -173,16 +167,11 @@ extends java.lang.Number
   override def hashCode(): Int = this.bigDecimal.hashCode()
 
   /** Compares this BigDecimal with the specified value for equality.
+   *  Will only claim equality with scala.BigDecimal and java.math.BigDecimal.
    */
   override def equals (that: Any): Boolean = that match {
     case that: BigDecimal           => this equals that 
     case that: BigDec               => this equals BigDecimal(that)
-    case that: BigInt               => this equals BigDecimal(that)
-    case that: java.math.BigInteger => this equals BigDecimal(new BigInt(that), mc)
-    case that: java.lang.Double     => this equals BigDecimal(that.doubleValue)
-    case that: java.lang.Float      => this equals BigDecimal(that.floatValue)
-    case that: java.lang.Number     => equalsOwnLongValue(that) && (this equals BigDecimal(that.longValue))
-    case that: java.lang.Character  => this equals BigDecimal(that.charValue.asInstanceOf[Int])
     case _                          => false
   }
 
@@ -356,10 +345,30 @@ extends java.lang.Number
   def intValueExact: Int      = bigDecimal.intValueExact
   def longValueExact: Long    = bigDecimal.longValueExact
 
-  /** See <code>Iterator.range</code>. */
+  /** Creates a partially constructed GenericRange[BigDecimal] in range
+   *  <code>[start;end)</code>, where start is the target BigDecimal.  The step
+   *  must be supplied via the "by" method of the returned object in order
+   *  to receive the fully constructed range.  For example:
+   * <pre>
+   * val partial = BigDecimal(1.0) to 2.0       // not usable yet
+   * val range = partial by 0.01                // now a GenericRange
+   * val range2 = BigDecimal(0) to 1.0 by 0.01  // all at once of course is fine too
+   * </pre>
+   *
+   *  @param end    the end value of the range (exclusive)
+   *  @return       the partially constructed GenericRange
+   */
+  def until(end: BigDecimal): Range.Partial[BigDecimal, GenericRange.Exclusive[BigDecimal]] =
+    new Range.Partial(until(end, _))
+
+  /** Same as the one-argument <code>until</code>, but creates the range immediately. */
   def until(end: BigDecimal, step: BigDecimal) = Range.BigDecimal(this, end, step)
   
-  /** like <code>until</code>, but includes the last index */
+  /** Like <code>until</code>, but inclusive of the end value. */
+  def to(end: BigDecimal): Range.Partial[BigDecimal, GenericRange.Inclusive[BigDecimal]] =
+    new Range.Partial(to(end, _))
+  
+  /** Like <code>until</code>, but inclusive of the end value. */
   def to(end: BigDecimal, step: BigDecimal) = Range.BigDecimal.inclusive(this, end, step)
 
   /** Converts this <code>BigDecimal</code> to a scala.BigInt.

@@ -12,7 +12,7 @@ import java.nio.charset._
 import compat.Platform.currentTime
 import scala.tools.nsc.io.{SourceReader, AbstractFile}
 import scala.tools.nsc.reporters._
-import scala.tools.nsc.util.{ClassPath, SourceFile, BatchSourceFile, OffsetPosition}
+import scala.tools.nsc.util.{ClassPath, SourceFile, BatchSourceFile, OffsetPosition, RangePosition}
 
 import scala.collection.mutable.{HashSet, HashMap, ListBuffer}
 
@@ -31,9 +31,11 @@ import backend.jvm.GenJVM
 import backend.msil.GenMSIL
 import backend.opt.{Inliners, ClosureElimination, DeadCodeElimination}
 import backend.icode.analysis._
+import interactive._
 
 class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
                                                              with CompilationUnits
+                                                             with Positions
                                                              with Plugins
                                                              with PhaseAssembly
 {
@@ -42,6 +44,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def this(reporter: Reporter) =
     this(new Settings(err => reporter.error(null,err)), 
          reporter)
+
   def this(settings: Settings) =
     this(settings, new ConsoleReporter(settings))
 
@@ -131,11 +134,6 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
   // ------------ Hooks for interactive mode-------------------------
 
-  /** Return a position correponding to tree startaing at `start`, with tip
-   *  at `mid`, and ending at `end`. ^ batch mode errors point at tip.
-   */
-  def rangePos(source: SourceFile, start: Int, mid: Int, end: Int) = OffsetPosition(source, mid)
-
   /** Called every time an AST node is succesfully typedchecked in typerPhase.
    */ 
   def signalDone(context: analyzer.Context, old: Tree, result: Tree) {}
@@ -191,7 +189,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
   private val reader: SourceReader = {
     def stdCharset: Charset = {
-      settings.encoding.value = Properties.encodingString // A mandatory charset
+      settings.encoding.value = Properties.sourceEncoding // A mandatory charset
       Charset.forName(settings.encoding.value)
     }
     val charset =
@@ -217,16 +215,14 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     }
   }
 
-  settings.dependenciesFile.value match {
-    case "none" => ()
-    case x => 
-      val jfile = new java.io.File(x)
-      if (!jfile.exists) jfile.createNewFile
-
-      dependencyAnalysis.loadFrom(AbstractFile.getFile(jfile))
-  }
-
-
+  if (settings.make.value != "all")
+    settings.dependenciesFile.value match {
+      case "none" => ()
+      case x => 
+        val jfile = new java.io.File(x)
+        if (!jfile.exists) jfile.createNewFile
+        else dependencyAnalysis.loadFrom(AbstractFile.getFile(jfile))
+    }
 
   lazy val classPath0 = new ClassPath(false && onlyPresentation)
 
@@ -307,12 +303,15 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     final def applyPhase(unit: CompilationUnit) {
       if (settings.debug.value) inform("[running phase " + name + " on " + unit + "]")
       val unit0 = currentRun.currentUnit
-      currentRun.currentUnit = unit
-      reporter.setSource(unit.source)
-      if (!cancelled(unit)) apply(unit)
-      currentRun.advanceUnit
-      assert(currentRun.currentUnit == unit)
-      currentRun.currentUnit = unit0
+      try {
+        currentRun.currentUnit = unit
+        reporter.setSource(unit.source)
+        if (!cancelled(unit)) apply(unit)
+        currentRun.advanceUnit
+      } finally {
+        //assert(currentRun.currentUnit == unit)
+        currentRun.currentUnit = unit0
+      }
     }
   }
 
@@ -390,6 +389,13 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     val runsRightAfter = None
   } with ExplicitOuter
  
+  // phaseName = "specialize"
+  object specializeTypes extends {
+    val global: Global.this.type = Global.this
+    val runsAfter = List[String]("")
+    val runsRightAfter = Some("tailcalls")
+  } with SpecializeTypes 
+
   // phaseName = "erasure"
   object erasure extends {
     val global: Global.this.type = Global.this
@@ -557,6 +563,8 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     
     phasesSet += uncurry			       // uncurry, translate function values to anonymous classes
     phasesSet += tailCalls			       // replace tail calls by jumps
+    if (settings.specialize.value)
+      phasesSet += specializeTypes
     phasesSet += explicitOuter			       // replace C.this by explicit outer pointers, eliminate pattern matching
     phasesSet += erasure			       // erase generic types to Java 1.4 types, add interfaces for traits
     phasesSet += lazyVals			       // 
@@ -578,11 +586,12 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     if (forJVM) {
       phasesSet += liftcode			       // generate reified trees
       phasesSet += genJVM			       // generate .class files	   
-      phasesSet += dependencyAnalysis 
+      if (settings.make.value != "all")
+        phasesSet += dependencyAnalysis 
     }
     if (forMSIL) {					
       phasesSet += genMSIL			       // generate .msil files
-    }						       
+    }
   }
 
 
@@ -871,7 +880,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     def compileLate(unit: CompilationUnit) {
       addUnit(unit)
       var localPhase = firstPhase.asInstanceOf[GlobalPhase]
-      while (localPhase != null && (localPhase.id < globalPhase.id || localPhase.id <= namerPhase.id) && !reporter.hasErrors) {
+      while (localPhase != null && (localPhase.id  < globalPhase.id || localPhase.id <= namerPhase.id)/* && !reporter.hasErrors*/) {
         val oldSource = reporter.getSource          
         reporter.setSource(unit.source)          
         atPhase(localPhase)(localPhase.applyPhase(unit))

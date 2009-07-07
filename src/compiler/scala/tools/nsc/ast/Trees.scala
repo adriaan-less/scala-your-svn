@@ -103,6 +103,10 @@ trait Trees {
       if (Statistics.enabled) nodeCount += 1
     }
 
+    val id = nodeCount
+    //assert(id != 225)
+    nodeCount += 1
+
     private var rawpos: Position = NoPosition
 
     def pos = rawpos
@@ -121,8 +125,9 @@ trait Trees {
       this 
     }
     
-    def setOriginal(tree: Tree): this.type = {
-      setPos(SyntheticAliasPosition(tree))
+    def setOriginal(tree: Tree): this.type = tree.pos match {
+      case SyntheticAliasPosition(orig) => setOriginal(orig)
+      case _ => setPos(if (tree.pos.isDefined) SyntheticAliasPosition(tree) else tree.pos)
     }
 
     def setType(tp: Type): this.type = { 
@@ -252,6 +257,9 @@ trait Trees {
     def shallowDuplicate: this.type =
       ((new ShallowDuplicator(this)) transform this).asInstanceOf[this.type]
 
+    def syntheticDuplicate: this.type = 
+      (syntheticDuplicator transform this).asInstanceOf[this.type]
+
     def copyAttrs(tree: Tree): this.type = {
       rawpos = tree.rawpos
       tpe = tree.tpe
@@ -284,6 +292,15 @@ trait Trees {
 
   private lazy val duplicator = new Transformer {
     override val treeCopy = new StrictTreeCopier
+  }
+
+  private lazy val syntheticDuplicator = new Transformer {
+    override val treeCopy = new StrictTreeCopier
+    override def transform(t: Tree) = {
+      val t1 = super.transform(t)
+      if (t1 ne t) t1.setOriginal(t)
+      t1
+    }
   }
 
   private class ShallowDuplicator(orig: Tree) extends Transformer {
@@ -363,11 +380,11 @@ trait Trees {
    *                    and value parameter fields.
    *  @return          ...
    */
-  def ClassDef(sym: Symbol, constrMods: Modifiers, vparamss: List[List[ValDef]], argss: List[List[Tree]], body: List[Tree]): ClassDef =
+  def ClassDef(sym: Symbol, constrMods: Modifiers, vparamss: List[List[ValDef]], argss: List[List[Tree]], body: List[Tree], superPos: Position): ClassDef =
     ClassDef(sym, 
       Template(sym.info.parents map TypeTree, 
                if (sym.thisSym == sym || phase.erasedTypes) emptyValDef else ValDef(sym.thisSym),
-               constrMods, vparamss, argss, body))
+               constrMods, vparamss, argss, body, superPos))
 
   /** Singleton object definition
    *
@@ -459,6 +476,10 @@ trait Trees {
 
   def DefDef(sym: Symbol, rhs: Tree): DefDef =
     DefDef(sym, Modifiers(sym.flags), rhs)
+
+  def DefDef(sym: Symbol, rhs: List[List[Symbol]] => Tree): DefDef = {
+    DefDef(sym, rhs(sym.info.paramss))
+  }
 
   /** Abstract type, type parameter, or type alias */
   case class TypeDef(mods: Modifiers, name: Name, tparams: List[TypeDef], rhs: Tree) 
@@ -567,28 +588,28 @@ trait Trees {
    *    body
    *  }
    */
-  def Template(parents: List[Tree], self: ValDef, constrMods: Modifiers, vparamss: List[List[ValDef]], argss: List[List[Tree]], body: List[Tree]): Template = {
+  def Template(parents: List[Tree], self: ValDef, constrMods: Modifiers, vparamss: List[List[ValDef]], argss: List[List[Tree]], body: List[Tree], superPos: Position): Template = {
     /* Add constructor to template */
     
-    // create parameters for <init>
+    // create parameters for <init> as synthetic trees.
     var vparamss1 = 
       vparamss map (vps => vps.map { vd =>
         atPos(vd) {
           ValDef(
             Modifiers(vd.mods.flags & (IMPLICIT | DEFAULTPARAM) | PARAM) withAnnotations vd.mods.annotations,
-            vd.name, atPos(vd.tpt) { vd.tpt.duplicate }, vd.rhs.duplicate)
+            vd.name, vd.tpt.syntheticDuplicate, vd.rhs.syntheticDuplicate)
         }})
     val (edefs, rest) = body span treeInfo.isEarlyDef
     val (evdefs, etdefs) = edefs partition treeInfo.isEarlyValDef
     val (lvdefs, gvdefs) = List.unzip {
       evdefs map {
         case vdef @ ValDef(mods, name, tpt, rhs) =>
-          val fld = atPos(vdef.pos) { treeCopy.ValDef(vdef, mods, name, TypeTree(), EmptyTree) }
-          val local = atPos(fld) { treeCopy.ValDef(vdef, Modifiers(PRESUPER), name, tpt, rhs) }
+          val fld = treeCopy.ValDef(vdef.syntheticDuplicate, mods, name, TypeTree() setOriginal tpt, EmptyTree)
+          val local = treeCopy.ValDef(vdef, Modifiers(PRESUPER), name, tpt, rhs)
           (local, fld)
       }
     }
-    val constrs = 
+    val constrs = {
       if (constrMods.isTrait) {
         if (body forall treeInfo.isInterfaceMember) List()
         else List(
@@ -598,11 +619,14 @@ trait Trees {
         if (vparamss1.isEmpty ||
             !vparamss1.head.isEmpty && (vparamss1.head.head.mods.flags & IMPLICIT) != 0) 
           vparamss1 = List() :: vparamss1;
-        val superRef: Tree = Select(Super(nme.EMPTY.toTypeName, nme.EMPTY.toTypeName), nme.CONSTRUCTOR)
+        val superRef: Tree = atPos(superPos) {
+          Select(Super(nme.EMPTY.toTypeName, nme.EMPTY.toTypeName), nme.CONSTRUCTOR)
+        }
         val superCall = (superRef /: argss) (Apply)
         List(
           DefDef(constrMods, nme.CONSTRUCTOR, List(), vparamss1, TypeTree(), Block(lvdefs ::: List(superCall), Literal(()))))
       }
+    } 
     // remove defaults
     val vparamss2 = vparamss map (vps => vps map { vd => 
       treeCopy.ValDef(vd, vd.mods &~ DEFAULTPARAM, vd.name, vd.tpt, EmptyTree)
@@ -669,6 +693,12 @@ trait Trees {
 
   /** Assignment */
   case class Assign(lhs: Tree, rhs: Tree)
+       extends TermTree
+
+  /** Either an assignment or a named argument. Only appears in argument lists,
+   *  eliminated by typecheck (doTypedApply)
+   */
+  case class AssignOrNamedArg(lhs: Tree, rhs: Tree)
        extends TermTree
 
   /** Conditional expression */
@@ -839,6 +869,10 @@ trait Trees {
   case class Annotated(annot: Tree, arg: Tree) extends Tree {
     override def isType = arg.isType
     override def isTerm = arg.isTerm
+    override def setPos(pos: Position) : this.type = {
+//      assert(pos.start != 27934, this)
+      super.setPos(pos)
+    }
   }
 
   /** Singleton type, eliminated by RefCheck */
@@ -933,6 +967,8 @@ trait Trees {
     // vparams => body  where vparams:List[ValDef]
   case Assign(lhs, rhs) =>
     // lhs = rhs
+  case AssignOrNamedArg(lhs, rhs) =>                              (eliminated by typecheck)
+    // lhs = rhs
   case If(cond, thenp, elsep) =>
     // if (cond) thenp else elsep
   case Match(selector, cases) =>
@@ -1006,6 +1042,7 @@ trait Trees {
     def ArrayValue(tree: Tree, elemtpt: Tree, trees: List[Tree]): ArrayValue
     def Function(tree: Tree, vparams: List[ValDef], body: Tree): Function
     def Assign(tree: Tree, lhs: Tree, rhs: Tree): Assign
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree): AssignOrNamedArg
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree): If
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]): Match
     def Return(tree: Tree, expr: Tree): Return
@@ -1072,6 +1109,8 @@ trait Trees {
       new Function(vparams, body).copyAttrs(tree)
     def Assign(tree: Tree, lhs: Tree, rhs: Tree) =
       new Assign(lhs, rhs).copyAttrs(tree)
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) =
+      new AssignOrNamedArg(lhs, rhs).copyAttrs(tree)
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) =
       new If(cond, thenp, elsep).copyAttrs(tree)
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]) =
@@ -1222,6 +1261,11 @@ trait Trees {
       case t @ Assign(lhs0, rhs0)
       if (lhs0 == lhs) && (rhs0 == rhs) => t
       case _ => treeCopy.Assign(tree, lhs, rhs)
+    }
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) = tree match {
+      case t @ AssignOrNamedArg(lhs0, rhs0)
+      if (lhs0 == lhs) && (rhs0 == rhs) => t
+      case _ => treeCopy.AssignOrNamedArg(tree, lhs, rhs)
     }
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) = tree match {
       case t @ If(cond0, thenp0, elsep0) 
@@ -1408,6 +1452,8 @@ trait Trees {
         }
       case Assign(lhs, rhs) =>
         treeCopy.Assign(tree, transform(lhs), transform(rhs))
+      case AssignOrNamedArg(lhs, rhs) =>
+        treeCopy.AssignOrNamedArg(tree, transform(lhs), transform(rhs))
       case If(cond, thenp, elsep) =>
         treeCopy.If(tree, transform(cond), transform(thenp), transform(elsep))
       case Match(selector, cases) =>
@@ -1556,6 +1602,8 @@ trait Trees {
         }
       case Assign(lhs, rhs) =>
         traverse(lhs); traverse(rhs)
+      case AssignOrNamedArg(lhs, rhs) =>
+        traverse(lhs); traverse(rhs)
       case If(cond, thenp, elsep) =>
         traverse(cond); traverse(thenp); traverse(elsep)
       case Match(selector, cases) =>
@@ -1645,7 +1693,7 @@ trait Trees {
       if (tree.tpe ne null) tree.tpe = typeSubst(tree.tpe)
       super.traverse(tree)
     }
-    override def apply[T <: Tree](tree: T): T = super.apply(tree.duplicate)
+    override def apply[T <: Tree](tree: T): T = super.apply(tree.syntheticDuplicate)
     override def toString() = "TreeTypeSubstituter("+from+","+to+")"
   }
 
@@ -1663,7 +1711,7 @@ trait Trees {
       if (tree.hasSymbol) subst(from, to)
       super.traverse(tree)
     }
-    override def apply[T <: Tree](tree: T): T = super.apply(tree.duplicate)
+    override def apply[T <: Tree](tree: T): T = super.apply(tree.syntheticDuplicate)
     override def toString() = "TreeSymSubstituter("+from+","+to+")"
   }
 
