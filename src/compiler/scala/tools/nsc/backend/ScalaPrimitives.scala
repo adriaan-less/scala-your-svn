@@ -214,8 +214,6 @@ abstract class ScalaPrimitives {
     addPrimitive(Any_!=, NE)
     addPrimitive(Any_isInstanceOf, IS)
     addPrimitive(Any_asInstanceOf, AS)
-    addPrimitive(Any_isInstanceOfErased, ISERASED)
-    addPrimitive(Any_asInstanceOfErased, ASERASED)
 
     // java.lang.Object
     addPrimitive(Object_eq, ID)
@@ -237,15 +235,12 @@ abstract class ScalaPrimitives {
     // scala.Boolean
     addPrimitives(BooleanClass, nme.EQ, EQ)
     addPrimitives(BooleanClass, nme.NE, NE)
-    addPrimitive(Boolean_not, ZNOT)
-    addPrimitive(Boolean_or, ZOR)
-    addPrimitive(Boolean_and, ZAND)
+    addPrimitives(BooleanClass, nme.UNARY_!, ZNOT)
+    addPrimitives(BooleanClass, nme.ZOR, ZOR)
+    addPrimitives(BooleanClass, nme.ZAND, ZAND)
     addPrimitives(BooleanClass, nme.OR, OR)
     addPrimitives(BooleanClass, nme.AND, AND)
     addPrimitives(BooleanClass, nme.XOR, XOR)
-//    addPrimitives(BooleanClass, nme.ADD, CONCAT)
-    // unary !
-//  addPrimitives(BooleanClass, nme.UNARY_!, ZNOT)
 
     // scala.Byte
     addPrimitives(ByteClass, nme.EQ, EQ)

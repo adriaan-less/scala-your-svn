@@ -274,8 +274,7 @@ trait Typers { self: Analyzer =>
               case _ =>
                 ex.getMessage()
             }
-          if (context.retyping) context.error(pos, msg) 
-          else context.unit.error(pos, msg)
+          context.error(pos, msg)
           if (sym == ObjectClass) 
             throw new FatalError("cannot redefine root "+sym)
         case _ =>
@@ -1508,7 +1507,8 @@ trait Typers { self: Analyzer =>
           checkStructuralCondition(meth.owner, vparam)
 
       // only one overloaded method is allowed to have defaults
-      if (meth.owner.isClass && meth.paramss.exists(_.exists(_.hasFlag(DEFAULTPARAM)))) {
+      if (phase.id <= currentRun.typerPhase.id &&
+          meth.owner.isClass && meth.paramss.exists(_.exists(_.hasFlag(DEFAULTPARAM)))) {
         // don't do the check if it has already failed for another alternatvie
         if (meth.paramss.exists(_.exists(p => p.hasFlag(DEFAULTPARAM) &&
                                               !p.defaultGetter.tpe.isError))) {
@@ -1919,7 +1919,7 @@ trait Typers { self: Analyzer =>
         def shapeType(arg: Tree): Type = arg match {
           case Function(vparams, body) =>
             functionType(vparams map (vparam => AnyClass.tpe), shapeType(body))
-          case a @ Assign(Ident(name), rhs) if a.namedArg =>
+          case AssignOrNamedArg(Ident(name), rhs) =>
             NamedType(name, shapeType(rhs))
           case _ =>
             NothingClass.tpe
@@ -1950,7 +1950,7 @@ trait Typers { self: Analyzer =>
           val argtpes = new ListBuffer[Type]
           val amode = argMode(fun, mode)
           val args1 = args map {
-            case arg @ Assign(Ident(name), rhs) if arg.namedArg =>
+            case arg @ AssignOrNamedArg(Ident(name), rhs) =>
               // named args: only type the righthand sides ("unknown identifier" errors otherwise)
               val rhs1 = typedArg(rhs, amode, 0, WildcardType)
               argtpes += NamedType(name, rhs1.tpe.deconst)
@@ -2041,6 +2041,8 @@ trait Typers { self: Analyzer =>
                 }
                 val (allArgs, missing) = addDefaults(args, qual, targs, previousArgss, params, fun.pos)
                 if (allArgs.length == formals.length) {
+                  // useful when a default doesn't match parameter type, e.g. def f[T](x:T="a"); f[Int]()
+                  context.diagnostic = "Error occured in an application involving default arguments." :: context.diagnostic
                   doTypedApply(tree, if (blockIsEmpty) fun else fun1, allArgs, mode, pt)
                 } else {
                   tryTupleApply.getOrElse {
@@ -2253,21 +2255,13 @@ trait Typers { self: Analyzer =>
       }
     }
 
-    def typedAnnotation(constr: Tree): AnnotationInfo =
-      typedAnnotation(constr, EXPRmode)
-
-    def typedAnnotation(constr: Tree, mode: Int): AnnotationInfo =
-      typedAnnotation(constr, mode, NoSymbol)
-
-    def typedAnnotation(constr: Tree, mode: Int, selfsym: Symbol): AnnotationInfo =
-      typedAnnotation(constr, mode, selfsym, AnnotationClass, false)
-
     /**
      * Convert an annotation constructor call into an AnnotationInfo.
-     * 
+     *
      * @param annClass the expected annotation class
      */
-    def typedAnnotation(ann: Tree, mode: Int, selfsym: Symbol, annClass: Symbol, requireJava: Boolean): AnnotationInfo = {
+    def typedAnnotation(ann: Tree, mode: Int = EXPRmode, selfsym: Symbol = NoSymbol,
+                        annClass: Symbol = AnnotationClass, requireJava: Boolean = false): AnnotationInfo = {
       lazy val annotationError = AnnotationInfo(ErrorType, Nil, Nil)
       var hasError: Boolean = false
       def error(pos: Position, msg: String) = {
@@ -2307,7 +2301,8 @@ trait Typers { self: Analyzer =>
         case Typed(t, _) => tree2ConstArg(t, pt)
 
         case tree => typed(tree, EXPRmode, pt) match {
-          case l @ Literal(c) if !l.isErroneous =>
+          // null cannot be used as constant value for classfile annotations
+          case l @ Literal(c) if !(l.isErroneous || c.value == null) =>
             Some(LiteralAnnotArg(c))
           case _ =>
             needConst(tree)
@@ -2358,7 +2353,7 @@ trait Typers { self: Analyzer =>
             names ++= (if (isJava) annScope.iterator
                        else typedFun.tpe.params.iterator)
             val nvPairs = args map {
-              case arg @ Assign(Ident(name), rhs) if arg.namedArg =>
+              case arg @ AssignOrNamedArg(Ident(name), rhs) =>
                 val sym = if (isJava) annScope.lookupWithContext(name)(context.owner)
                           else typedFun.tpe.params.find(p => p.name == name).getOrElse(NoSymbol)
                 if (sym == NoSymbol) {
@@ -3479,7 +3474,7 @@ trait Typers { self: Analyzer =>
       //if (settings.debug.value && tree.isDef) log("typing definition of "+sym);//DEBUG
       tree match {
         case PackageDef(name, stats) =>
-          assert(sym.moduleClass ne NoSymbol)
+          assert(sym.moduleClass ne NoSymbol, sym)
           val stats1 = newTyper(context.make(tree, sym.moduleClass, sym.info.decls))
             .typedStats(stats, NoSymbol)
           treeCopy.PackageDef(tree, name, stats1) setType NoType
@@ -3547,6 +3542,9 @@ trait Typers { self: Analyzer =>
           newTyper(context.makeNewScope(tree, tree.symbol)).typedFunction(tree, mode, pt)
 
         case Assign(lhs, rhs) =>
+          typedAssign(lhs, rhs)
+
+        case AssignOrNamedArg(lhs, rhs) => // called by NamesDefaults in silent typecheck
           typedAssign(lhs, rhs)
 
         case If(cond, thenp, elsep) =>

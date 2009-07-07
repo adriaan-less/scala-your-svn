@@ -177,6 +177,7 @@ object Test extends Application {
   println(argName) // should be 4
   test5 { argName = 5 }
   println(argName) // should be 5
+  val a = test1(a = 10, b = "2") // local values a and b exist, but not ambiuous since they're val's
 
 
   // dependent types and copy method
@@ -281,10 +282,11 @@ class B1 extends A1 {
 }
 
 trait N {
-  def foo[T >: String](x: Int = -1, y: T = "jupee")(z: String): String
+  def foo[T >: String](x: Int = -1, y: T = "jupee")(z: String): Object
 }
 
 abstract class M extends N {
+  // also tests #2116, specialize return type when overriding.
   def foo[T >: String](x: Int, y: T)(z: String = "1"): String
   def bar(n: Int, m: Double = 1.239): Double
 }

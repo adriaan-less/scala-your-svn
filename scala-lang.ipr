@@ -35,6 +35,15 @@
           <option name="LABEL_INDENT_SIZE" value="0" />
           <option name="LABEL_INDENT_ABSOLUTE" value="false" />
         </ADDITIONAL_INDENT_OPTIONS>
+        <ADDITIONAL_INDENT_OPTIONS fileType="jsp">
+          <option name="INDENT_SIZE" value="4" />
+          <option name="CONTINUATION_INDENT_SIZE" value="8" />
+          <option name="TAB_SIZE" value="4" />
+          <option name="USE_TAB_CHARACTER" value="false" />
+          <option name="SMART_TABS" value="false" />
+          <option name="LABEL_INDENT_SIZE" value="0" />
+          <option name="LABEL_INDENT_ABSOLUTE" value="false" />
+        </ADDITIONAL_INDENT_OPTIONS>
         <ADDITIONAL_INDENT_OPTIONS fileType="xml">
           <option name="INDENT_SIZE" value="4" />
           <option name="CONTINUATION_INDENT_SIZE" value="8" />
@@ -47,6 +56,13 @@
       </value>
     </option>
     <option name="USE_PER_PROJECT_SETTINGS" value="false" />
+  </component>
+  <component name="CompilerAPISettings">
+    <option name="DEBUGGING_INFO" value="true" />
+    <option name="GENERATE_NO_WARNINGS" value="false" />
+    <option name="DEPRECATION" value="true" />
+    <option name="ADDITIONAL_OPTIONS_STRING" value="" />
+    <option name="MAXIMUM_HEAP_SIZE" value="128" />
   </component>
   <component name="CompilerConfiguration">
     <option name="DEFAULT_COMPILER" value="Javac" />
@@ -75,6 +91,13 @@
     <option name="SKIP_IMPORT_STATEMENTS" value="false" />
   </component>
   <component name="EclipseCompilerSettings">
+    <option name="DEBUGGING_INFO" value="true" />
+    <option name="GENERATE_NO_WARNINGS" value="true" />
+    <option name="DEPRECATION" value="false" />
+    <option name="ADDITIONAL_OPTIONS_STRING" value="" />
+    <option name="MAXIMUM_HEAP_SIZE" value="128" />
+  </component>
+  <component name="EclipseEmbeddedCompilerSettings">
     <option name="DEBUGGING_INFO" value="true" />
     <option name="GENERATE_NO_WARNINGS" value="true" />
     <option name="DEPRECATION" value="false" />
@@ -942,6 +965,206 @@
               <file url="file://$PROJECT_DIR$/test/files/shootout/takfp.scala" />
             </files>
           </module>
+          <module name="library">
+            <files>
+              <file url="file://$PROJECT_DIR$/src/android-library/scala/ScalaObject.scala" />
+              <file url="file://$PROJECT_DIR$/src/android-library/scala/reflect/ScalaBeanInfo.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Application.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/BigDecimal.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/BigInt.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Console.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Math.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Numeric.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Ordering.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Predef.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Range.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/Symbol.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/collection/JavaConversions.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/collection/immutable/List.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/collection/immutable/PagedSeq.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/collection/mutable/OpenHashMap.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/collection/mutable/StringBuilder.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/collection/mutable/WeakHashMap.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/compat/Platform.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/concurrent/DelayedLazyVal.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/concurrent/jolib.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/concurrent/ops.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/concurrent/pilib.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/BufferedSource.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/BytePickle.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/Codec.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/File.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/Position.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/Source.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/io/UTF8Codec.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/mobile/Code.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/mobile/Location.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/net/Utility.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/ref/PhantomReference.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/ref/ReferenceQueue.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/ref/ReferenceWrapper.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/ref/SoftReference.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/ref/WeakReference.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/reflect/Invocation.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/reflect/Manifest.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/reflect/ScalaBeanInfo.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/MethodCache.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/NonLocalReturnException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichChar.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichClass.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichDouble.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichFloat.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichInt.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichLong.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/RichString.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/runtime/StringAdd.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/testing/Benchmark.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/testing/SUnit.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/testing/Show.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/text/Document.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/ClassLoader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/DynamicVariable.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/Marshal.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/NameTransformer.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/Properties.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/Random.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/automata/BaseBerrySethi.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/automata/DetWordAutom.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/automata/Inclusion.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/automata/NondetWordAutom.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/automata/SubsetConstruction.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/automata/WordBerrySethi.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/control/Exception.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/grammar/HedgeRHS.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/grammar/TreeRHS.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/logging/ConsoleLogger.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/logging/Logged.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/matching/Regex.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/ast/AbstractSyntax.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/ast/Binders.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/ImplicitConversions.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/JavaTokenParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/PackratParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/Parsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/RegexParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/lexical/Lexical.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/lexical/Scanners.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/lexical/StdLexical.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/syntactical/StandardTokenParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/syntactical/StdTokenParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/syntactical/TokenParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/testing/RegexTest.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinator/testing/Tester.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/$tilde.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/ImplicitConversions.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/Parsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/lexical/Lexical.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/lexical/Scanners.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/lexical/StdLexical.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/syntactical/BindingParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/syntactical/StdTokenParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/syntactical/TokenParsers.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/combinatorold/testing/Tester.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/CharArrayPosition.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/CharArrayReader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/CharSequenceReader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/NoPosition.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/OffsetPosition.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/PagedSeqReader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/Position.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/Positional.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/Reader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/input/StreamReader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/json/JSON.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/json/Lexer.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/json/Parser.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/syntax/StdTokens.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/parsing/syntax/Tokens.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/regexp/Base.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/regexp/PointedHedgeExp.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/regexp/SyntaxError.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/util/regexp/WordExp.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Atom.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Attribute.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Comment.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Document.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Elem.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/EntityRef.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Group.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/HasKeyValue.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/MalformedAttributeException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/MetaData.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/NamespaceBinding.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Node.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/NodeBuffer.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/NodeSeq.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/NodeTraverser.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Null.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/PCData.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Parsing.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/PrefixedAttribute.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/PrettyPrinter.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/ProcInstr.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/QNode.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/SpecialNode.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Text.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/TextBuffer.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/TopScope.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/TypeSymbol.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Unparsed.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/UnprefixedAttribute.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Utility.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/XML.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/Xhtml.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/ContentModel.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/ContentModelParser.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/DTD.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/Decl.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/DocType.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/DtdTypeSymbol.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/ElementValidator.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/ExternalID.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/Scanner.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/Tokens.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/dtd/ValidationException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/factory/Binder.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/factory/LoggedNodeFactory.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/factory/NodeFactory.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/factory/XMLLoader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/CircularIncludeException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/UnavailableResourceException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/XIncludeException.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/sax/EncodingHeuristics.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/sax/Main.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/sax/XIncludeFilter.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/include/sax/XIncluder.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/ConstructingHandler.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/ConstructingParser.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/DefaultMarkupHandler.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/ExternalSources.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/FactoryAdapter.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/FatalError.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/MarkupHandler.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/MarkupParser.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/NoBindingFactoryAdapter.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/TokenTests.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/ValidatingMarkupHandler.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/XhtmlEntities.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/parsing/XhtmlParser.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/path/Expression.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/persistent/CachedFileStorage.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/persistent/Index.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/persistent/IndexedStorage.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/persistent/SetStorage.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/pull/XMLEvent.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/pull/XMLEventReader.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/transform/BasicTransformer.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/transform/RewriteRule.scala" />
+              <file url="file://$PROJECT_DIR$/src/dotnet-library/scala/xml/transform/RuleTransformer.scala" />
+              <file url="file://$PROJECT_DIR$/src/scalap/scala/tools/scalap/scalax/rules/scalasig/ScalaSigPrinter.scala" />
+            </files>
+          </module>
         </modules>
       </facet-type>
     </autodetection-disabled>
@@ -949,15 +1172,20 @@
   <component name="IdProvider" IDEtalkID="522B472C2EA573563CC2BA93160270BE" />
   <component name="InspectionProjectProfileManager">
     <option name="PROJECT_PROFILE" value="Project Default" />
-    <option name="USE_PROJECT_LEVEL_SETTINGS" value="false" />
-    <scopes />
+    <option name="USE_PROJECT_PROFILE" value="true" />
+    <version value="1.0" />
     <profiles>
       <profile version="1.0" is_locked="false">
         <option name="myName" value="Project Default" />
         <option name="myLocal" value="false" />
       </profile>
     </profiles>
-    <list size="0" />
+    <list size="4">
+      <item index="0" class="java.lang.String" itemvalue="SERVER PROBLEM" />
+      <item index="1" class="java.lang.String" itemvalue="INFO" />
+      <item index="2" class="java.lang.String" itemvalue="WARNING" />
+      <item index="3" class="java.lang.String" itemvalue="ERROR" />
+    </list>
   </component>
   <component name="JavacSettings">
     <option name="DEBUGGING_INFO" value="true" />
@@ -1121,7 +1349,14 @@
   </component>
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/src/scala-lang.iml" filepath="$PROJECT_DIR$/src/scala-lang.iml" />
+      <module fileurl="file://$PROJECT_DIR$//actors.iml" filepath="$PROJECT_DIR$//actors.iml" />
+      <module fileurl="file://$PROJECT_DIR$/compiler.iml" filepath="$PROJECT_DIR$/compiler.iml" />
+      <module fileurl="file://$PROJECT_DIR$/dbc.iml" filepath="$PROJECT_DIR$/dbc.iml" />
+      <module fileurl="file://$PROJECT_DIR$/library.iml" filepath="$PROJECT_DIR$/library.iml" />
+      <module fileurl="file://$PROJECT_DIR$//manual.iml" filepath="$PROJECT_DIR$//manual.iml" />
+      <module fileurl="file://$PROJECT_DIR$/partest.iml" filepath="$PROJECT_DIR$/partest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/scalap.iml" filepath="$PROJECT_DIR$/scalap.iml" />
+      <module fileurl="file://$PROJECT_DIR$/swing.iml" filepath="$PROJECT_DIR$/swing.iml" />
     </modules>
   </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_1_5" assert-keyword="true" jdk-15="true" project-jdk-name="1.5" project-jdk-type="JavaSDK">
@@ -1160,6 +1395,73 @@
               </option>
               <option name="trunkUrl" value="https://lampsvn.epfl.ch/svn-repos/scala/scala/trunk" />
             </SvnBranchConfiguration>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/src">
+          <value>
+            <SvnBranchConfiguration>
+              <option name="branchUrls">
+                <list>
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/branches" />
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/tags" />
+                </list>
+              </option>
+              <option name="trunkUrl" value="https://lampsvn.epfl.ch/svn-repos/scala/scala/trunk" />
+            </SvnBranchConfiguration>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/src/actors">
+          <value>
+            <SvnBranchConfiguration>
+              <option name="branchUrls">
+                <list>
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/branches" />
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/tags" />
+                </list>
+              </option>
+              <option name="trunkUrl" value="https://lampsvn.epfl.ch/svn-repos/scala/scala/trunk" />
+            </SvnBranchConfiguration>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/src/compiler">
+          <value>
+            <SvnBranchConfiguration>
+              <option name="branchUrls">
+                <list>
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/branches" />
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/tags" />
+                </list>
+              </option>
+              <option name="trunkUrl" value="https://lampsvn.epfl.ch/svn-repos/scala/scala/trunk" />
+            </SvnBranchConfiguration>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/src/library">
+          <value>
+            <SvnBranchConfiguration>
+              <option name="branchUrls">
+                <list>
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/branches" />
+                  <option value="https://lampsvn.epfl.ch/svn-repos/scala/scala/tags" />
+                </list>
+              </option>
+              <option name="trunkUrl" value="https://lampsvn.epfl.ch/svn-repos/scala/scala/trunk" />
+            </SvnBranchConfiguration>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/test/disabled/lib/annotations.jar">
+          <value>
+            <SvnBranchConfiguration />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/test/disabled/lib/enums.jar">
+          <value>
+            <SvnBranchConfiguration />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/test/disabled/lib/nest.jar">
+          <value>
+            <SvnBranchConfiguration />
           </value>
         </entry>
         <entry key="$PROJECT_DIR$/test/files">

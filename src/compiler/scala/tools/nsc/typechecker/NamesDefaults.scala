@@ -23,7 +23,7 @@ trait NamesDefaults { self: Analyzer =>
   val noApplyInfo = NamedApplyInfo(None, Nil, Nil, null)
 
   def nameOf(arg: Tree) = arg match {
-    case a @ Assign(Ident(name), rhs) if a.namedArg => Some(name)
+    case AssignOrNamedArg(Ident(name), rhs) => Some(name)
     case _ => None
   }
   def isNamed(arg: Tree) = nameOf(arg).isDefined
@@ -327,7 +327,7 @@ trait NamesDefaults { self: Analyzer =>
           val default2 = (default1 /: previousArgss)((tree, args) =>
             Apply(tree, args.map(_.duplicate)).setPos(pos))
           if (positional) default2
-          else atPos(pos) { new AssignOrNamedArg(Ident(p.name), default2) }
+          else atPos(pos) { AssignOrNamedArg(Ident(p.name), default2) }
         })
         (givenArgs ::: defaultArgs, Nil)
       } else (givenArgs, missing filter (! _.hasFlag(DEFAULTPARAM)))
@@ -348,7 +348,7 @@ trait NamesDefaults { self: Analyzer =>
     val argPos = (new Array[Int](args.length)) map (x => -1)
     var positionalAllowed = true
     val namelessArgs = for ((arg, index) <- (args.zipWithIndex)) yield arg match {
-      case a @ Assign(Ident(name), rhs) if a.namedArg =>
+      case a @ AssignOrNamedArg(Ident(name), rhs) =>
         val pos = params.indexWhere(p => p.name == name && !p.hasFlag(SYNTHETIC))
         if (pos == -1) {
           if (positionalAllowed) {
@@ -372,7 +372,12 @@ trait NamesDefaults { self: Analyzer =>
           //   var x = 0
           //   f(x = 1)   <<  "x = 1" typechecks with expected type WildcardType
           val udp = typer.context.extractUndetparams()
-          val subst = new SubstTypeMap(udp, udp map (_ => WildcardType))
+          val subst = new SubstTypeMap(udp, udp map (_ => WildcardType)) {
+            override def apply(tp: Type): Type = tp match {
+              case TypeRef(_, sym, List(arg)) if (sym == ByNameParamClass) => super.apply(arg)
+              case _ => super.apply(tp)
+            }
+          }
           val res = typer.silent(_.typed(arg, subst(paramtpe))) match {
             case _: TypeError =>
               positionalAllowed = false

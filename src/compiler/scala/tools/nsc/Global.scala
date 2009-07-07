@@ -12,7 +12,7 @@ import java.nio.charset._
 import compat.Platform.currentTime
 import scala.tools.nsc.io.{SourceReader, AbstractFile}
 import scala.tools.nsc.reporters._
-import scala.tools.nsc.util.{ClassPath, SourceFile, BatchSourceFile, OffsetPosition}
+import scala.tools.nsc.util.{ClassPath, SourceFile, BatchSourceFile, OffsetPosition, RangePosition}
 
 import scala.collection.mutable.{HashSet, HashMap, ListBuffer}
 
@@ -31,9 +31,11 @@ import backend.jvm.GenJVM
 import backend.msil.GenMSIL
 import backend.opt.{Inliners, ClosureElimination, DeadCodeElimination}
 import backend.icode.analysis._
+import interactive._
 
 class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
                                                              with CompilationUnits
+                                                             with Positions
                                                              with Plugins
                                                              with PhaseAssembly
 {
@@ -42,6 +44,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def this(reporter: Reporter) =
     this(new Settings(err => reporter.error(null,err)), 
          reporter)
+
   def this(settings: Settings) =
     this(settings, new ConsoleReporter(settings))
 
@@ -131,11 +134,6 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
   // ------------ Hooks for interactive mode-------------------------
 
-  /** Return a position correponding to tree startaing at `start`, with tip
-   *  at `mid`, and ending at `end`. ^ batch mode errors point at tip.
-   */
-  def rangePos(source: SourceFile, start: Int, mid: Int, end: Int) = OffsetPosition(source, mid)
-
   /** Called every time an AST node is succesfully typedchecked in typerPhase.
    */ 
   def signalDone(context: analyzer.Context, old: Tree, result: Tree) {}
@@ -217,16 +215,14 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     }
   }
 
-  settings.dependenciesFile.value match {
-    case "none" => ()
-    case x => 
-      val jfile = new java.io.File(x)
-      if (!jfile.exists) jfile.createNewFile
-
-      dependencyAnalysis.loadFrom(AbstractFile.getFile(jfile))
-  }
-
-
+  if (settings.make.value != "all")
+    settings.dependenciesFile.value match {
+      case "none" => ()
+      case x => 
+        val jfile = new java.io.File(x)
+        if (!jfile.exists) jfile.createNewFile
+        else dependencyAnalysis.loadFrom(AbstractFile.getFile(jfile))
+    }
 
   lazy val classPath0 = new ClassPath(false && onlyPresentation)
 
@@ -313,7 +309,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
         if (!cancelled(unit)) apply(unit)
         currentRun.advanceUnit
       } finally {
-        assert(currentRun.currentUnit == unit)
+        //assert(currentRun.currentUnit == unit)
         currentRun.currentUnit = unit0
       }
     }
@@ -590,11 +586,12 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     if (forJVM) {
       phasesSet += liftcode			       // generate reified trees
       phasesSet += genJVM			       // generate .class files	   
-      phasesSet += dependencyAnalysis 
+      if (settings.make.value != "all")
+        phasesSet += dependencyAnalysis 
     }
     if (forMSIL) {					
       phasesSet += genMSIL			       // generate .msil files
-    }						       
+    }
   }
 
 
@@ -832,13 +829,6 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       if (!dependencyAnalysis.off)
         dependencyAnalysis.saveDependencies()
     }
-    
-    // When all is said and done, if the dependencies file is 0 length
-    // delete it so people do not curse it with the vehemence with which
-    // they curse .DS_Store and the like.
-    def cleanupDependenciesFile() =
-      for (f <- dependencyAnalysis.dependenciesFile ; size <- f.sizeOption ; if size == 0)
-        f.delete
 
     /** Compile list of abstract files */
     def compileFiles(files: List[AbstractFile]) {
@@ -847,7 +837,6 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       } catch {
         case ex: IOException => error(ex.getMessage())
       }
-      finally cleanupDependenciesFile
     }
 
     /** Compile list of files given by their names */
@@ -868,7 +857,6 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       } catch {
         case ex: IOException => error(ex.getMessage())
       }
-      finally cleanupDependenciesFile
     }
 
     /** Compile abstract file until `globalPhase`, but at least
@@ -892,7 +880,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     def compileLate(unit: CompilationUnit) {
       addUnit(unit)
       var localPhase = firstPhase.asInstanceOf[GlobalPhase]
-      while (localPhase != null && (localPhase.id < globalPhase.id || localPhase.id <= namerPhase.id) && !reporter.hasErrors) {
+      while (localPhase != null && (localPhase.id  < globalPhase.id || localPhase.id <= namerPhase.id)/* && !reporter.hasErrors*/) {
         val oldSource = reporter.getSource          
         reporter.setSource(unit.source)          
         atPhase(localPhase)(localPhase.applyPhase(unit))

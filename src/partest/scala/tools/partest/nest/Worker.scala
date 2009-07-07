@@ -754,12 +754,12 @@ class Worker(val fileManager: FileManager) extends Actor {
 
       case "scalap" => {
 
-        def decompileFile(clazz: Class[_]) = {
+        def decompileFile(clazz: Class[_], packObj: Boolean) = {
           val byteCode = ByteCode.forClass(clazz)
           val classFile = ClassFileParser.parse(byteCode)
           val Some(sig) = classFile.attribute("ScalaSig").map(_.byteCode).map(ScalaSigAttributeParsers.parse)
           import scala.tools.scalap.Main._
-          parseScalaSignature(sig)
+          parseScalaSignature(sig, packObj)
         }
 
         runInContext(file, kind, (logFile: File, outDir: File) => {
@@ -781,12 +781,13 @@ class Worker(val fileManager: FileManager) extends Actor {
             } else {
 
               // 3. Decompile file and compare results
-              val className = sourceDirName.capitalize
+              val isPackageObject = sourceDir.getName.startsWith("package")
+              val className = sourceDirName.capitalize + (if (!isPackageObject) "" else ".package")
               val url = outDir.toURI.toURL
               val loader = new URLClassLoader(Array(url), getClass.getClassLoader)
               val clazz = loader.loadClass(className)
 
-              val result = decompileFile(clazz)
+              val result = decompileFile(clazz, isPackageObject)
 
               try {
                 val fstream = new FileWriter(logFile);
@@ -881,28 +882,32 @@ class Worker(val fileManager: FileManager) extends Actor {
     }
 
     def reportResult(logs: Option[LogContext]) {
-      // delete log file only if test was successful
-      if (succeeded && !logs.isEmpty)
-        logs.get.file.toDelete = true
-
       if (!succeeded) {
         errors += 1
         NestUI.verbose("incremented errors: "+errors)
       }
 
-      if (!logs.isEmpty)
-        logs.get.writers match {
-          case Some((swr, wr)) =>
-            printInfoEnd(succeeded, wr)
-            wr.flush()
-            swr.flush()
-            NestUI.normal(swr.toString)
-            if (!succeeded && fileManager.showDiff && diff != "")
-              NestUI.normal(diff)
-            if (!succeeded && fileManager.showLog)
-              showLog(logs.get.file)
-          case None =>
-        }
+      try {
+        // delete log file only if test was successful
+        if (succeeded && !logs.isEmpty)
+          logs.get.file.toDelete = true
+
+        if (!logs.isEmpty)
+          logs.get.writers match {
+            case Some((swr, wr)) =>
+              printInfoEnd(succeeded, wr)
+              wr.flush()
+              swr.flush()
+              NestUI.normal(swr.toString)
+              if (!succeeded && fileManager.showDiff && diff != "")
+                NestUI.normal(diff)
+              if (!succeeded && fileManager.showLog)
+                showLog(logs.get.file)
+            case None =>
+          }
+      } catch {
+        case npe: NullPointerException =>
+      }
     }
 
     val numFiles = files.size

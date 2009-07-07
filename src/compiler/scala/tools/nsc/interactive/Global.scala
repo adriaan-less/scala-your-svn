@@ -1,6 +1,9 @@
 package scala.tools.nsc.interactive
 
+import java.io.{ PrintWriter, StringWriter }
+
 import scala.collection.mutable.{LinkedHashMap, SynchronizedMap}
+import scala.concurrent.SyncVar
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.util.{SourceFile, Position, RangePosition, OffsetPosition, NoPosition, WorkScheduler}
 import scala.tools.nsc.reporters._
@@ -12,7 +15,7 @@ import scala.tools.nsc.ast._
 class Global(settings: Settings, reporter: Reporter) 
   extends nsc.Global(settings, reporter) 
      with CompilerControl 
-     with Positions 
+     with RangePositions
      with ContextTrees 
      with RichCompilationUnits { 
 self =>
@@ -49,10 +52,6 @@ self =>
 
   // ----------- Overriding hooks in nsc.Global -----------------------
   
-  /** Create a RangePosition */
-  override def rangePos(source: SourceFile, start: Int, point: Int, end: Int) = 
-    new RangePosition(source, start, point, end)
-
   /** Called from typechecker, which signal hereby that a node has been completely typechecked.
    *  If the node is included in unit.targetPos, abandons run and returns newly attributed tree.
    *  Otherwise, if there's some higher priority work to be done, also abandons run with a FreshRunReq.
@@ -125,6 +124,32 @@ self =>
     }
   }    
 
+  def debugInfo(source : SourceFile, start : Int, length : Int): String = {
+    println("DEBUG INFO "+source+"/"+start+"/"+length)
+    val end = start+length
+    val pos = rangePos(source, start, start, end)
+
+    val tree = locateTree(pos)
+    val sw = new StringWriter
+    val pw = new PrintWriter(sw)
+    treePrinters.create(pw).print(tree)
+    pw.flush
+    
+    val typed = new SyncVar[Either[Tree, Throwable]]
+    askTypeAt(pos, typed)
+    val typ = typed.get.left.toOption match {
+      case Some(tree) =>
+        val sw = new StringWriter
+        val pw = new PrintWriter(sw)
+        treePrinters.create(pw).print(tree)
+        pw.flush
+        sw.toString
+      case None => "<None>"
+    }
+    
+    source.content.view.drop(start).take(length).mkString+" : "+source.path+" ("+start+", "+end+")\n\nlocateTree:\n"+sw.toString+"\n\naskTypeAt:\n"+typ
+  }
+
   // ----------------- The Background Runner Thread -----------------------
 
   /** The current presentation compiler runner */
@@ -152,6 +177,7 @@ self =>
           ;
         case ex => 
           ex.printStackTrace()
+          outOfDate = false
           inform("Fatal Error: "+ex)
           compileRunner = newRunnerThread
       }
@@ -188,6 +214,7 @@ self =>
   def parse(unit: RichCompilationUnit): Unit = {
     currentTyperRun.compileLate(unit)
     validatePositions(unit.body)
+    //println("parsed: [["+unit.body+"]]")
     unit.status = JustParsed
   }
 
@@ -223,17 +250,20 @@ self =>
   }
 
   /** Make sure a set of compilation units is loaded and parsed */
-  def reload(sources: List[SourceFile], result: Response[Unit]) {
-    respond(result) {
-      currentTyperRun = new TyperRun()
-      for (source <- sources) {
-        val unit = new RichCompilationUnit(source)
-        unitOfFile(source.file) = unit
-        parse(unit)
-        if (settings.Xprintpos.value) treePrinter.print(unit)
-      }
-      moveToFront(sources)
+  def reloadSources(sources: List[SourceFile]) {
+    currentTyperRun = new TyperRun()
+    for (source <- sources) {
+      val unit = new RichCompilationUnit(source)
+      unitOfFile(source.file) = unit
+      parse(unit)
+      if (settings.Xprintpos.value) treePrinter.print(unit)
     }
+    moveToFront(sources)
+  }
+
+  /** Make sure a set of compilation units is loaded and parsed */
+  def reload(sources: List[SourceFile], result: Response[Unit]) {
+    respond(result)(reloadSources(sources))
     if (outOfDate) throw new FreshRunReq
     else outOfDate = true
   }
@@ -241,8 +271,9 @@ self =>
   /** A fully attributed tree located at position `pos`  */
   def typedTreeAt(pos: Position): Tree = {
     val unit = unitOf(pos)
-    assert(unit.status != NotLoaded)
-    moveToFront(List(unit.source))
+    val sources = List(unit.source)
+    if (unit.status == NotLoaded) reloadSources(sources)
+    moveToFront(sources)
     val typedTree = currentTyperRun.typedTreeAt(pos)
     new Locator(pos) locateIn typedTree
   }
