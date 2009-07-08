@@ -75,7 +75,13 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
       // other.kind.substSym(other.sym, sym) isSubKind kind
       def conforms(other: Argument): Boolean 
         = (variance conforms other.variance) && 
-          (other.kind.substSym(List(other.sym), List(sym)) isSubKind kind) // contravariant
+          (other.kind.substSym(List(other.sym), List(sym)) isSubKind kind) // contravariant 
+           // TODO check that we need not generate fresh sym and substitute other.sym and sym to the fresh one
+           //      see ticket 2101 for analogous bug 
+           // if this situation can arise (note occurrence of X in kinds)
+           //  X : *(Nothing, Ordered[X]) -(.)->  ...   <:   Y : *(Nothing, Ordered[X]) -(.)-> ...
+           // we would get a false positive 
+           // it seems this cannot happen for now
     }
   }
   
@@ -87,7 +93,14 @@ trait Kinds {  // would've liked to use NominalBinding, but that would require r
   case class FunctionKind(arg: Argument, res: Kind) extends Kind {
     def map(f: Type => Type): FunctionKind = FunctionKind(arg map(f), res map(f))
     def substSym(a: List[Symbol], b: List[Symbol]): Kind = FunctionKind(arg substSym(a,b), res substSym(a,b))
-        
+    
+    /**
+     * this             isSubKind    other           (for this and other FunctionKind's) if:
+     * (X1: ka1) -(v1)-> kr1     <:        (X2: ka2) -(v2)-> kr2   if:
+     *   ([X2 |-> X1] ka2) <: ka1
+     *   v1 <: v2  (where <: on variance is the smallest reflexive and transitive relation that includes 0 <: + and 0 <: -)
+     *   kr1 <: ([X2 |-> X1] kr2)
+     */    
     def isSubKind(other: Kind): Boolean = other match {
       case FunctionKind(otherArg, otherRes) =>  //println("ISK: "+(arg, otherArg, res, otherRes substSym(List(otherArg.sym), List(arg.sym)))) //@MDEBUG
           (arg conforms otherArg) && 
