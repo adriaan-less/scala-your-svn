@@ -1,5 +1,19 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+// $Id$
+
+
 package scala.swing.event
 
+/**
+ * Enumeration of key codes used by key events.
+ */
 object Key extends Enumeration {
   import java.awt.event.KeyEvent._
 
@@ -10,6 +24,8 @@ object Key extends Enumeration {
     val Standard = Value(java.awt.event.KeyEvent.KEY_LOCATION_STANDARD)
     val Unknown = Value(java.awt.event.KeyEvent.KEY_LOCATION_UNKNOWN)
   }
+  
+  type Modifiers = Int
   
   object Modifier {
     import java.awt.event.InputEvent._
