@@ -3645,6 +3645,8 @@ A type's typeSymbol should never be inspected directly.
       tp
   }
 
+  private def markerPTSubType() = {} // @MDEBUG
+
   /** Does type `tp1' conform to `tp2'?
    */
   private def isSubType0(tp1: Type, tp2: Type, depth: Int): Boolean = {
@@ -3704,15 +3706,52 @@ A type's typeSymbol should never be inspected directly.
          matchingParams(tp1.paramTypes, tp2.paramTypes, tp1.isInstanceOf[JavaMethodType], tp2.isInstanceOf[JavaMethodType]) && 
          (res1 <:< res2) &&
          tp1.isInstanceOf[ImplicitMethodType] == tp2.isInstanceOf[ImplicitMethodType])
-      case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
-        (tparams1.length == tparams2.length && {
-          //@M for an example of why we need to generate fresh symbols,         see neg/tcpoly_ticket2101.scala
-          val tpsFresh = cloneSymbols(tparams1) // @M         cloneSymbols(tparams2) should be equivalent -- TODO: check
-          List.forall2(tparams1, tparams2)((p1, p2) =>
-            p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&
-          res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh)
-        })
       // case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
+      //   (tparams1.length == tparams2.length && {
+      //     //@M for an example of why we need to generate fresh symbols,         see neg/tcpoly_ticket2101.scala
+      //     val tpsFresh = cloneSymbols(tparams1) // @M         cloneSymbols(tparams2) should be equivalent -- TODO: check
+      //     val tpsCheckNew = List.forall2(tparams1, tparams2)((p1, p2) =>
+      //       p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) 
+      //     val tpsCheckOld = List.forall2(tparams1, tparams2)((p1, p2) => 
+      //       p2.info.substSym(tparams2, tparams1) <:< p1.info)
+      //     val resCheckNew = res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh)
+      //     val resCheckOld = res1 <:< res2.substSym(tparams2, tparams1)
+      //     
+      //     if((tpsCheckNew && resCheckNew) != (tpsCheckOld && resCheckOld))
+      //       println("PT<: "+(debugString(tp1), debugString(tp2), tpsCheckNew,tpsCheckOld,resCheckNew,resCheckOld))
+      //     
+      //     tpsCheckNew && resCheckNew
+      //   })
+
+      case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => 
+        (tparams1.length == tparams2.length && {
+         //@M for an example of why we need to generate fresh symbols,         see neg/tcpoly_ticket2101.scala
+         var tpsFresh = cloneSymbols(tparams1) // @M         cloneSymbols(tparams2) should be equivalent -- TODO: check
+         // val tpsFresh = tparams1 map (_.cloneSymbol)
+         // for (tpFresh <- tpsFresh) tpFresh.setInfo(tpFresh.info.substSym(tparams1, tpsFresh))
+         // if(!tparams1.isEmpty) {
+         //    println("PT<: "+(tparams1.head.owner, debugString(tp1), debugString(tp2)))
+         //    var stack = (new Exception()).getStackTrace()
+         //    stack = stack.drop(Math.min(2, stack.length))
+         //    println(stack.take(Math.min(10, stack.length)).map{el => el.getMethodName +"("+ el.getFileName +":"+ el.getLineNumber +")"}.mkString(";"))
+         // }
+         
+         markerPTSubType
+         
+         (List.forall2(tpsFresh, tparams2)((p1, p2) => 
+          p2.info.substSym(tparams2, tpsFresh) <:< p1.info /*==p1.info.substSym(tparams1, tpsFresh)*/) &&
+  
+         res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh))
+         
+        })
+         
+         // (List.forall2(tparams1, tparams2)((p1, p2) => 
+         //  p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&
+         //   
+         // res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh))})
+
+
+      // case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => 
       //   (tparams1.length == tparams2.length &&
       //    List.forall2(tparams1, tparams2) 
       //      ((p1, p2) => p2.info.substSym(tparams2, tparams1) <:< p1.info) &&
