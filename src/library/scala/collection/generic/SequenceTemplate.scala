@@ -283,11 +283,12 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
    * @see String.startsWith
    */
   def startsWith[B](that: Sequence[B], offset: Int): Boolean = {  
-    val i = this.iterator.drop(offset)
+    val i = this.iterator drop offset
     val j = that.iterator
-    while (j.hasNext && i.hasNext) {
-      if (i.next != j.next) return false
-    }
+    while (j.hasNext && i.hasNext)
+      if (i.next != j.next)
+        return false
+
     !j.hasNext
   }
 
@@ -305,7 +306,10 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
   def endsWith[B](that: Sequence[B]): Boolean = {
     val i = this.iterator.drop(length - that.length)
     val j = that.iterator
-    while (i.hasNext && j.hasNext && i.next == j.next) ()
+    while (i.hasNext && j.hasNext)
+      if (i.next != j.next)
+        return false
+    
     !j.hasNext
   }
 
@@ -479,7 +483,10 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
     case that1: Sequence[a] =>
       val these = this.iterator
       val those = that1.iterator
-      while (these.hasNext && those.hasNext && these.next() == those.next()) {}
+      while (these.hasNext && those.hasNext)
+        if (these.next() != those.next())
+          return false
+      
       !these.hasNext && !those.hasNext
     case _ =>
       false
@@ -506,7 +513,10 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
   def equalsWith[B](that: Sequence[B])(f: (A,B) => Boolean): Boolean = {
     val i = this.iterator
     val j = that.iterator
-    while (i.hasNext && j.hasNext && f(i.next, j.next)) ()
+    while (i.hasNext && j.hasNext)
+      if (!f(i.next, j.next))
+        return false
+    
     !i.hasNext && !j.hasNext
   }
 

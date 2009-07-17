@@ -169,9 +169,11 @@ abstract class TreeBuilder {
                 Modifiers(FINAL), x, Nil,
                 Template(parents, self, NoMods, List(Nil), argss, stats, cpos.toSynthetic))
             }),
-          New(
-            Ident(x) setPos npos.toSynthetic,
-            List(Nil)) setPos npos
+          atPos(npos) {
+            New(
+              Ident(x) setPos npos.toSynthetic,
+              List(Nil))
+          }
         )
       }
     }
@@ -318,7 +320,7 @@ abstract class TreeBuilder {
      */
     def makeCombination(pos: Position, meth: Name, qual: Tree, pat: Tree, body: Tree): Tree = 
       Apply(Select(qual, meth) setPos qual.pos, List(makeClosure(pos, pat, body))) setPos pos
-
+    
     /** Optionally, if pattern is a `Bind`, the bound name, otherwise None.
      */
     def patternVar(pat: Tree): Option[Name] = pat match {
@@ -352,7 +354,7 @@ abstract class TreeBuilder {
                         makeFor(mapName, flatMapName, rest, body))
       case ValFrom(pos, pat, rhs) :: Filter(_, test) :: rest =>
         makeFor(mapName, flatMapName,
-                ValFrom(pos, pat, makeCombination(closurePos(pos), nme.filter, rhs, pat.syntheticDuplicate, test)) :: rest,
+                ValFrom(pos, pat, makeCombination(rhs.pos union test.pos, nme.filter, rhs, pat.syntheticDuplicate, test)) :: rest,
                 body)
       case ValFrom(pos, pat, rhs) :: rest =>
         val valeqs = rest.take(definitions.MaxTupleArity - 1).takeWhile(_.isInstanceOf[ValEq]);

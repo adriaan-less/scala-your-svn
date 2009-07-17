@@ -11,10 +11,9 @@
 package scala.actors
 
 import scala.compat.Platform
+import scala.util.control.ControlException
 import java.util.{Timer, TimerTask}
 import java.util.concurrent.ExecutionException
-
-import forkjoin.ForkJoinPool
 
 /**
  * The <code>Actor</code> object provides functions for the definition of
@@ -644,7 +643,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       scheduler execute task
     }
 
-  class ActorBlocker(timeout: Long) extends ForkJoinPool.ManagedBlocker {
+  class ActorBlocker(timeout: Long) extends ManagedBlocker {
     def block() = {
       if (timeout > 0)
         Actor.this.suspendActorFor(timeout)
@@ -883,7 +882,7 @@ case class Exit(from: AbstractActor, reason: AnyRef)
  * @version 0.9.8
  * @author Philipp Haller
  */
-private[actors] class SuspendActorException extends Throwable {
+private[actors] class SuspendActorException extends Throwable with ControlException {
   /*
    * For efficiency reasons we do not fill in
    * the execution stack trace.

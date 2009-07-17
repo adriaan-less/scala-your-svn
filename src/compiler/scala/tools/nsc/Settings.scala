@@ -785,7 +785,7 @@ trait ScalacSettings {
   val skip          = PhasesSetting     ("-Yskip", "Skip")
   val Xsqueeze      = ChoiceSetting     ("-Ysqueeze", "if on, creates compact code in matching", List("on","off"), "on") .
                                           withHelpSyntax("-Ysqueeze:<enabled>") 
-  val statistics    = BooleanSetting    ("-Ystatistics", "Print compiler statistics")
+  val Ystatistics   = BooleanSetting    ("-Ystatistics", "Print compiler statistics")
   val stop          = PhasesSetting     ("-Ystop", "Stop after phase")
   val refinementMethodDispatch =
                       ChoiceSetting     ("-Ystruct-dispatch", "Selects dispatch method for structural refinement method calls",
@@ -794,6 +794,7 @@ trait ScalacSettings {
   val Xwarndeadcode = BooleanSetting    ("-Ywarn-dead-code", "Emit warnings for dead code")
   val specialize    = BooleanSetting    ("-Yspecialize", "Specialize generic code on types.")
   val Yrangepos     = BooleanSetting    ("-Yrangepos", "Use range positions for syntax trees.")
+  val Yidedebug     = BooleanSetting    ("-Yide-debug", "Generate, validate and output trees using the interactive compiler.")
   
   /**
    * -P "Plugin" settings

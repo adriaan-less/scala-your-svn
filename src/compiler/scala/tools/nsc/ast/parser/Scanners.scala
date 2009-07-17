@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 // $Id: Scanners.scala 17285 2009-03-11 13:51:56Z rytz $
-
 package scala.tools.nsc.ast.parser
 
 import scala.tools.nsc.util._
@@ -329,7 +328,7 @@ trait Scanners {
           }
         case '\'' =>
           nextChar()
-          if (isIdentifierStart(ch) || '0' <= ch && ch <= '9')
+          if (isIdentifierStart(ch))
             charLitOr(getIdentRest)
           else if (isSpecial(ch))
             charLitOr(getOperatorRest)
@@ -866,7 +865,7 @@ trait Scanners {
   protected def enterKeyword(n: Name, tokenId: Int) {
     while (tokenId >= keyName.length) {
       val newTokName = new Array[Name](keyName.length * 2)
-      Array.copy(keyName, 0, newTokName, 0, newTokName.length)
+      compat.Platform.arraycopy(keyName, 0, newTokName, 0, newTokName.length)
       keyName = newTokName
     }
     keyName(tokenId) = n

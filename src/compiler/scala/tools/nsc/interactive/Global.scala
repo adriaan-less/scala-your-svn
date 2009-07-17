@@ -4,6 +4,7 @@ import java.io.{ PrintWriter, StringWriter }
 
 import scala.collection.mutable.{LinkedHashMap, SynchronizedMap}
 import scala.concurrent.SyncVar
+import scala.util.control.ControlException
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.util.{SourceFile, Position, RangePosition, OffsetPosition, NoPosition, WorkScheduler}
 import scala.tools.nsc.reporters._
@@ -77,11 +78,19 @@ self =>
         throw new TyperResult(located)
       }
       val typerRun = currentTyperRun
-      pollForWork()
-      if (typerRun != currentTyperRun) {
-        integrateNew()
-        throw new FreshRunReq
-      }
+      
+      while(true) 
+        try {
+          pollForWork()
+          if (typerRun == currentTyperRun)
+            return
+            
+          integrateNew()
+          throw new FreshRunReq
+        } catch {
+          case ex : ValidateError => // Ignore, this will have been reported elsewhere
+          case t : Throwable => throw t
+        }
     }
   }
 
@@ -135,7 +144,7 @@ self =>
     treePrinters.create(pw).print(tree)
     pw.flush
     
-    val typed = new SyncVar[Either[Tree, Throwable]]
+    val typed = new Response[Tree]
     askTypeAt(pos, typed)
     val typ = typed.get.left.toOption match {
       case Some(tree) =>
@@ -144,10 +153,19 @@ self =>
         treePrinters.create(pw).print(tree)
         pw.flush
         sw.toString
-      case None => "<None>"
+      case None => "<None>"      
+    }
+
+    val completionResponse = new Response[List[Member]]
+    askCompletion(pos, completionResponse)
+    val completion = completionResponse.get.left.toOption match {
+      case Some(members) =>
+        members mkString "\n"
+      case None => "<None>"      
     }
     
-    source.content.view.drop(start).take(length).mkString+" : "+source.path+" ("+start+", "+end+")\n\nlocateTree:\n"+sw.toString+"\n\naskTypeAt:\n"+typ
+    source.content.view.drop(start).take(length).mkString+" : "+source.path+" ("+start+", "+end+
+    ")\n\nlocateTree:\n"+sw.toString+"\n\naskTypeAt:\n"+typ+"\n\ncompletion:\n"+completion
   }
 
   // ----------------- The Background Runner Thread -----------------------
@@ -316,10 +334,13 @@ self =>
               s.tree.symbol
             )}
           }
+          println("completion at "+tree+" "+tree.tpe)
           val decls = tree.tpe.decls.toList map (member(_, false))
           val inherited = tree.tpe.members.toList diff decls map (member(_, true))
           val implicits = applicableViews(tree, context) flatMap implicitMembers
-          decls ::: inherited ::: implicits
+          def isVisible(m: Member) =
+            !(decls exists (_.shadows(m))) && !(inherited exists (_.shadows(m)))
+          decls ::: inherited ::: (implicits filter isVisible)
         case None =>
           throw new FatalError("no context found for "+pos)
       }
@@ -419,9 +440,8 @@ self =>
     }
   }
 
-  class TyperResult(val tree: Tree) extends Exception
-
+  class TyperResult(val tree: Tree) extends Exception with ControlException
+  
   assert(globalPhase.id == 0)
-
 }
 
