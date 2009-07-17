@@ -145,11 +145,7 @@ PROPERTIES
 
   <property
       name="scalacfork.jvmargs"
-      value="-Xms1024M -Xmx1024M -Xss2M -XX:MaxPermSize=256M"
-  />
-  <!--    value="-Xms512M -Xmx2048M -Xss1M -XX:MaxPermSize=256M 
-  get max heap usage: -Xaprof
-  yourkit: -agentpath:/Applications/YourKit_Java_Profiler_8.0.11.app/bin/mac/libyjpagent.jnilib" -->
+      value="-Xms1024M -Xmx1024M -Xss1M -XX:MaxPermSize=128M"/> <!-- find max heap usage: -Xaprof ; currently at 980M for locker.comp -->
 
   <property name="javac.cmd" value="${env.JAVA_HOME}/bin/javac"/>
 
