@@ -389,12 +389,8 @@ trait BasicBlocks {
     private def toInstructionArray(l: List[Instruction]): Array[Instruction] = {
       var array = new Array[Instruction](l.length)
       var i: Int = 0
-      var instr = l
-      while (instr ne Nil) {
-        array(i) = instr.head
-        i += 1
-        instr = instr.tail
-      }
+
+      l foreach (x => { array(i) = x; i += 1 })
       array
     }
 

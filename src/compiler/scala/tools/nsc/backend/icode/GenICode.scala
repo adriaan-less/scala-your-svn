@@ -61,7 +61,6 @@ abstract class GenICode extends SubComponent  {
       unit.icode.clear
       log("Generating icode for " + unit)
       gen(unit.body)
-      unit.body = null
       this.unit = null
     }
 
