@@ -10,29 +10,12 @@
 
 package scala.actors
 
-/**
- * This scheduler executes the tasks of an actor on a single
- * thread (the current thread).
- *
- * @version 0.9.18
- * @author Philipp Haller
- */
-class SingleThreadedScheduler extends IScheduler {
+trait AbstractReactor[-T] {
 
-  def execute(task: Runnable) {
-    task.run()
-  }
+  /**
+   * Sends <code>msg</code> to this
+   * <code>AbstractReactor</code> (asynchronous).
+   */
+  def !(msg: T): Unit
 
-  def execute(fun: => Unit): Unit =
-    execute(new Runnable {
-      def run() { fun }
-    })
-
-  def shutdown() {}
-
-  def newActor(actor: Reactor) {}
-  def terminated(actor: Reactor) {}
-  def onTerminate(actor: Reactor)(f: => Unit) {}
-
-  def isActive = true
 }

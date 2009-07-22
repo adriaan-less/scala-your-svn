@@ -640,10 +640,10 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       val task = new Reaction(this,
                               if (f eq null) continuation else f,
                               msg)
-      scheduler execute task
+      scheduler executeFromActor task
     }
 
-  class ActorBlocker(timeout: Long) extends ManagedBlocker {
+  private class ActorBlocker(timeout: Long) extends ManagedBlocker {
     def block() = {
       if (timeout > 0)
         Actor.this.suspendActorFor(timeout)

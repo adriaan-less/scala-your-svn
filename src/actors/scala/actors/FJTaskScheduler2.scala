@@ -18,6 +18,8 @@ import java.lang.Thread.State
 import scala.collection.Set
 import scala.collection.mutable.{ArrayBuffer, Buffer, HashMap, Queue, Stack, HashSet}
 
+import scheduler.{ThreadPoolConfig, QuitException}
+
 /**
  * FJTaskScheduler2
  *
@@ -118,6 +120,9 @@ class FJTaskScheduler2(val initCoreSize: Int, val maxSize: Int, daemon: Boolean)
    */
   def execute(task: Runnable): Unit =
     executor execute task
+
+  def executeFromActor(task: Runnable) =
+    execute(task)
 
   def execute(fun: => Unit): Unit =
     executor.execute(new Runnable {

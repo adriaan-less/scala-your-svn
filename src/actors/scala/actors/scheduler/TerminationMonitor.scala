@@ -8,11 +8,11 @@
 
 // $Id:$
 
-package scala.actors
+package scala.actors.scheduler
 
 import scala.collection.mutable.HashMap
 
-trait TerminationMonitor extends IScheduler {
+trait TerminationMonitor {
 
   private var pendingReactions = 0
   private val termHandlers = new HashMap[Reactor, () => Unit]
@@ -31,7 +31,7 @@ trait TerminationMonitor extends IScheduler {
    *  @param  a  the actor
    *  @param  f  the closure to be registered
    */
-  def onTerminate(a: Reactor)(f: => Unit) = synchronized {
+  def onTerminate(a: Reactor)(f: => Unit): Unit = synchronized {
     termHandlers += (a -> (() => f))
   }
 

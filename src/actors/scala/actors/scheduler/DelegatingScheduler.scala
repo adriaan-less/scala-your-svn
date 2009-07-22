@@ -6,7 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala.actors
+package scala.actors.scheduler
 
 /**
  * @author Erik Engbrecht
@@ -35,6 +35,8 @@ trait DelegatingScheduler extends IScheduler {
   def execute(fun: => Unit) = impl.execute(fun)
 
   def execute(task: Runnable) = impl.execute(task)
+
+  def executeFromActor(task: Runnable) = impl.executeFromActor(task)
 
   def shutdown(): Unit = synchronized {
     if (sched ne null) {
