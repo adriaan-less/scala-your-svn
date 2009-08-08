@@ -3863,9 +3863,19 @@ trait Typers { self: Analyzer =>
         error(tree.pos, restpe.prefix+" is not a legal prefix for a constructor")
       }
 
-      // @M: during uncurry, all types are normalized (after refchecks and before genicode)
-      result // must not normalize before refchecks, and thus must not do `result setType(restpe)`
-      // the original type must be ref-checked first, so that bounds of type args of type aliases are checked (see #2208)
+      if(result.tpe.typeSymbol eq AnyRefClass) {
+        //@M
+        // must expand the fake AnyRef type alias, because there is no "physical" definition of the type alias 
+        // hence, pickling should never reference AnyRef, as it will not be found during unpickling
+        // this special-casing worries me: why is it only necessary here? picklers runs before uncurry,
+        // so you'd expect many un-normalized TypeRef's to have been slipping through 
+        // however, unpickling worked fine until we stopped normalizing here -- so, hence the special case and the worrying
+        result setType(restpe) 
+      } else {
+        // @M: during uncurry, all types are normalized (after refchecks and before genicode)
+        result // must not normalize before refchecks, and thus must not do `result setType(restpe)`
+        // the original type must be ref-checked first, so that bounds of type args of type aliases are checked (see #2208)
+      }
     }
 
     def typedTypeConstructor(tree: Tree): Tree = typedTypeConstructor(tree, NOmode)
