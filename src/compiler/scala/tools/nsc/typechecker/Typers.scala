@@ -3863,18 +3863,19 @@ trait Typers { self: Analyzer =>
         error(tree.pos, restpe.prefix+" is not a legal prefix for a constructor")
       }
 
-      if(result.tpe.typeSymbol eq AnyRefClass) {
-        //@M
-        // must expand the fake AnyRef type alias, because there is no "physical" definition of the type alias 
-        // hence, pickling should never reference AnyRef, as it will not be found during unpickling
-        // this special-casing worries me: why is it only necessary here? picklers runs before uncurry,
-        // so you'd expect many un-normalized TypeRef's to have been slipping through 
-        // however, unpickling worked fine until we stopped normalizing here -- so, hence the special case and the worrying
+      //@M fix for #2208
+      // if there are no type arguments, normalization does not bypass any checks, so perform it to get rid of AnyRef
+      if(result.tpe.typeArgs.isEmpty) {  
+        // minimal check: if(result.tpe.typeSymbolDirect eq AnyRefClass) { 
+        // must expand the fake AnyRef type alias, because bootstrapping (init in Definitions) is not
+        // designed to deal with the cycles in the scala package (ScalaObject extends
+        // AnyRef, but the AnyRef type alias is entered after the scala package is
+        // loaded and completed, so that ScalaObject is unpickled while AnyRef is not
+        // yet defined )
         result setType(restpe) 
-      } else {
-        // @M: during uncurry, all types are normalized (after refchecks and before genicode)
-        result // must not normalize before refchecks, and thus must not do `result setType(restpe)`
-        // the original type must be ref-checked first, so that bounds of type args of type aliases are checked (see #2208)
+      } else { // must not normalize: type application must be (bounds-)checked (during RefChecks), see #2208
+        // during uncurry (after refchecks), all types are normalized
+        result
       }
     }
 
