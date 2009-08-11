@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import Math.MAX_INT
 import TraversableView.NoBuilder
@@ -67,7 +68,7 @@ self =>
     }
     override def stringPrefix = self.stringPrefix+"S"
     override def slice(from1: Int, until1: Int): This =
-      newSliced(from + (from1 max 0), from + (until1 max 0)).asInstanceOf[This]
+      newSliced(from1 max 0, until1 max 0).asInstanceOf[This]
   }
 
   trait Mapped[B] extends Transformed[B] {

@@ -1,8 +1,15 @@
-package scala.tools.nsc.interactive
+package scala.tools.nsc
+package interactive
 
 import scala.tools.nsc.util.{SourceFile, Position, NoPosition}
 
 trait RichCompilationUnits { self: Global =>
+
+  /** The status value of a unit that has not yet been loaded */
+  final val NotLoaded = -1
+
+  /** The status value of a unit that has not yet been typechecked */
+  final val JustParsed = 0
 
   class RichCompilationUnit(source: SourceFile) extends CompilationUnit(source) {
     
@@ -10,6 +17,15 @@ trait RichCompilationUnits { self: Global =>
      *  or else @see NotLoaded, JustParsed
      */
     var status: Int = NotLoaded
+
+    /** Unit has been parsed */
+    def isParsed: Boolean = status >= JustParsed
+
+    /** Unit has been typechecked, but maybe not in latest runs */
+    def isTypeChecked: Boolean = status > JustParsed
+
+    /** Unit has been typechecked and is up to date */
+    def isUpToDate: Boolean = status >= minRunId
     
     /** the current edit point offset */
     var editPoint: Int = -1

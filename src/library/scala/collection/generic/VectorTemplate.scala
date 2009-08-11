@@ -10,7 +10,8 @@
 
 package scala.collection.generic
 
-import mutable.ArrayBuffer
+import scala.collection.{BufferedIterator, Sequence, Vector}
+import scala.collection.mutable.ArrayBuffer
 
 /** Sequences that support O(1) element access and O(1) length computation.
  *  This class does not add any methods to Sequence but overrides several
@@ -26,7 +27,8 @@ trait VectorTemplate[+A, +This <: VectorTemplate[A, This] with Vector[A]] extend
 
   /** The iterator returned by the iterator method
    */
-  protected class Elements(start: Int, end: Int) extends scala.collection.BufferedIterator[A] {
+  @serializable @SerialVersionUID(1756321872811029277L)
+  protected class Elements(start: Int, end: Int) extends BufferedIterator[A] {
     private var i = start
 
     def hasNext: Boolean = i < end

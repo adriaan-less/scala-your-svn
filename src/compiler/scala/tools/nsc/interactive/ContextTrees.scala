@@ -1,11 +1,13 @@
-package scala.tools.nsc.interactive
+package scala.tools.nsc
+package interactive
 
 import collection.mutable.ArrayBuffer
-import nsc.util.Position
+import util.Position
 
 trait ContextTrees { self: Global =>
 
   type Context = analyzer.Context
+  lazy val NoContext = analyzer.NoContext
   type Contexts = ArrayBuffer[ContextTree]
 
   /** A context tree contains contexts that are indexed by positions.
@@ -23,7 +25,7 @@ trait ContextTrees { self: Global =>
     override def toString = "ContextTree("+pos+", "+children+")"
   }
 
-  /** Optionally return the smallest context that contains given `pos`, or None if none exists.
+  /** Optionally returns the smallest context that contains given `pos`, or None if none exists.
    */
   def locateContext(contexts: Contexts, pos: Position): Option[Context] = {
     if (contexts.isEmpty) None
@@ -48,14 +50,14 @@ trait ContextTrees { self: Global =>
       }
     }
   }
-    
+
   /** Insert a context at correct position into a buffer of context trees.
    *  If the `context` has a transparent position, add it multiple times
    *  at the positions of all its solid descendant trees.
    */
   def addContext(contexts: Contexts, context: Context) {
     val cpos = context.tree.pos
-    if (isTransparent(cpos))
+    if (cpos.isTransparent)
       for (t <- context.tree.children flatMap solidDescendants)
         addContext(contexts, context, t.pos)
     else
@@ -67,7 +69,7 @@ trait ContextTrees { self: Global =>
    */
   def addContext(contexts: Contexts, context: Context, cpos: Position) {
     try {
-      if (!cpos.isDefined || cpos.isSynthetic) {}
+      if (!cpos.isRange) {}
       else if (contexts.isEmpty) contexts += new ContextTree(cpos, context)
       else {
         val hi = contexts.length - 1

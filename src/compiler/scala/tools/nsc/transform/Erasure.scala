@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.transform
+package scala.tools.nsc
+package transform
 
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 import scala.collection.mutable.{HashMap,ListBuffer}
@@ -167,7 +168,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     def jsig(tp: Type): String = jsig2(false, List(), tp)
 
     def jsig2(toplevel: Boolean, tparams: List[Symbol], tp0: Type): String = {
-      val tp = tp0.normalize 
+      val tp = tp0.dealias 
       tp match {
         case st: SubType =>
           jsig2(toplevel, tparams, st.supertype)
@@ -710,7 +711,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           sym1 + ":" + atRefc(tpe1.toString) +
             (if (sym1.owner == root) "" else sym1.locationString) + " and\n" +
           sym2 + ":" + atRefc(tpe2.toString) +
-            (if (sym2.owner == root) " at line " + (sym2.pos).line.get else sym2.locationString) +
+            (if (sym2.owner == root) " at line " + (sym2.pos).line else sym2.locationString) +
           "\nhave same type" +
           (if (atRefc(tpe1 =:= tpe2)) "" else " after erasure: " + atPhase(phase.next)(sym1.tpe)))
         sym1.setInfo(ErrorType)

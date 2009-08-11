@@ -1,4 +1,5 @@
-package scala.tools.nsc.interactive
+package scala.tools.nsc
+package interactive
 
 import scala.collection._
 
@@ -6,7 +7,7 @@ import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
 import dependencies._
 
 import util.FakePos
-import nsc.io.AbstractFile
+import io.AbstractFile
 
 /** A simple build manager, using the default scalac dependency tracker.
  *  The transitive closure of all dependent files on a modified file
@@ -17,7 +18,13 @@ import nsc.io.AbstractFile
  */
 class SimpleBuildManager(val settings: Settings) extends BuildManager {
 
-  val compiler: nsc.Global = new nsc.Global(settings)  
+  class BuilderGlobal(settings: Settings) extends scala.tools.nsc.Global(settings)  {
+    def newRun() = new Run()
+  }
+  
+  protected def newCompiler(settings: Settings) = new BuilderGlobal(settings) 
+
+  val compiler = newCompiler(settings)
 
   /** Managed source files. */
   private val sources: mutable.Set[AbstractFile] = new mutable.HashSet[AbstractFile]
@@ -33,13 +40,18 @@ class SimpleBuildManager(val settings: Settings) extends BuildManager {
     sources --= files
   }
 
+  def update(added: Set[AbstractFile], removed: Set[AbstractFile]) {
+    removeFiles(removed)
+    update(added)
+  }
+
   /** The given files have been modified by the user. Recompile
    *  them and all files that depend on them. Only files that
    *  have been previously added as source files are recompiled.
    */
   def update(files: Set[AbstractFile]) {
     val deps = compiler.dependencyAnalysis.dependencies
-    val run = new compiler.Run()
+    val run = compiler.newRun()
     compiler.inform("compiling " + files)
 
     val toCompile = 
@@ -49,18 +61,23 @@ class SimpleBuildManager(val settings: Settings) extends BuildManager {
     compiler.inform("Recompiling " + 
                     (if(settings.debug.value) toCompile.mkString(", ")
                      else toCompile.size + " files"))
+    
+    buildingFiles(toCompile)
 
     run.compileFiles(files.toList)
   }
 
   /** Load saved dependency information. */
-  def loadFrom(file: AbstractFile) {
-    compiler.dependencyAnalysis.loadFrom(file)
+  def loadFrom(file: AbstractFile, toFile: String => AbstractFile) : Boolean = {
+    val success = compiler.dependencyAnalysis.loadFrom(file, toFile)
+    if (success)
+      sources ++= compiler.dependencyAnalysis.managedFiles
+    success
   }
   
   /** Save dependency information to `file'. */
-  def saveTo(file: AbstractFile) {
+  def saveTo(file: AbstractFile, fromFile: AbstractFile => String) {
     compiler.dependencyAnalysis.dependenciesFile = file
-    compiler.dependencyAnalysis.saveDependencies()
+    compiler.dependencyAnalysis.saveDependencies(fromFile)
   }
 }

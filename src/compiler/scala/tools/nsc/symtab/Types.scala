@@ -4,7 +4,8 @@
  */
 // 
 
-package scala.tools.nsc.symtab
+package scala.tools.nsc
+package symtab
 
 import scala.collection.immutable
 import scala.collection.mutable.{ListBuffer, HashMap, WeakHashMap}
@@ -190,6 +191,7 @@ trait Types {
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]) = underlying.instantiateTypeParams(formals, actuals)
     override def skolemizeExistential(owner: Symbol, origin: AnyRef) = underlying.skolemizeExistential(owner, origin)
     override def normalize = maybeRewrap(underlying.normalize)
+    override def dealias = maybeRewrap(underlying.dealias)
     override def cloneInfo(owner: Symbol) = maybeRewrap(underlying.cloneInfo(owner))
     override def prefixString = underlying.prefixString
     override def isComplete = underlying.isComplete
@@ -346,6 +348,9 @@ trait Types {
     
     /** Reduce to beta eta-long normal form. Expands type aliases and converts higher-kinded TypeRef's to PolyTypes. @M */
     def normalize = this // @MAT
+    
+    /** Expands type aliases. */
+    def dealias = this
     
     /** Is this type produced as a repair for an error? */
     def isError: Boolean = typeSymbol.isError || termSymbol.isError
@@ -1323,6 +1328,8 @@ trait Types {
       for ((from, targets) <- refs(Expansive).iterator)
         for (target <- targets) {
           var thatInfo = classInfo(target)
+          if (thatInfo.state != Initialized) 
+            change = change | thatInfo.propagate()
           addRefs(Expansive, from, thatInfo.getRefs(NonExpansive, target))
         }
       change = change || refs(0) != lastRefs(0) || refs(1) != lastRefs(1)
@@ -1489,6 +1496,13 @@ A type's typeSymbol should never be inspected directly.
     private def argsMaybeDummy = if (isHigherKinded) higherKindedArgs else args 
 
     private var normalized: Type = null
+
+    override def dealias: Type = 
+      if (sym.isAliasType && sym.info.typeParams.length == args.length) {
+        val xform = transform(sym.info.resultType)
+        assert(xform ne this, this)
+        xform.dealias
+      } else this
 
     def normalize0: Type = 
       if (sym.isAliasType) { // beta-reduce 
@@ -2550,7 +2564,6 @@ A type's typeSymbol should never be inspected directly.
         newAnnots
     }
 
-
     def mapOver(annot: AnnotationInfo): Option[AnnotationInfo] = {
       val AnnotationInfo(atp, args, assocs) = annot
 
@@ -2824,6 +2837,7 @@ A type's typeSymbol should never be inspected directly.
 
   /** A base class to compute all substitutions */
   abstract class SubstMap[T](from: List[Symbol], to: List[T]) extends TypeMap {
+
     /** Are `sym' and `sym1' the same.
      *  Can be tuned by subclasses.
      */
@@ -2950,20 +2964,16 @@ A type's typeSymbol should never be inspected directly.
       object trans extends TypeMapTransformer {
         override def transform(tree: Tree) = 
           tree match {
-            case tree@Ident(_) if from contains tree.symbol =>
+            case Ident(name) if from contains tree.symbol =>
               val totpe = to(from.indexOf(tree.symbol))
-              if (!totpe.isStable) {
-                giveup()
-              } else {
-                tree.duplicate.setType(totpe)
-              }
+              if (!totpe.isStable) giveup()
+              else Ident(name).setPos(tree.pos).setSymbol(tree.symbol).setType(totpe)
 
             case _ => super.transform(tree)
           }
       }
       trans.transform(tree)
-      }
-
+    }
 
   }
 
@@ -3036,7 +3046,7 @@ A type's typeSymbol should never be inspected directly.
       object treeTrans extends TypeMapTransformer {
         override def transform(tree: Tree): Tree =
           tree match {
-            case tree@Ident(name) =>
+            case Ident(name) =>
               tree.tpe.withoutAnnotations match {
                 case DeBruijnIndex(level, pid) =>
                   if (level == 1) {
@@ -3049,9 +3059,12 @@ A type's typeSymbol should never be inspected directly.
                        setType typeRef(NoPrefix, sym, Nil))
                     }
                   } else
-                    tree.duplicate.setType(
-                      DeBruijnIndex(level-1, pid))
-                case _ => super.transform(tree)
+                    Ident(name)
+                      .setPos(tree.pos)
+                      .setSymbol(tree.symbol)
+                      .setType(DeBruijnIndex(level-1, pid))
+                case _ => 
+                  super.transform(tree)
 
               }
             case _ => super.transform(tree)

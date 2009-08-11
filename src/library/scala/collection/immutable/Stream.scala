@@ -11,8 +11,8 @@
 
 package scala.collection.immutable
 
-import mutable.ListBuffer
-import generic._
+import scala.collection.mutable.ListBuffer
+import scala.collection.generic._
 
 /**
  * <p>The class <code>Stream</code> implements lazy lists where elements
@@ -242,7 +242,8 @@ self =>
    *  @return the <code>n</code> first elements of this stream.
    */
   override def take(n: Int): Stream[A] =
-    if (n <= 0 || isEmpty) Stream.Empty else new Stream.Cons(head, tail take (n-1))
+    if (n <= 0 || isEmpty) Stream.Empty
+    else new Stream.Cons(head, if (n == 1) Stream.empty else tail take (n-1))
 
   /** A substream starting at index `from`
    *  and extending up to (but not including) index `until`.
@@ -447,9 +448,9 @@ object Stream extends SequenceFactory[Stream] {
    *  @param f     the function that's repeatedly applied
    *  @return      the stream returning the infinite sequence of values `start, f(start), f(f(start)), ...`
    */
-  def iterate(start: Int)(f: Int => Int): Stream[Int] = new Cons(start, iterate(f(start))(f))
+  def iterate[A](start: A)(f: A => A): Stream[A] = new Cons(start, iterate(f(start))(f))
 
-  override def iterate(start: Int, len: Int)(f: Int => Int): Stream[Int] =
+  override def iterate[A](start: A, len: Int)(f: A => A): Stream[A] =
     iterate(start)(f) take len
 
   /**
@@ -475,10 +476,10 @@ object Stream extends SequenceFactory[Stream] {
   /**
    * Create an infinite stream containing the given element expression (which is computed for each
    * occurrence)
+   *
    * @param elem the element composing the resulting stream
-   * @return the stream containing an inifinite number of elem
+   * @return the stream containing an infinite number of elem
    */
-  @deprecated("use `fill' instead")
   def continually[A](elem: => A): Stream[A] = new Cons(elem, continually(elem))
 
   override def fill[A](n: Int)(elem: => A): Stream[A] = 
@@ -524,14 +525,14 @@ object Stream extends SequenceFactory[Stream] {
   @deprecated("use `iterate' instead.")
   def range(start: Int, end: Int, step: Int => Int): Stream[Int] =
     iterate(start, end - start)(step)
-   
+
   /**
    * Create an infinite stream containing the given element.
    *
    * @param elem the element composing the resulting stream
-   * @return the stream containing an inifinite number of elem
+   * @return the stream containing an infinite number of elem
    */
-  @deprecated("use fill(elem) instead")
+  @deprecated("use `continually' instead")
   def const[A](elem: A): Stream[A] = cons(elem, const(elem))
 
   /** Create a stream containing several copies of an element.

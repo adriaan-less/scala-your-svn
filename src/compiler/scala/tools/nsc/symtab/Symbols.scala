@@ -5,7 +5,8 @@
 // $Id$
 
 
-package scala.tools.nsc.symtab
+package scala.tools.nsc
+package symtab
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.Map
@@ -247,7 +248,7 @@ trait Symbols {
       var cnt = 0
       def freshName() = { cnt += 1; newTermName("x$" + cnt) }
       def param(tp: Type) =
-        newValueParameter(owner.pos, freshName()).setFlag(SYNTHETIC).setInfo(tp)
+        newValueParameter(owner.pos.focus, freshName()).setFlag(SYNTHETIC).setInfo(tp)
       argtypess map (_.map(param))
     }
     
@@ -620,6 +621,12 @@ trait Symbols {
     final def owner_=(owner: Symbol) { rawowner = owner }
 
     def ownerChain: List[Symbol] = this :: owner.ownerChain
+
+    def ownersIterator: Iterator[Symbol] = new Iterator[Symbol] {
+      private var current = Symbol.this
+      def hasNext = current ne NoSymbol
+      def next = { val r = current; current = current.owner; r }
+    }
 
     // same as ownerChain contains sym, but more efficient
     def hasTransOwner(sym: Symbol) = {
@@ -1403,7 +1410,7 @@ trait Symbols {
         if (settings.debug.value) "package class" else "package"
       else if (isModuleClass) 
         if (settings.debug.value) "singleton class" else "object"
-      else if (isAnonymousClass) "template"
+      else if (isAnonymousClass) "anonymous class"
       else if (isRefinementClass) ""
       else if (isTrait) "trait"
       else if (isClass) "class"
@@ -1868,6 +1875,7 @@ trait Symbols {
     override def owner: Symbol = throw new Error("no-symbol does not have owner")
     override def sourceFile: AbstractFile = null
     override def ownerChain: List[Symbol] = List()
+    override def ownersIterator: Iterator[Symbol] = Iterator.empty
     override def alternatives: List[Symbol] = List()
     override def reset(completer: Type) {}
     override def info: Type = NoType

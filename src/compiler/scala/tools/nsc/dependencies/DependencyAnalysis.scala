@@ -1,6 +1,9 @@
-package scala.tools.nsc.dependencies;
+package scala.tools.nsc
+package dependencies;
 import util.SourceFile;
-import nsc.io.AbstractFile
+import io.AbstractFile
+import collection._
+import symtab.Flags
 
 trait DependencyAnalysis extends SubComponent with Files {
   import global._
@@ -35,23 +38,43 @@ trait DependencyAnalysis extends SubComponent with Files {
 
   var dependencies = newDeps
 
+  def managedFiles = dependencies.dependencies.keySet
+  
+  /** Top level definitions per source file. */
+  val definitions: mutable.Map[AbstractFile, List[Symbol]] =
+    new mutable.HashMap[AbstractFile, List[Symbol]] {
+      override def default(f : AbstractFile) = Nil
+  }
+  
+  /** External references used by source file. */
+  val references: mutable.Map[AbstractFile, immutable.Set[String]] = 
+    new mutable.HashMap[AbstractFile, immutable.Set[String]] {
+      override def default(f : AbstractFile) = immutable.Set()
+    }
+
   /** Write dependencies to the current file. */
-  def saveDependencies() = 
+  def saveDependencies(fromFile: AbstractFile => String) = 
     if(dependenciesFile.isDefined)
-      dependencies.writeTo(dependenciesFile.get)
+      dependencies.writeTo(dependenciesFile.get, fromFile)
 
   /** Load dependencies from the given file and save the file reference for
    *  future saves.
    */
-  def loadFrom(f: AbstractFile) {
+  def loadFrom(f: AbstractFile, toFile: String => AbstractFile) : Boolean = {
     dependenciesFile = f
-    val fd = FileDependencies.readFrom(f);
-    dependencies = if (fd.classpath != classpath) {
-      if(settings.debug.value){
-        println("Classpath has changed. Nuking dependencies");
-      }
-      newDeps
-    } else fd    
+    FileDependencies.readFrom(f, toFile) match {
+      case Some(fd) =>      
+        val success = fd.classpath == classpath
+        dependencies = if (success) fd else {
+          if(settings.debug.value){
+            println("Classpath has changed. Nuking dependencies");
+          }
+          newDeps
+        }
+        
+        success
+      case None => false
+    }
   }
 
   def filter(files : List[SourceFile]) : List[SourceFile] = 
@@ -65,7 +88,7 @@ trait DependencyAnalysis extends SubComponent with Files {
     else {
       val (direct, indirect) = dependencies.invalidatedFiles(maxDepth);  
       val filtered = files.filter(x => {
-        val f = x.path.absolute;
+        val f = x.file.absolute
         direct(f) || indirect(f) || !dependencies.containsFile(f);
       })
       filtered match {
@@ -87,13 +110,46 @@ trait DependencyAnalysis extends SubComponent with Files {
       if (f != null){
         val source: AbstractFile = unit.source.file;
         for (d <- unit.icode){
-          dependencies.emits(source, nameToFile(unit.source.file, d.toString))
+          val name = d.symbol match {
+            case _ : ModuleClassSymbol => d.toString+"$"
+            case _ => d.toString
+          }
+          dependencies.emits(source, nameToFile(unit.source.file, name))
         }
        
         for (d <- unit.depends; if (d.sourceFile != null)){
           dependencies.depends(source, d.sourceFile);
         }
       }
+
+      // find all external references in this compilation unit
+      val file = unit.source.file
+      references += file -> immutable.Set.empty[String]
+
+      val buf = new mutable.ListBuffer[Symbol]
+
+      (new Traverser {
+        override def traverse(tree: Tree) {
+          if ((tree.symbol ne null)
+              && (tree.symbol != NoSymbol)
+              && (!tree.symbol.isPackage)
+              && (!tree.symbol.hasFlag(Flags.JAVA))
+              && ((tree.symbol.sourceFile eq null)
+                  || (tree.symbol.sourceFile.path != file.path))) {
+            references += file -> (references(file) + tree.symbol.fullNameString)
+          }
+          tree match {
+            case cdef: ClassDef if !cdef.symbol.isModuleClass && !cdef.symbol.hasFlag(Flags.PACKAGE) =>
+              buf += cdef.symbol
+              super.traverse(tree)
+
+            case _ =>
+              super.traverse(tree)
+          }
+        }
+      }).apply(unit.body)
+
+      definitions(unit.source.file) = buf.toList
     }
   }
 }

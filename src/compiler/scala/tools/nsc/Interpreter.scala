@@ -23,8 +23,8 @@ import reporters.{ ConsoleReporter, Reporter }
 import symtab.{ Flags, Names }
 import util.{ SourceFile, BatchSourceFile, ClassPath }
 import scala.util.NameTransformer
-import nsc.{ InterpreterResults => IR }
-import nsc.interpreter._
+import scala.tools.nsc.{ InterpreterResults => IR }
+import interpreter._
 import Interpreter._
 
 /** <p>
@@ -119,7 +119,7 @@ class Interpreter(val settings: Settings, out: PrintWriter)
   
   /** the compiler's classpath, as URL's */
   val compilerClasspath: List[URL] = {
-    import net.Utility.parseURL
+    import scala.net.Utility.parseURL
     val classpathPart = 
       ClassPath.expandPath(compiler.settings.classpath.value).map(s => new File(s).toURL)
       
