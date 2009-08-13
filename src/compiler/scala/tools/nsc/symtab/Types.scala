@@ -1505,11 +1505,6 @@ A type's typeSymbol should never be inspected directly.
       else 
         super.instantiateTypeParams(formals, actuals)
 
-    override def typeConstructor = rawTypeRef(pre, sym, List())
-    override def isHigherKinded = !typeParams.isEmpty   //@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
-
-    private def higherKindedArgs = typeParams map (_.typeConstructor) //@M must be .typeConstructor
-    private def argsMaybeDummy = if (isHigherKinded) higherKindedArgs else args 
 
     private var normalized: Type = null
 
@@ -1945,7 +1940,7 @@ A type's typeSymbol should never be inspected directly.
      *  This is not the case if `tp' contains type skolems whose
      *  skolemization level is higher than the level of this type variable.
      */
-    private def isRelatable(tp: Type): Boolean = {
+    def isRelatable(tp: Type): Boolean = {
       var ok = true
       for (t <- tp) {
         t.typeSymbol match {
@@ -1986,7 +1981,7 @@ A type's typeSymbol should never be inspected directly.
         } else // higher-kinded type var with same arity as tp
           (typeArgs.length == tp.typeArgs.length) && { 
             // register type constructor (the type without its type arguments) as bound
-            addBound(tp.typeConstructor)
+            addBound(tp.typeConstructor(false))
             // check subtyping of higher-order type vars
             // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
             checkArgs(tp.typeArgs, typeArgs, params)  
@@ -3771,28 +3766,6 @@ A type's typeSymbol should never be inspected directly.
     if (subsametypeRecursions == 0) undoLog = List()
   }
 
-//@M: dead code?
-  // def instTypeVar(tp: Type): Type = tp match {
-  //   case TypeRef(pre, sym, args) =>
-  //     typeRef(instTypeVar(pre), sym, args)
-  //   case SingleType(pre, sym) =>
-  //     singleType(instTypeVar(pre), sym)
-  //   case TypeVar(_, constr) =>
-  //     instTypeVar(constr.inst)
-  //   case _ =>
-  //     tp
-  // }
-
-  private def isSubArgs(tps1: List[Type], tps2: List[Type],
-                tparams: List[Symbol]): Boolean = (
-    tps1.isEmpty && tps2.isEmpty
-    ||
-    !tps1.isEmpty && !tps2.isEmpty &&
-    (tparams.head.isCovariant || (tps2.head <:< tps1.head)) &&
-    (tparams.head.isContravariant || (tps1.head <:< tps2.head)) &&
-    isSubArgs(tps1.tail, tps2.tail, tparams.tail)
-  )
-
   def isErrorOrWildcard(tp: Type) = (tp eq ErrorType) || (tp eq WildcardType)
 
   def isSingleType(tp: Type) = tp match {
@@ -3887,7 +3860,7 @@ A type's typeSymbol should never be inspected directly.
             secondTry
           case _ =>
             if (constr2.inst != NoType) tp1 <:< constr2.inst
-            else isRelatable(tv2, tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true }
+            else tv2.isRelatable(tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true }
         }
       case _ =>
         secondTry
@@ -3905,7 +3878,7 @@ A type's typeSymbol should never be inspected directly.
         tp1.bounds.lo <:< tp2
       case tv1 @ TypeVar(_, constr1) =>
         if (constr1.inst != NoType) constr1.inst <:< tp2 
-        else isRelatable(tv1, tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
+        else tv1.isRelatable(tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
       case ExistentialType(_, _) =>
         try { 
           skolemizationLevel += 1
