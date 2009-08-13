@@ -8,7 +8,8 @@
 
 // $Id$
 
-package scala.actors.remote
+package scala.actors
+package remote
 
 import scala.collection.mutable.{HashMap, HashSet}
 
@@ -26,7 +27,7 @@ case class Locator(node: Node, name: Symbol)
  * @version 0.9.17
  * @author Philipp Haller
  */
-class NetKernel(service: Service) {
+private[remote] class NetKernel(service: Service) {
 
   def sendToNode(node: Node, msg: AnyRef) = {
     val bytes = service.serializer.serialize(msg)

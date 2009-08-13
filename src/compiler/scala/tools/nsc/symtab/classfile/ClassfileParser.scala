@@ -4,7 +4,9 @@
  */
 // $Id$
 
-package scala.tools.nsc.symtab.classfile
+package scala.tools.nsc
+package symtab
+package classfile
 
 import java.io.IOException
 import java.lang.Integer.toHexString
@@ -13,7 +15,7 @@ import scala.collection.immutable.{Map, ListMap}
 import scala.collection.mutable.{ListBuffer, ArrayBuffer}
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.util.{Position, NoPosition}
- 
+import scala.annotation.switch
 
 /** This abstract class implements a class file parser.
  *
@@ -126,7 +128,7 @@ abstract class ClassfileParser {
       while (i < starts.length) {
         starts(i) = in.bp
         i += 1
-        in.nextByte match {
+        (in.nextByte.toInt: @switch) match {
           case CONSTANT_UTF8 | CONSTANT_UNICODE =>
             in.skip(in.nextChar)
           case CONSTANT_CLASS | CONSTANT_STRING =>

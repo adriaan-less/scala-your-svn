@@ -32,6 +32,7 @@ trait Product extends AnyRef {
    */
   def productArity: Int
 
+  /** An iterator that returns all fields of this product */
   def productIterator: Iterator[Any] = new Iterator[Any] {
     private var c: Int = 0
     private val cmax = productArity
@@ -49,4 +50,10 @@ trait Product extends AnyRef {
    */
   def productPrefix = ""
 
+  /**
+   *  An equality helper method to assist in maintaining reflexivity
+   *  in the face of subtyping.  For more, see
+   *    http://www.artima.com/lejava/articles/equality.html
+   */
+  def canEqual(other: Any) = true
 }

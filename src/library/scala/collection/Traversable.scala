@@ -11,16 +11,19 @@ package scala.collection
 
 // import immutable.{List, Stream, Nil}
 import mutable.{Buffer, ArrayBuffer, ListBuffer}
-import util.control.Breaks
+import scala.util.control.Breaks
 import generic._
 
-/** A template trait for traversable collections.
- * 
- *  Collection classes mixing in this trait provide a method
- *  <code>foreach</code> which traverses all the
- *  elements contained in the collection, applying a given procedure to each.
- *  They also provide a method `newBuilder`
- *  which creates a builder for collections of the same kind.
+/** <p>
+ *    A template trait for traversable collections.
+ *  </p>
+ *  <p>
+ *    Collection classes mixing in this trait provide a method
+ *    <code>foreach</code> which traverses all the
+ *    elements contained in the collection, applying a given procedure to each.
+ *    They also provide a method <code>newBuilder</code>
+ *    which creates a builder for collections of the same kind.
+ *  </p>
  *
  *  @author Martin Odersky
  *  @version 2.8

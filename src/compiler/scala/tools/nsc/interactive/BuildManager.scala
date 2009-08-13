@@ -1,4 +1,5 @@
-package scala.tools.nsc.interactive
+package scala.tools.nsc
+package interactive
 
 import scala.collection._
 
@@ -6,7 +7,7 @@ import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
 import util.FakePos
 
 import dependencies._
-import nsc.io.AbstractFile
+import io.AbstractFile
 
 trait BuildManager {
 
@@ -19,17 +20,19 @@ trait BuildManager {
   /** The given files have been modified by the user. Recompile
    *  them and their dependent files.
    */
-  def update(files: Set[AbstractFile])
+  def update(added: Set[AbstractFile], removed: Set[AbstractFile])
 
+  /** Notification that the supplied set of files is being built */
+  def buildingFiles(included: Set[AbstractFile]) {}
+  
   /** Load saved dependency information. */
-  def loadFrom(file: AbstractFile)
+  def loadFrom(file: AbstractFile, toFile: String => AbstractFile) : Boolean
   
   /** Save dependency information to `file'. */
-  def saveTo(file: AbstractFile)
+  def saveTo(file: AbstractFile, fromFile: AbstractFile => String)
 
-  def compiler: nsc.Global
+  def compiler: scala.tools.nsc.Global
 }
-
 
 
 /** Simple driver for testing the build manager. It presents
@@ -61,7 +64,7 @@ object BuildManagerTest extends EvalLoop {
     loop { line =>
       val args = List.fromString(line, ' ')
       val command = new CompilerCommand(args, new Settings(error), error, true)
-      buildManager.update(command.files)
+      buildManager.update(command.files, Set.empty)
     }
 
   }

@@ -4,9 +4,11 @@
  */
 // $Id: MarkupParsers.scala 17754 2009-05-18 10:54:00Z milessabin $
 
-package scala.tools.nsc.ast.parser
+package scala.tools.nsc
+package ast.parser
 
 import scala.collection.mutable
+import scala.util.control.ControlException
 import scala.tools.nsc.util.{Position,NoPosition,SourceFile,CharArrayReader}
 import scala.xml.{Text, TextBuffer}
 import SourceFile.{SU,LF}
@@ -18,15 +20,15 @@ import scala.annotation.switch
  *  @version 1.0
  */
 trait MarkupParsers {self: Parsers =>
-  case object MissingEndTagException extends RuntimeException {
+  case object MissingEndTagException extends RuntimeException with ControlException {
     override def getMessage = "start tag was here: "
   }
 
-  case object ConfusedAboutBracesException extends RuntimeException {
+  case object ConfusedAboutBracesException extends RuntimeException with ControlException {
     override def getMessage = " I encountered a '}' where I didn't expect one, maybe this tag isn't closed <"
   }
 
-  case object TruncatedXML extends RuntimeException {
+  case object TruncatedXML extends RuntimeException with ControlException {
     override def getMessage = "input ended while parsing XML"
   }
 

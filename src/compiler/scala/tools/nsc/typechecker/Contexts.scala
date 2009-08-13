@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 
 import symtab.Flags._
 import scala.tools.nsc.util.{Position,NoPosition}
@@ -390,8 +391,9 @@ trait Contexts { self: Analyzer =>
      */
     def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
 
-      /** Are we inside definition of `owner'? */
-      def accessWithin(owner: Symbol): Boolean = {
+      /** Are we inside definition of `sym'? */
+      def accessWithin(sym: Symbol): Boolean = this.owner.ownersIterator contains sym
+/*
         var c = this
         while (c != NoContext && c.owner != owner) {
           if (c.outer eq null) assert(false, "accessWithin(" + owner + ") " + c);//debug
@@ -400,7 +402,7 @@ trait Contexts { self: Analyzer =>
         }
         c != NoContext
       }
-
+*/
       /** Is `clazz' a subclass of an enclosing class? */
       def isSubClassOfEnclosing(clazz: Symbol): Boolean =
         enclosingSuperClassContext(clazz) != NoContext
@@ -571,6 +573,18 @@ trait Contexts { self: Analyzer =>
         selectors = selectors.tail
       }
       result
+    }
+
+    def allImportedSymbols: List[Symbol] = 
+      qual.tpe.members flatMap (transformImport(tree.selectors, _))
+
+    private def transformImport(selectors: List[(Name, Name)], sym: Symbol): List[Symbol] = selectors match {
+      case List() => List()
+      case List((nme.WILDCARD, _)) => List(sym)
+      case (from, to) :: _ if (from == sym.name) => 
+        if (to == nme.WILDCARD) List()
+        else { val sym1 = sym.cloneSymbol; sym1.name = to; List(sym1) }
+      case _ :: rest => transformImport(rest, sym)
     }
 
     override def toString() = tree.toString()

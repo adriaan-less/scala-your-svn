@@ -4,7 +4,8 @@
  */
 // $Id: SyntaxAnalyzer.scala 17080 2009-02-10 17:19:16Z rytz $
 
-package scala.tools.nsc.ast.parser
+package scala.tools.nsc
+package ast.parser
 
 import javac._
 
@@ -23,11 +24,8 @@ abstract class SyntaxAnalyzer extends SubComponent with Parsers with MarkupParse
       unit.body =     
         if (unit.source.file.name.endsWith(".java")) new JavaUnitParser(unit).parse()
         else if (!global.reporter.incompleteHandled) new UnitParser(unit).smartParse()        
-        else {
-          val result = new UnitParser(unit).parse()
-          if (global.settings.Yrangepos.value) global.validatePositions(unit.body)
-          result
-        }
+        else new UnitParser(unit).parse()
+      if (global.settings.Yrangepos.value) global.validatePositions(unit.body)
     }
   }
 }

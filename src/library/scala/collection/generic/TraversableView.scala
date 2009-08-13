@@ -10,11 +10,15 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import TraversableView.NoBuilder
 
-/** A base class for views of Traversable.
- *  Every subclass has to implenment the foreach method
+/** <p>
+ *    A base class for views of <a href="../Traversable.html"
+ *    target="ContentFrame"><code>Traversable<code></a>.<br/>
+ *    Every subclass has to implenment the <code>foreach</code> method.
+ *  </p>
  *
  *  @author Martin Odersky
  *  @version 2.8
@@ -29,6 +33,6 @@ object TraversableView {
     def result() = throw new UnsupportedOperationException("TraversableView.Builder.result")
     def clear() {}
   }
-  type Coll = TraversableView[_, _]
+  type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def builderFactory[A]: BuilderFactory[A, TraversableView[A, Traversable[_]], Coll] = new BuilderFactory[A, TraversableView[A, Traversable[_]], Coll] { def apply(from: Coll) = new NoBuilder }
 }

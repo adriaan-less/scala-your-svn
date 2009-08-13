@@ -10,42 +10,53 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 // import immutable.{List, Stream, Nil} //!!!
 import mutable.{Buffer, ArrayBuffer, ListBuffer}
 import annotation.experimental
 
-/** A template trait for traversable collections.
- *  This is a base trait of all kinds of Scala collections. It implements
- *  the behavior common to all collections, in terms of a method
- *  <code>foreach</code> with signature:<pre>
- *
- *   def foreach[U](f: Elem => U): Unit</pre>
- *
- *  Collection classes mixing in this trait provide a concrete 
- *  <code>foreach</code> method which traverses all the
- *  elements contained in the collection, applying a given function to each.
- *  They also need to provide a method `newBuilder`
- *  which creates a builder for collections of the same kind.
- *
- *  A traversable class might or might not have two properties: strictness and orderedness. 
- *  Neither is represented as a type.
- *
- *  The instances of a strict collection class have all their elements computed before
- *  they can be used as values. By contrast, instances of a non-strict collection class
- *  may defer computation of some of their elements until after the instance is available as a value.
- *  A typical example of a non-strict collection class is a scala.immutable.Stream.
- *  A more general class of examples are TraversableViews.
- *
- *  If a collection is an instance of an ordered collection class, traversing its elements
- *  with `foreach` will always visit elements in the same order, even for different
- *  runs of the program. If the class is not ordered, `foreach` can visit elements
- *  in different orders for different runs (but it will keep the same order in the same run).
- *  A typical example of a collection class which is not ordered is a `HashMap` of objects.
- *  The traversal order for hash maps will depend on the hash codes of its elements, and
- *  these hash codes might differ from one run to the next. By contrast, a `LinkedHashMap`
- *  is odered because it's `foreach` method visits elements in the order they were inserted
- *  into the `HashMap`.
+/** <p>
+ *    A template trait for traversable collections.
+ *    This is a base trait of all kinds of Scala collections. It implements
+ *    the behavior common to all collections, in terms of a method
+ *    <code>foreach</code> with signature:
+ *  </p><pre>
+ *   <b>def</b> foreach[U](f: Elem => U): Unit</pre>
+ *  <p>
+ *    Collection classes mixing in this trait provide a concrete 
+ *    <code>foreach</code> method which traverses all the
+ *    elements contained in the collection, applying a given function to each.
+ *    They also need to provide a method <code>newBuilder</code>
+ *    which creates a builder for collections of the same kind.
+ *  </p>
+ *  <p>
+ *    A traversable class might or might not have two properties: strictness
+ *    and orderedness. Neither is represented as a type.
+ *  </p>
+ *  <p>
+ *    The instances of a strict collection class have all their elements
+ *    computed before they can be used as values. By contrast, instances of
+ *    a non-strict collection class may defer computation of some of their
+ *    elements until after the instance is available as a value.
+ *    A typical example of a non-strict collection class is a
+ *    <a href="../immutable/Stream.html" target="ContentFrame">
+ *    <code>scala.collection.immutable.Stream</code></a>.
+ *    A more general class of examples are <code>TraversableViews</code>.
+ *  </p>
+ *  <p>
+ *    If a collection is an instance of an ordered collection class, traversing
+ *    its elements with <code>foreach</code> will always visit elements in the
+ *    same order, even for different runs of the program. If the class is not
+ *    ordered, <code>foreach</code> can visit elements in different orders for
+ *    different runs (but it will keep the same order in the same run).<br/>
+ *    A typical example of a collection class which is not ordered is a
+ *    <code>HashMap</code> of objects. The traversal order for hash maps will
+ *    depend on the hash codes of its elements, and these hash codes might
+ *    differ from one run to the next. By contrast, a <code>LinkedHashMap</code>
+ *    is odered because it's <code>foreach</code> method visits elements in the
+ *    order they were inserted into the <code>HashMap</code>.
+ *  </p>
  * 
  *  @author Martin Odersky
  *  @version 2.8
@@ -55,21 +66,31 @@ self =>
 
   import Traversable.breaks._
 
-  /** The proper way to do this would be to make `self` of type `This`. But unfortunately this
-   *  makes `this` to be of type `Traversable[A]`. Since `Traversable` is a subtype of
-   *  `TraversableTemplate`, all methods of `this` are taken from `Traversable`. In particular
-   *  the `newBuilder` method is taken from `Traversable`, which means it yields a `Traversable[A]`
-   *  instyead of a `This`.
-   *  
-   *  The right way out of this is to change Scala's member selection rules, so that
-   *  always the most specific type will be selected, no matter whether a member is abstract
-   *  or concrete. I tried to fake this by having a method `thisTemplate` which
-   *  returns this at the Template type. But unfortunately that does not work, because
-   *  we need to call `newBuilder` on this at the Template type (so that we get back a `This`)
-   *  and `newBuilder` has to be a proctected[this] because of variance.
-   *  The less appealing alternative is implemented now: Forget the self type and
-   *  introduce a `thisCollection` which is this seen as an instance of `This`.
-   *  We should go back to this once we have ameliorated Scala's member selection rules.
+  /** <p>
+   *    The proper way to do this would be to make <code>self</code> of type
+   *    <code>This</code>. But unfortunately this makes <b><code>this</code></b>
+   *    to be of type <code>Traversable[A]</code>. Since <code>Traversable</code>
+   *    is a subtype of <code>TraversableTemplate</code>, all methods of
+   *    <b><code>this</code></b> are taken from <code>Traversable</code>. In
+   *    particular the <code>newBuilder</code> method is taken from
+   *    <code>Traversable</code>, which means it yields a <code>Traversable[A]</code>
+   *    instead of a <code>This</code>.
+   *  </p>
+   *  <p>
+   *    The right way out of this is to change Scala's member selection rules,
+   *    so that always the most specific type will be selected, no matter
+   *    whether a member is abstract or concrete. I tried to fake this by
+   *    having a method <code>thisTemplate</code> which returns this at the
+   *    <code>Template</code> type. But unfortunately that does not work,
+   *    because we need to call <code>newBuilder</code> on this at the
+   *    <code>Template</code> type (so that we get back a <code>This</code>)
+   *    and <code>newBuilder</code> has to be a <b><code>protected[this]</code></b>
+   *    because of variance.<br/>
+   *    The less appealing alternative is implemented now: Forget the self type
+   *    and introduce a <code>thisCollection</code> which is this seen as an
+   *    instance of <code>This</code>. We should go back to this once we have
+   *    ameliorated Scala's member selection rules.
+   *  </p>
    */
   protected def thisCollection: This = this.asInstanceOf[This]
 
@@ -692,31 +713,8 @@ self =>
   
   /** Returns a set with all unique elements in this traversable object.
    */
-  def toSet[B >: A]: Set[B] = Set() ++ thisCollection
-
-  /** Sort the traversable according to the comparison function
-   *  <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>,
-   *  which should be true iff <code>e1</code> is smaller than
-   *  <code>e2</code>. 
-   *  The sort is stable. That is elements that are equal wrt `lt` appear in the
-   *  same order in the sorted traversable as in the original.
-   *
-   *  @param lt the comparison function
-   *  @return   a traversable sorted according to the comparison function
-   *            <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>.
-   *  @ex <pre>
-   *    List("Steve", "Tom", "John", "Bob")
-   *      .sort((e1, e2) => (e1 compareTo e2) &lt; 0) =
-   *    List("Bob", "John", "Steve", "Tom")</pre>
-   *  !!!
-  def sortWith(lt : (A,A) => Boolean): This = {
-    val arr = toArray
-    Array.sortWith(arr, lt)
-    val b = newBuilder[A]
-    for (x <- arr) b += x
-    b.result
-  }
-  */
+  @experimental
+  def toSet[B >: A]: immutable.Set[B] = immutable.Set() ++ thisCollection
 
   /** Returns a string representation of this traversable object. The resulting string
    *  begins with the string <code>start</code> and is finished by the string

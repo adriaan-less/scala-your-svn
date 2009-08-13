@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import mutable.{ListBuffer, HashMap}
 
@@ -283,11 +284,12 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
    * @see String.startsWith
    */
   def startsWith[B](that: Sequence[B], offset: Int): Boolean = {  
-    val i = this.iterator.drop(offset)
+    val i = this.iterator drop offset
     val j = that.iterator
-    while (j.hasNext && i.hasNext) {
-      if (i.next != j.next) return false
-    }
+    while (j.hasNext && i.hasNext)
+      if (i.next != j.next)
+        return false
+
     !j.hasNext
   }
 
@@ -305,23 +307,44 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
   def endsWith[B](that: Sequence[B]): Boolean = {
     val i = this.iterator.drop(length - that.length)
     val j = that.iterator
-    while (i.hasNext && j.hasNext && i.next == j.next) ()
+    while (i.hasNext && j.hasNext)
+      if (i.next != j.next)
+        return false
+    
     !j.hasNext
   }
 
   /** @return -1 if <code>that</code> not contained in this, otherwise the
-   *  index where <code>that</code> is contained
-   *  @see String.indexOf
+   *  first index where <code>that</code> is contained.
    */
-  def indexOfSeq[B >: A](that: Sequence[B]): Int = {
-    var i = 0
-    var s: Sequence[A] = thisCollection
-    while (!s.isEmpty && !(s startsWith that)) {
-      i += 1
-      s = s.tail
-    } 
-    if (!s.isEmpty || that.isEmpty) i else -1
-  }
+  def indexOfSeq[B >: A](that: Sequence[B]): Int = indexOfSeq(that, 0)
+  
+  def indexOfSeq[B >: A](that: Sequence[B], fromIndex: Int): Int = 
+    if (thisCollection.hasDefiniteSize && that.hasDefiniteSize)
+      indexOf_KMP(thisCollection, 0, length, that, 0, that.length, fromIndex)
+    else {
+      var i = fromIndex
+      var s: Sequence[A] = thisCollection drop i
+      while (!s.isEmpty) {
+        if (s startsWith that)
+          return i
+        
+        i += 1
+        s = s.tail
+      }
+      -1
+    }
+      
+  /** @return -1 if <code>that</code> not contained in this, otherwise the
+  *  last index where <code>that</code> is contained.
+  *  @note may not terminate for infinite-sized collections.
+  */
+  def lastIndexOfSeq[B >: A](that: Sequence[B]): Int = lastIndexOfSeq(that, that.length)
+
+  // since there's no way to find the last index in an infinite sequence,
+  // we just document it may not terminate and assume it will.
+  def lastIndexOfSeq[B >: A](that: Sequence[B], fromIndex: Int): Int = 
+    lastIndexOf_KMP(thisCollection, 0, length, that, 0, that.length, fromIndex)
 
   /** Tests if the given value <code>elem</code> is a member of this 
    *  sequence.
@@ -474,20 +497,113 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
   }
 
   override def view(from: Int, until: Int) = view.slice(from, until)
+    
+  // KMP implementation by paulp, based on the undoubtedly reliable wikipedia entry
+  private def KMP[B](S: Seq[B], W: Seq[B]): Option[Int] = {
+    // trivial cases
+    if (W.isEmpty) return Some(0)
+    else if (W drop 1 isEmpty) return (S indexOf W(0)) match {
+      case -1 => None
+      case x  => Some(x)
+    }
+    
+    val T: Array[Int] = {
+      val arr = new Array[Int](W.length)
+      var pos = 2
+      var cnd = 0
+      arr(0) = -1
+      arr(1) = 0
+      while (pos < W.length) {
+        if (W(pos - 1) == W(cnd)) {
+          arr(pos) = cnd + 1
+          pos += 1
+          cnd += 1
+        }
+        else if (cnd > 0) {
+          cnd = arr(cnd)
+        }
+        else {
+          arr(pos) = 0
+          pos += 1
+        }
+      }
+      arr
+    }
+    
+    var m, i = 0
+    def mi = m + i
+    
+    while (mi < S.length) {
+      if (W(i) == S(mi)) {
+        i += 1
+        if (i == W.length)
+          return Some(m)
+      }
+      else {
+        m = mi - T(i)
+        if (i > 0)
+          i = T(i)
+      }
+    }
+    None
+  }
+  private def indexOf_KMP[B](
+    source: Seq[B], sourceOffset: Int, sourceCount: Int,
+    target: Seq[B], targetOffset: Int, targetCount: Int,
+    fromIndex: Int): Int =
+      KMP(source.slice(sourceOffset, sourceCount) drop fromIndex, target.slice(targetOffset, targetCount)) match {
+        case None     => -1
+        case Some(x)  => x + fromIndex
+      }
+
+  private def lastIndexOf_KMP[B](
+    source: Seq[B], sourceOffset: Int, sourceCount: Int,
+    target: Seq[B], targetOffset: Int, targetCount: Int,
+    fromIndex: Int): Int = {
+      val src = (source.slice(sourceOffset, sourceCount) take fromIndex).reverse
+      val tgt = target.slice(targetOffset, targetCount).reverse
+
+      KMP(src, tgt) match {
+        case None     => -1
+        case Some(x)  => (src.length - tgt.length - x) + sourceOffset
+      }
+    }
 
   override def equals(that: Any): Boolean = that match {
-    case that1: Sequence[a] =>
-      val these = this.iterator
-      val those = that1.iterator
-      while (these.hasNext && those.hasNext && these.next() == those.next()) {}
-      !these.hasNext && !those.hasNext
-    case _ =>
-      false
+    case that: Sequence[_]  => this sameElements that
+    case _                  => false
   }
 
   /** Need to override string, so that it's not the Function1's string that gets mixed in.
    */
   override def toString = super[IterableTemplate].toString
+
+  /** Sort the sequence according to the comparison function
+   *  <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>,
+   *  which should be true iff <code>e1</code> is smaller than
+   *  <code>e2</code>.
+   *  The sort is stable. That is elements that are equal wrt `lt` appear in the
+   *  same order in the sorted sequence as in the original.
+   *
+   *  @param lt the comparison function
+   *  @return   a sequence sorted according to the comparison function
+   *            <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>.
+   *  @ex <pre>
+   *    List("Steve", "Tom", "John", "Bob")
+   *      .sortWith((e1, e2) => (e1 compareTo e2) &lt; 0) =
+   *    List("Bob", "John", "Steve", "Tom")</pre>
+   */
+  def sortWith(lt: (A, A) => Boolean): This = {
+    val arr = toArray
+    import java.util.{Arrays, Comparator}
+    Arrays.sort(arr, new Comparator[A] {
+      override def compare(a: A, b: A) =
+        if (lt(a, b)) -1 else if (lt(b, a)) 1 else 0
+    })
+    val b = newBuilder
+    for (x <- arr) b += x
+    b.result
+  }
 
   /** Returns index of the last element satisying a predicate, or -1. */
   @deprecated("use `lastIndexWhere' instead")
@@ -506,13 +622,16 @@ trait SequenceTemplate[+A, +This <: IterableTemplate[A, This] with Sequence[A]] 
   def equalsWith[B](that: Sequence[B])(f: (A,B) => Boolean): Boolean = {
     val i = this.iterator
     val j = that.iterator
-    while (i.hasNext && j.hasNext && f(i.next, j.next)) ()
+    while (i.hasNext && j.hasNext)
+      if (!f(i.next, j.next))
+        return false
+    
     !i.hasNext && !j.hasNext
   }
 
   /** Is <code>that</code> a slice in this? */
-  @deprecated("Should be repaced by <code>indexOf(that) != -1</code>")
-  def containsSlice[B](that: Sequence[B]): Boolean = indexOf(that) != -1 
+  @deprecated("Should be repaced by <code>indexOfSeq(that) != -1</code>")
+  def containsSlice[B](that: Sequence[B]): Boolean = indexOfSeq(that) != -1 
 
  /**
    * returns a projection that can be used to call non-strict <code>filter</code>,

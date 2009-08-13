@@ -10,7 +10,8 @@
 
 package scala.collection.generic
 
-import mutable.ArrayBuffer
+import scala.collection.{BufferedIterator, Sequence, Vector}
+import scala.collection.mutable.ArrayBuffer
 
 /** Sequences that support O(1) element access and O(1) length computation.
  *  This class does not add any methods to Sequence but overrides several
@@ -26,7 +27,8 @@ trait VectorTemplate[+A, +This <: VectorTemplate[A, This] with Vector[A]] extend
 
   /** The iterator returned by the iterator method
    */
-  protected class Elements(start: Int, end: Int) extends scala.collection.BufferedIterator[A] {
+  @serializable @SerialVersionUID(1756321872811029277L)
+  protected class Elements(start: Int, end: Int) extends BufferedIterator[A] {
     private var i = start
 
     def hasNext: Boolean = i < end
@@ -230,7 +232,10 @@ trait VectorTemplate[+A, +This <: VectorTemplate[A, This] with Vector[A]] extend
       var i = offset
       val thisLen = length
       val thatElems = that.iterator
-      while (i < thisLen && thatElems.hasNext && this(i) == thatElems.next()) {
+      while (i < thisLen && thatElems.hasNext) {
+        if (this(i) != thatElems.next())
+          return false
+        
         i += 1
       }
       !thatElems.hasNext
@@ -238,36 +243,25 @@ trait VectorTemplate[+A, +This <: VectorTemplate[A, This] with Vector[A]] extend
 
   override def endsWith[B](that: Sequence[B]): Boolean = that match {
     case that: Vector[_] =>
-      val thisLen = length
-      val thatLen = that.length
-      var i = thisLen - 1
-      var j = thatLen - 1
-      while (i >= 0 && j >= 0 && this(i) == that(j)) {
-        i -= 1
-        j -= 1
+      var i = length - 1
+      var j = that.length - 1
+      
+      (j <= i) && {
+        while (j >= 0) {
+          if (this(i) != that(j))
+            return false
+          i -= 1
+          j -= 1
+        }
+        true
       }
-      j == 0
     case _ =>
       super.endsWith(that)
   }
 
-  override def indexOfSeq[B >: A](that: Sequence[B]): Int = {
-    var i = 0
-    val last = length - that.length
-    while (i <= last && !startsWith(that, i)) i += 1
-    negLength(i)
-  }
-
   override def equals(that: Any): Boolean = that match {
-    case that1: Vector[a] =>
-      val len = this.length
-      len == that1.length && {
-        var i = 0
-        while (i < len && this(i) == that1(i)) i += 1
-        i == len
-      }
-    case _ =>
-      super.equals(that)
+    case that: Vector[_]  => this.length == that.length && startsWith(that, 0)
+    case _                => super.equals(that)
   }
 
   override def view = new VectorView[A, This] {

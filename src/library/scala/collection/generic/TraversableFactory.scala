@@ -10,6 +10,9 @@
 
 
 package scala.collection.generic
+import scala.collection._
+
+import scala.collection._
 
 /** A template for companion objects of Traversable and subclasses thereof.
  */
@@ -170,8 +173,8 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with TraversableClass[
    *  @param f     the function that's repeatedly applied
    *  @return      the iterable returning `len` values in the sequence `start, f(start), f(f(start)), ...`
    */
-  def iterate(start: Int, len: Int)(f: Int => Int): CC[Int] = {
-    val b = newBuilder[Int]
+  def iterate[A](start: A, len: Int)(f: A => A): CC[A] = {
+    val b = newBuilder[A]
     var acc = start
     var i = 0
     while (i < len) {

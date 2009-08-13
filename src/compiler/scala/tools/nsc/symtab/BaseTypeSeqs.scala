@@ -2,7 +2,8 @@
  * Copyright 2005-2009 LAMP/EPFL
  * @author  Martin Odersky
  */
-package scala.tools.nsc.symtab
+package scala.tools.nsc
+package symtab
 
 // todo implement in terms of BitSet
 import scala.collection.mutable.ListBuffer
@@ -91,7 +92,7 @@ trait BaseTypeSeqs {
 
     private def copy(head: Type, offset: Int): BaseTypeSeq = {
       val arr = new Array[Type](elems.length + offset)
-      Array.copy(elems, 0, arr, offset, elems.length)
+      compat.Platform.arraycopy(elems, 0, arr, offset, elems.length)
       arr(0) = head
       new BaseTypeSeq(parents, arr)
     }

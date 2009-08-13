@@ -4,9 +4,11 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 import scala.tools.nsc.util.{Position, NoPosition}
 import scala.collection.mutable.ListBuffer
+import scala.util.control.ControlException
 import symtab.Flags._
 
 /** This trait ...
@@ -76,7 +78,7 @@ trait Infer {
   //todo: remove comments around following privates; right now they cause an IllegalAccess
   // error when built with scalac
 
-  /*private*/ class NoInstance(msg: String) extends RuntimeException(msg)
+  /*private*/ class NoInstance(msg: String) extends RuntimeException(msg) with ControlException
 
   /*private*/ class DeferredNoInstance(getmsg: () => String) extends NoInstance("") {
     override def getMessage(): String = getmsg()

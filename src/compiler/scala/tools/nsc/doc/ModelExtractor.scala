@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.doc
+package scala.tools.nsc
+package doc
 
 import scala.collection.mutable
 import compat.Platform.{EOL => LINE_SEPARATOR}
@@ -50,7 +51,11 @@ trait ModelExtractor {
     }
 
   protected def decodeComment(comment0: String): Comment = {
-    val comment = comment0 // .substring("/**".length, comment0.length - "*/".length)
+    val comment = { // discard outmost comment delimiters if present
+      val begin = if (comment0 startsWith "/**") 3 else 0
+      val end = comment0.length - (if (comment0 endsWith "*/") 2 else 0)
+      comment0.substring(begin, end)
+    }
     val tok = new java.util.StringTokenizer(comment, LINE_SEPARATOR)
     val buf = new StringBuilder
     type AttrDescr = (String, String, StringBuilder)
@@ -415,7 +420,7 @@ trait ModelExtractor {
   import java.util.regex.Pattern
   // patterns for standard tags with 1 and 2 arguments
   private val pat1 = Pattern.compile(
-    "[ \t]*@(author|deprecated|pre|return|see|since|todo|version|ex|note)[ \t]*(.*)")
+    "[ \t]*@(author|deprecated|owner|pre|return|see|since|todo|version|ex|note)[ \t]*(.*)")
   private val pat2 = Pattern.compile(  
     "[ \t]*@(exception|param|throws)[ \t]+(\\p{Graph}*)[ \t]*(.*)")
 

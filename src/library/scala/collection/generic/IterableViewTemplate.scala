@@ -10,10 +10,12 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import TraversableView.NoBuilder
 
 /** A base class for views of Iterables.
+ *
  *  @author Martin Odersky
  *  @version 2.8
  */

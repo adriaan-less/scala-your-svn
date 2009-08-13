@@ -5,7 +5,8 @@
 
 // $Id$
 
-package scala.tools.nsc.backend.opt
+package scala.tools.nsc
+package backend.opt
 
 
 import scala.util.control.Breaks._
@@ -277,7 +278,7 @@ abstract class Inliners extends SubComponent {
 
 
     val tfa = new analysis.MethodTFA();
-    tfa.stat = settings.statistics.value
+    tfa.stat = settings.Ystatistics.value
 
     // how many times have we already inlined this method here?
     private val inlinedMethods: Map[Symbol, Int] = new HashMap[Symbol, Int] {
@@ -316,7 +317,7 @@ abstract class Inliners extends SubComponent {
                       concreteMethod = lookupImpl(concreteMethod, receiver)
                       if (settings.debug.value)
                         log("\tlooked up method: " + concreteMethod.fullNameString)
-                    } 
+                    }
 
                     if (shouldLoad(receiver, concreteMethod)) {
                       icodes.icode(receiver, true)

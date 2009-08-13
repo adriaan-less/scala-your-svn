@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 
 import symtab.Flags
 import symtab.Flags._
@@ -66,7 +67,7 @@ trait SyntheticMethods extends ast.TreeDSL {
       newSyntheticMethod(name, flags | OVERRIDE, tpeCons)
 
     def newSyntheticMethod(name: Name, flags: Int, tpeCons: Symbol => Type) = {
-      val method = clazz.newMethod(clazz.pos.toSynthetic, name) setFlag (flags | SYNTHETICMETH)
+      val method = clazz.newMethod(clazz.pos.focus, name) setFlag (flags | SYNTHETICMETH)
       method setInfo tpeCons(method)
       clazz.info.decls.enter(method).asInstanceOf[TermSymbol]
     }
@@ -118,7 +119,7 @@ trait SyntheticMethods extends ast.TreeDSL {
         
       typer typed {
         DEF(method) === {
-          Apply(gen.mkAttributedRef(target), This(clazz) :: (method ARGNAMES))
+          Apply(REF(target), This(clazz) :: (method ARGNAMES))
         }
       }
     }
@@ -140,6 +141,15 @@ trait SyntheticMethods extends ast.TreeDSL {
         }
       }
     }
+    
+    /** The canEqual method for case classes.
+     */
+    def canEqualMethod: Tree = {
+      val method  = syntheticMethod(nme.canEqual_, 0, makeTypeConstructor(List(AnyClass.tpe), BooleanClass.tpe))
+      val that    = method ARG 0
+      
+      typer typed (DEF(method) === (that IS_OBJ clazz.tpe))
+    }
 
     /** The equality method for case classes.  The argument is an Any,
      *  but because of boxing it will always be an Object, so a check
@@ -148,8 +158,8 @@ trait SyntheticMethods extends ast.TreeDSL {
      *   def equals(that: Any) = 
      *     (this eq that.asInstanceOf[AnyRef]) || 
      *     (that match {
-     *       case this.C(this.arg_1, ..., this.arg_n) => true
-     *       case _ => false
+     *       case x @ this.C(this.arg_1, ..., this.arg_n) => x canEqual this  
+     *       case _                                       => false
      *     })
      */
     def equalsClassMethod: Tree = {
@@ -159,7 +169,7 @@ trait SyntheticMethods extends ast.TreeDSL {
       
       // returns (Apply, Bind)
       def makeTrees(acc: Symbol, cpt: Type): (Tree, Bind) = {
-        val varName             = context.unit.fresh.newName(clazz.pos.toSynthetic, acc.name + "$")
+        val varName             = context.unit.fresh.newName(clazz.pos.focus, acc.name + "$")
         val (eqMethod, binding) =
           if (cpt.isVarargs)  (nme.sameElements, Star(WILD()))
           else                (nme.EQ          , WILD()      )
@@ -169,14 +179,22 @@ trait SyntheticMethods extends ast.TreeDSL {
       
       // Creates list of parameters and a guard for each
       val (guards, params) = List.map2(clazz.caseFieldAccessors, constrParamTypes)(makeTrees) unzip
+
+      // Verify with canEqual method before returning true.
+      def canEqualCheck() = {
+        val that: Tree              = typer typed ((method ARG 0) AS clazz.tpe)
+        val canEqualOther: Symbol   = clazz.info nonPrivateMember nme.canEqual_
+        
+        (that DOT canEqualOther)(This(clazz))
+      }
         
       // Pattern is classname applied to parameters, and guards are all logical and-ed
       val (guard, pat) = (AND(guards: _*), clazz.name.toTermName APPLY params)
-
+      
       localTyper typed {
         DEF(method) === {
           (This(clazz) ANY_EQ that) OR (that MATCH(
-            (CASE(pat) IF guard)  ==> TRUE        ,
+            (CASE(pat) IF guard)  ==> canEqualCheck()        ,
             DEFAULT               ==> FALSE
           ))
         }
@@ -191,15 +209,13 @@ trait SyntheticMethods extends ast.TreeDSL {
     def readResolveMethod: Tree = {
       // !!! the synthetic method "readResolve" should be private, but then it is renamed !!!
       val method = newSyntheticMethod(nme.readResolve, PROTECTED, makeNoArgConstructor(ObjectClass.tpe))
-      typer typed {
-        DEF(method) === gen.mkAttributedRef(clazz.sourceModule)
-      }
+      typer typed (DEF(method) === REF(clazz.sourceModule))
     }
 
     def newAccessorMethod(tree: Tree): Tree = tree match {
       case DefDef(_, _, _, _, _, rhs) =>
         var newAcc = tree.symbol.cloneSymbol
-        newAcc.name = context.unit.fresh.newName(tree.symbol.pos.toSynthetic, tree.symbol.name + "$")
+        newAcc.name = context.unit.fresh.newName(tree.symbol.pos.focus, tree.symbol.name + "$")
         newAcc setFlag SYNTHETIC resetFlag (ACCESSOR | PARAMACCESSOR | PRIVATE)
         newAcc = newAcc.owner.info.decls enter newAcc
         val result = typer typed { DEF(newAcc) === rhs.duplicate }
@@ -240,7 +256,8 @@ trait SyntheticMethods extends ast.TreeDSL {
           List(
             Product_productPrefix   -> (() => productPrefixMethod),
             Product_productArity    -> (() => productArityMethod(accessors.length)),
-            Product_productElement  -> (() => productElementMethod(accessors))
+            Product_productElement  -> (() => productElementMethod(accessors)),
+            Product_canEqual        -> (() => canEqualMethod)
           )
         }
 

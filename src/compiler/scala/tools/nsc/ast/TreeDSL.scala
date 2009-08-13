@@ -4,7 +4,8 @@
  * @author  Paul Phillips
  */
 
-package scala.tools.nsc.ast
+package scala.tools.nsc
+package ast
 
 /** A DSL for generating scala code.  The goal is that the
  *  code generating code should look a lot like the code it
@@ -27,6 +28,11 @@ trait TreeDSL {
     // on the partial, it is false.
     def cond[T](x: T)(f: PartialFunction[T, Boolean]) = (f isDefinedAt x) && f(x)
     
+    // Like cond, but transforms the value T => Some(U) if the pf is defined,
+    // or returns None if it is not.
+    def condOpt[T,U](x: T)(f: PartialFunction[T, U]): Option[U] =
+      if (f isDefinedAt x) Some(f(x)) else None
+    
     // Applies a function to a value and then returns the value.
     def applyAndReturn[T](f: T => Unit)(x: T): T = { f(x) ; x }
     
@@ -38,10 +44,7 @@ trait TreeDSL {
     
     object LIT extends (Any => Literal) {
       def apply(x: Any)   = Literal(Constant(x))
-      def unapply(x: Any) = x match { 
-        case Literal(Constant(value)) => Some(value)
-        case _                        => None
-      }
+      def unapply(x: Any) = condOpt(x) { case Literal(Constant(value)) => value }
     }
     
     // You might think these could all be vals, but empirically I have found that
@@ -84,6 +87,7 @@ trait TreeDSL {
       def ANY_EQ  (other: Tree)     = fn(target, nme.eq, toAnyRef(other))
       def ANY_==  (other: Tree)     = fn(target, Any_==, other)
       def ANY_>=  (other: Tree)     = fn(target, nme.GE, other)
+      def ANY_<=  (other: Tree)     = fn(target, nme.LE, other)
       def OBJ_!=  (other: Tree)     = fn(target, Object_ne, other)
       
       def INT_|   (other: Tree)     = fn(target, getMember(IntClass, nme.OR), other)
@@ -111,6 +115,8 @@ trait TreeDSL {
       
       /** Casting & type tests -- working our way toward understanding exactly
        *  what differs between the different forms of IS and AS.
+       *
+       *  See ticket #2168 for one illustration of AS vs. AS_ANY.
        */
       def AS(tpe: Type)       = TypeApply(Select(target, Any_asInstanceOf), List(TypeTree(tpe)))
       def AS_ANY(tpe: Type)   = gen.mkAsInstanceOf(target, tpe)

@@ -11,8 +11,8 @@
 
 package scala.collection.mutable
 
-import generic._
-// import immutable.{List, Nil, ::}
+import scala.collection.generic._
+import scala.collection.immutable
 
 /** A Buffer implementation back up by a list. It provides constant time
  *  prepend and append. Most other operations are linear.
@@ -279,7 +279,7 @@ final class ListBuffer[A]
 
   override def iterator = new Iterator[A] {
     var cursor: List[A] = null
-    def hasNext: Boolean = !start.isEmpty && cursor != last0
+    def hasNext: Boolean = !start.isEmpty && (cursor ne last0)
     def next(): A =
       if (!hasNext) {
         throw new NoSuchElementException("next on empty Iterator")

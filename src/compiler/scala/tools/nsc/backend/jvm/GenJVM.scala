@@ -5,7 +5,8 @@
 
 // $Id$
 
-package scala.tools.nsc.backend.jvm
+package scala.tools.nsc
+package backend.jvm
 
 import java.io.{DataOutputStream, File, OutputStream}
 import java.nio.ByteBuffer
@@ -37,8 +38,9 @@ abstract class GenJVM extends SubComponent {
 
   /** JVM code generation phase
    */
-  class JvmPhase(prev: Phase) extends StdPhase(prev) {
+  class JvmPhase(prev: Phase) extends ICodePhase(prev) {
 
+    def name = phaseName
     override def erasedTypes = true
     object codeGenerator extends BytecodeGenerator
 
@@ -47,11 +49,11 @@ abstract class GenJVM extends SubComponent {
       if (settings.Xdce.value)
         icodes.classes.retain { (sym: Symbol, cls: IClass) => !inliner.isClosureClass(sym) || deadCode.liveClosures(sym) } 
 
-      classes.values foreach codeGenerator.genClass
+      classes.values foreach apply
     }
 
-    override def apply(unit: CompilationUnit) {
-      abort("JVM works on icode classes, not on compilation units!")
+    override def apply(cls: IClass) {
+      codeGenerator.genClass(cls)
     }
   }
 
@@ -200,18 +202,19 @@ abstract class GenJVM extends SubComponent {
         }
       }
       else {
+        // it must be a top level class (name contains no $s)
+        def isCandidateForForwarders(sym: Symbol): Boolean =
+          atPhase (currentRun.picklerPhase.next) {
+            !(sym.name.toString contains '$') && (sym hasFlag Flags.MODULE) && !sym.isImplClass && !sym.isNestedClass
+          }
+        
         val lmoc = c.symbol.linkedModuleOfClass
         // add static forwarders if there are no name conflicts; see bugs #363 and #1735
         if (lmoc != NoSymbol && !c.symbol.hasFlag(Flags.INTERFACE)) {
-          // forwarders were creating many issues, see #1795 for instance; so for now
-          // they are only enabled if -Xforwarders is supplied to scalac...
-          if (settings.forwarders.value) {         
-            log("Adding forwarders to existing class " + c.symbol + " found in module " + lmoc)
+          if (isCandidateForForwarders(lmoc) && !settings.noForwarders.value) {
+            log("Adding forwarders to existing class '%s' found in module '%s'".format(c.symbol, lmoc))
             addForwarders(jclass, lmoc.moduleClass)
           }
-          // ...but we special case main so at least ticket #363 can continue to work.
-          // XXX we would like to, but doing so induces #1795 as surely as adding them all.
-          // else addForwarders(jclass, lmoc.moduleClass, _.name == nme.main)
         }
       }
         
@@ -784,8 +787,10 @@ abstract class GenJVM extends SubComponent {
       if (settings.debug.value)
         log("Dumping mirror class for object: " + module);
       
-      for (m <- module.info.nonPrivateMembers; if shouldForward(m) ; if cond(m))
+      for (m <- module.info.nonPrivateMembers; if shouldForward(m) ; if cond(m)) {
+        log("Adding static forwarder '%s' to '%s'".format(m, module))
         addForwarder(jclass, module, m)
+      }
     }
     
     /** Dump a mirror class for a top-level module. A mirror class is a class containing
@@ -1268,9 +1273,9 @@ abstract class GenJVM extends SubComponent {
 //        assert(instr.pos.source.isEmpty || instr.pos.source.get == (clasz.cunit.source), "sources don't match")
 //        val crtLine = instr.pos.line.get(lastLineNr);
         val crtLine = try {
-          (instr.pos).line.get
+          (instr.pos).line
         } catch {
-          case _: NoSuchElementException =>
+          case _: UnsupportedOperationException =>
             log("Warning: wrong position in: " + method)
             lastLineNr
         }
@@ -1438,7 +1443,7 @@ abstract class GenJVM extends SubComponent {
             log("Converting from: " + src + " to: " + dst);
           if (dst == BOOL) {
             Console.println("Illegal conversion at: " + clasz +
-                            " at: " + pos.source.get + ":" + pos.line.getOrElse(-1));
+                            " at: " + pos.source + ":" + pos.line);
           } else
             jcode.emitT2T(javaType(src), javaType(dst));
 

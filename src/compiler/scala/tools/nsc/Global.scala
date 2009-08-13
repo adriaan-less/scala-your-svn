@@ -31,11 +31,9 @@ import backend.jvm.GenJVM
 import backend.msil.GenMSIL
 import backend.opt.{Inliners, ClosureElimination, DeadCodeElimination}
 import backend.icode.analysis._
-import interactive._
 
 class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
                                                              with CompilationUnits
-                                                             with Positions
                                                              with Plugins
                                                              with PhaseAssembly
 {
@@ -103,6 +101,8 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     val global: Global.this.type = Global.this
   } with Statistics
 
+  util.Statistics.enabled = settings.Ystatistics.value
+
   /** Computing pairs of overriding/overridden symbols */
   object overridingPairs extends {
     val global: Global.this.type = Global.this
@@ -144,7 +144,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
 // ------------------ Reporting -------------------------------------
 
-  import nsc.util.NoPosition
+  import util.NoPosition
   def error(msg: String) = reporter.error(NoPosition, msg)
   def warning(msg: String) = reporter.warning(NoPosition, msg)
   def inform(msg: String) = Console.err.println(msg)
@@ -221,7 +221,27 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       case x => 
         val jfile = new java.io.File(x)
         if (!jfile.exists) jfile.createNewFile
-        else dependencyAnalysis.loadFrom(AbstractFile.getFile(jfile))
+        else {
+          // This logic moved here from scala.tools.nsc.dependencies.File.
+          // Note that it will trip an assertion in lookupPathUnchecked
+          // if the path being looked at is absolute.
+          
+          /** The directory where file lookup should start at. */
+          val rootDirectory: AbstractFile = {
+            AbstractFile.getDirectory(".")
+//             val roots = java.io.File.listRoots()
+//             assert(roots.length > 0)
+//             new PlainFile(roots(0))
+          }
+
+          def toFile(path: String) = {
+            val file = rootDirectory.lookupPathUnchecked(path, false)
+            assert(file ne null, path)
+            file
+          }
+        
+          dependencyAnalysis.loadFrom(AbstractFile.getFile(jfile), toFile)
+        }
     }
 
   lazy val classPath0 = new ClassPath(false && onlyPresentation)
@@ -641,6 +661,8 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
    */
   class Run {
 
+    var isDefined = false
+
     private val firstPhase = { 
       // ----------- Initialization code -------------------------
       curRunId += 1
@@ -731,6 +753,8 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     val mixinPhase = phaseNamed("mixin")
     val icodePhase = phaseNamed("icode")
 
+    isDefined = true
+
     /** A test whether compilation should stop at phase with given name */
     protected def stopPhase(name : String) = settings.stop.contains(name)
 
@@ -800,7 +824,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       	    warning("It is not possible to check the result of the "+globalPhase.name+" phase")
           }
         }
-        if (settings.statistics.value) statistics.print(phase)
+        if (settings.Ystatistics.value) statistics.print(phase)
         advancePhase
       }
 
@@ -826,8 +850,17 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       for ((sym, file) <- symSource.iterator) resetPackageClass(sym.owner)
       informTime("total", startTime)
 
-      if (!dependencyAnalysis.off)
-        dependencyAnalysis.saveDependencies()
+      if (!dependencyAnalysis.off) {
+        
+        def fromFile(file: AbstractFile): String = {
+          val path = file.path
+          if (path.startsWith("./"))
+            path.substring(2, path.length)
+          else path
+        }
+        
+        dependencyAnalysis.saveDependencies(fromFile)
+      }
     }
 
     /** Compile list of abstract files */

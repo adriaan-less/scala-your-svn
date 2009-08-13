@@ -11,8 +11,8 @@
 
 package scala.collection.immutable
 
-import mutable.ListBuffer
-import generic._
+import scala.collection.mutable.ListBuffer
+import scala.collection.generic._
 
 /**
  * <p>The class <code>Stream</code> implements lazy lists where elements
@@ -117,8 +117,9 @@ self =>
   override def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, Stream[A]]): That = {
     def loop(these: Stream[A]): Stream[B] =  
       if (these.isEmpty) that.toStream else new Stream.Cons(these.head, loop(these.tail))
-    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this).asInstanceOf[That] 
-    else super.++(that)
+    loop(this).asInstanceOf[That] 
+// was:    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this).asInstanceOf[That] 
+//    else super.++(that)
   }	
   
   /** Create a new stream which contains all elements of this stream
@@ -137,8 +138,9 @@ self =>
   override def map[B, That](f: A => B)(implicit bf: BuilderFactory[B, That, Stream[A]]): That = {
     def loop(these: Stream[A]): Stream[B] = 
       if (these.isEmpty) Stream.Empty else new Stream.Cons(f(these.head), loop(these.tail))
-    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this).asInstanceOf[That] 
-    else super.map(f)
+    loop(this).asInstanceOf[That]
+// was:    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this).asInstanceOf[That]
+//         else super.map(f)
   }  
     
   /** Applies the given function <code>f</code> to each element of
@@ -154,10 +156,11 @@ self =>
       else {
         val seg = f(these.head)
         if (seg.isEmpty) loop(these.tail)
-        else seg.toStream ++ loop(these.tail)
+        else seg.toStream append loop(these.tail)
       }
-    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this).asInstanceOf[That] 
-    else super.flatMap(f)
+    loop(this).asInstanceOf[That] 
+// was:    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this).asInstanceOf[That] 
+//    else super.flatMap(f)
   }
 
   /** Returns all the elements of this stream that satisfy the
@@ -200,8 +203,9 @@ self =>
     def loop(these: Stream[A], elems2: Iterator[B]): Stream[(A1, B)] = 
       if (these.isEmpty || !elems2.hasNext) Stream.Empty
       else new Stream.Cons((these.head, elems2.next), loop(these.tail, elems2))
-    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this, that.iterator).asInstanceOf[That] 
-    else super.zip[A1, B, That](that)
+    loop(this, that.iterator).asInstanceOf[That] 
+// was:    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(this, that.iterator).asInstanceOf[That] 
+//    else super.zip[A1, B, That](that)
   }
 
   /** Zips this iterable with its indices. `s.zipWithIndex` is equivalent to 
@@ -238,7 +242,8 @@ self =>
    *  @return the <code>n</code> first elements of this stream.
    */
   override def take(n: Int): Stream[A] =
-    if (n <= 0 || isEmpty) Stream.Empty else new Stream.Cons(head, tail take (n-1))
+    if (n <= 0 || isEmpty) Stream.Empty
+    else new Stream.Cons(head, if (n == 1) Stream.empty else tail take (n-1))
 
   /** A substream starting at index `from`
    *  and extending up to (but not including) index `until`.
@@ -315,8 +320,9 @@ self =>
     def loop(len: Int, these: Stream[A]): Stream[B] = 
       if (these.isEmpty) Stream.fill(len)(elem)
       else new Stream.Cons(these.head, loop(len - 1, these.tail))
-    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(len, this).asInstanceOf[That] 
-    else super.padTo(len, elem)
+    loop(len, this).asInstanceOf[That] 
+// was:    if (bf.isInstanceOf[Stream.StreamBuilderFactory[_]]) loop(len, this).asInstanceOf[That] 
+//    else super.padTo(len, elem)
   }
 
   /** A list consisting of all elements of this list in reverse order.
@@ -347,6 +353,14 @@ self =>
  */
 object Stream extends SequenceFactory[Stream] {
   
+  /** The factory for streams.
+   *  @note Methods such as map/flatMap will not invoke the Builder factory,
+   *        but will return a new stream directly, to preserve laziness.
+   *        The new stream is then cast to the factory's result type.
+   *        This means that every BuilderFactory that takes a
+   *        Stream as its From type parameter must yield a stream as its result parameter.
+   *        If that assumption is broken, cast errors might result.
+   */
   class StreamBuilderFactory[A] extends VirtualBuilderFactory[A]
 
   implicit def builderFactory[A]: BuilderFactory[A, Stream[A], Coll] = new StreamBuilderFactory[A]
@@ -434,9 +448,9 @@ object Stream extends SequenceFactory[Stream] {
    *  @param f     the function that's repeatedly applied
    *  @return      the stream returning the infinite sequence of values `start, f(start), f(f(start)), ...`
    */
-  def iterate(start: Int)(f: Int => Int): Stream[Int] = new Cons(start, iterate(f(start))(f))
+  def iterate[A](start: A)(f: A => A): Stream[A] = new Cons(start, iterate(f(start))(f))
 
-  override def iterate(start: Int, len: Int)(f: Int => Int): Stream[Int] =
+  override def iterate[A](start: A, len: Int)(f: A => A): Stream[A] =
     iterate(start)(f) take len
 
   /**
@@ -462,10 +476,10 @@ object Stream extends SequenceFactory[Stream] {
   /**
    * Create an infinite stream containing the given element expression (which is computed for each
    * occurrence)
+   *
    * @param elem the element composing the resulting stream
-   * @return the stream containing an inifinite number of elem
+   * @return the stream containing an infinite number of elem
    */
-  @deprecated("use `fill' instead")
   def continually[A](elem: => A): Stream[A] = new Cons(elem, continually(elem))
 
   override def fill[A](n: Int)(elem: => A): Stream[A] = 
@@ -511,14 +525,14 @@ object Stream extends SequenceFactory[Stream] {
   @deprecated("use `iterate' instead.")
   def range(start: Int, end: Int, step: Int => Int): Stream[Int] =
     iterate(start, end - start)(step)
-   
+
   /**
    * Create an infinite stream containing the given element.
    *
    * @param elem the element composing the resulting stream
-   * @return the stream containing an inifinite number of elem
+   * @return the stream containing an infinite number of elem
    */
-  @deprecated("use fill(elem) instead")
+  @deprecated("use `continually' instead")
   def const[A](elem: A): Stream[A] = cons(elem, const(elem))
 
   /** Create a stream containing several copies of an element.

@@ -734,7 +734,7 @@ trait ScalacSettings {
   val checkInit     = BooleanSetting    ("-Xcheckinit", "Add runtime checks on field accessors. Uninitialized accesses result in an exception being thrown.")
   val noassertions  = BooleanSetting    ("-Xdisable-assertions", "Generate no assertions and assumptions")
   val Xexperimental = BooleanSetting    ("-Xexperimental", "Enable experimental extensions")
-  val forwarders    = BooleanSetting    ("-Xforwarders", "Generate static forwarders in mirror classes")
+  val noForwarders  = BooleanSetting    ("-Xno-forwarders", "Do not generate static forwarders in mirror classes")
   val future        = BooleanSetting    ("-Xfuture", "Turn on future language features")
   val genPhaseGraph = StringSetting     ("-Xgenerate-phase-graph", "file", "Generate the phase graphs (outputs .dot files) to fileX.dot", "")
   val XlogImplicits = BooleanSetting    ("-Xlog-implicits", "Show more info on why some implicits are not applicable")
@@ -785,7 +785,7 @@ trait ScalacSettings {
   val skip          = PhasesSetting     ("-Yskip", "Skip")
   val Xsqueeze      = ChoiceSetting     ("-Ysqueeze", "if on, creates compact code in matching", List("on","off"), "on") .
                                           withHelpSyntax("-Ysqueeze:<enabled>") 
-  val statistics    = BooleanSetting    ("-Ystatistics", "Print compiler statistics")
+  val Ystatistics   = BooleanSetting    ("-Ystatistics", "Print compiler statistics")
   val stop          = PhasesSetting     ("-Ystop", "Stop after phase")
   val refinementMethodDispatch =
                       ChoiceSetting     ("-Ystruct-dispatch", "Selects dispatch method for structural refinement method calls",
@@ -794,6 +794,7 @@ trait ScalacSettings {
   val Xwarndeadcode = BooleanSetting    ("-Ywarn-dead-code", "Emit warnings for dead code")
   val specialize    = BooleanSetting    ("-Yspecialize", "Specialize generic code on types.")
   val Yrangepos     = BooleanSetting    ("-Yrangepos", "Use range positions for syntax trees.")
+  val Yidedebug     = BooleanSetting    ("-Yide-debug", "Generate, validate and output trees using the interactive compiler.")
   
   /**
    * -P "Plugin" settings

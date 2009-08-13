@@ -18,6 +18,8 @@ import java.lang.Thread.State
 import scala.collection.Set
 import scala.collection.mutable.{ArrayBuffer, Buffer, HashMap, Queue, Stack, HashSet}
 
+import scheduler.{ThreadPoolConfig, QuitException}
+
 /**
  * FJTaskScheduler2
  *
@@ -137,4 +139,7 @@ class FJTaskScheduler2(val initCoreSize: Int, val maxSize: Int, daemon: Boolean)
 
   def isActive = !terminating && !suspending
 
+  def managedBlock(blocker: scala.concurrent.ManagedBlocker) {
+    blocker.block()
+  }
 }

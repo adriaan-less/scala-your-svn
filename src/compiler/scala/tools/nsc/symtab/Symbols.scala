@@ -5,7 +5,8 @@
 // $Id$
 
 
-package scala.tools.nsc.symtab
+package scala.tools.nsc
+package symtab
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.Map
@@ -247,7 +248,7 @@ trait Symbols {
       var cnt = 0
       def freshName() = { cnt += 1; newTermName("x$" + cnt) }
       def param(tp: Type) =
-        newValueParameter(owner.pos, freshName()).setFlag(SYNTHETIC).setInfo(tp)
+        newValueParameter(owner.pos.focus, freshName()).setFlag(SYNTHETIC).setInfo(tp)
       argtypess map (_.map(param))
     }
     
@@ -621,6 +622,12 @@ trait Symbols {
 
     def ownerChain: List[Symbol] = this :: owner.ownerChain
 
+    def ownersIterator: Iterator[Symbol] = new Iterator[Symbol] {
+      private var current = Symbol.this
+      def hasNext = current ne NoSymbol
+      def next = { val r = current; current = current.owner; r }
+    }
+
     // same as ownerChain contains sym, but more efficient
     def hasTransOwner(sym: Symbol) = {
       var o = this
@@ -752,7 +759,7 @@ trait Symbols {
     /** Return info without checking for initialization or completing */
     def rawInfo: Type = {
       var infos = this.infos
-      assert(infos != null, name)
+      assert(infos != null)
       val curPeriod = currentPeriod
       val curPid = phaseId(curPeriod)
 
@@ -1054,8 +1061,24 @@ trait Symbols {
 
     /** Return every accessor of a primary constructor parameter in this case class
      */
-    final def caseFieldAccessors: List[Symbol] =
-      info.decls.toList filter (sym => !(sym hasFlag PRIVATE) && sym.hasFlag(CASEACCESSOR))
+    final def caseFieldAccessors: List[Symbol] = {
+      val allAccessors = info.decls.toList filter (_ hasFlag CASEACCESSOR)
+
+      // if a case class has private fields, the accessors will come back in the wrong
+      // order unless we do some more work.  See ticket #1373 and test bug1373.scala.
+      def findRightAccessor(cpa: Symbol) = {
+        val toFind = cpa.fullNameString + "$"
+        // def fail = throw new Error("Accessor for %s not found among %s".format(cpa.fullNameString, allAccessors))
+        def isRightAccessor(s: Symbol) =
+          if (s hasFlag ACCESSOR) s.accessed.id == cpa.id
+          else s.fullNameString startsWith toFind
+        
+        if (cpa.isOuterAccessor || cpa.isOuterField) None
+        else allAccessors find isRightAccessor
+      }
+      
+      constrParamAccessors map findRightAccessor flatten
+    }
 
     final def constrParamAccessors: List[Symbol] =
       info.decls.toList filter (sym => !sym.isMethod && sym.hasFlag(PARAMACCESSOR))
@@ -1397,7 +1420,7 @@ trait Symbols {
         if (settings.debug.value) "package class" else "package"
       else if (isModuleClass) 
         if (settings.debug.value) "singleton class" else "object"
-      else if (isAnonymousClass) "template"
+      else if (isAnonymousClass) "anonymous class"
       else if (isRefinementClass) ""
       else if (isTrait) "trait"
       else if (isClass) "class"
@@ -1862,6 +1885,7 @@ trait Symbols {
     override def owner: Symbol = throw new Error("no-symbol does not have owner")
     override def sourceFile: AbstractFile = null
     override def ownerChain: List[Symbol] = List()
+    override def ownersIterator: Iterator[Symbol] = Iterator.empty
     override def alternatives: List[Symbol] = List()
     override def reset(completer: Type) {}
     override def info: Type = NoType

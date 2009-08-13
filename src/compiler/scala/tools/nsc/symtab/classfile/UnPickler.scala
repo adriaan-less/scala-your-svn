@@ -4,7 +4,9 @@
  */
 // $Id$
 
-package scala.tools.nsc.symtab.classfile
+package scala.tools.nsc
+package symtab
+package classfile
 
 import java.io.IOException
 import java.lang.{Float, Double}
@@ -35,12 +37,18 @@ abstract class UnPickler {
    */
   def unpickle(bytes: Array[Byte], offset: Int, classRoot: Symbol, moduleRoot: Symbol, filename: String) {
     try {
-      new UnPickle(bytes, offset, classRoot, moduleRoot, filename)
+      val p = if (currentRun.isDefined && 
+                  currentRun.picklerPhase != NoPhase &&
+                  phase.id > currentRun.picklerPhase.id) currentRun.picklerPhase
+              else phase
+      atPhase(p) {
+        new UnPickle(bytes, offset, classRoot, moduleRoot, filename)
+      }
     } catch {
       case ex: IOException =>
         throw ex
       case ex: Throwable =>
-        if (settings.debug.value) ex.printStackTrace()
+        /*if (settings.debug.value)*/ ex.printStackTrace()
         throw new RuntimeException("error reading Scala signature of "+filename+": "+ex.getMessage())
     }
   }
@@ -174,10 +182,19 @@ abstract class UnPickler {
         case EXTref | EXTMODCLASSref =>
           val name = readNameRef()
           val owner = if (readIndex == end) definitions.RootClass else readSymbolRef()
-          sym = if (name.toTermName == nme.ROOT) definitions.RootClass
-                else if (name == nme.ROOTPKG) definitions.RootPackage
-                else if (tag == EXTref) owner.info.decl(name)
-                else owner.info.decl(name).moduleClass
+          def fromName(name: Name) = 
+            if (name.toTermName == nme.ROOT) definitions.RootClass
+            else if (name == nme.ROOTPKG) definitions.RootPackage
+            else if (tag == EXTref) owner.info.decl(name)
+            else owner.info.decl(name).moduleClass
+          sym = fromName(name)
+          // If sym not found try with expanded name.
+          // This can happen if references to private symbols are
+          // read from outside; for instance when checking the children of a class
+          // (see t1722)
+          if (sym == NoSymbol) {
+            sym = fromName(owner.expandedName(name))
+          }
 
           // If the owner is overloaded (i.e. a method), it's not possible to select the
           // right member => return NoSymbol. This can only happen when unpickling a tree.
@@ -451,9 +468,9 @@ abstract class UnPickler {
 
         case PACKAGEtree =>
           val symbol = readSymbolRef()
-          val name = readNameRef()
+          val pid = readTreeRef().asInstanceOf[RefTree]
           val stats = until(end, readTreeRef)
-          PackageDef(name, stats) setType tpe
+          PackageDef(pid, stats) setType tpe
 
         case CLASStree =>
           val symbol = readSymbolRef() 
@@ -798,11 +815,13 @@ abstract class UnPickler {
 
     private class LazyTypeRef(i: Int) extends LazyType {
       private val definedAtRunId = currentRunId
+      private val p = phase
       // In IDE, captures class files dependencies so they can be reloaded when their dependencies change.
       private val ideHook = unpickleIDEHook
       override def complete(sym: Symbol) : Unit = {
         val tp = ideHook(at(i, readType))
-        sym setInfo tp
+        if (p != phase) atPhase(p) (sym setInfo tp) 
+        else sym setInfo tp
         if (currentRunId != definedAtRunId) sym.setInfo(adaptToNewRunMap(tp))
       }
       override def load(sym: Symbol) { complete(sym) }

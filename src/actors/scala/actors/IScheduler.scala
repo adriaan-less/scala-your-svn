@@ -10,16 +10,13 @@
 
 package scala.actors
 
-import forkjoin.ForkJoinPool
-
 /**
  * The <code>IScheduler</code> trait provides a common interface
  * for all schedulers used to execute actor tasks.
  *
  * Subclasses of <code>Actor</code> that override its
  * <code>scheduler</code> member must provide
- * an implementation of the <code>IScheduler</code>
- * trait.
+ * an <code>IScheduler</code> implementation.
  *
  * @author Philipp Haller
  */
@@ -36,6 +33,9 @@ trait IScheduler {
    *  @param  task  the task to be executed
    */
   def execute(task: Runnable): Unit
+
+  def executeFromActor(task: Runnable): Unit =
+    execute(task)
 
   /** Shuts down the scheduler.
    */
@@ -66,7 +66,5 @@ trait IScheduler {
    */
   def onTerminate(a: Reactor)(f: => Unit): Unit
 
-  def managedBlock(blocker: ForkJoinPool.ManagedBlocker) {
-    blocker.block()
-  }
+  def managedBlock(blocker: scala.concurrent.ManagedBlocker): Unit
 }

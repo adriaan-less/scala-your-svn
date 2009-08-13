@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.transform
+package scala.tools.nsc
+package transform
 
 import symtab._
 import Flags._
@@ -629,7 +630,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
       def mkCheckedAccessor(clazz: Symbol, retVal: Tree, offset: Int, pos: Position): Tree = {
         val bitmapSym = bitmapFor(clazz, offset)
         val mask      = LIT(1 << (offset % FLAGS_PER_WORD))
-        val msg       = "Uninitialized field: " + unit.source + ": " + pos.line.get
+        val msg       = "Uninitialized field: " + unit.source + ": " + pos.line
         val result    = 
           IF (mkTest(clazz, mask, bitmapSym, false)) .
             THEN (retVal) .

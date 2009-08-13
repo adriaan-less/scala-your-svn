@@ -17,7 +17,7 @@ package scala.actors
  * @version 0.9.17
  * @author Philipp Haller
  */
-trait OutputChannel[-Msg] {
+trait OutputChannel[-Msg] extends AbstractReactor[Msg] {
 
   /**
    * Sends <code>msg</code> to this
@@ -42,8 +42,8 @@ trait OutputChannel[-Msg] {
   def forward(msg: Msg): Unit
 
   /**
-   * Returns the <code>Actor</code> that is
+   * Returns the <code>Reactor</code> that is
    * receiving from this <code>OutputChannel</code>.
    */
-  def receiver: Actor
+  def receiver: Reactor
 }
