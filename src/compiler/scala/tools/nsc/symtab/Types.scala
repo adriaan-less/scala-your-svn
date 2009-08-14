@@ -3708,7 +3708,7 @@ A type's typeSymbol should never be inspected directly.
       case (_, _) => false // @assume !tp1.isHigherKinded || !tp2.isHigherKinded 
       // --> thus, cannot be subtypes (Any/Nothing has already been checked)
     }))
-    
+
   def isSubArgs(tps1: List[Type], tps2: List[Type], tparams: List[Symbol]): Boolean = (
     tps1.isEmpty && tps2.isEmpty
     ||
