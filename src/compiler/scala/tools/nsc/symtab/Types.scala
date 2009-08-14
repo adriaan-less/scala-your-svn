@@ -2214,13 +2214,16 @@ A type's typeSymbol should never be inspected directly.
   def appliedType(tycon: Type, args: List[Type]): Type =  
     if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
     else tycon match { 
-      case TypeRef(pre, sym, _) => typeRef(pre, sym, args)
+      case TypeRef(pre, sym, _) => 
+        val args1 = if(sym == NothingClass || sym == AnyClass) List() else args //@M drop type args to Any/Nothing
+        typeRef(pre, sym, args1)
       case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
       case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
-      case ErrorType => tycon
       case st: SingletonType => appliedType(st.widen, args) // @M TODO: what to do? see bug1
       case RefinedType(parents, decls) => RefinedType(parents map (appliedType(_, args)), decls) // MO to AM: please check
       case TypeBounds(lo, hi) => TypeBounds(appliedType(lo, args), appliedType(hi, args))
+      case ErrorType => tycon
+      case WildcardType => tycon // needed for neg/t0226
       case _ => throw new Error(debugString(tycon))
     }
 
@@ -2886,13 +2889,7 @@ A type's typeSymbol should never be inspected directly.
         // (must not recurse --> loops)
         // 3) replacing m by List in m[Int] should yield List[Int], not just List
         case TypeRef(NoPrefix, sym, args) =>
-          subst(tp, sym, from, to) match {
-            case r @ TypeRef(pre1, sym1, args1) => 
-              if (args.isEmpty) r
-              else rawTypeRef(pre1, sym1, args)
-            case r =>
-              r
-          }
+          appliedType(subst(tp, sym, from, to), args) // if args.isEmpty, appliedType is the identity
         case SingleType(NoPrefix, sym) =>
           subst(tp, sym, from, to)
         case _ =>
@@ -3721,7 +3718,7 @@ A type's typeSymbol should never be inspected directly.
   )
 
   def isSubType0(tp1: Type, tp2: Type, depth: Int): Boolean = {
-    isSubType1(tp1, tp2, depth)
+    isSubType2(tp1, tp2, depth)
   }
 
   def differentOrNone(tp1: Type, tp2: Type) = if (tp1 eq tp2) NoType else tp1
