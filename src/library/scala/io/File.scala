@@ -10,7 +10,10 @@
 
 package scala.io
 
-import java.io.{ FileInputStream, FileOutputStream, File => JFile }
+import java.io.{ 
+  FileInputStream, FileOutputStream, BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter, 
+  BufferedInputStream, File => JFile }
+import collection.Traversable
 
 object File
 {
@@ -28,7 +31,7 @@ import File._
  *  @author  Paul Phillips
  *  @since   2.8
  */
-class File(val file: JFile) extends collection.Iterable[File]
+class File(val file: JFile)(implicit val codec: Codec = Codec.default) extends collection.Iterable[File]
 {
   /** If file is a directory, an iterator over its contents.
    *  If not, an empty iterator.
@@ -36,41 +39,85 @@ class File(val file: JFile) extends collection.Iterable[File]
   def iterator: Iterator[File] =
     if (file.isDirectory) file.listFiles.iterator map (x => new File(x))
     else Iterator.empty
+
+  /** Convenience function for iterating over the lines in the file.
+   */
+  def lines(): Iterator[String] = toSource().getLines()
   
-	/** Deletes the file or directory recursively. Returns false if it failed.
-	 *  Use with caution!
-	 */
-	def deleteRecursively(): Boolean = deleteRecursively(file)
-	private def deleteRecursively(f: JFile): Boolean = {
-	  if (f.isDirectory) file.listFiles match { 
-	    case null =>
-	    case xs   => xs foreach deleteRecursively
+  /** Convenience function for iterating over the bytes in a file.
+   *  Note they are delivered as Ints as they come from the read() call,
+   *  you can map (_.toByte) if you would really prefer Bytes.
+   */
+  def bytes(): Iterator[Int] = {
+    val in = new BufferedInputStream(inputStream())
+    Iterator continually in.read() takeWhile (_ != -1)
+  }
+  
+  /** Convenience function to import entire file into a String.
+   */
+  def slurp() = toSource().mkString
+
+  /** Deletes the file or directory recursively. Returns false if it failed.
+   *  Use with caution!
+   */
+  def deleteRecursively(): Boolean = deleteRecursively(file)
+  private def deleteRecursively(f: JFile): Boolean = {
+    if (f.isDirectory) file.listFiles match { 
+      case null =>
+      case xs   => xs foreach deleteRecursively
     }
     f.delete()
   }
-	
-	/** Obtains an InputStream. */
-	def inputStream = new FileInputStream(file)
-	
-	/** Obtains a OutputStream. */
-	def outputStream(append: Boolean = false) = new FileOutputStream(file, append)
+  
+  /** Obtains an InputStream. */
+  def inputStream() = new FileInputStream(file)
+  
+  /** Obtains a OutputStream. */
+  def outputStream(append: Boolean = false) = new FileOutputStream(file, append)
+  
+  /** Obtains an InputStreamReader wrapped around a FileInputStream.
+   */
+  def reader() =
+    new InputStreamReader(inputStream, codec.charSet)
+  
+  /** Obtains an OutputStreamWriter wrapped around a FileOutputStream.
+   *  This should behave like a less broken version of java.io.FileWriter,
+   *  in that unlike the java version you can specify the encoding.
+   */
+  def writer(append: Boolean = false) =
+    new OutputStreamWriter(outputStream(append), codec.charSet)
+  
+  /** Wraps a BufferedReader around the result of reader().
+   */
+  def bufferedReader() = new BufferedReader(reader())
+  
+  /** Wraps a BufferedWriter around the result of writer().
+   */
+  def bufferedWriter(append: Boolean = false) = new BufferedWriter(writer(append))
+  
+  /** Writes all the Strings in the given iterator to the file. */
+  def writeAll(xs: Traversable[String], append: Boolean = false): Unit = {
+    val out = bufferedWriter(append)
+    try xs foreach (out write _)
+    finally out close
+  }
 
-	/** Attempts to return the file extension. */
-	def extension = file.getName match {
-	  case extensionRegex(x)  => Some(x)
-	  case _                  => None
+  /** Attempts to return the file extension. */
+  def extension = file.getName match {
+    case extensionRegex(x)  => Some(x)
+    case _                  => None
   }
   
   /** Creates a Source from this file. */
-  def toSource = Source.fromFile(file)()
+  def toSource(): Source = (Source fromFile file)(codec)
 
   /** Creates a new File with the specified path appended. */
-	def /(child: String) = new File(new JFile(file, child))
-	
-	override def toString() = file.toString
-	override def equals(other: Any) = other match {
-	  case x: File    => this.file == x.file
-	  case _          => false
+  def /(child: String) = new File(new JFile(file, child))
+  
+  override def toString() = file.toString
+  override def equals(other: Any) = other match {
+    case x: File    => this.file == x.file
+    case _          => false
   }
   override def hashCode = file.hashCode
 }

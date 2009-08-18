@@ -138,7 +138,7 @@ trait Types {
     // Important to keep this up-to-date when new operations are added!
     override def isTrivial = underlying.isTrivial
     override def isHigherKinded: Boolean = underlying.isHigherKinded
-    override def typeConstructor(dummyArgs: Boolean): Type = underlying.typeConstructor(dummyArgs)
+    override def typeConstructor: Type = underlying.typeConstructor 
     override def isNotNull = underlying.isNotNull
     override def isError = underlying.isError
     override def isErroneous = underlying.isErroneous
@@ -296,8 +296,8 @@ trait Types {
       case _ => List()
     }
 
-    /** This type, without type arguments (if !dummyArgs), or with fresh dummy type arguments (if dummyArgs) @M */
-    def typeConstructor(dummyArgs: Boolean): Type = this
+    /** This type, without its type arguments @M */
+    def typeConstructor: Type = this
 
     /** For a typeref, its arguments. The empty list for all other types */
     def typeArgs: List[Type] = List()
@@ -508,6 +508,11 @@ trait Types {
 
     /** Apply `f' to each part of this type */
     def foreach(f: Type => Unit) { new ForEachTypeTraverser(f).traverse(this) }
+
+    /** Apply `f' to each part of this type; children get mapped before their parents */
+    def map(f: Type => Type): Type = new TypeMap {
+      def apply(x: Type) = f(mapOver(x))
+    } apply this
 
     /** Is there part of this type which satisfies predicate `p'? */
     def exists(p: Type => Boolean): Boolean = !find(p).isEmpty
@@ -1157,14 +1162,14 @@ trait Types {
     override def isHigherKinded = 
       !parents.isEmpty && (parents forall (_.isHigherKinded)) // @MO to AM: please check this class!
 
-    //@M may result in an invalid type (references to higher-order args become dangling )
-    override def typeConstructor(dummyArgs: Boolean) =
-      copyRefinedType(this, parents map (_.typeConstructor(dummyArgs)), decls)
-
     override def typeParams = 
       if (isHigherKinded) parents.head.typeParams
       else super.typeParams
 
+    //@M may result in an invalid type (references to higher-order args become dangling )
+    override def typeConstructor = 
+      copyRefinedType(this, parents map (_.typeConstructor), decls)
+    
     private def dummyArgs = typeParams map (_.typeConstructor)
 
     /* MO to AM: This is probably not correct
@@ -1390,7 +1395,7 @@ trait Types {
 //    assert(!pre.isInstanceOf[ClassInfoType], this)
 //    assert(!(sym hasFlag (PARAM | EXISTENTIAL)) || pre == NoPrefix, this)
 //    assert(args.isEmpty || !sym.info.typeParams.isEmpty, this)
-
+//    assert(args.isEmpty || ((sym ne AnyClass) && (sym ne NothingClass))
     private var parentsCache: List[Type] = _
     private var parentsPeriod = NoPeriod
     private var baseTypeSeqCache: BaseTypeSeq = _
@@ -1485,13 +1490,19 @@ A type's typeSymbol should never be inspected directly.
 
     // placeholders derived from type params
     private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
-    override def typeConstructor(dummyArgs: Boolean) = rawTypeRef(pre, sym, if(dummyArgs) this.dummyArgs else List())
 
     // (!result.isEmpty) IFF isHigherKinded
     override def typeParams: List[Symbol] = if (args.isEmpty) typeParamsDirect else List()
 
-    //@M equivalent to (!typeParams.isEmpty && args.isEmpty)  because args.isEmpty is checked in typeParams
-    override def isHigherKinded = !typeParams.isEmpty
+    override def typeConstructor = rawTypeRef(pre, sym, List())
+
+    //@M equivalent to:
+    //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
+    //  !isRawType(this)                           // needed for subtyping
+    override def isHigherKinded 
+      = !typeParams.isEmpty && 
+      // otherwise raw types are considered higher-kinded types during subtyping:
+        (phase.erasedTypes || !sym.hasFlag(JAVA))  
 
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
@@ -1981,7 +1992,7 @@ A type's typeSymbol should never be inspected directly.
         } else // higher-kinded type var with same arity as tp
           (typeArgs.length == tp.typeArgs.length) && { 
             // register type constructor (the type without its type arguments) as bound
-            addBound(tp.typeConstructor(false))
+            addBound(tp.typeConstructor)
             // check subtyping of higher-order type vars
             // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
             checkArgs(tp.typeArgs, typeArgs, params)  
@@ -2331,13 +2342,15 @@ A type's typeSymbol should never be inspected directly.
   def appliedType(tycon: Type, args: List[Type]): Type =  
     if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
     else tycon match { 
-      case TypeRef(pre, sym, _) => rawTypeRef(pre, sym, args)
-      case tv@TypeVar(_, constr) => tv.applyArgs(args)
+      case TypeRef(pre, sym, _) => 
+        val args1 = if(sym == NothingClass || sym == AnyClass) List() else args //@M drop type args to Any/Nothing
+        typeRef(pre, sym, args1)
       case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
       case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
       case st: SingletonType => appliedType(st.widen, args) // @M TODO: what to do? see bug1
       case RefinedType(parents, decls) => RefinedType(parents map (appliedType(_, args)), decls) // MO to AM: please check
       case TypeBounds(lo, hi) => TypeBounds(appliedType(lo, args), appliedType(hi, args))
+      case tv@TypeVar(_, constr) => tv.applyArgs(args)
       case ErrorType => tycon
       case WildcardType => tycon // needed for neg/t0226
       case _ => throw new Error(debugString(tycon))
@@ -3599,15 +3612,24 @@ A type's typeSymbol should never be inspected directly.
     if (subsametypeRecursions == 0) undoLog = List()
   }
 
-  def isDifferentTypeConstructor(tp1: Type, tp2: Type): Boolean = try {
+  def isDifferentType(tp1: Type, tp2: Type): Boolean = try {
     subsametypeRecursions += 1
     val lastUndoLog = undoLog
-    val result = isSameType0(tp1.typeConstructor(true), tp2.typeConstructor(true))
+    val result = isSameType0(tp1, tp2)
     undoTo(lastUndoLog)
     !result
   } finally {
     subsametypeRecursions -= 1
     if (subsametypeRecursions == 0) undoLog = List()
+  }
+
+  def isDifferentTypeConstructor(tp1: Type, tp2: Type): Boolean = tp1 match {
+    case TypeRef(pre1, sym1, _) => 
+      tp2 match {
+        case TypeRef(pre2, sym2, _) => sym1 != sym2 || isDifferentType(pre1, pre2)
+        case _ => true
+      }
+    case _ => true
   }
 
   def normalizePlus(tp: Type) = 
@@ -3778,21 +3800,21 @@ A type's typeSymbol should never be inspected directly.
     case _ => false
   }
 
+  // @assume tp1.isHigherKinded || tp2.isHigherKinded
   def isHKSubType0(tp1: Type, tp2: Type, depth: Int): Boolean = (
     tp1.typeSymbol == NothingClass 
     ||
     tp2.typeSymbol == AnyClass // @M Any and Nothing are super-type resp. subtype of every well-kinded type
     || // @M! normalize reduces higher-kinded case to PolyType's
     ((tp1.normalize, tp2.normalize) match {
-      case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
+      case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => // @assume tp1.isHigherKinded && tp2.isHigherKinded (as they were both normalized to PolyType)
         tparams1.length == tparams2.length &&
         List.forall2(tparams1, tparams2) (
           (p1, p2) => p2.info.substSym(tparams2, tparams1) <:< p1.info) &&
         res1 <:< res2.substSym(tparams2, tparams1)
-      
-      case (tp1a, tp2a) =>
-        (isDifferentTypeConstructor(tp1a, tp1) || isDifferentTypeConstructor(tp2a, tp2)) &&
-        isSubType(tp1a, tp2a, depth)
+
+      case (_, _) => false // @assume !tp1.isHigherKinded || !tp2.isHigherKinded 
+      // --> thus, cannot be subtypes (Any/Nothing has already been checked)
     }))
 
   def isSubArgs(tps1: List[Type], tps2: List[Type], tparams: List[Symbol]): Boolean = (
@@ -3805,7 +3827,7 @@ A type's typeSymbol should never be inspected directly.
   )
 
   def isSubType0(tp1: Type, tp2: Type, depth: Int): Boolean = {
-    isSubType1(tp1, tp2, depth)
+    isSubType2(tp1, tp2, depth)
   }
 
   def differentOrNone(tp1: Type, tp2: Type) = if (tp1 eq tp2) NoType else tp1
@@ -3837,9 +3859,9 @@ A type's typeSymbol should never be inspected directly.
             val sym2 = tr2.sym
             val pre1 = tr1.pre
             val pre2 = tr2.pre
-            ((if (sym1 == sym2) phase.erasedTypes || pre1 <:< pre2
+            (((if (sym1 == sym2) phase.erasedTypes || pre1 <:< pre2
               else (sym1.name == sym2.name && isUnifiable(pre1, pre2))) &&
-             isSubArgs(tr1.args, tr2.args, sym1.typeParams)
+             isSubArgs(tr1.args, tr2.args, sym1.typeParams))
              ||
              sym2.isClass && {
                val base = tr1 baseType sym2
@@ -3896,6 +3918,7 @@ A type's typeSymbol should never be inspected directly.
         isSubType(tp1.normalize, tp2.normalize, depth)
       } else if (sym2.isAbstractType) {
         val tp2a = tp2.bounds.lo
+//        isDifferentTypeConstructor(tp2a, tp2.pre, sym2) && tp1 <:< tp2a || fourthTry
         isDifferentTypeConstructor(tp2, tp2a) && tp1 <:< tp2a || fourthTry
       } else if (sym2 == NotNullClass) {
         tp1.isNotNull
@@ -4648,13 +4671,14 @@ A type's typeSymbol should never be inspected directly.
               val l = lub(as, decr(depth))
               val g = glb(as, decr(depth))
               if (l <:< g) l 
-              else if(!(tparam.info.bounds contains tparam)){ //@M can't deal with f-bounds, see #2251
+              else { // Martin: I removed this, because incomplete. Not sure there is a good way to fix it. For the moment we
+                     // just err on the conservative side, i.e. with a bound that is too high.
+                     // if(!(tparam.info.bounds contains tparam)){ //@M can't deal with f-bounds, see #2251
                 val owner = commonOwner(as)
                 val qvar = makeFreshExistential("", commonOwner(as), mkTypeBounds(g, l))
                 capturedParams += qvar
                 qvar.tpe
               }
-              else NoType
             }
       } 
       try {
