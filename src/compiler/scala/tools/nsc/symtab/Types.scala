@@ -1484,15 +1484,21 @@ A type's typeSymbol should never be inspected directly.
     private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
 
     // (!result.isEmpty) IFF isHigherKinded
-    override def typeParams: List[Symbol] = if (args.isEmpty) typeParamsDirect else List()
+    override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
 
     //@M equivalent to:
     //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
     //  !isRawType(this)                           // needed for subtyping
+=======
+    override def typeConstructor = rawTypeRef(pre, sym, List())
+
+    //  (args.isEmpty && !typeParamsDirect.isEmpty) && !isRawType(this)                              
+    //  check for isRawType: otherwise raw types are considered higher-kinded types during subtyping:
+>>>>>>> f89e6f8... improved type constructor inference (mainly integrating with new subtyping algorithm):src/compiler/scala/tools/nsc/symtab/Types.scala
     override def isHigherKinded 
-      = !typeParams.isEmpty && 
-      // otherwise raw types are considered higher-kinded types during subtyping:
-        (phase.erasedTypes || !sym.hasFlag(JAVA))  
+      = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
+      // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
+        
 
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
