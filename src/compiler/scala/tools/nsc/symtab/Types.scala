@@ -1414,7 +1414,11 @@ trait Types {
       val args = typeArgsOrDummies
       if (args.length == sym.typeParams.length)
         tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(sym.typeParams, args)
-      else { assert(sym.typeParams.isEmpty || (args exists (_.isError)) || isRaw(sym, args)/*#2266*/, tp); tp }
+      else { 
+        assert(sym.typeParams.isEmpty || (args exists (_.isError)) || isRaw(sym, args)/*#2266*/, tp)
+        if(isRaw(sym, args)) println("transform raw type: "+(tp, sym, sym.typeParams, args)) //@MDEBUG
+        tp 
+      }
       // @M TODO maybe we shouldn't instantiate type params if isHigherKinded -- probably needed for partial type application though
     }
 
@@ -1489,12 +1493,6 @@ A type's typeSymbol should never be inspected directly.
     //@M equivalent to:
     //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
     //  !isRawType(this)                           // needed for subtyping
-=======
-    override def typeConstructor = rawTypeRef(pre, sym, List())
-
-    //  (args.isEmpty && !typeParamsDirect.isEmpty) && !isRawType(this)                              
-    //  check for isRawType: otherwise raw types are considered higher-kinded types during subtyping:
->>>>>>> f89e6f8... improved type constructor inference (mainly integrating with new subtyping algorithm):src/compiler/scala/tools/nsc/symtab/Types.scala
     override def isHigherKinded 
       = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
       // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
