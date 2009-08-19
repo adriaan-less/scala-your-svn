@@ -1034,7 +1034,7 @@ trait Typers { self: Analyzer =>
         val supertparams = if (supertpt.hasSymbol) supertpt.symbol.typeParams else List()
         var supertpe = supertpt.tpe
         if (!supertparams.isEmpty)
-          supertpe = PolyType(supertparams, appliedType(supertpe, supertparams map (_.tpe)))
+          supertpe = PolyType(supertparams, appliedType(supertpe, supertparams map (_.tpe))) //@M TODO --> _.tpeHK
 
         // A method to replace a super reference by a New in a supercall
         def transformSuperCall(scall: Tree): Tree = (scall: @unchecked) match {

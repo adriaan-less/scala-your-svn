@@ -1409,6 +1409,43 @@ trait Types {
     override def isNotNull = 
       sym.isModuleClass || sym == NothingClass || isValueClass(sym) || super.isNotNull
 
+    override def prefix: Type = 
+      if (sym.isAliasType) normalize.prefix
+      else pre
+
+    override def typeArgs: List[Type] = args
+
+    // @MAT was typeSymbol.unsafeTypeParams, but typeSymbol normalizes now 
+    private def typeParamsDirect = sym.unsafeTypeParams
+
+    //@M equivalent to:
+    //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
+    //  !isRawType(this)                           // needed for subtyping
+    override def isHigherKinded 
+      = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
+      // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
+
+
+    // (!result.isEmpty) IFF isHigherKinded
+    override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
+
+    // placeholders derived from type params
+    private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
+
+    override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
+      if (isHigherKinded) {
+        val substTps = formals.intersect(typeParams)
+
+        if (substTps.length == typeParams.length) 
+          typeRef(pre, sym, actuals)
+        else // partial application (needed in infer when bunching type arguments from classes and methods together)
+          typeRef(pre, sym, dummyArgs).subst(formals, actuals)
+      } 
+      else 
+        super.instantiateTypeParams(formals, actuals)
+
+    private def typeArgsOrDummies = if (!isHigherKinded) args else dummyArgs
+
     // @M: propagate actual type params (args) to `tp', by replacing formal type parameters with actual ones
     def transform(tp: Type): Type = {
       val args = typeArgsOrDummies
@@ -1416,7 +1453,6 @@ trait Types {
         tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(sym.typeParams, args)
       else { 
         assert(sym.typeParams.isEmpty || (args exists (_.isError)) || isRaw(sym, args)/*#2266*/, tp)
-        if(isRaw(sym, args)) println("transform raw type: "+(tp, sym, sym.typeParams, args)) //@MDEBUG
         tp 
       }
       // @M TODO maybe we shouldn't instantiate type params if isHigherKinded -- probably needed for partial type application though
@@ -1474,41 +1510,7 @@ A type's typeSymbol should never be inspected directly.
       else if (sym.isAliasType) normalize.narrow      
       else super.narrow
 
-    override def prefix: Type = 
-      if (sym.isAliasType) normalize.prefix
-      else pre
 
-    override def typeArgs: List[Type] = args
-    private def typeArgsOrDummies = if (!isHigherKinded) args else dummyArgs
-
-    // @MAT was typeSymbol.unsafeTypeParams, but typeSymbol normalizes now 
-    private def typeParamsDirect = sym.unsafeTypeParams
-
-    // placeholders derived from type params
-    private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
-
-    // (!result.isEmpty) IFF isHigherKinded
-    override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
-
-    //@M equivalent to:
-    //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
-    //  !isRawType(this)                           // needed for subtyping
-    override def isHigherKinded 
-      = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
-      // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
-        
-
-    override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
-      if (isHigherKinded) {
-        val substTps = formals.intersect(typeParams)
-      
-        if (substTps.length == typeParams.length) 
-          typeRef(pre, sym, actuals)
-        else // partial application (needed in infer when bunching type arguments from classes and methods together)
-          typeRef(pre, sym, dummyArgs).subst(formals, actuals)
-      } 
-      else 
-        super.instantiateTypeParams(formals, actuals)
 
 
     private var normalized: Type = null
