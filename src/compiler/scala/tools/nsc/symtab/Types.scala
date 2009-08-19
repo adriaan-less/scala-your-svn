@@ -86,7 +86,7 @@ trait Types {
   /** Decrement depth unless it is a don't care */
   private final def decr(depth: Int) = if (depth == AnyDepth) AnyDepth else depth - 1
 
-  private final val printLubs = false
+  private final val printLubs = false //@MDEBUG 
 
   /** The current skolemization level, needed for the algorithms
    *  in isSameType, isSubType that do constraint solving under a prefix 
@@ -1422,7 +1422,7 @@ trait Types {
       val args = typeArgsOrDummies
       if (args.length == sym.typeParams.length)
         tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(sym.typeParams, args)
-      else { assert(sym.typeParams.isEmpty || (args exists (_.isError)), tp); tp }
+      else { assert(sym.typeParams.isEmpty || (args exists (_.isError)) || isRaw(sym, args), tp); tp }
       // @M TODO maybe we shouldn't instantiate type params if isHigherKinded -- probably needed for partial type application though
     }
 
@@ -1492,17 +1492,16 @@ A type's typeSymbol should never be inspected directly.
     private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
 
     // (!result.isEmpty) IFF isHigherKinded
-    override def typeParams: List[Symbol] = if (args.isEmpty) typeParamsDirect else List()
+    override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
 
     override def typeConstructor = rawTypeRef(pre, sym, List())
 
-    //@M equivalent to:
-    //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
-    //  !isRawType(this)                           // needed for subtyping
+    //  (args.isEmpty && !typeParamsDirect.isEmpty) && !isRawType(this)                              
+    //  check for isRawType: otherwise raw types are considered higher-kinded types during subtyping:
     override def isHigherKinded 
-      = !typeParams.isEmpty && 
-      // otherwise raw types are considered higher-kinded types during subtyping:
-        (phase.erasedTypes || !sym.hasFlag(JAVA))  
+      = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
+      // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
+        
 
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
@@ -1944,6 +1943,8 @@ A type's typeSymbol should never be inspected directly.
 
     def setInst(tp: Type) { //println("setInst: "+(safeToString, debugString(tp))) //@MDEBUG
 //      assert(!(tp containsTp this), this)
+     //(new RuntimeException()).printStackTrace //@MDEBUG
+
       constr.inst = tp      
     }
 
@@ -1976,9 +1977,11 @@ A type's typeSymbol should never be inspected directly.
       def checkSubtype(tp1: Type, tp2: Type) = 
         if(isLowerBound) tp1 <:< tp2 
         else             tp2 <:< tp1
-      def addBound(tp: Type) = 
+      def addBound(tp: Type) = { 
         if(isLowerBound) constr.lobounds = tp :: constr.lobounds
-        else             constr.hibounds = tp :: constr.hibounds
+        else             constr.hibounds = tp :: constr.hibounds 
+        // println("addedBound: "+(this, tp)) // @MDEBUG
+        }
       def checkArgs(args1: List[Type], args2: List[Type], params: List[Symbol]) = 
         if(isLowerBound) isSubArgs(args1, args2, params)      
         else             isSubArgs(args2, args1, params)      
@@ -2001,8 +2004,6 @@ A type's typeSymbol should never be inspected directly.
     }
 
     def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
-      // (new RuntimeException()).printStackTrace //@MDEBUG
-    
       def checkIsSameType(tp: Type) = 
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst
@@ -2017,17 +2018,25 @@ A type's typeSymbol should never be inspected directly.
       }
     }
 
-    
+    override val isHigherKinded = typeArgs.isEmpty && !params.isEmpty
+        
+    override def normalize: Type = 
+      if  (constr.inst != NoType) constr.inst
+      else if (isHigherKinded) {  // get here when checking higher-order subtyping of the typevar by itself (TODO: check whether this ever happens?)
+        // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+        PolyType(params, applyArgs(params map (_.typeConstructor)))
+      } else {
+        super.normalize
+      }
+      
 
-    // override def isHigherKinded = origin.isHigherKinded //@M TODO: never called?
-    // override def typeParams = constr0.params  //@M TODO: never called? 
     override def typeSymbol = origin.typeSymbol
     override def safeToString: String = {
       def varString = "?"+(if (settings.explaintypes.value) level else "")+
                           origin+
                           (if(typeArgs.isEmpty) "" else (typeArgs map (_.safeToString)).mkString("[ ", ", ", " ]")) // +"#"+tid //DEBUG
       if (constr.inst eq null) "<null " + origin + ">"
-      else if (settings.debug.value) varString+constr.toString
+      else if (settings.debug.value) varString+"(@"+constr.hashCode+")"+constr.toString
       else if (constr.inst eq NoType) varString
       else constr.inst.toString
     }
@@ -3881,8 +3890,7 @@ A type's typeSymbol should never be inspected directly.
           case AnnotatedType(_, _, _) | BoundedWildcardType(_) =>
             secondTry
           case _ =>
-            if (constr2.inst != NoType) tp1 <:< constr2.inst
-            else tv2.isRelatable(tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true }
+            tv2.registerBound(tp1, true)
         }
       case _ =>
         secondTry
@@ -3898,9 +3906,8 @@ A type's typeSymbol should never be inspected directly.
         tp1.withoutAnnotations <:< tp2.withoutAnnotations && annotationsConform(tp1, tp2)
       case BoundedWildcardType(bounds) =>
         tp1.bounds.lo <:< tp2
-      case tv1 @ TypeVar(_, constr1) =>
-        if (constr1.inst != NoType) constr1.inst <:< tp2 
-        else tv1.isRelatable(tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
+      case tv @ TypeVar(_,_) =>
+        tv.registerBound(tp2, false)
       case ExistentialType(_, _) =>
         try { 
           skolemizationLevel += 1
@@ -4280,15 +4287,21 @@ A type's typeSymbol should never be inspected directly.
           }
         }
         tvar.constr.inst = NoType // necessary because hibounds/lobounds may contain tvar
+
+        // println("solveOne(useGlb, glb, lub): "+ (up, //@MDEBUG
+        //   if (depth != AnyDepth) glb(tvar.constr.hibounds, depth) else glb(tvar.constr.hibounds),
+        //   if (depth != AnyDepth) lub(tvar.constr.lobounds, depth) else lub(tvar.constr.lobounds)))
+
         tvar setInst (
           if (up) {
             if (depth != AnyDepth) glb(tvar.constr.hibounds, depth) else glb(tvar.constr.hibounds)
           } else {
             if (depth != AnyDepth) lub(tvar.constr.lobounds, depth) else lub(tvar.constr.lobounds)
           })
-        //Console.println("solving "+tvar+" "+up+" "+(if (up) (tvar.constr.hibounds) else tvar.constr.lobounds)+((if (up) (tvar.constr.hibounds) else tvar.constr.lobounds) map (_.widen))+" = "+tvar.constr.inst)//DEBUG"
+        // Console.println("solving "+tvar+" "+up+" "+(if (up) (tvar.constr.hibounds) else tvar.constr.lobounds)+((if (up) (tvar.constr.hibounds) else tvar.constr.lobounds) map (_.widen))+" = "+tvar.constr.inst)//@MDEBUG
       }
-    }
+    }    
+    
     for ((tvar, (tparam, variance)) <- config)
       solveOne(tvar, tparam, variance)
 

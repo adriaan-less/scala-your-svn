@@ -14,9 +14,9 @@ package scala
 
 import annotation.unchecked.uncheckedVariance
 import scala.collection.Traversable
+import scala.collection.generic.TraversableClass
 
 object Tuple2 {
-
   import collection.generic._
 /* !!! todo: enable
   class IterableOps[CC[+B] <: Iterable[B] with IterableTemplate[CC, B @uncheckedVariance], A1, A2](tuple: (CC[A1], Iterable[A2])) {
@@ -80,6 +80,7 @@ object Tuple2 {
 */
 }
 
+
 /** Tuple2 is the canonical representation of a @see Product2 
  *  
  */
@@ -92,9 +93,9 @@ case class Tuple2[+T1, +T2](_1:T1, _2:T2) extends Product2[T1, T2]  {
   
   /** Swap the elements of the tuple */
   def swap: Tuple2[T2,T1] = Tuple2(_2, _1)
-
-  def map2[CC[X] <: Traversable[X] with Iterable[X], A1, A2, B](f: (A1, A2) => B)(implicit fst: T1 => CC[A1], snd: T2 => Traversable[A2] with Iterable[A2]): Iterable[B] = {
-    val b = _1.genericBuilder[B]
+// must use <:< instead of =>, otherwise bogus any2stringadd conversion is also eligible (in case of type errors)
+  def map2[CC[X] <: TraversableClass[X, CC] with Iterable[X], A1, A2, B](f: (A1, A2) => B)(implicit fst: T1 <:< CC[A1], snd: T2 <:< Traversable[A2] with Iterable[A2]): CC[B] = {
+    val b = (_1: TraversableClass[A1, CC]).genericBuilder[B]
     val it1 = _1.iterator
     val it2 = _2.iterator
     while (it1.hasNext && it2.hasNext)

@@ -26,7 +26,7 @@ trait Infer {
   var normP = 0
   var normO = 0
 
-  private final val inferInfo = false
+  private final val inferInfo = false //@MDEBUG
 
 /* -- Type parameter inference utility functions --------------------------- */
 
@@ -442,7 +442,9 @@ trait Infer {
 
     def isCompatible(tp: Type, pt: Type): Boolean = {
       val tp1 = normalize(tp)
-      (tp1 <:< pt) || isCoercible(tp, pt)
+      val res = (tp1 <:< pt) || isCoercible(tp, pt)
+      // println("isCompatible: "+(tp, tp1, pt, res)) //@MDEBUG
+      res
     }
 
     def isWeaklyCompatible(tp: Type, pt: Type): Boolean =

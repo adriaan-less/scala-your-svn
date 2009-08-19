@@ -249,5 +249,11 @@ object Predef {
     override def toString: String = xs.mkString("")
   }
 
+  // to encode generalized constraints
+  // need a new type constructor `<:<` and evidence `conforms`, as 
+  // reusing `Function2` and `identity` leads to ambiguities (any2stringadd is inferred)
+  sealed abstract class <:<[-From, +To] extends (From => To)
+  implicit def conforms[A]: A <:< A = new (A <:< A) {def apply(x: A) = x}
+
   def currentThread = java.lang.Thread.currentThread()
 }

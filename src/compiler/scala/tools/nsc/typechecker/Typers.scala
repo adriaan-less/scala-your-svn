@@ -778,6 +778,7 @@ trait Typers { self: Analyzer =>
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt)
       case mt: ImplicitMethodType if ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
+          // println("adapt IMT: "+(context.undetparams, pt)) //@MDEBUG
           context.undetparams = inferExprInstance(
             tree, context.extractUndetparams(), pt, mt.paramTypes exists isManifest)
               // if we are looking for a manifest, instantiate type to Nothing anyway,
