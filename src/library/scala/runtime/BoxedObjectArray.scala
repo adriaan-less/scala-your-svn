@@ -10,14 +10,11 @@
 
 
 package scala.runtime
-import scala.reflect.Manifest
 
 import Predef._
 
 @serializable
-final class BoxedObjectArray[A <: AnyRef](val value: Array[AnyRef], val elemManifest: Manifest[A]) extends BoxedArray[A] {
-
-  def this(value: Array[AnyRef]) = this(value, null) // !!! todo: remove
+final class BoxedObjectArray[A <: AnyRef](val value: Array[AnyRef]) extends BoxedArray[A] {
 
   def length: Int = value.length
 
