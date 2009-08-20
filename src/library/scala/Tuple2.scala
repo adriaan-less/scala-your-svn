@@ -97,19 +97,19 @@ case class Tuple2[+T1, +T2](_1:T1, _2:T2) extends Product2[T1, T2]  {
 
   type Traverserable[CC[X] <: Traversable[X], X] = TraversableClass[X, CC] with Iterable[X]
 
-  // def zip[CC[X] <: Traverserable[CC, X], A1, A2](implicit fst: T1 <:< CC[A1], snd: T2 <:< Traverserable[Iterable, A2]/*CC[A2] does not work*/): CC[(A1, A2)] = {
-  //   map2(Tuple2((_: A1), (_: A2))) // TODO:  fix crash: 
-  //   
-  // /*Exception in thread "main" scala.tools.nsc.symtab.Types$NoCommonType: lub/glb of incompatible types: [X]Tuple2.this.Traverserable[?CC,X] and CC[(A1, A2)]
-  //    at scala.tools.nsc.symtab.Types$$anonfun$matchingBounds$1.apply(Types.scala:4729)
-  //    ...
-  //    at scala.tools.nsc.symtab.Types$class.solve(Types.scala:4292)
-  //    
-  //    should have been computing glb of:
-  //      Tuple2.this.Traverserable[CC,(A1, A2)] and CC[(A1, A2)], with result CC[(A1, A2)]
-  //   */
-  //   
-  // }
+  def zip[CC[X] <: Traverserable[CC, X], A1, A2](implicit fst: T1 <:< CC[A1], snd: T2 <:< Traverserable[Iterable, A2]/*CC[A2] does not work*/): CC[(A1, A2)] = {
+    map2(Tuple2((_: A1), (_: A2))) // TODO:  fix crash: 
+    
+  /*Exception in thread "main" scala.tools.nsc.symtab.Types$NoCommonType: lub/glb of incompatible types: [X]Tuple2.this.Traverserable[?CC,X] and CC[(A1, A2)]
+     at scala.tools.nsc.symtab.Types$$anonfun$matchingBounds$1.apply(Types.scala:4729)
+     ...
+     at scala.tools.nsc.symtab.Types$class.solve(Types.scala:4292)
+     
+     should have been computing glb of:
+       Tuple2.this.Traverserable[CC,(A1, A2)] and CC[(A1, A2)], with result CC[(A1, A2)]
+    */
+    
+  }
   
   def map2[CC[X] <: Traverserable[CC, X], A1, A2, B](f: (A1, A2) => B)(implicit fst: T1 <:< CC[A1], snd: T2 <:< Traverserable[Iterable, A2]/*CC[A2] does not work*/): CC[B] = {
     val b = _1.genericBuilder[B]
