@@ -403,6 +403,9 @@ trait StdNames {
     // Stores Java annotations on parameters with RetentionPolicy.RUNTIME
     val RuntimeParamAnnotationATTR = newTermName("RuntimeVisibleParameterAnnotations")
     val ScalaATTR = newTermName("Scala")
+
+    newTermName("utterweirdness") // (adriaan) removed newTermName("identity"), 
+    // but if I don't give something in return, quick.lib (after newstarr) fails with "error: not found: value Nil"
   }
 
   def encode(str: String): Name = newTermName(NameTransformer.encode(str))
