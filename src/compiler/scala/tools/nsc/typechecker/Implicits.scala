@@ -57,7 +57,7 @@ self: Analyzer =>
     if (traceImplicits && !tree.isEmpty && !context.undetparams.isEmpty)
       println("typing implicit with undetermined type params: "+context.undetparams+"\n"+tree)
     val result = new ImplicitSearch(tree, pt, isView, context.makeImplicit(reportAmbiguous)).bestImplicit
-    context.undetparams = context.undetparams remove (result.subst.from contains _)
+    context.undetparams = context.undetparams filterNot (result.subst.from contains _)
     result
   }
 
@@ -69,8 +69,9 @@ self: Analyzer =>
   /** If type `pt` an instance of Manifest or OptManifest, or an abstract type lower-bounded
    *  by such an instance?
    */
-  def isManifest(pt: Type): Boolean = pt match {
-    case TypeRef(_, ManifestClass, List(_)) | 
+  def isManifest(pt: Type): Boolean = pt.dealias match {
+    case TypeRef(_, PartialManifestClass, List(_)) | 
+         TypeRef(_, FullManifestClass, List(_)) |
          TypeRef(_, OptManifestClass, List(_)) => true
     case TypeRef(_, tsym, _) => tsym.isAbstractType && isManifest(pt.bounds.lo)
     case _ => false
@@ -130,7 +131,7 @@ self: Analyzer =>
   class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: Context) 
     extends Typer(context0) {
 
-    assert(tree.isEmpty || tree.pos.isDefined, tree)
+//    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
 
@@ -247,16 +248,17 @@ self: Analyzer =>
     private def typedImplicit(info: ImplicitInfo): SearchResult =
        context.openImplicits find (dominates(pt, _)) match {
          case Some(pending) =>
-           //println("Pending implicit "+pending+" dominates "+pt+"/"+undetParams)
+           // println("Pending implicit "+pending+" dominates "+pt+"/"+undetParams) //@MDEBUG
            throw DivergentImplicit
            SearchFailure 
          case None =>
            try {
              context.openImplicits = pt :: context.openImplicits
-             //println("  "*context.openImplicits.length+"typed implicit "+info+" for "+pt)
+             // println("  "*context.openImplicits.length+"typed implicit "+info+" for "+pt) //@MDEBUG
              typedImplicit0(info)
            } catch {
              case DivergentImplicit => 
+               // println("DivergentImplicit for pt:"+ pt +", open implicits:"+context.openImplicits) //@MDEBUG
                if (context.openImplicits.tail.isEmpty) {
                  if (!(pt.isErroneous))
                    context.unit.error(
@@ -413,16 +415,18 @@ self: Analyzer =>
        *  This is the case if all of the following holds:
        *   - the info's type is not erroneous,
        *   - the info is not shadowed by another info with the same name,
-       *   - if the symbol is Predef.identity, then we are not looking for a view,
+       *   - we're not trying to infer a view that amounts to the identity function (specifically, Predef.identity or Predef.conforms)
        *   - the result of typedImplicit is non-empty.
        *   @return A search result with an attributed tree containing the implicit if succeeded,
        *           SearchFailure if not.
        */
       def tryImplicit(info: ImplicitInfo): SearchResult =
-        if (!containsError(info.tpe) &&
-            !(isLocal && shadowed.contains(info.name)) &&
-            (!isView || info.sym != Predef_identity)) typedImplicit(info) 
-        else SearchFailure
+        if (containsError(info.tpe) ||
+            (isLocal && shadowed.contains(info.name)) || 
+            (isView && (info.sym == Predef_identity || info.sym == Predef_conforms))  //@M this condition prevents no-op conversions, which are a problem (besides efficiency), 
+            // one example is removeNames in NamesDefaults, which relies on the type checker failing in case of ambiguity between an assignment/named arg
+           ) SearchFailure
+        else typedImplicit(info)
 
       def appInfos(is: List[ImplicitInfo]): Map[ImplicitInfo, SearchResult] = {
         var applicable = Map[ImplicitInfo, SearchResult]()
@@ -462,18 +466,18 @@ self: Analyzer =>
 
       if (applicable.isEmpty && !invalidImplicits.isEmpty) {
         infer.setAddendum(tree.pos, () => 
-          "\n Note: implicit "+invalidImplicits.first+" is not applicable here"+
+          "\n Note: implicit "+invalidImplicits.head+" is not applicable here"+
           "\n because it comes after the application point and it lacks an explicit result type")
       }
 
       /** A candidate for best applicable info wrt `improves` */
-      val best = (NoImplicitInfo /: applicable.keys) (
+      val best = (NoImplicitInfo /: applicable.keysIterator) (
         (best, alt) => if (improves(alt, best)) alt else best)
       if (best == NoImplicitInfo) SearchFailure
       else {
         /** The list of all applicable infos which are not improved upon by `best`. */
         val competing = applicable.keySet dropWhile (alt => best == alt || improves(best, alt))
-        if (!competing.isEmpty) ambiguousImplicitError(best, competing.iterator.next, "both", "and", "") // !!! streamline when new collection is there 
+        if (!competing.isEmpty) ambiguousImplicitError(best, competing.head, "both", "and", "") 
 
         // Also check that applicable infos that did not get selected are not
         // in (a companion object of) a subclass of (a companion object of) the class
@@ -562,7 +566,7 @@ self: Analyzer =>
         case List() => ts
         case (t @ TypeRef(pre, _, _)) :: ts1 => 
           if (ts1 exists (_.prefix <:< pre)) compactify(ts1)
-          else t :: compactify(ts1 remove (pre <:< _.prefix))
+          else t :: compactify(ts1 filterNot (pre <:< _.prefix))
       }
       getParts(tp)
       for ((k, ts) <- partMap.iterator.toList; t <- compactify(ts)) yield t
@@ -577,11 +581,13 @@ self: Analyzer =>
 
     /** The manifest corresponding to type `pt`, provided `pt` is an instance of Manifest.
      */
-    private def implicitManifest(pt: Type): Tree = pt match {
-      case TypeRef(_, ManifestClass, List(arg)) => 
-        manifestOfType(arg)
+    private def implicitManifest(pt: Type): Tree = pt.dealias match {
+      case TypeRef(_, FullManifestClass, List(arg)) => 
+        manifestOfType(arg, true)
+      case TypeRef(_, PartialManifestClass, List(arg)) => 
+        manifestOfType(arg, false)
       case TypeRef(_, OptManifestClass, List(arg)) => 
-        val itree = manifestOfType(arg)
+        val itree = manifestOfType(arg, false)
         if (itree == EmptyTree) gen.mkAttributedRef(NoManifest) else itree
       case TypeRef(_, tsym, _) if (tsym.isAbstractType) =>
         implicitManifest(pt.bounds.lo)
@@ -593,7 +599,7 @@ self: Analyzer =>
       * reflect.Manifest for type 'tp'. An EmptyTree is returned if
       * no manifest is found. todo: make this instantiate take type params as well?
       */
-    private def manifestOfType(tp: Type): Tree = {
+    def manifestOfType(tp: Type, full: Boolean): Tree = {
       
       /** Creates a tree that calls the factory method called constructor in object reflect.Manifest */
       def manifestFactoryCall(constructor: String, args: Tree*): Tree =
@@ -602,7 +608,7 @@ self: Analyzer =>
           typed { atPos(tree.pos.focus) {
             Apply(
               TypeApply(
-                Select(gen.mkAttributedRef(ManifestModule), constructor),
+                Select(gen.mkAttributedRef(if (full) FullManifestModule else PartialManifestModule), constructor),
                 List(TypeTree(tp))
               ),
               args.toList
@@ -610,42 +616,48 @@ self: Analyzer =>
           }}
       
       /** Re-wraps a type in a manifest before calling inferImplicit on the result */
-      def findManifest(tp: Type): Tree =
-        inferImplicit(tree, appliedType(ManifestClass.typeConstructor, List(tp)), true, false, context).tree
-      
-      tp.normalize match {
+      def findManifest(tp: Type, manifestClass: Symbol = if (full) FullManifestClass else PartialManifestClass) =
+        inferImplicit(tree, appliedType(manifestClass.typeConstructor, List(tp)), true, false, context).tree
+
+      def findSubManifest(tp: Type) = findManifest(tp, if (full) FullManifestClass else OptManifestClass)
+
+      def mot(tp0: Type): Tree = tp0.normalize match {
         case ThisType(_) | SingleType(_, _) =>
-          manifestFactoryCall("singleType", gen.mkAttributedQualifier(tp)) 
+          manifestFactoryCall("singleType", gen.mkAttributedQualifier(tp0)) 
         case ConstantType(value) =>
-          findManifest(tp.deconst)
+          manifestOfType(tp0.deconst, full)
         case TypeRef(pre, sym, args) =>
           if (isValueClass(sym)) {
             typed { atPos(tree.pos.focus) {
-              Select(gen.mkAttributedRef(ManifestModule), sym.name.toString)
+              Select(gen.mkAttributedRef(FullManifestModule), sym.name.toString)
             }}
           }
           else if (sym.isClass) {
-            val suffix = gen.mkClassOf(tp) :: (args map findManifest)
+            val suffix = gen.mkClassOf(tp0) :: (args map findSubManifest)
             manifestFactoryCall(
               "classType", 
               (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
-               else findManifest(pre) :: suffix): _*)
+               else findSubManifest(pre) :: suffix): _*)
           }
-          else if (sym.isTypeParameterOrSkolem) {
+          else if (sym.isTypeParameterOrSkolem || sym.isExistential) {
             EmptyTree  // a manifest should have been found by normal searchImplicit
           }
           else {
             manifestFactoryCall(
               "abstractType", 
-              findManifest(pre) :: Literal(sym.name.toString) :: findManifest(tp.bounds.hi) :: (args map findManifest): _*)
+              findSubManifest(pre) :: Literal(sym.name.toString) :: findManifest(tp0.bounds.hi) :: (args map findSubManifest): _*)
           }
         case RefinedType(parents, decls) =>
           // refinement is not generated yet
           if (parents.length == 1) findManifest(parents.head)
-          else manifestFactoryCall("intersectionType", parents map findManifest: _*)
+          else manifestFactoryCall("intersectionType", parents map (findSubManifest(_)): _*)
+        case ExistentialType(tparams, result) =>
+          mot(result)
         case _ =>
           EmptyTree
       }
+
+      mot(tp)
     }
 
     /** An extractor for types of the form ? { name: ? }
@@ -720,7 +732,7 @@ self: Analyzer =>
     def allImplicits: List[SearchResult] = {
       val invalidImplicits = new ListBuffer[Symbol]
       def search(iss: List[List[ImplicitInfo]], isLocal: Boolean) = 
-        applicableInfos(iss, isLocal, invalidImplicits).values.toList
+        applicableInfos(iss, isLocal, invalidImplicits).valuesIterator.toList
       search(context.implicitss, true) ::: search(implicitsOfExpectedType, false)
     }
   }

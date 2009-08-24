@@ -25,54 +25,11 @@ import scala.runtime._
   * </p>
   */
 @serializable
-trait Manifest[T] extends OptManifest[T] {
-
-  /** A class representing the type U to which T would be erased. Note
-    * that there is no subtyping relationship between T and U. */
-  def erasure: Predef.Class[U] forSome { type U }
-
-  /** Tests whether the type represented by this manifest is a subtype of
-    * the type represented by `that' manifest. BE AWARE: the current
-    * implementation is an approximation, as the test is done on the
-    * erasure of the type. */
-  def <:<(that: Manifest[_]): Boolean = {
-    def subtype(sub: Predef.Class[_], sup: Predef.Class[_]): Boolean = {
-      val subSuperClass = sub.getSuperclass
-      val subSuperInterfaces = sub.getInterfaces.toList
-      val subSuper =
-        (if (subSuperClass == null) Nil else List(subSuperClass)) ::: subSuperInterfaces
-      (subSuper contains sup) || (subSuper exists (subtype(_, sup)))
-    }
-    this.erasure == that.erasure || subtype(this.erasure, that.erasure)
-  }
-  
-  /** Tests whether the type represented by this manifest is a supertype 
-    * of the type represented by `that' manifest. BE AWARE: the current
-    * implementation is an approximation, as the test is done on the
-    * erasure of the type. */
-  def >:>(that: Manifest[_]): Boolean =
-    that <:< this
-    
-  /** Tests whether the type represented by this manifest is equal to the
-    * type represented by `that' manifest. BE AWARE: the current
-    * implementation is an approximation, as the test is done on the
-    * erasure of the type. */
-  override def equals(that: Any): Boolean = that match {
-    case m:Manifest[_] => this.erasure == m.erasure
-    case _ => false
-  }
-
-  def newArray(len: Int): BoxedArray[T] = {
-    // it's safe to assume T <: AnyRef here because the method is overridden for all value type manifests
-    new BoxedObjectArray(java.lang.reflect.Array.newInstance(erasure, len).asInstanceOf[Array[AnyRef]])
-      .asInstanceOf[BoxedArray[T]]
-  }
-  
-  private[reflect] def typeArguments: Option[List[Manifest[_]]] = None
-    
+trait Manifest[T] extends ClassManifest[T] {
+  override def typeArguments: List[Manifest[_]] = List()
 }
 
-/** <p>
+/** <ps>
   *   This object is used by the compiler and <b>should not be used in client
   *   code</b>. The object <code>Manifest</code> defines factory methods for
   *   manifests.
@@ -151,71 +108,40 @@ object Manifest {
 
   /** Manifest for the class type `clazz', where `clazz' is
     * a top-level or static class. */
-  def classType[T](clazz: Predef.Class[T]): Manifest[T] =
-    new (Manifest[T] @serializable) {
-      val erasure = clazz
-      // Martin why is toString a lazy val instead of a def?
-      override lazy val toString = erasure.getName
-    }
+  def classType[T](clazz: Predef.Class[T], args: Manifest[_]*): Manifest[T] =
+    classType(None, clazz, args: _*)
 
   /** Manifest for the class type `clazz[args]', where `clazz' is
     * a top-level or static class. */
-  def classType[T](clazz: Predef.Class[_], args: Manifest[_]*): Manifest[T] =
-    new (Manifest[T] @serializable) {
-      val erasure = clazz
-      private[reflect] override val typeArguments = Some(args.toList)
-      override def <:<(that: Manifest[_]): Boolean = {
-        that.typeArguments match {
-          case Some(thatArgs) =>
-            super.<:<(that) && ((args zip thatArgs) forall { case (x, y) => x <:< y })
-          case None =>
-            false
-        }
-      }
-      override lazy val toString =
-        (if (erasure.isArray) "Array" else erasure.getName) +
-        args.toList.mkString("[", ", ", "]")
-    }
-
-  /** Manifest for the class type `prefix # clazz'. */
-  def classType[T](prefix: Manifest[_], clazz: Predef.Class[_]): Manifest[T] =
-    new (Manifest[T] @serializable) {
-      val erasure = clazz
-      override lazy val toString = prefix.toString + "#" + erasure.getName
-    }
-
-  /** Manifest for the class type `prefix # clazz[args]'. */
   def classType[T](prefix: Manifest[_], clazz: Predef.Class[_], args: Manifest[_]*): Manifest[T] =
+    classType(Some(prefix), clazz, args: _*)
+
+  /** Manifest for the class type `clazz[args]', where `clazz' is
+    * a top-level or static class. */
+  def classType[T](prefix: Option[Manifest[_]], clazz: Predef.Class[_], args: Manifest[_]*): Manifest[T] =
     new (Manifest[T] @serializable) {
-      val erasure = clazz
-      private[reflect] override val typeArguments = Some(args.toList)
-      override lazy val toString =
-        prefix.toString + "#" + erasure.getName + typeArguments.mkString("[", ", ", "]")
+      def erasure = clazz
+      override val typeArguments = args.toList
+      override def toString = 
+        (if (prefix.isEmpty) "" else prefix.get.toString+"#") +
+        (if (erasure.isArray) "Array" else erasure.getName) +
+        argString
     }
 
   /** Manifest for the abstract type `prefix # name'. `upperBound' is not
     * strictly necessary as it could be obtained by reflection. It was
     * added so that erasure can be calculated without reflection. */
-  def abstractType[T](prefix: Manifest[_], name: String, upperBound: Manifest[_]): Manifest[T] =
-    new (Manifest[T] @serializable) {
-      lazy val erasure = upperBound.erasure
-      override lazy val toString = prefix.toString + "#" + name
-    }
-
-  /** Manifest for the abstract type `prefix # name[args]'. */
   def abstractType[T](prefix: Manifest[_], name: String, upperBound: Manifest[_], args: Manifest[_]*): Manifest[T] =
     new (Manifest[T] @serializable) {
-      lazy val erasure = upperBound.erasure
-      private[reflect] override val typeArguments = Some(args.toList)
-      override lazy val toString =
-        prefix.toString + "#" + name + typeArguments.mkString("[", ", ", "]")
+      def erasure = upperBound.erasure
+      override val typeArguments = args.toList
+      override def toString = prefix.toString+"#"+name+argString
     }
 
   /** Manifest for the intersection type `parents_0 with ... with parents_n'. */
   def intersectionType[T](parents: Manifest[_]*): Manifest[T] =
     new (Manifest[T] @serializable) {
-      lazy val erasure = parents.head.erasure
-      override lazy val toString = parents.mkString(" with ")
+      def erasure = parents.head.erasure
+      override def toString = parents.mkString(" with ")
     }
-  
 }

@@ -560,7 +560,7 @@ trait ParallelMatching extends ast.TreeDSL {
         val litMap  = 
           tags.zipWithIndex.reverse.foldLeft(IntMap.empty[List[Int]]) {
             // we reverse before the fold so the list can be built with :: 
-            case (map, (tag, index)) => map.update(tag, index :: map.getOrElse(tag, Nil))
+            case (map, (tag, index)) => map.updated(tag, index :: map.getOrElse(tag, Nil))
           }
         
         (litMap, varMap)
@@ -788,7 +788,9 @@ trait ParallelMatching extends ast.TreeDSL {
 
       protected def lengthCheck(tree: Tree, len: Int, op: TreeFunction2) = {
         def compareOp = head.tpe member nme.lengthCompare  // symbol for "lengthCompare" method
-        typer typed op((tree.duplicate DOT compareOp)(LIT(len)), ZERO)
+        def cmpFunction(t1: Tree) = op((t1.duplicate DOT compareOp)(LIT(len)), ZERO)
+        // first ascertain lhs is not null: bug #2241
+        typer typed nullSafe(cmpFunction _)(tree)
       }
 
       // precondition for matching: sequence is exactly length of arg
@@ -1036,7 +1038,7 @@ trait ParallelMatching extends ast.TreeDSL {
         val newPats: List[Tree] = List.map2(pat, pat.indices.toList)(classifyPat)
         
         // expand alternatives if any are present
-        (newPats findIndexOf isAlternative) match {
+        (newPats indexWhere isAlternative) match {
           case -1     => List(replace(newPats))
           case index  =>
             val (prefix, alts :: suffix) = newPats splitAt index
