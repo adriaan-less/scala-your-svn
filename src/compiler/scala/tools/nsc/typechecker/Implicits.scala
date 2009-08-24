@@ -364,6 +364,14 @@ self: Analyzer =>
               // to methTypeArgs
               val result = new SearchResult(itree2, subst)
               if (traceImplicits) println("RESULT = "+result)
+              if(settings.debug.value) {
+                // check that no spurious typevars remain in the result,
+                for(tv@TypeVar(_, _) <- result.tree.tpe)
+                  assert(false, tv)
+                //  check that all the original typevars have been instantiated
+                for((tv, _) <- typeVarsOrigConstr)
+                  assert(tv.instValid, tv)
+              }
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
             } else {

@@ -86,7 +86,7 @@ trait Types {
   /** Decrement depth unless it is a don't care */
   private final def decr(depth: Int) = if (depth == AnyDepth) AnyDepth else depth - 1
 
-  private final val printLubs = false //@MDEBUG 
+  private final val printLubs = false
 
   /** The current skolemization level, needed for the algorithms
    *  in isSameType, isSubType that do constraint solving under a prefix 
@@ -633,7 +633,7 @@ trait Types {
     /** A test whether a type contains any unification type variables */
     def isGround: Boolean = this match {
       case TypeVar(_, constr) => 
-        constr.inst != NoType && constr.inst.isGround
+        constr.instValid && constr.inst.isGround
       case TypeRef(pre, sym, args) =>
         sym.isPackageClass || pre.isGround && (args forall (_.isGround))
       case SingleType(pre, sym) =>
@@ -1899,6 +1899,7 @@ A type's typeSymbol should never be inspected directly.
 
     /** The constraint associated with the variable */
     var constr = constr0
+    def instValid = constr.instValid
     
     /** The variable's skolemizatuon level */
     val level = skolemizationLevel
@@ -1934,7 +1935,7 @@ A type's typeSymbol should never be inspected directly.
      *   registerBound returns whether this TypeVar could plausibly be a subtype of tp and, 
      *     if so, tracks tp as a upper bound of this type variable
      */
-    def registerBound(tp: Type, isLowerBound: Boolean): Boolean = { println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
+    def registerBound(tp: Type, isLowerBound: Boolean): Boolean = { //println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
       def checkSubtype(tp1: Type, tp2: Type) = 
         if(isLowerBound) tp1 <:< tp2 
         else             tp2 <:< tp1
@@ -1944,7 +1945,7 @@ A type's typeSymbol should never be inspected directly.
         // println("addedBound: "+(this, tp)) // @MDEBUG
         }
 
-      if (constr.inst != NoType) // type var is already set
+      if (constr.instValid) // type var is not involved in cycle, nor already set
         checkSubtype(tp, constr.inst)
       else isRelatable(tp) && { 
         addBound(tp)
@@ -1952,12 +1953,12 @@ A type's typeSymbol should never be inspected directly.
       } 
     }
 
-    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
+    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
       def checkIsSameType(tp: Type) = 
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst
 
-      if (constr.inst != NoType) checkIsSameType(tp)
+      if (constr.instValid) checkIsSameType(tp)
       else isRelatable(tp) && {
         val newInst = wildcardToTypeVarMap(tp)
         if (constr.lobounds.forall(_ <:< newInst) && constr.hibounds.forall(newInst <:< _)) {
@@ -1970,7 +1971,7 @@ A type's typeSymbol should never be inspected directly.
     override val isHigherKinded = false
         
     override def normalize: Type = 
-      if  (constr.inst != NoType) constr.inst
+      if  (constr.instValid) constr.inst
       else super.normalize
 
     override def typeSymbol = origin.typeSymbol
@@ -2458,6 +2459,7 @@ A type's typeSymbol should never be inspected directly.
     var hibounds: List[Type] = hi0
 
     var inst: Type = NoType // @M reduce visibility?
+    def instValid = (inst ne null) && (inst ne NoType)
 
     def duplicate = {
       val tc = new TypeConstraint(lo0, hi0) // @M BUG?? why don't we use lobounds/hibounds here?
@@ -2590,7 +2592,7 @@ A type's typeSymbol should never be inspected directly.
         if ((pre1 eq pre) && (args1 eq args)) tp
         else AntiPolyType(pre1, args1)
       case TypeVar(_, constr) =>
-        if (constr.inst != NoType) this(constr.inst)
+        if (constr.instValid) this(constr.inst)
         else tp
       case NotNullType(tp) =>
         val tp1 = this(tp)
@@ -3536,7 +3538,7 @@ A type's typeSymbol should never be inspected directly.
     case SingleType(pre, sym) =>
       !(sym hasFlag PACKAGE) && beginsWithTypeVar(pre)
     case TypeVar(_, constr) =>
-      constr.inst == NoType || beginsWithTypeVar(constr.inst)
+      !constr.instValid || beginsWithTypeVar(constr.inst)
     case _ =>
       false
   }
@@ -4188,8 +4190,8 @@ A type's typeSymbol should never be inspected directly.
   def solve(tvars: List[TypeVar], tparams: List[Symbol],
             variances: List[Int], upper: Boolean, depth: Int): Boolean = {
     val config = tvars zip (tparams zip variances)
-
-    def solveOne(tvar: TypeVar, tparam: Symbol, variance: Int) {
+    
+    def solveOne(tvar: TypeVar, tparam: Symbol, variance: Int): Unit = {
       if (tvar.constr.inst == NoType) {
         val up = if (variance != CONTRAVARIANT) upper else !upper
         tvar.constr.inst = null
@@ -4227,21 +4229,39 @@ A type's typeSymbol should never be inspected directly.
                   tparam2.tpe.instantiateTypeParams(tparams, tvars) :: tvar.constr.lobounds 
           }
         }
-        tvar.constr.inst = NoType // necessary because hibounds/lobounds may contain tvar
+        tvar setInst NoType // necessary because hibounds/lobounds may contain tvar
 
         // println("solveOne(useGlb, glb, lub): "+ (up, //@MDEBUG
         //   if (depth != AnyDepth) glb(tvar.constr.hibounds, depth) else glb(tvar.constr.hibounds),
         //   if (depth != AnyDepth) lub(tvar.constr.lobounds, depth) else lub(tvar.constr.lobounds)))
 
-        tvar setInst (
-          if (up) {
-            if (depth != AnyDepth) glb(tvar.constr.hibounds, depth) else glb(tvar.constr.hibounds)
-          } else {
-            if (depth != AnyDepth) lub(tvar.constr.lobounds, depth) else lub(tvar.constr.lobounds)
-          })
+        (if (up) {
+          if (depth != AnyDepth) glb(tvar.constr.hibounds, depth) else glb(tvar.constr.hibounds)
+        } else {
+          if (depth != AnyDepth) lub(tvar.constr.lobounds, depth) else lub(tvar.constr.lobounds)
+        })  match { // analyse the proposed instance for tvar
+          case tv@TypeVar(_, _) => // (#2261) try to avoid instantiating a typevar to another typevar (tv), 
+              // but only if tv can be instantiated to something interesting 
+            if(!tvars.contains(tv) && (tv.constr.inst eq NoType)) { // only solve tv if we weren't planning on solving it anyway (and it hasn't been solved yet)
+              // println("inst for: "+ tvar +" = "+ (tvars.contains(tv), tv.origin, tv.constr))
+              tvar setInst null // avoid cycles
+              solveOne(tv, tparam, variance) // try to solve the other type var
+              // println("insted "+ tv)
+              if(tv.constr.inst.isInstanceOf[TypeVar] || // avoid cycles
+                 (tv.constr.inst eq NothingClass.tpe) || (tv.constr.inst eq NullClass.tpe) ||  // indicates failure of glb
+                 (tv.constr.inst eq AnyClass.tpe)) // indicates failure of lub
+                tv setInst NoType // that didn't help, so reset...
+            }
+
+            if(tvar ne tv) tvar setInst tv // avoid cycles
+            else           tvar setInst NoType
+
+          case tp =>
+            tvar setInst tp
+        }
         // Console.println("solving "+tvar+" "+up+" "+(if (up) (tvar.constr.hibounds) else tvar.constr.lobounds)+((if (up) (tvar.constr.hibounds) else tvar.constr.lobounds) map (_.widen))+" = "+tvar.constr.inst)//@MDEBUG
       }
-    }    
+    }
     
     for ((tvar, (tparam, variance)) <- config)
       solveOne(tvar, tparam, variance)
@@ -4252,6 +4272,7 @@ A type's typeSymbol should never be inspected directly.
           !(tvar.constr.hibounds forall (tvar.constr.inst <:< _))) {
         ok = false
       }
+
     ok
   }
 
@@ -4365,7 +4386,7 @@ A type's typeSymbol should never be inspected directly.
       case ExistentialType(_, res) => 
         res
       case TypeVar(_, constr) => 
-        if ((constr.inst ne null) && (constr.inst ne NoType)) constr.inst
+        if (constr.instValid) constr.inst
         else throw new Error("trying to do lub/glb of typevar "+tp)
       case t => t
     }
