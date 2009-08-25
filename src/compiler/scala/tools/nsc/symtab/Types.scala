@@ -1416,7 +1416,7 @@ trait Types {
     override def typeArgs: List[Type] = args
 
     // @MAT was typeSymbol.unsafeTypeParams, but typeSymbol normalizes now 
-    private def typeParamsDirect = sym.unsafeTypeParams
+    private def typeParamsDirect = sym.unsafeTypeParams //TODO: use sym.typeParams?
 
     //@M equivalent to:
     //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
@@ -1427,6 +1427,7 @@ trait Types {
 
 
     // (!result.isEmpty) IFF isHigherKinded
+    // (since Java's raw types are not considered higher-kinded types, typeParams is empty for those)
     override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
 
     // placeholders derived from type params
