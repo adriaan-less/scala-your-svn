@@ -134,6 +134,24 @@ self: Analyzer =>
 //    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
+    
+    // save original constraints on type variables, so that different iterations of implicit search act 
+    // on different type constraints (clones of the original ones)
+    // for every SearchResult of typedImplicit, we want only the tests that relate to that SearchResult 
+    // to have an effect on the constraint of the type vars that are involved
+    // (tests on TypeVars mutate the corresponding TypeConstraint to accumulate information)
+    val typeVarsOrigConstr: List[(TypeVar, TypeConstraint)] = typeVarsConstr.toList
+
+    def typeVarsConstr: Iterable[(TypeVar, TypeConstraint)] = 
+      (for(tv@TypeVar(_, constr) <- pt) yield (tv, constr /*unapply to get latest constr*/))
+
+    def typeVarsConstr_= (savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
+      for((tv, constr) <- savedConstr) tv.constr = constr
+      
+    def cloneConstrs(savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
+      for((tv, constr) <- savedConstr) yield (tv, constr.cloneInternal)
+      
+    
 
     /** Is implicit info `info1` better than implicit info `info2`?
      */
@@ -288,6 +306,9 @@ self: Analyzer =>
       def approximate(tp: Type) = 
         tp.instantiateTypeParams(undetParams, undetParams map (_ => WildcardType))
 
+      // initialise all TypeVar's in pt with a clone of their initial TypeConstraint (saved when SearchImplicit was instatiated) 
+      typeVarsConstr = cloneConstrs(typeVarsConstr)
+      
       /** Instantiated `pt' so that undetermined type parameters are replaced by wildcards
        */
       val wildPt = approximate(pt)
@@ -346,7 +367,7 @@ self: Analyzer =>
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
             } else {
-              if (traceImplicits) println("incompatible???")
+              if (traceImplicits) println("incompatible??? typeVarsConstr="+ typeVarsConstr)
               SearchFailure
             }
           } else if (settings.XlogImplicits.value) 

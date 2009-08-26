@@ -1881,10 +1881,20 @@ A type's typeSymbol should never be inspected directly.
 
   //private var tidCount = 0  //DEBUG
 
+  //@M 
+  // a TypeVar used to be a case class with only an origin and a constr
+  // then, constr became mutable (to support UndoLog, I guess), but pattern-matching returned the original constr0 (not clear whether that was intentional or not) //@M to Martin: was it?
+  // now, pattern-matching returns the most recent constr
+  object TypeVar {
+    def unapply(tv: TypeVar): Some[(Type, TypeConstraint)] = Some((tv.origin, tv.constr))
+    def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr)
+    def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint(List(),List()))
+  }
+  
   /** A class representing a type variable 
    *  Not used after phase `typer'.
    */
-  case class TypeVar(origin: Type, constr0: TypeConstraint) extends Type {
+  class TypeVar(val origin: Type, val constr0: TypeConstraint) extends Type {
 
     // var tid = { tidCount += 1; tidCount } //DEBUG
 
@@ -1918,6 +1928,8 @@ A type's typeSymbol should never be inspected directly.
     override def isStable = origin.isStable
     override def isVolatile = origin.isVolatile
     override def kind = "TypeVar"
+
+    def cloneInternal = TypeVar(origin, constr cloneInternal)
   }
 
   /** A type carrying some annotations. Created by the typechecker
@@ -2380,21 +2392,29 @@ A type's typeSymbol should never be inspected directly.
 
 // Helper Classes ---------------------------------------------------------
 
-  /** A class expressing upper and lower bounds constraints 
-   *  for type variables, as well as their instantiations */
-  class TypeConstraint(lo: List[Type], hi: List[Type]) {
+  /** A class expressing upper and lower bounds constraints of type variables, 
+   * as well as their instantiations.
+   */
+  class TypeConstraint(lo0: List[Type], hi0: List[Type]) { 
     //var self: Type = _ //DEBUG
     def this() = this(List(), List())
-    var lobounds: List[Type] = lo
-    var hibounds: List[Type] = hi
-    var inst: Type = NoType
+    var lobounds: List[Type] = lo0
+    var hibounds: List[Type] = hi0
+
+    var inst: Type = NoType // @M reduce visibility?
 
     def duplicate = {
-      val tc = new TypeConstraint(lo, hi)
+      val tc = new TypeConstraint(lo0, hi0) // @M BUG?? why don't we use lobounds/hibounds here?
       tc.inst = inst
       tc
     }
 
+    def cloneInternal = {
+      val tc = new TypeConstraint(lobounds, hibounds)
+      tc.inst = inst
+      tc
+    }
+    
     override def toString =
       (lobounds map (_.safeToString)).mkString("[ _>:(", ",", ") ") +
       (hibounds map (_.safeToString)).mkString("| _<:(", ",", ") ] _= ") + 

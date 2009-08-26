@@ -1267,12 +1267,7 @@ trait Infer {
     }
 
     def isInstantiatable(tvars: List[TypeVar]) = {
-      def cloneTypeVar(tv: TypeVar) = {
-        val tv1 = TypeVar(tv.origin, new TypeConstraint(tv.constr.lobounds, tv.constr.hibounds))
-        tv1.constr.inst = tv.constr.inst
-        tv1
-      }
-      val tvars1 = tvars map cloneTypeVar
+      val tvars1 = tvars map (_.cloneInternal)
       // Note: right now it's not clear that solving is complete, or how it can be made complete!
       // So we should come back to this and investigate.
       solve(tvars1, tvars1 map (_.origin.typeSymbol), tvars1 map (x => COVARIANT), false)  
