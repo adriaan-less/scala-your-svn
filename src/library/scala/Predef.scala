@@ -82,9 +82,9 @@ object Predef {
   def manifest[T](implicit m: Manifest[T]) = m
   def classManifest[T](implicit m: ClassManifest[T]) = m
 
-  // will soon stop being a view: subsumed by `conforms` (which is less likely to give rise to ambiguities)
+  // no longer a view: subsumed by `conforms` (which is less likely to give rise to ambiguities)
   // @see `conforms` for the implicit version
-  implicit def identity[A](x: A): A = x 
+  def identity[A](x: A): A = x 
 
   // errors and asserts -------------------------------------------------
 
@@ -262,8 +262,8 @@ object Predef {
   // reusing `Function2` and `identity` leads to ambiguities (any2stringadd is inferred)
   // to constrain any abstract type T that's in scope in a method's argument list (not just the method's own type parameters)
   // simply add an implicit argument of type `T <:< U`, where U is the required upper bound (for lower-bounds, use: `U <: T`)
-  sealed abstract class <:<[-From, +To] //extends (From => To)
-  implicit def conforms[A]: A <:< A = new (A <:< A) {def convert(x: A) = x}
+  sealed abstract class <:<[-From, +To] extends (From => To)
+  implicit def conforms[A]: A <:< A = new (A <:< A) {def apply(x: A) = x}
 
   def currentThread = java.lang.Thread.currentThread()
 }
