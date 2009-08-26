@@ -358,6 +358,9 @@ self: Analyzer =>
               if (traceImplicits) println("tvars = "+tvars+"/"+(tvars map (_.constr)))
               val targs = solvedTypes(tvars, undetParams, undetParams map varianceInType(pt),
                                       false, lubDepth(List(itree2.tpe, pt)))
+
+              // need checkBounds for pos/ticket2261_delitedsl.scala:
+              checkBounds(itree2.pos, NoPrefix, NoSymbol, undetParams, targs, "inferred ")
               val subst = new TreeTypeSubstituter(undetParams, targs)
               subst traverse itree2 
               // todo: remove type params that have been instantiated to Nothing, similar
