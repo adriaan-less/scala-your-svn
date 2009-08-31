@@ -180,7 +180,7 @@ trait Typers { self: Analyzer =>
     def applyImplicitArgs(fun: Tree): Tree = fun.tpe match {
       case MethodType(params, _) =>
         var positional = true
-        val argResults = params map (_.tpe) map (inferImplicit(fun, _, true, false, context))
+        val argResults = params map (p => inferImplicit(fun, p.tpe, true, false, context))
         val args = argResults.zip(params) flatMap {
           case (arg, param) =>
             if (arg != SearchFailure) {
@@ -188,8 +188,10 @@ trait Typers { self: Analyzer =>
               else List(atPos(arg.tree.pos)(new AssignOrNamedArg(Ident(param.name), (arg.tree))))
             } else {
               if (!param.hasFlag(DEFAULTPARAM))
-                context.error(fun.pos, "could not find implicit value for parameter "+
-                                       param.name +":"+ param.tpe +".")
+                context.error(
+                  fun.pos, "could not find implicit value for "+
+                  (if (param.name startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
+                   else "parameter "+param.name+": ")+param.tpe)
               positional = false
               Nil
             }
@@ -956,7 +958,7 @@ trait Typers { self: Analyzer =>
                 if (coercion != EmptyTree) {
                   if (settings.debug.value) log("inferred view from "+tree.tpe+" to "+pt+" = "+coercion+":"+coercion.tpe)
                   return newTyper(context.makeImplicit(context.reportAmbiguousErrors)).typed(
-                      Apply(coercion, List(tree)) setPos tree.pos, mode, pt)
+                    Apply(coercion, List(tree)) setPos tree.pos, mode, pt)
                 }
               }
             }
@@ -2910,8 +2912,8 @@ trait Typers { self: Analyzer =>
             //@M: in case TypeApply we can't check the kind-arities of the type arguments,
             // as we don't know which alternative to choose... here we do
             map2Conserve(args, tparams) { 
-              //@M! the polytype denotes the expected kind
-              (arg, tparam) => typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+              //@M! the TypeFunction denotes the expected kind (the proto-kind)
+              (arg, tparam) => typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
             }          
           } else // @M: there's probably something wrong when args.length != tparams.length... (triggered by bug #320)
            // Martin, I'm using fake trees, because, if you use args or arg.map(typedType), 
@@ -3413,8 +3415,8 @@ trait Typers { self: Analyzer =>
                 // if symbol hasn't been fully loaded, can't check kind-arity
               else map2Conserve(args, tparams) { 
                 (arg, tparam) => 
-                  typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
-                  //@M! the polytype denotes the expected kind
+                  typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
+                  //@M! the TypeFunction denotes the expected kind (the proto-kind)
               }
             val argtypes = args1 map (_.tpe)
             val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isTypeMember) 
@@ -3605,8 +3607,8 @@ trait Typers { self: Analyzer =>
           
           // @M maybe the well-kindedness check should be done when checking the type arguments conform to the type parameters' bounds?          
           val args1 = if(args.length == tparams.length) map2Conserve(args, tparams) { 
-                        //@M! the polytype denotes the expected kind
-                        (arg, tparam) => typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+                        //@M! the TypeFunction denotes the expected kind (the proto-kind)
+                        (arg, tparam) => typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
                       } else { 
                       //@M  this branch is correctly hit for an overloaded polymorphic type. It also has to handle erroneous cases.
                       // Until the right alternative for an overloaded method is known, be very liberal, 
@@ -3778,6 +3780,8 @@ trait Typers { self: Analyzer =>
       ret
     }
 
+    def typedPos(pos: Position)(tree: Tree) = typed(atPos(pos)(tree))
+
     /** Types expression <code>tree</code> with given prototype <code>pt</code>.
      *
      *  @param tree ...
@@ -3851,6 +3855,16 @@ trait Typers { self: Analyzer =>
         EmptyTree, 
         appliedType((if (full) FullManifestClass else PartialManifestClass).typeConstructor, List(tp)),
         true, false, context)
+
+    def getManifestTree(pos: Position, tp: Type, full: Boolean): Tree = {
+      val manifestOpt = findManifest(tp, false)
+      if (manifestOpt.tree.isEmpty) {
+        error(pos, "cannot find "+(if (full) "" else "class ")+"manifest for element type of "+tp)
+        Literal(Constant(null))
+      } else {
+        manifestOpt.tree
+      }
+    }
 /*
     def convertToTypeTree(tree: Tree): Tree = tree match {
       case TypeTree() => tree

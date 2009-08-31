@@ -86,7 +86,7 @@ trait Types {
   /** Decrement depth unless it is a don't care */
   private final def decr(depth: Int) = if (depth == AnyDepth) AnyDepth else depth - 1
 
-  private final val printLubs = false
+  private final val printLubs = true
 
   /** The current skolemization level, needed for the algorithms
    *  in isSameType, isSubType that do constraint solving under a prefix 
@@ -1383,6 +1383,12 @@ trait Types {
    *  @param args ...
    */
   case class TypeRef(pre: Type, sym: Symbol, args: List[Type]) extends Type {
+    if(sym.rawname.toString.contains("Sequence") && (args.length == 1) && (args.exists{tp: Type => tp.typeSymbolDirect.rawname.toString.contains("Any")})){
+      assert(false)
+      // println("RTR")
+      //       (new RuntimeException).printStackTrace()
+    }
+
 //    assert(!sym.isAbstractType || pre.isStable || pre.isError)
 //    assert(!pre.isInstanceOf[ClassInfoType], this)
 //    assert(!(sym hasFlag (PARAM | EXISTENTIAL)) || pre == NoPrefix, this)
@@ -1408,15 +1414,6 @@ trait Types {
 
     override def isNotNull = 
       sym.isModuleClass || sym == NothingClass || isValueClass(sym) || super.isNotNull
-
-    // @M: propagate actual type params (args) to `tp', by replacing formal type parameters with actual ones
-    def transform(tp: Type): Type = {
-      val args = typeArgsOrDummies
-      if (args.length == sym.typeParams.length)
-        tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(sym.typeParams, args)
-      else { assert(sym.typeParams.isEmpty || (args exists (_.isError)), tp); tp }
-      // @M TODO maybe we shouldn't instantiate type params if isHigherKinded -- probably needed for partial type application though
-    }
 
     //@M! use appliedType on the polytype that represents the bounds (or if aliastype, the rhs)
     def transformInfo(tp: Type): Type = appliedType(tp.asSeenFrom(pre, sym.owner), typeArgsOrDummies)
@@ -1446,18 +1443,6 @@ A type's typeSymbol should never be inspected directly.
       if (sym.isAbstractType) thisInfo.bounds // transform(thisInfo.bounds).asInstanceOf[TypeBounds] // ??? seems to be doing asSeenFrom twice
       else super.bounds
 
-    override def parents: List[Type] = {
-      val period = parentsPeriod
-      if (period != currentPeriod) {
-        parentsPeriod = currentPeriod
-        if (!isValidForBaseClasses(period)) {
-          parentsCache = thisInfo.parents map transform
-        }
-      }
-      parentsCache
-    }
-
-    override def typeOfThis = transform(sym.typeOfThis)
 
 /*
     override def narrow =
@@ -1494,6 +1479,15 @@ A type's typeSymbol should never be inspected directly.
       // otherwise raw types are considered higher-kinded types during subtyping:
         (phase.erasedTypes || !sym.hasFlag(JAVA))  
 
+    override def decls: Scope = {
+      sym.info match {
+        case TypeRef(_, sym1, _) =>
+          assert(sym1 != sym, this) // @MAT was != typeSymbol
+        case _ =>
+      }
+      thisInfo.decls
+    }
+    
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
         val substTps = formals.intersect(typeParams)
@@ -1507,7 +1501,39 @@ A type's typeSymbol should never be inspected directly.
         super.instantiateTypeParams(formals, actuals)
 
 
-    private var normalized: Type = null
+    // @M: replace this type's formal type parameters in `tp' with the corresponding type argument to this type
+    // for higher-kinded types, use dummy type arguments that correspond to the type parameters (leaving them unbound)
+    // the resulting type is of kind *
+    def transform(tp: Type): Type = {
+      val args = typeArgsOrDummies
+      if (args.length == sym.typeParams.length)
+        tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(sym.typeParams, args)
+      else { assert(sym.typeParams.isEmpty || (args exists (_.isError)), tp); tp }
+      // @M TODO maybe we shouldn't instantiate type params if isHigherKinded -- probably needed for partial type application though
+    }
+
+    // variation on transform
+    // resulting type will have same kind as `this`
+    // could unify transform and transformPreserveKind as: typeFun(typeParamsDirect, tp.asSeenFrom(pre, sym.owner)).applyArgs(args)     
+    def transformPreserveKind(tp: Type): Type = {
+      if (isHigherKinded)
+        tp.asSeenFrom(pre, sym.owner)
+      else
+        appliedType(tp.asSeenFrom(pre, sym.owner), args)
+    }
+    
+    override def parents: List[Type] = {
+      val period = parentsPeriod
+      if (period != currentPeriod) {
+        parentsPeriod = currentPeriod
+        if (!isValidForBaseClasses(period)) {
+          parentsCache = thisInfo.parents //map transformPreserveKind
+        }
+      }
+      parentsCache
+    }
+
+    override def typeOfThis = transform(sym.typeOfThis)
 
     override def dealias: Type = 
       if (sym.isAliasType && sym.info.typeParams.length == args.length) {
@@ -1516,6 +1542,7 @@ A type's typeSymbol should never be inspected directly.
         xform.dealias
       } else this
 
+    private var normalized: Type = null
     def normalize0: Type = 
       if (sym.isAliasType) { // beta-reduce 
         if (sym.info.typeParams.length == args.length || !isHigherKinded) { 
@@ -1525,13 +1552,11 @@ A type's typeSymbol should never be inspected directly.
           assert(xform ne this, this)
           xform.normalize // cycles have been checked in typeRef
         } else {
-          PolyType(typeParams, transform(sym.info.resultType).normalize)  // eta-expand
-          // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+          typeFun(typeParams, transform(sym.info.resultType).normalize)  // eta-expand
         }
       } else if (isHigherKinded) { 
-        // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         // @M: initialize needed (see test/files/pos/ticket0137.scala)
-        PolyType(typeParams, typeRef(pre, sym.initialize, dummyArgs))
+        typeFun(typeParams, typeRef(pre, sym.initialize, dummyArgs))
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
       } else {
@@ -1545,18 +1570,10 @@ A type's typeSymbol should never be inspected directly.
         normalized
       }
 
-    override def decls: Scope = {
-      sym.info match {
-        case TypeRef(_, sym1, _) =>
-          assert(sym1 != sym, this) // @MAT was != typeSymbol
-        case _ =>
-      }
-      thisInfo.decls
-    }
 
     override def baseType(clazz: Symbol): Type =
       if (sym == clazz) this
-      else if (sym.isClass) transform(sym.info.baseType(clazz))
+      else if (sym.isClass) transform/*PreserveKind*/(sym.info.baseType(clazz))
       else 
         try { 
           basetypeRecursions += 1
@@ -1575,7 +1592,7 @@ A type's typeSymbol should never be inspected directly.
           basetypeRecursions -= 1
         }
 
-    override def baseTypeSeq: BaseTypeSeq = {
+    override def baseTypeSeq: BaseTypeSeq = { //BTS-TR
       val period = baseTypeSeqPeriod
       if (period != currentPeriod) {
         baseTypeSeqPeriod = currentPeriod
@@ -1584,9 +1601,8 @@ A type's typeSymbol should never be inspected directly.
             typerefBaseTypeSeqCount += 1
           baseTypeSeqCache = undetBaseTypeSeq
           baseTypeSeqCache =
-            if (sym.isAbstractType) transform(bounds.hi).baseTypeSeq prepend this
-            else sym.info.baseTypeSeq map transform
-            
+            if (sym.isAbstractType) transform/*PreserveKind*/(bounds.hi).baseTypeSeq prepend this
+            else sym.info.baseTypeSeq map transform/*PreserveKind*/
         }
       }
       if (baseTypeSeqCache == undetBaseTypeSeq)
@@ -1724,28 +1740,31 @@ A type's typeSymbol should never be inspected directly.
     override def paramss: List[List[Symbol]] = resultType.paramss
     override def params: List[Symbol] = resultType.params
     override def paramTypes: List[Type] = resultType.paramTypes
-    override def parents: List[Type] = resultType.parents
-    override def decls: Scope = resultType.decls
     override def termSymbol: Symbol = resultType.termSymbol
     override def typeSymbol: Symbol = resultType.typeSymbol
     override def boundSyms: List[Symbol] = typeParams ::: resultType.boundSyms
     override def prefix: Type = resultType.prefix
-    override def baseTypeSeq: BaseTypeSeq = resultType.baseTypeSeq
+    
+    // we go under the binders of the type parameters here -- DANGER, WILL ROBINSON
+    override def parents: List[Type] = resultType.parents //map (typeFun(typeParams, _))
+    override def decls: Scope = resultType.decls
+    override def baseTypeSeq: BaseTypeSeq = resultType.baseTypeSeq //map (typeFun(typeParams, _)) //BTS-PT
     override def baseTypeSeqDepth: Int = resultType.baseTypeSeqDepth
     override def baseClasses: List[Symbol] = resultType.baseClasses
     override def baseType(clazz: Symbol): Type = resultType.baseType(clazz)
+    
     override def narrow: Type = resultType.narrow
     override def isVolatile = resultType.isVolatile
     override def finalResultType: Type = resultType.finalResultType
 
-    /** @M: abstractTypeSig now wraps a TypeBounds in a PolyType 
-     *  to represent a higher-kinded type parameter
-     *  wrap lo&hi in polytypes to bind variables
+    /** @M: abstractTypeSig wraps a TypeBounds in a PolyType (soon to be TypeFunction) 
+     *  to represent a higher-kinded type parameter --> push down to lo&hi bounds
      */
     override def bounds: TypeBounds = 
-      TypeBounds(PolyType(typeParams, resultType.bounds.lo), 
-                 PolyType(typeParams, resultType.bounds.hi))
+      TypeBounds(typeFun(typeParams, resultType.bounds.lo), 
+                 typeFun(typeParams, resultType.bounds.hi))
 
+    // this is obviously wrong when the PolyType represents a polymorphic method
     override def isHigherKinded = !typeParams.isEmpty
     
     override def safeToString: String =
@@ -2238,6 +2257,12 @@ A type's typeSymbol should never be inspected directly.
       case _ => throw new Error(debugString(tycon))
     }
 
+  // to ease transition from having just PolyType to distinguishing 
+  //  - PolyType (universal quantification, kind *) 
+  //  - TypeFun (type function, higher-kinded)
+  // for now, creates a polytype
+  def typeFun(tparams: List[Symbol], tpe: Type): Type = polyType(tparams, tpe)
+  
   /** A creator for type parameterizations 
    *  If tparams is empty, simply returns result type 
    */
@@ -2827,7 +2852,7 @@ A type's typeSymbol should never be inspected directly.
               if (symclazz == clazz && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
                 pre.baseType(symclazz) match {
                   case TypeRef(_, basesym, baseargs) =>
-                    //Console.println("instantiating " + sym + " from " + basesym + " with " + basesym.typeParams + " and " + baseargs+", pre = "+pre+", symclazz = "+symclazz);//DEBUG
+                    Console.println("instantiating " + sym + " (with args: "+ args +") from " + basesym + " with " + basesym.typeParams + " and " + baseargs+", pre = "+pre+", symclazz = "+symclazz);//DEBUG
                     if (basesym.typeParams.length == baseargs.length) {
                       instParam(basesym.typeParams, baseargs)
                     } else {
@@ -2840,12 +2865,15 @@ A type's typeSymbol should never be inspected directly.
                   case ExistentialType(tparams, qtpe) =>
                     capturedParams = capturedParams union tparams
                     toInstance(qtpe, clazz)
-                  case _ =>
+                  case tp =>
+                    println("encountered baseType: "+tp) //DEBUG
                     throwError
                 }
               } else toInstance(base(pre, clazz).prefix, clazz.owner)
             }
-          toInstance(pre, clazz)
+          val res = toInstance(pre, clazz)
+          println("instantiated: "+res)
+          res
         case _ =>
           mapOver(tp)
       }
@@ -4348,10 +4376,12 @@ A type's typeSymbol should never be inspected directly.
         MethodType(params, lub0(matchingRestypes(ts, params map (_.tpe))))
       case ts @ TypeBounds(_, _) :: rest =>
         mkTypeBounds(glb(ts map (_.bounds.lo), depth), lub(ts map (_.bounds.hi), depth))
-      case ts0 =>
+      case ts0 => val HK = ts0 exists (_.isHigherKinded)
         val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
         val bts: List[BaseTypeSeq] = ts map (_.baseTypeSeq)
+        if(HK) println(indent+"bts="+bts)
         val lubBaseTypes: List[Type] = lubBaseTypeSeq(bts, depth)
+        if(HK) println(indent+"lubBaseTypes="+bts)
         val lubParents = spanningTypes(lubBaseTypes)
         val lubOwner = commonOwner(ts)
         val lubBase = intersectionType(lubParents, lubOwner)
@@ -4566,13 +4596,13 @@ A type's typeSymbol should never be inspected directly.
   def mergePrefixAndArgs(tps: List[Type], variance: Int, depth: Int): Option[Type] = tps match {
     case List(tp) =>
       Some(tp)
-    case TypeRef(_, sym, _) :: rest =>
+    case TypeRef(_, sym, _) :: rest => println("MPAA: "+(tps))
       val pres = tps map (_.prefix)
       val pre = if (variance == 1) lub(pres, depth) else glb(pres, depth)
       val argss = tps map (_.typeArgs)
       val capturedParams = new ListBuffer[Symbol]
       val args = List.map2(sym.typeParams, List.transpose(argss)) {
-        (tparam, as) =>
+        (tparam, as) => println("tp= "+ tparam.defString +" as= "+as)
           if (depth == 0)
             if (tparam.variance == variance) AnyClass.tpe
             else if (tparam.variance == -variance) NothingClass.tpe
@@ -4593,7 +4623,8 @@ A type's typeSymbol should never be inspected directly.
                 qvar.tpe
               }
             }
-      } 
+      }
+      println("args= "+args) 
       try {
         if (args contains NoType) None
         else Some(existentialAbstraction(capturedParams.toList, typeRef(pre, sym, args)))

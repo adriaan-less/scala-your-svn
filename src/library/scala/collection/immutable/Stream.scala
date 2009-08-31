@@ -216,7 +216,7 @@ self =>
    *              <code>Stream(a<sub>0</sub>, ..., a<sub>m</sub>)
    *              zip Stream(b<sub>0</sub>, ..., b<sub>n</sub>)</code> is invoked.
    */
-  override final def zip[A1 >: A, B, That](that: Sequence[B])(implicit bf: BuilderFactory[(A1, B), That, Stream[A]]): That = {
+  override final def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: BuilderFactory[(A1, B), That, Stream[A]]): That = {
     // we assume there is no other builder factory on streams and therefore know that That = Stream[(A1, B)]
     (if (this.isEmpty || that.isEmpty) Stream.Empty
      else new Stream.Cons((this.head, that.head), (this.tail zip that.tail).asInstanceOf[Stream[(A1, B)]])).asInstanceOf[That]
@@ -370,7 +370,7 @@ self =>
     result
   }
 
-  override def flatten[B](implicit toTraversable: A => Traversable[B]): Stream[B] = {
+  override def flatten[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): Stream[B] = {
     def flatten1(t: Traversable[B]): Stream[B] =
       if (!t.isEmpty)
         new Stream.Cons(t.head, flatten1(t.tail))
@@ -380,7 +380,7 @@ self =>
     if (isEmpty)
       Stream.empty
     else
-      flatten1(toTraversable(head))
+      flatten1(asTraversable(head))
   }
 
   /** Defines the prefix of this object's <code>toString</code> representation as ``Stream''.
@@ -553,7 +553,7 @@ object Stream extends SequenceFactory[Stream] {
   /** The concatenation of all streams returned by an iterator
    */
   @deprecated("use xs.toStream.flatten instead")
-  def concat[A](xs: Iterator[Stream[A]]): Stream[A] = xs.toStream.flatten  
+  def concat[A](xs: Iterator[Stream[A]]): Stream[A] = xs.toStream.flatten //(conforms[Stream[A], collection.Traversable[A]])
 
   /**
    * Create a stream with element values

@@ -362,8 +362,12 @@ abstract class ClassfileParser {
     val parts = name.toString.split(Array('.', '$'))
     var sym: Symbol = definitions.RootClass
     atPhase(currentRun.flattenPhase.prev) {
-      for (part <- parts) {
-        sym = sym.info.decl(part)//.suchThat(module == _.isModule)
+      for (part0 <- parts; val part = newTermName(part0)) {
+        val sym1 = sym.info.decl(part.encode)//.suchThat(module == _.isModule)
+        if (sym1 == NoSymbol)
+          sym = sym.info.decl(part.encode.toTypeName)
+        else
+          sym = sym1
       }
     }
 //    println("found: " + sym)
@@ -703,7 +707,7 @@ abstract class ClassfileParser {
         }
         ClassInfoType(parents.toList, instanceDefs, sym)
       }
-    polyType(ownTypeParams, tpe)
+    polyType(ownTypeParams, tpe) // if(sym.isClass) typeFun(ownTypeParams, tpe) else polyType(ownTypeParams, tpe)
   } // sigToType
 
   class TypeParamsType(override val typeParams: List[Symbol]) extends LazyType {
@@ -1017,7 +1021,7 @@ abstract class ClassfileParser {
     override def complete(sym: Symbol) {
       alias.initialize
       val tparams1 = cloneSymbols(alias.typeParams)
-      sym.setInfo(polyType(tparams1, alias.tpe.substSym(alias.typeParams, tparams1)))
+      sym.setInfo(typeFun(tparams1, alias.tpe.substSym(alias.typeParams, tparams1)))
     }
   }
 
