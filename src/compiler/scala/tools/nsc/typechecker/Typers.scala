@@ -2912,8 +2912,8 @@ trait Typers { self: Analyzer =>
             //@M: in case TypeApply we can't check the kind-arities of the type arguments,
             // as we don't know which alternative to choose... here we do
             map2Conserve(args, tparams) { 
-              //@M! the polytype denotes the expected kind
-              (arg, tparam) => typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+              //@M! the TypeFunction denotes the expected kind (the proto-kind)
+              (arg, tparam) => typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
             }          
           } else // @M: there's probably something wrong when args.length != tparams.length... (triggered by bug #320)
            // Martin, I'm using fake trees, because, if you use args or arg.map(typedType), 
@@ -3415,8 +3415,8 @@ trait Typers { self: Analyzer =>
                 // if symbol hasn't been fully loaded, can't check kind-arity
               else map2Conserve(args, tparams) { 
                 (arg, tparam) => 
-                  typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
-                  //@M! the polytype denotes the expected kind
+                  typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
+                  //@M! the TypeFunction denotes the expected kind (the proto-kind)
               }
             val argtypes = args1 map (_.tpe)
             val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isTypeMember) 
@@ -3607,8 +3607,8 @@ trait Typers { self: Analyzer =>
           
           // @M maybe the well-kindedness check should be done when checking the type arguments conform to the type parameters' bounds?          
           val args1 = if(args.length == tparams.length) map2Conserve(args, tparams) { 
-                        //@M! the polytype denotes the expected kind
-                        (arg, tparam) => typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+                        //@M! the TypeFunction denotes the expected kind (the proto-kind)
+                        (arg, tparam) => typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
                       } else { 
                       //@M  this branch is correctly hit for an overloaded polymorphic type. It also has to handle erroneous cases.
                       // Until the right alternative for an overloaded method is known, be very liberal, 

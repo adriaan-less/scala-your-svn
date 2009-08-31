@@ -30,6 +30,7 @@ trait BaseTypeSeqs {
   import definitions._
 
   class BaseTypeSeq(parents: List[Type], elems: Array[Type]) {
+    println("BaseTypeSeq: parents= "+ parents +" elems= "+ elems)
 
     /** The number of types in the sequence */
     def length: Int = elems.length
@@ -193,7 +194,8 @@ trait BaseTypeSeqs {
   def compoundBaseTypeSeq(tp: Type/*tsym: Symbol, parents: List[Type]*/): BaseTypeSeq = {
     val tsym = tp.typeSymbol
     val parents = tp.parents
-//    Console.println("computing baseTypeSeq of " + tsym.tpe + " " + parents)//DEBUG
+    (new RuntimeException).printStackTrace()
+    Console.println("computing baseTypeSeq of " + tp +" sym= "+ tsym.tpe + " " + parents)//DEBUG
     val buf = new ListBuffer[Type]
     buf += tsym.tpe
     var btsSize = 1
@@ -250,7 +252,7 @@ trait BaseTypeSeqs {
     }
     val elems = new Array[Type](btsSize)
     buf.copyToArray(elems, 0)
-//    Console.println("computed baseTypeSeq of " + tsym.tpe + " " + parents + ": "+elems.toString)//DEBUG
+    Console.println("computed baseTypeSeq of " + tp + " " + parents + ": "+elems.toString)//DEBUG
     new BaseTypeSeq(parents, elems)
   }
 

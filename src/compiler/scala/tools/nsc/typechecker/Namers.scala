@@ -736,7 +736,7 @@ trait Namers { self: Analyzer =>
     }
 
     private def classSig(tparams: List[TypeDef], impl: Template): Type = 
-      polyType(typer.reenterTypeParams(tparams), templateSig(impl))
+      typeFun(typer.reenterTypeParams(tparams), templateSig(impl))
 
     private def methodSig(mods: Modifiers, tparams: List[TypeDef],
                           vparamss: List[List[ValDef]], tpt: Tree, rhs: Tree): Type = {
@@ -1060,7 +1060,7 @@ trait Namers { self: Analyzer =>
       if (tpsym.owner.isRefinementClass &&  // only needed in refinements
           !tpsym.allOverriddenSymbols.forall{verifyOverriding(_)})
 	      ErrorType 
-      else polyType(tparamSyms, tp)   
+      else typeFun(tparamSyms, tp)   
     }
 
     /** Given a case class
