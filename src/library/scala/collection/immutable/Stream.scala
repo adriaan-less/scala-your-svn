@@ -13,6 +13,7 @@ package scala.collection.immutable
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.generic._
+import scala.annotation.tailrec
 
 /**
  * <p>The class <code>Stream</code> implements lazy lists where elements
@@ -40,7 +41,7 @@ abstract class Stream[+A] extends LinearSequence[A]
                              with LinearSequenceTemplate[A, Stream[A]] {
 self =>
   override def companion: Companion[Stream] = Stream
- 
+
   import collection.{Traversable, Iterable, Sequence, Vector}
 
   /** is this stream empty? */
@@ -171,6 +172,32 @@ self =>
     else new Stream.Cons(rest.head, rest.tail filter p)
   }
 
+  /** Apply the given function <code>f</code> to each element of this linear sequence
+   *  (while respecting the order of the elements).
+   *
+   *  @param f the treatment to apply to each element.
+   *  @note  Overridden here as final to trigger tail-call optimization, which replaces
+   *         'this' with 'tail' at each iteration. This is absolutely necessary
+   *         for allowing the GC to collect the underlying stream as elements are
+   *         consumed.
+   */
+  @tailrec
+  override final def foreach[B](f: A => B) {
+    if (!this.isEmpty) {
+      f(head)
+      tail.foreach(f)
+    }
+  }
+  
+  /** Stream specialization of foldLeft which allows GC to collect
+   *  along the way.
+   */
+  @tailrec
+  override final def foldLeft[B](z: B)(op: (B, A) => B): B = {
+    if (this.isEmpty) z
+    else tail.foldLeft(op(z, head))(op)
+  }
+
   /** Returns all the elements of this stream that satisfy the
    *  predicate <code>p</code>. The order of the elements is preserved.
    *
@@ -189,7 +216,7 @@ self =>
    *              <code>Stream(a<sub>0</sub>, ..., a<sub>m</sub>)
    *              zip Stream(b<sub>0</sub>, ..., b<sub>n</sub>)</code> is invoked.
    */
-  override final def zip[A1 >: A, B, That](that: Sequence[B])(implicit bf: BuilderFactory[(A1, B), That, Stream[A]]): That = {
+  override final def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: BuilderFactory[(A1, B), That, Stream[A]]): That = {
     // we assume there is no other builder factory on streams and therefore know that That = Stream[(A1, B)]
     (if (this.isEmpty || that.isEmpty) Stream.Empty
      else new Stream.Cons((this.head, that.head), (this.tail zip that.tail).asInstanceOf[Stream[(A1, B)]])).asInstanceOf[That]
@@ -343,7 +370,7 @@ self =>
     result
   }
 
-  override def flatten[B](implicit toTraversable: A => Traversable[B]): Stream[B] = {
+  override def flatten[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): Stream[B] = {
     def flatten1(t: Traversable[B]): Stream[B] =
       if (!t.isEmpty)
         new Stream.Cons(t.head, flatten1(t.tail))
@@ -353,7 +380,7 @@ self =>
     if (isEmpty)
       Stream.empty
     else
-      flatten1(toTraversable(head))
+      flatten1(asTraversable(head))
   }
 
   /** Defines the prefix of this object's <code>toString</code> representation as ``Stream''.
@@ -526,7 +553,7 @@ object Stream extends SequenceFactory[Stream] {
   /** The concatenation of all streams returned by an iterator
    */
   @deprecated("use xs.toStream.flatten instead")
-  def concat[A](xs: Iterator[Stream[A]]): Stream[A] = xs.toStream.flatten  
+  def concat[A](xs: Iterator[Stream[A]]): Stream[A] = xs.toStream.flatten //(conforms[Stream[A], collection.Traversable[A]])
 
   /**
    * Create a stream with element values

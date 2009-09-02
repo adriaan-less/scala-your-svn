@@ -57,6 +57,13 @@ abstract class GenJVM extends SubComponent {
     }
   }
 
+  /** Return the suffix of a class name */
+  def moduleSuffix(sym: Symbol) =
+    if (sym.hasFlag(Flags.MODULE) && !sym.isMethod &&
+       !sym.isImplClass && !sym.hasFlag(Flags.JAVA)) "$"
+    else "";
+
+
   var pickledBytes = 0 // statistics
 
   /**
@@ -64,7 +71,11 @@ abstract class GenJVM extends SubComponent {
    *
    */
   class BytecodeGenerator {
+    import JAccessFlags._
+
     val MIN_SWITCH_DENSITY = 0.7
+    val INNER_CLASSES_FLAGS =
+      (ACC_PUBLIC | ACC_PRIVATE | ACC_PROTECTED | ACC_STATIC | ACC_FINAL | ACC_INTERFACE | ACC_ABSTRACT)
     val StringBuilderClass = definitions.getClass2("scala.StringBuilder", "scala.collection.mutable.StringBuilder").fullNameString
     val BoxesRunTime = "scala.runtime.BoxesRunTime"
 
@@ -497,7 +508,7 @@ abstract class GenJVM extends SubComponent {
         for (innerSym <- innerClasses.toList.sort(_.name.length < _.name.length)) {
           var outerName = javaName(innerSym.rawowner)
           // remove the trailing '$'
-          if (outerName.endsWith("$")) 
+          if (outerName.endsWith("$") && isTopLevelModule(clasz.symbol)) 
             outerName = outerName.substring(0, outerName.length - 1)
           var flags = javaFlags(innerSym)
           if (innerSym.rawowner.hasFlag(Flags.MODULE))
@@ -506,7 +517,7 @@ abstract class GenJVM extends SubComponent {
           innerClassesAttr.addEntry(javaName(innerSym),
               outerName,
               innerSym.rawname.toString,
-              flags);
+              (flags & INNER_CLASSES_FLAGS));
         }
       }
     }
@@ -1631,9 +1642,7 @@ abstract class GenJVM extends SubComponent {
      * </p>
      */
     def javaName(sym: Symbol): String = {
-      val suffix = if (sym.hasFlag(Flags.MODULE) && !sym.isMethod &&
-                        !sym.isImplClass && 
-                        !sym.hasFlag(Flags.JAVA)) "$" else "";
+      val suffix = moduleSuffix(sym)
 
       if (sym == definitions.NothingClass)
         return javaName(definitions.RuntimeNothingClass)

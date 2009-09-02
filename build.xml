@@ -100,6 +100,9 @@ PROPERTIES
 ============================================================================ -->
 
   <property environment="env"/>
+  <!-- if ANT_OPTS is already set by the environment, it will be unaltered,
+       but if it is unset it will take this default value. -->
+  <property name="env.ANT_OPTS" value="-Xms512M -Xmx1024M -Xss1M -XX:MaxPermSize=128M" />
 
   <!-- Prevents system classpath from being used -->
   <property name="build.sysclasspath" value="ignore"/>
