@@ -424,7 +424,9 @@ trait Types {
     def asSeenFrom(pre: Type, clazz: Symbol): Type =
       if (!isTrivial && (!phase.erasedTypes || pre.typeSymbol == ArrayClass)) {
         val m = new AsSeenFromMap(pre.normalize, clazz)
+        println("ASF: "+this +" from "+ pre +"."+ clazz)
         val tp = m apply this
+        println("ASF-res: "+tp+" (for "+this +" from "+ pre +"."+ clazz +")")        
         existentialAbstraction(m.capturedParams, tp)
       } else this
 
@@ -1384,8 +1386,8 @@ trait Types {
    */
   case class TypeRef(pre: Type, sym: Symbol, args: List[Type]) extends Type {
     if(sym.rawname.toString.contains("Sequence") && (args.length == 1) && (args.exists{tp: Type => tp.typeSymbolDirect.rawname.toString.contains("Any")})){
-      assert(false)
-      // println("RTR")
+//      assert(false)
+      println("RTR")
       //       (new RuntimeException).printStackTrace()
     }
 
@@ -1517,9 +1519,9 @@ A type's typeSymbol should never be inspected directly.
     // could unify transform and transformPreserveKind as: typeFun(typeParamsDirect, tp.asSeenFrom(pre, sym.owner)).applyArgs(args)     
     def transformPreserveKind(tp: Type): Type = {
       if (isHigherKinded)
-        tp.asSeenFrom(pre, sym.owner)
+        typeFun(typeParamsDirect, tp.asSeenFrom(pre, sym.owner))
       else
-        appliedType(tp.asSeenFrom(pre, sym.owner), args)
+        transform(tp)
     }
     
     override def parents: List[Type] = {
@@ -1527,7 +1529,7 @@ A type's typeSymbol should never be inspected directly.
       if (period != currentPeriod) {
         parentsPeriod = currentPeriod
         if (!isValidForBaseClasses(period)) {
-          parentsCache = thisInfo.parents //map transformPreserveKind
+          parentsCache = thisInfo.parents map transformPreserveKind
         }
       }
       parentsCache
@@ -1573,7 +1575,7 @@ A type's typeSymbol should never be inspected directly.
 
     override def baseType(clazz: Symbol): Type =
       if (sym == clazz) this
-      else if (sym.isClass) transform/*PreserveKind*/(sym.info.baseType(clazz))
+      else if (sym.isClass) transformPreserveKind(sym.info.baseType(clazz))
       else 
         try { 
           basetypeRecursions += 1
@@ -1601,8 +1603,8 @@ A type's typeSymbol should never be inspected directly.
             typerefBaseTypeSeqCount += 1
           baseTypeSeqCache = undetBaseTypeSeq
           baseTypeSeqCache =
-            if (sym.isAbstractType) transform/*PreserveKind*/(bounds.hi).baseTypeSeq prepend this
-            else sym.info.baseTypeSeq map transform/*PreserveKind*/
+            if (sym.isAbstractType) transformPreserveKind(bounds.hi).baseTypeSeq prepend this
+            else sym.info.baseTypeSeq map transformPreserveKind
         }
       }
       if (baseTypeSeqCache == undetBaseTypeSeq)
@@ -2734,7 +2736,7 @@ A type's typeSymbol should never be inspected directly.
         val eparams = typeParamsToExistentials(sym, sym.typeParams)
         existentialAbstraction(eparams, TypeRef(pre, sym, eparams map (_.tpe)))
       case _ =>
-        mapOver(tp)
+        mapOver(tp)                      
     }
   }
 
@@ -2852,7 +2854,7 @@ A type's typeSymbol should never be inspected directly.
               if (symclazz == clazz && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
                 pre.baseType(symclazz) match {
                   case TypeRef(_, basesym, baseargs) =>
-                    Console.println("instantiating " + sym + " (with args: "+ args +") from " + basesym + " with " + basesym.typeParams + " and " + baseargs+", pre = "+pre+", symclazz = "+symclazz);//DEBUG
+                    Console.println("instantiating from " + basesym + " with " + basesym.typeParams + " and " + baseargs);//DEBUG
                     if (basesym.typeParams.length == baseargs.length) {
                       instParam(basesym.typeParams, baseargs)
                     } else {
@@ -2871,6 +2873,7 @@ A type's typeSymbol should never be inspected directly.
                 }
               } else toInstance(base(pre, clazz).prefix, clazz.owner)
             }
+          Console.println("instantiating " + sym + " (with args: "+ args +") pre = "+pre+", clazz = "+ clazz);//DEBUG
           val res = toInstance(pre, clazz)
           println("instantiated: "+res)
           res
@@ -4378,10 +4381,11 @@ A type's typeSymbol should never be inspected directly.
         mkTypeBounds(glb(ts map (_.bounds.lo), depth), lub(ts map (_.bounds.hi), depth))
       case ts0 => val HK = ts0 exists (_.isHigherKinded)
         val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
+        if(HK)
+          println("HK")
         val bts: List[BaseTypeSeq] = ts map (_.baseTypeSeq)
-        if(HK) println(indent+"bts="+bts)
         val lubBaseTypes: List[Type] = lubBaseTypeSeq(bts, depth)
-        if(HK) println(indent+"lubBaseTypes="+bts)
+
         val lubParents = spanningTypes(lubBaseTypes)
         val lubOwner = commonOwner(ts)
         val lubBase = intersectionType(lubParents, lubOwner)
