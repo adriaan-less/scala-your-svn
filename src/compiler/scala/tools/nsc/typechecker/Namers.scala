@@ -303,6 +303,8 @@ trait Namers { self: Analyzer =>
           //@M x is only in scope in `A[x <: B]'
           if(!sym.isAbstractType) //@M TODO: change to isTypeMember ?
             newNamer(context.makeNewScope(tree, sym)(FinishWithScopeKind)).enterSyms(tparams) 
+          else
+            log("delaying completion of polytype: "+ sym +" params: "+ tparams)
 
           ltype = new PolyTypeCompleter(tparams, ltype, tree, sym, context) //@M
           if (sym.isTerm) skolemize(tparams)
@@ -1194,18 +1196,19 @@ trait Namers { self: Analyzer =>
         }
       result match {
         case PolyType(tparams, restpe) 
-        if (!tparams.isEmpty && tparams.head.owner.isTerm ||
+        if (!tparams.isEmpty && tparams.head.owner.isTerm //||
             // Adriaan: The added conditon below is quite a hack. It seems that HK type parameters is relying
             // on a pass that forces all infos in the type to get everything right.
             // The problem is that the same pass causes cyclic reference errors in
             // test pos/cyclics.scala. It turned out that deSkolemize is run way more often than necessary,
-            // ruinning it only when needed fixes the cuclic reference errors.
+            // running it only when needed fixes the cyclic reference errors.
             // But correcting deSkolemize broke HK types, because we don't do the traversal anymore.
             // For the moment I made a special hack to do the traversal if we have HK type parameters.
             // Maybe it's not a hack, then we need to document it better. But ideally, we should find
             // a way to deal with HK types that's not dependent on accidental side
             // effects like this.
-            tparams.exists(!_.typeParams.isEmpty)) =>
+            //tparams.exists(!_.typeParams.isEmpty)
+            ) =>
           new DeSkolemizeMap(tparams) mapOver result
         case _ => 
 //          println("not skolemizing "+result+" in "+context.owner)
@@ -1290,8 +1293,10 @@ trait Namers { self: Analyzer =>
     override val typeParams: List[Symbol]= tparams map (_.symbol) //@M
     override val tree = restp.tree
     override def complete(sym: Symbol) {
-      if(ownerSym.isAbstractType) //@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
+      if(ownerSym.isAbstractType) {//@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
+        log("completing polytype: "+ ownerSym +" params: "+ tparams)
         newNamer(ctx.makeNewScope(owner, ownerSym)(PolyTypeCompleterScopeKind)).enterSyms(tparams) //@M
+      }
       restp.complete(sym)
     }
   }

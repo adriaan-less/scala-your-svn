@@ -1481,21 +1481,21 @@ A type's typeSymbol should never be inspected directly.
     private def typeArgsOrDummies = if (!isHigherKinded) args else dummyArgs
 
     // @MAT was typeSymbol.unsafeTypeParams, but typeSymbol normalizes now 
-    private def typeParamsDirect = sym.unsafeTypeParams
+    private def typeParamsDirect = sym.typeParams //@M TODO: change to sym.typeParams and fix breakage elsewhere
 
     // placeholders derived from type params
     private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
-
-    // (!result.isEmpty) IFF isHigherKinded
-    override def typeParams: List[Symbol] = if (args.isEmpty) typeParamsDirect else List()
 
     //@M equivalent to:
     //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
     //  !isRawType(this)                           // needed for subtyping
     override def isHigherKinded 
-      = !typeParams.isEmpty && 
+      = (args.isEmpty && !typeParamsDirect.isEmpty) && 
       // otherwise raw types are considered higher-kinded types during subtyping:
         (phase.erasedTypes || !sym.hasFlag(JAVA))  
+
+    // (!result.isEmpty) IFF isHigherKinded
+    override def typeParams: List[Symbol] = if (!isHigherKinded) typeParamsDirect else List()
 
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
