@@ -2856,7 +2856,7 @@ A type's typeSymbol should never be inspected directly.
               if (symclazz == clazz && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
                 pre.baseType(symclazz) match {
                   case TypeRef(_, basesym, baseargs) =>
-                    Console.println("instantiating from " + basesym + " with " + basesym.typeParams + " and " + baseargs);//DEBUG
+                    Console.println("instantiating from "+ basesym +" with args "+  baseargs +" for "+ basesym.typeParams);//DEBUG
                     if (basesym.typeParams.length == baseargs.length) {
                       instParam(basesym.typeParams, baseargs)
                     } else {
@@ -4729,10 +4729,11 @@ A type's typeSymbol should never be inspected directly.
   def indented[T](who: scala.Symbol)(block: (String => Unit) => T): T = {
     val oldMargin = indents getOrElseUpdate(who, "")
     val margin = oldMargin + "  "
-    indents(who) = margin
     def indentedPrint(s: String): Unit = println(margin+s)
-    indentedPrint("entering "+who)
-    val res = block(indentedPrint)
+    indents(who) = margin
+      indentedPrint("entering "+who)
+      // (new RuntimeException()).printStackTrace()
+      val res = block(indentedPrint)
     indents(who) = oldMargin
     indentedPrint("exited "+who+" res= "+res)
     res
