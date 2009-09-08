@@ -424,10 +424,12 @@ trait Types {
     def asSeenFrom(pre: Type, clazz: Symbol): Type =
       if (!isTrivial && (!phase.erasedTypes || pre.typeSymbol == ArrayClass)) {
         val m = new AsSeenFromMap(pre.normalize, clazz)
-        println("ASF: "+this +" from "+ pre +"."+ clazz)
-        val tp = m apply this
-        println("ASF-res: "+tp+" (for "+this +" from "+ pre +"."+ clazz +")")        
-        existentialAbstraction(m.capturedParams, tp)
+        indented('ASF){println => 
+          println("ASF: "+this +" from "+ pre +"."+ clazz)
+          val tp = m apply this
+          println("ASF-res: "+tp+" (for "+this +" from "+ pre +"."+ clazz +")")
+          existentialAbstraction(m.capturedParams, tp)
+        }
       } else this
 
     /** The info of `sym', seen as a member of this type.
@@ -4722,6 +4724,19 @@ A type's typeSymbol should never be inspected directly.
   /** The current indentation string for traces */
   private var indent: String = ""
 
+  private val indents: HashMap[scala.Symbol,String] = HashMap()
+
+  def indented[T](who: scala.Symbol)(block: (String => Unit) => T): T = {
+    val oldMargin = indents getOrElseUpdate(who, "")
+    val margin = oldMargin + "  "
+    indents(who) = margin
+    def indentedPrint(s: String): Unit = println(margin+s)
+    indentedPrint("entering "+who)
+    val res = block(indentedPrint)
+    indents(who) = oldMargin
+    indentedPrint("exited "+who+" res= "+res)
+    res
+  }
   /** Perform operation `p' on arguments `tp1',
    *  `arg2' and print trace of computation.
    */
