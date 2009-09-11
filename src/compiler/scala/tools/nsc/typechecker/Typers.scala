@@ -180,7 +180,7 @@ trait Typers { self: Analyzer =>
     def applyImplicitArgs(fun: Tree): Tree = fun.tpe match {
       case MethodType(params, _) =>
         var positional = true
-        val argResults = params map (_.tpe) map (inferImplicit(fun, _, true, false, context))
+        val argResults = params map (p => inferImplicit(fun, p.tpe, true, false, context))
         val args = argResults.zip(params) flatMap {
           case (arg, param) =>
             if (arg != SearchFailure) {
@@ -188,8 +188,10 @@ trait Typers { self: Analyzer =>
               else List(atPos(arg.tree.pos)(new AssignOrNamedArg(Ident(param.name), (arg.tree))))
             } else {
               if (!param.hasFlag(DEFAULTPARAM))
-                context.error(fun.pos, "could not find implicit value for parameter "+
-                                       param.name +":"+ param.tpe +".")
+                context.error(
+                  fun.pos, "could not find implicit value for "+
+                  (if (param.name startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
+                   else "parameter "+param.name+": ")+param.tpe)
               positional = false
               Nil
             }
@@ -576,7 +578,7 @@ trait Typers { self: Analyzer =>
           // fails to notice exhaustiveness and to generate good code when
           // List extractors are mixed with :: patterns. See Test5 in lists.scala.
           def dealias(sym: Symbol) =
-            (atPos(tree.pos) { gen.mkAttributedRef(sym) }, sym.owner.thisType)
+            ({ val t = gen.mkAttributedRef(sym) ; t.setPos(tree.pos) ; t }, sym.owner.thisType)
           sym.name match {
             case nme.List => return dealias(ListModule)
             case nme.Seq => return dealias(SeqModule)
@@ -956,7 +958,7 @@ trait Typers { self: Analyzer =>
                 if (coercion != EmptyTree) {
                   if (settings.debug.value) log("inferred view from "+tree.tpe+" to "+pt+" = "+coercion+":"+coercion.tpe)
                   return newTyper(context.makeImplicit(context.reportAmbiguousErrors)).typed(
-                      Apply(coercion, List(tree)) setPos tree.pos, mode, pt)
+                    Apply(coercion, List(tree)) setPos tree.pos, mode, pt)
                 }
               }
             }
@@ -1390,6 +1392,8 @@ trait Typers { self: Analyzer =>
 
       var tpt1 = checkNoEscaping.privates(sym, typer1.typedType(vdef.tpt))
       checkNonCyclic(vdef, tpt1)
+      if (sym.hasAnnotation(definitions.VolatileAttr) && !sym.hasFlag(MUTABLE))
+        error(vdef.pos, "values cannot be volatile")
       val rhs1 =
         if (vdef.rhs.isEmpty) {
           if (sym.isVariable && sym.owner.isTerm && phase.id <= currentRun.typerPhase.id)
@@ -1408,7 +1412,11 @@ trait Typers { self: Analyzer =>
                 else if (sym1.isSkolem) matches(sym, sym1.deSkolemize)
                 else super[SubstTypeMap].matches(sym, sym1) 
             }
-            subst(tpt1.tpe)
+            // allow defaults on by-name parameters
+            if (sym hasFlag BYNAMEPARAM)
+              if (tpt1.tpe.typeArgs.isEmpty) WildcardType // during erasure tpt1 is Funciton0
+              else subst(tpt1.tpe.typeArgs(0))
+            else subst(tpt1.tpe)
           } else tpt1.tpe
           newTyper(typer1.context.make(vdef, sym)).transformedOrTyped(vdef.rhs, tpt2)
         }
@@ -3212,7 +3220,21 @@ trait Typers { self: Analyzer =>
                   "\npossible cause: maybe a semicolon is missing before `"+decode(name)+"'?"
                  else ""))
           }
-          setError(tree)
+          
+          // Temporary workaround to retain type information for qual so that askTypeCompletion has something to
+          // work with. This appears to work in the context of the IDE, but is incorrect and needs to be
+          // revisited.
+          if (onlyPresentation) {
+            // Nb. this appears to throw away the effects of setError, but some appear to be
+            // retained across the copy.
+            setError(tree)
+            val tree1 = tree match {
+              case Select(_, _) => treeCopy.Select(tree, qual, name)
+              case SelectFromTypeTree(_, _) => treeCopy.SelectFromTypeTree(tree, qual, name)
+            }
+            tree1
+          } else
+            setError(tree)
         } else {
           val tree1 = tree match {
             case Select(_, _) => treeCopy.Select(tree, qual, name)
@@ -3778,6 +3800,8 @@ trait Typers { self: Analyzer =>
       ret
     }
 
+    def typedPos(pos: Position)(tree: Tree) = typed(atPos(pos)(tree))
+
     /** Types expression <code>tree</code> with given prototype <code>pt</code>.
      *
      *  @param tree ...
@@ -3851,6 +3875,16 @@ trait Typers { self: Analyzer =>
         EmptyTree, 
         appliedType((if (full) FullManifestClass else PartialManifestClass).typeConstructor, List(tp)),
         true, false, context)
+
+    def getManifestTree(pos: Position, tp: Type, full: Boolean): Tree = {
+      val manifestOpt = findManifest(tp, false)
+      if (manifestOpt.tree.isEmpty) {
+        error(pos, "cannot find "+(if (full) "" else "class ")+"manifest for element type of "+tp)
+        Literal(Constant(null))
+      } else {
+        manifestOpt.tree
+      }
+    }
 /*
     def convertToTypeTree(tree: Tree): Tree = tree match {
       case TypeTree() => tree

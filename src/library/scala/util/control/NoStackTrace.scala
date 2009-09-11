@@ -6,20 +6,15 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala.io
+package scala.util.control
 
-import collection.Traversable
-
-object Path
+/** A trait for exceptions which, for efficiency reasons, do not
+ *  fill in the stack trace.
+ *
+ *  @author   Paul Phillips
+ *  @since    2.8
+ */
+trait NoStackTrace extends Throwable
 {
-  // 
-  // def canonicalize
-  def apply(path: String) = new Path(path)
-}
-import Path._
-
-// The path constructor is private so we can enforce that
-// the value of `path' is always in its canonical form.
-class Path private (val path: String)
-{
+  override def fillInStackTrace(): Throwable = this
 }

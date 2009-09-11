@@ -631,7 +631,7 @@ self: Analyzer =>
       * reflect.Manifest for type 'tp'. An EmptyTree is returned if
       * no manifest is found. todo: make this instantiate take type params as well?
       */
-    def manifestOfType(tp: Type, full: Boolean): Tree = {
+    private def manifestOfType(tp: Type, full: Boolean): Tree = {
       
       /** Creates a tree that calls the factory method called constructor in object reflect.Manifest */
       def manifestFactoryCall(constructor: String, args: Tree*): Tree =
@@ -659,25 +659,22 @@ self: Analyzer =>
         case ConstantType(value) =>
           manifestOfType(tp0.deconst, full)
         case TypeRef(pre, sym, args) =>
-          if (isValueClass(sym)) {
+          if (isValueClass(sym) || isPhantomClass(sym)) {
             typed { atPos(tree.pos.focus) {
               Select(gen.mkAttributedRef(FullManifestModule), sym.name.toString)
             }}
-          }
-          else if (sym.isClass) {
+          } else if (sym.isClass) {
             val suffix = gen.mkClassOf(tp0) :: (args map findSubManifest)
             manifestFactoryCall(
               "classType", 
               (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
                else findSubManifest(pre) :: suffix): _*)
-          }
-          else if (sym.isTypeParameterOrSkolem || sym.isExistential) {
-            EmptyTree  // a manifest should have been found by normal searchImplicit
-          }
-          else {
+          } else if (sym.isAbstractType && !sym.isTypeParameterOrSkolem && !sym.isExistential) {
             manifestFactoryCall(
               "abstractType", 
               findSubManifest(pre) :: Literal(sym.name.toString) :: findManifest(tp0.bounds.hi) :: (args map findSubManifest): _*)
+          } else {
+            EmptyTree  // a manifest should have been found by normal searchImplicit
           }
         case RefinedType(parents, decls) =>
           // refinement is not generated yet
@@ -706,6 +703,28 @@ self: Analyzer =>
       }
     }
 
+    /** Construct a fresh symbol tree for an implicit parameter
+        because of caching, must clone symbols that represent bound variables, 
+        or we will end up with different bound variables that are represented by the same symbol */
+    def freshenFunctionParameters(tree : Tree) : Tree = new Transformer {
+      currentOwner = context.owner
+      override val treeCopy = new LazyTreeCopier
+      override def transform(tr : Tree) = super.transform(tr match {
+        case Function(vparams, body) => {
+          // New tree
+          val sym = tr.symbol cloneSymbol currentOwner
+          val res = tr.duplicate setSymbol sym
+          // New parameter symbols
+          var oldsyms = vparams map (_.symbol)
+          var newsyms = cloneSymbols(oldsyms, sym)
+          // Fix all symbols
+          new TreeSymSubstituter(oldsyms, newsyms) traverse res
+          res
+        }
+        case x => x
+      })
+    } transform tree
+
     /** Return cached search result if found. Otherwise update cache
      *  but keep within sizeLimit entries
      */
@@ -714,7 +733,7 @@ self: Analyzer =>
         hits += 1
         if (sr == SearchFailure) sr
         else {
-          val result = new SearchResult(sr.tree.duplicate, sr.subst)
+          val result = new SearchResult(freshenFunctionParameters(sr.tree.duplicate), sr.subst) // #2201: generate fresh symbols for parameters
           for (t <- result.tree) t.setPos(tree.pos.focus)
           result
         }

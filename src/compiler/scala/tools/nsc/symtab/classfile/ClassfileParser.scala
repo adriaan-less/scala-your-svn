@@ -362,8 +362,12 @@ abstract class ClassfileParser {
     val parts = name.toString.split(Array('.', '$'))
     var sym: Symbol = definitions.RootClass
     atPhase(currentRun.flattenPhase.prev) {
-      for (part <- parts) {
-        sym = sym.info.decl(part)//.suchThat(module == _.isModule)
+      for (part0 <- parts; val part = newTermName(part0)) {
+        val sym1 = sym.info.decl(part.encode)//.suchThat(module == _.isModule)
+        if (sym1 == NoSymbol)
+          sym = sym.info.decl(part.encode.toTypeName)
+        else
+          sym = sym1
       }
     }
 //    println("found: " + sym)
@@ -420,7 +424,7 @@ abstract class ClassfileParser {
     val staticInfo = ClassInfoType(List(), staticDefs, statics)
 
     if (!isScala && !isScalaRaw) {
-      //println("Entering inner classes for " + clazz)
+//      println("Entering inner classes for " + clazz)
       enterOwnInnerClasses
     }
     val curbp = in.bp
@@ -987,21 +991,31 @@ abstract class ClassfileParser {
      */
     def classSymbol(externalName: Name): Symbol = {
       /** Return the symbol of `innerName', having the given `externalName'. */
-      def innerSymbol(externalName: Name, innerName: Name, static: Boolean): Symbol = 
+      def innerSymbol(externalName: Name, innerName: Name, static: Boolean): Symbol = {
+        def getMember(sym: Symbol, name: Name): Symbol =
+          if (static)
+            if (sym == clazz) staticDefs.lookup(name)
+            else sym.linkedModuleOfClass.info.member(name)
+          else
+            if (sym == clazz) instanceDefs.lookup(name)
+            else sym.info.member(name)
+
         innerClasses.get(externalName) match {
           case Some(entry) =>
-            val sym = classSymbol(entry.outerName)
-            if (static) {
-              val s = atPhase(currentRun.typerPhase)(sym.linkedModuleOfClass.info.member(innerName.toTypeName))
-              assert(s ne NoSymbol, sym + "." + innerName + " linkedModule: " + sym.linkedModuleOfClass + sym.linkedModuleOfClass.info.members)
-              s
-            } else
-              sym.info.member(innerName.toTypeName)
+            val outerName =
+              if (entry.outerName.endsWith("$")) entry.outerName.subName(0, entry.outerName.length - 1)
+              else entry.outerName
+            val sym = classSymbol(outerName)
+            val s = atPhase(currentRun.typerPhase)(getMember(sym, innerName.toTypeName))
+            assert(s ne NoSymbol, sym + "." + innerName + " linkedModule: " + sym.linkedModuleOfClass + sym.linkedModuleOfClass.info.members)
+            s
+
           case None =>
             val cls = classNameToSymbol(externalName)
             cls
             //if (static) cls.linkedClassOfModule else cls
         }
+      }
 
       get(externalName) match {
         case Some(entry) =>
@@ -1018,16 +1032,6 @@ abstract class ClassfileParser {
       alias.initialize
       val tparams1 = cloneSymbols(alias.typeParams)
       sym.setInfo(polyType(tparams1, alias.tpe.substSym(alias.typeParams, tparams1)))
-    }
-  }
-
-  /** A lazy type that represents a Java inner class. */
-  class LazyInnerClassType(innerEntry: InnerClassEntry) extends LazyType {
-    override def complete(sym: Symbol) {
-//      println("completing " + sym)
-      val clazz = innerClasses.classSymbol(innerEntry.externalName)
-//      println("found symbol: " + clazz)
-      sym.setInfo(clazz.info)
     }
   }
   
