@@ -12,6 +12,7 @@
 package scala.collection
 
 import mutable.{Buffer, ArrayBuffer, ListBuffer}
+import annotation.{ tailrec, experimental }
 // import immutable.{List, Nil, ::, Stream}
 
 /** The <code>Iterator</code> object provides various functions for
@@ -50,7 +51,8 @@ object Iterator {
    *  @param its the argument iterators that are to be concatenated
    *  @return the concatenation of all the argument iterators
    */
-  @deprecated def concat[A](xss: Iterator[A]*): Iterator[A] = xss.iterator.flatten
+  @deprecated("use <code>++</code>")
+  def concat[A](xss: Iterator[A]*): Iterator[A] = xss.iterator.flatten
 
   /** An iterator that returns the results of some element computation a number of times.
    *  @param   len  The number of elements returned
@@ -101,33 +103,16 @@ object Iterator {
       else empty.next()
   }
 
-  /** An iterator that repeatedly applies a given function to a start value.
-   *
-   *  @param start the start value of the iterator
-   *  @param len   the number of elements returned by the iterator
-   *  @param f     the function that's repeatedly applied
-   *  @return      the iterator returning `len` values in the sequence `start, f(start), f(f(start)), ...`
-   */
-  def iterate(start: Int, len: Int)(f: Int => Int) = new Iterator[Int] {
-    private var acc = start
-    private var i = 0
-    def hasNext: Boolean = i < len
-    def next(): Int =
-      if (hasNext) { val result = f(acc); i += 1; result }
-      else empty.next()
-  }
-
-  /** An infinite iterator that repeatedly applies a given function to a start value.
+  /** An infinite iterator that repeatedly applies a given function to the previous result.
    *
    *  @param start the start value of the iterator
    *  @param f     the function that's repeatedly applied
    *  @return      the iterator returning the infinite sequence of values `start, f(start), f(f(start)), ...`
    */
-  def iterate(start: Int)(f: Int => Int) = new Iterator[Int] {
-    private var acc = start
-    private var i = 0
+  def iterate[T](start: T)(f: T => T): Iterator[T] = new Iterator[T] {
+    private[this] var acc = start
     def hasNext: Boolean = true
-    def next(): Int = { val result = f(acc); i += 1; result }
+    def next(): T = { val res = acc ; acc = f(acc) ; res }
   }
 
   /** An infinite-length iterator which returns successive values from some start value.
@@ -147,6 +132,18 @@ object Iterator {
     private var i = start
     def hasNext: Boolean = true
     def next(): Int = { val result = i; i += step; result }
+  }
+  
+  /**
+   * Create an infinite iterator based on the given expression
+   * (which is recomputed for every element)
+   *
+   * @param elem the element composing the resulting iterator
+   * @return the iterator containing an infinite number of elem
+   */
+  def continually[A](elem: => A): Iterator[A] = new Iterator[A] {
+    def hasNext = true
+    def next = elem
   }
 
   /** A wrapper class for the `flatten `method that is added to class Iterator with implicit conversion @see iteratorIteratorWrapper.
@@ -298,8 +295,14 @@ trait Iterator[+A] { self =>
    *  @param n the number of elements to drop
    *  @return  the new iterator
    */
-  def drop(n: Int): Iterator[A] =
-    if (n > 0 && hasNext) { next(); drop(n - 1) } else this
+  def drop(n: Int): Iterator[A] = {
+    @tailrec
+    def loop(left: Int): Iterator[A] =
+      if (left > 0 && hasNext) { next; loop(left - 1) }
+      else this
+    
+    loop(n)
+  }
 
   /** Advances this iterator past the first `from` elements using `drop`,
    *  and then takes `until - from` elements, using `take`.
@@ -355,6 +358,22 @@ trait Iterator[+A] { self =>
       private def skip() = while (self.hasNext && !p(self.head)) self.next()
       def hasNext = { skip(); self.hasNext }
       def next() = { skip(); self.next() }
+    }
+  }
+  
+ /** Returns a new iterator based on the partial function <code>pf</code>,  
+  *  containing pf(x) for all the elements which are defined on pf.
+  *  The order of the elements is preserved.
+  *  @param pf the partial function which filters and maps the iterator.
+  *  @return the new iterator.
+  */
+  @experimental
+  def filterMap[B](pf: PartialFunction[Any, B]): Iterator[B] = {
+    val self = buffered
+    new Iterator[B] {
+      private def skip() = while (self.hasNext && !pf.isDefinedAt(self.head)) self.next()
+      def hasNext = { skip(); self.hasNext }
+      def next() = { skip(); pf(self.next()) }
     }
   }
 
@@ -672,7 +691,7 @@ trait Iterator[+A] { self =>
    *  @param op  The operator to apply
    *  @return  If the iterable is non-empty, the result of the operations as an Option, otherwise None.
    */
-  def reduceLeftOpt[B >: A](op: (B, A) => B): Option[B] = {
+  def reduceLeftOption[B >: A](op: (B, A) => B): Option[B] = {
     if (!hasNext) None else Some(reduceLeft(op))
   }
 
@@ -681,7 +700,7 @@ trait Iterator[+A] { self =>
    *  @param op  The operator to apply
    *  @return  If the iterable is non-empty, the result of the operations as an Option, otherwise None.
    */
-  def reduceRightOpt[B >: A](op: (A, B) => B): Option[B] = {
+  def reduceRightOption[B >: A](op: (A, B) => B): Option[B] = {
     if (!hasNext) None else Some(reduceRight(op))
   }
   
@@ -708,6 +727,148 @@ trait Iterator[+A] { self =>
         hd
       } else self.next
   }
+  
+  /** Since I cannot reliably get take(n) to influence the original
+   *  iterator (it seems to depend on some ordering issue I don't
+   *  understand) this method takes the way one might expect, leaving
+   *  the original iterator with 'size' fewer elements.
+   */
+  private def takeDestructively(size: Int): Sequence[A] = {
+    val buf = new ArrayBuffer[A]
+    var i = 0
+    while (self.hasNext && i < size) {
+      buf += self.next
+      i += 1
+    }
+    buf
+  }
+  
+  /** A flexible iterator for transforming an Iterator[A] into an
+   *  Iterator[Sequence[A]], with configurable sequence size, step, and
+   *  strategy for dealing with elements which don't fit evenly.
+   * 
+   *  Typical uses can be achieved via methods `grouped' and `sliding'.
+   */
+  class GroupedIterator[B >: A](self: Iterator[A], size: Int, step: Int) extends Iterator[Sequence[B]] {
+    require(size >= 1 && step >= 1)
+
+    private[this] var buffer: ArrayBuffer[B] = ArrayBuffer()  // the buffer    
+    private[this] var filled = false                          // whether the buffer is "hot"
+    private[this] var _partial = true                         // whether we deliver short sequences
+    private[this] var pad: Option[() => B] = None             // what to pad short sequences with
+    
+    /** Public functions which can be used to configure the iterator before use. */
+    def withPadding(x: => B): this.type = {
+      pad = Some(() => x)
+      this
+    }
+    def withPartial(x: Boolean): this.type = {
+      _partial = x
+      if (_partial == true) // reset pad since otherwise it will take precedence
+        pad = None
+
+      this
+    }
+    
+    private def padding(x: Int) = List.fill(x)(pad.get())
+    private def gap = (step - size) max 0
+    
+    private def go(count: Int) = {
+      val prevSize = buffer.size
+      def isFirst = prevSize == 0
+      // If there is padding defined we insert it immediately
+      // so the rest of the code can be oblivious
+      val xs: Seq[B] = {
+        val res = self takeDestructively count      
+        // extra checks so we don't calculate length unless there's reason
+        if (pad.isDefined && !self.hasNext) {
+          val shortBy = count - res.length
+          if (shortBy > 0) res ++ padding(shortBy) else res
+        }
+        else res
+      }
+      lazy val len = xs.length
+      lazy val incomplete = len < count
+      
+      // if 0 elements are requested, or if the number of newly obtained
+      // elements is less than the gap between sequences, we are done.
+      def deliver(howMany: Int) = {
+        (howMany > 0 && len > gap) && {          
+          if (!isFirst)
+            buffer trimStart (step min prevSize)
+          
+          val available =
+            if (isFirst) len
+            else howMany min (len - gap)
+          
+          buffer ++= (xs takeRight available)
+          filled = true
+          true
+        }
+      }
+      
+      if (xs.isEmpty) false                         // self ran out of elements
+      else if (_partial) deliver(len min size)      // if _partial is true, we deliver regardless
+      else if (incomplete) false                    // !_partial && incomplete means no more seqs
+      else if (isFirst) deliver(len)                // first element
+      else deliver(step min size)                   // the typical case
+    }
+    
+    // fill() returns false if no more sequences can be produced
+    private def fill(): Boolean = {
+      if (!self.hasNext) false
+      // the first time we grab size, but after that we grab step
+      else if (buffer.isEmpty) go(size)
+      else go(step)
+    }
+      
+    def hasNext = filled || fill()
+    def next = {
+      if (!filled)
+        fill()
+      
+      filled = false
+      buffer.toList
+    }      
+  }
+
+  /** Returns an iterator which groups this iterator into fixed size 
+   *  blocks.  Example usages:
+   *
+   *  <pre>
+   *    // Returns List(List(1, 2, 3), List(4, 5, 6), List(7)))
+   *    (1 to 7).iterator grouped 3 toList
+   *    // Returns List(List(1, 2, 3), List(4, 5, 6))
+   *    (1 to 7).iterator grouped 3 withPartial false toList
+   *    // Returns List(List(1, 2, 3), List(4, 5, 6), List(7, 20, 25)
+   *    // Illustrating that withPadding's argument is by-name.
+   *    val it2 = Iterator.iterate(20)(_ + 5)
+   *    (1 to 7).iterator grouped 3 withPadding it2.next toList
+   *  </pre>
+   */
+  def grouped[B >: A](size: Int): GroupedIterator[B] =
+    new GroupedIterator[B](self, size, size)
+
+  /** Returns an iterator which presents a "sliding window" view of
+   *  another iterator.  The first argument is the window size, and
+   *  the second is how far to advance the window on each iteration;
+   *  defaults to 1.  Example usages:
+   * 
+   *  <pre>
+   *    // Returns List(List(1, 2, 3), List(2, 3, 4), List(3, 4, 5))
+   *    (1 to 5).iterator.sliding(3).toList
+   *    // Returns List(List(1, 2, 3, 4), List(4, 5))
+   *    (1 to 5).iterator.sliding(4, 3).toList
+   *    // Returns List(List(1, 2, 3, 4))
+   *    (1 to 5).iterator.sliding(4, 3).withPartial(false).toList
+   *    // Returns List(List(1, 2, 3, 4), List(4, 5, 20, 25))
+   *    // Illustrating that withPadding's argument is by-name.
+   *    val it2 = Iterator.iterate(20)(_ + 5)
+   *    (1 to 5).iterator.sliding(4, 3).withPadding(it2.next).toList
+   *  </pre>
+   */
+  def sliding[B >: A](size: Int, step: Int = 1): GroupedIterator[B] =
+    new GroupedIterator[B](self, size, step)
 
   /** Returns the number of elements in this iterator.
    *  @note The iterator is at its end after this method returns.

@@ -59,11 +59,11 @@ class CompileSocket {
   /** A temporary directory to use */
   val tmpDir = {
     val udir  = Option(Properties.userName) getOrElse "shared"
-    val f     = (scala.io.File(Properties.tmpDir) / "scala-devel" / udir).file
+    val f     = new File(Properties.tmpDir, "scala-devel/" + udir)
     f.mkdirs()
     
     if (f.isDirectory && f.canWrite) {
-      info("[Temp directory: " + f + "]")
+      info("[Temp directory: " + f + "]") 
       f
     }
     else fatal("Could not find a directory for temporary files")

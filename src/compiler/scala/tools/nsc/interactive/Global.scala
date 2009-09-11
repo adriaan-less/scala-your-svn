@@ -215,7 +215,7 @@ self =>
     reporter.reset
     firsts = firsts filter (s => unitOfFile contains (s.file))
     val prefix = firsts map unitOf
-    val units = prefix ::: (unitOfFile.values.toList diff prefix) filter (!_.isUpToDate)
+    val units = prefix ::: (unitOfFile.valuesIterator.toList diff prefix) filter (!_.isUpToDate)
     recompile(units)
     if (debugIDE) inform("Everything is now up to date")
   }
@@ -264,13 +264,17 @@ self =>
 
   // ----------------- Implementations of client commmands -----------------------
   
-  def respond[T](result: Response[T])(op: => T): Unit = try {
-    result set Left(op)
-  } catch {
-    case ex =>
-      result set Right(ex)
-      throw ex
-  }
+  def respond[T](result: Response[T])(op: => T): Unit =
+    while(true)
+      try {
+        result set Left(op)
+        return
+      } catch {
+        case ex : ControlException =>
+        case ex =>
+          result set Right(ex)
+          throw ex
+      }
 
   /** Make sure a set of compilation units is loaded and parsed */
   def reloadSources(sources: List[SourceFile]) {

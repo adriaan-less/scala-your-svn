@@ -10,14 +10,16 @@ package io
 
 import java.io.{File, FileInputStream, FileOutputStream, IOException}
 
-object PlainFile {
+object PlainFile
+{
   /**
    * If the specified File exists, returns an abstract file backed
    * by it. Otherwise, returns null.
    */
-  def fromFile(file: File): AbstractFile =
+  def fromFile(file: File): PlainFile =
     if (file.exists()) new PlainFile(file) else null
 
+  def fromPath(path: String): PlainFile = fromFile(new File(path))
 }
 
 /** This class implements an abstract file backed by a File. 
@@ -94,7 +96,7 @@ class PlainFile(val file: File) extends AbstractFile {
   def delete {
     if (file.isFile) file.delete
     else if (file.isDirectory) {
-      elements.foreach(_.delete)
+      iterator.foreach(_.delete)
       file.delete
     }
   }

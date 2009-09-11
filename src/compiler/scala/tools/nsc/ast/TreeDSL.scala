@@ -23,6 +23,15 @@ trait TreeDSL {
     // clarity aliases    
     type TreeFunction1 = Tree => Tree
     type TreeFunction2 = (Tree, Tree) => Tree
+    type BooleanTreeFunction2 = (Tree, Tree) => Boolean
+    
+    // Add a null check to a Tree => Tree function
+    // (this assumes your result Tree is representing a Boolean expression)
+    def nullSafe[T](f: TreeFunction1): TreeFunction1 =
+      tree => (tree OBJ_!= NULL) AND f(tree)
+
+    // XXX these two are in scala.PartialFunction now, just have to
+    // settle on the final names.
 
     // Create a conditional based on a partial function - for values not defined
     // on the partial, it is false.
@@ -102,6 +111,7 @@ trait TreeDSL {
       def APPLY(params: Tree*)      = Apply(target, params.toList)
       def APPLY(params: List[Tree]) = Apply(target, params)
       def MATCH(cases: CaseDef*)    = Match(target, cases.toList)
+      
       def DOT(member: Name)         = SelectStart(Select(target, member))
       def DOT(sym: Symbol)          = SelectStart(Select(target, sym))
       
@@ -111,7 +121,7 @@ trait TreeDSL {
       /** Methods for sequences **/      
       def DROP(count: Int): Tree =
         if (count == 0) target
-        else (target DOT nme.drop)(LIT(count)) DOT nme.toSeq
+        else (target DOT nme.drop)(LIT(count)) DOT nme.toSequence
       
       /** Casting & type tests -- working our way toward understanding exactly
        *  what differs between the different forms of IS and AS.

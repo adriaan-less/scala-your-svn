@@ -59,6 +59,7 @@ abstract class SymbolicXMLBuilder(p: Parsers#Parser, preserveWS: Boolean)
   private def LL[A](x: A*): List[List[A]] = List(List(x:_*))
   private def const(x: Any) = x match {
     case s: runtime.RichString  => Literal(Constant(s.toString))  // not our finest hour
+    case s: collection.immutable.StringLike[_] => Literal(Constant(s.toString))  // not our finest hour
     case _                      => Literal(Constant(x))
   }
   private def wild                          = Ident(nme.WILDCARD)
@@ -194,7 +195,7 @@ abstract class SymbolicXMLBuilder(p: Parsers#Parser, preserveWS: Boolean)
 
     /** Extract all the namespaces from the attribute map. */
     val namespaces: List[Tree] =
-      for (z <- attrMap.keys.toList ; if z startsWith xmlns) yield {
+      for (z <- attrMap.keysIterator.toList ; if z startsWith xmlns) yield {
         val ns = splitPrefix(z) match {
           case (Some(_), rest)  => rest
           case _                => null

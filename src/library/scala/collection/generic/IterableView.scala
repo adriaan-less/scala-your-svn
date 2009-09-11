@@ -19,9 +19,9 @@ import TraversableView.NoBuilder
  *  @author Martin Odersky
  *  @version 2.8
  */
-trait IterableView[+A, +Coll <: Iterable[_]] extends IterableViewTemplate[A, Coll, IterableView[A, Coll]]
+trait IterableView[+A, +Coll] extends IterableViewTemplate[A, Coll, IterableView[A, Coll]]
 
 object IterableView {
-  type Coll = TraversableView[_, _]
+  type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def builderFactory[A]: BuilderFactory[A, IterableView[A, Iterable[_]], Coll] = new BuilderFactory[A, IterableView[A, Iterable[_]], Coll] { def apply(from: Coll) = new NoBuilder }
 }

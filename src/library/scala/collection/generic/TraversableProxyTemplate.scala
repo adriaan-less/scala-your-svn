@@ -37,7 +37,7 @@ trait TraversableProxyTemplate[+A, +This <: TraversableTemplate[A, This] with Tr
   override def flatMap[B, That](f: A => Traversable[B])(implicit bf: BuilderFactory[B, That, This]): That = self.flatMap(f)(bf)
   override def filter(p: A => Boolean): This = self.filter(p)
   override def filterNot(p: A => Boolean): This = self.filterNot(p)
-  override def remove(p: A => Boolean): This = self.remove(p)
+  override def remove(p: A => Boolean): This = self.filterNot(p)
   override def partition(p: A => Boolean): (This, This) = self.partition(p)
   override def groupBy[K](f: A => K): Map[K, This] = self.groupBy(f)
   override def forall(p: A => Boolean): Boolean = self.forall(p)
@@ -68,13 +68,12 @@ trait TraversableProxyTemplate[+A, +This <: TraversableTemplate[A, This] with Tr
   override def copyToBuffer[B >: A](dest: Buffer[B]) = self.copyToBuffer(dest)
   override def copyToArray[B >: A](xs: Array[B], start: Int, len: Int) = self.copyToArray(xs, start, len)
   override def copyToArray[B >: A](xs: Array[B], start: Int) = self.copyToArray(xs, start)
-  override def toArray[B >: A]: Array[B] = self.toArray
+  override def toArray[B >: A: ClassManifest]: Array[B] = self.toArray
   override def toList: List[A] = self.toList
   override def toIterable: Iterable[A] = self.toIterable
   override def toSequence: Sequence[A] = self.toSequence
   override def toStream: Stream[A] = self.toStream
   override def toSet[B >: A]: immutable.Set[B] = self.toSet  
-//  override def sortWith(lt : (A,A) => Boolean): This = self.sortWith(lt)
   override def mkString(start: String, sep: String, end: String): String = self.mkString(start, sep, end)
   override def mkString(sep: String): String = self.mkString(sep)
   override def mkString: String = self.mkString
@@ -84,4 +83,13 @@ trait TraversableProxyTemplate[+A, +This <: TraversableTemplate[A, This] with Tr
   override def stringPrefix : String = self.stringPrefix
   override def view = self.view
   override def view(from: Int, until: Int): TraversableView[A, This] = self.view(from, until)
+}
+
+private class TraversableProxyTemplateConfirmation[+A, +This <: TraversableTemplate[A, This] with Traversable[A]]
+  extends TraversableProxyTemplate[A, Traversable[A]]
+  with interfaces.TraversableMethods[A, Traversable[A]]
+{
+  def self: This = repr.asInstanceOf[This]
+  protected[this] def newBuilder = collection.Traversable.newBuilder[A]
+  // : Builder[A, This]
 }

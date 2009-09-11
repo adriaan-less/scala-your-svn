@@ -948,10 +948,13 @@ abstract class GenICode extends SubComponent  {
           ctx1.exitScope
           ctx1
 
+        case Typed(Super(_, _), _) =>
+          genLoad(This(ctx.clazz.symbol), ctx, expectedType)
+
         case Typed(expr, _) =>
           genLoad(expr, ctx, expectedType)
 
-        case Assign(_, _) => 
+        case Assign(_, _) =>
           generatedType = UNIT
           genStat(tree, ctx)
 
@@ -2147,7 +2150,7 @@ abstract class GenICode extends SubComponent  {
       locals -= l
       
     /** Return all locals that are in scope. */
-    def varsInScope: Buffer[Local] = outer.varsInScope ++ locals
+    def varsInScope: Buffer[Local] = outer.varsInScope.clone() ++ locals
     
     override def toString() = 
       outer.toString() + locals.mkString("[", ", ", "]")

@@ -12,7 +12,7 @@
 package scala.collection.immutable
 
 import java.io._
-import util.matching.Regex
+import scala.util.matching.Regex
 
 /** The PagedSeq object defines a lazy implementations of 
  *  a random access sequence. 
@@ -96,7 +96,7 @@ object PagedSeq {
   /** Constructs a character sequence from a scala.io.Source value
    */
   def fromSource(source: io.Source) = 
-    fromLines(source.getLines)
+    fromLines(source.getLines())
 }
 
 

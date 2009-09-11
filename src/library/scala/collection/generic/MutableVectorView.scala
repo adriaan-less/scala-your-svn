@@ -19,9 +19,9 @@ import TraversableView.NoBuilder
  * @author Martin Odersky
  * @version 2.8
  */
-trait MutableVectorView[A, +Coll <: mutable.Vector[_]] extends MutableVectorViewTemplate[A, Coll, MutableVectorView[A, Coll]]
+trait MutableVectorView[A, +Coll] extends MutableVectorViewTemplate[A, Coll, MutableVectorView[A, Coll]]
 
 object MutableVectorView {
-  type Coll = TraversableView[_, _]
+  type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def builderFactory[A]: BuilderFactory[A, MutableVectorView[A, mutable.Vector[_]], Coll] = new BuilderFactory[A, MutableVectorView[A, mutable.Vector[_]], Coll] { def apply(from: Coll) = new NoBuilder }
 }

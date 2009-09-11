@@ -148,7 +148,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
 
   private def needsJavaSig(tp: Type) = !settings.Ynogenericsig.value && NeedsSigCollector.collect(tp)
 
-  private lazy val tagOfClass = new HashMap[Symbol,Char] + (
+  private lazy val tagOfClass = Map[Symbol,Char](
     ByteClass -> BYTE_TAG,
     CharClass -> CHAR_TAG,
     DoubleClass -> DOUBLE_TAG,
@@ -190,7 +190,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               }
             }
           def classSig: String = 
-            "L"+atPhase(currentRun.icodePhase)(sym.fullNameString).replace('.', '/')
+            "L"+atPhase(currentRun.icodePhase)(sym.fullNameString + global.genJVM.moduleSuffix(sym)).replace('.', '/')
           def classSigSuffix: String = 
             "."+sym.name
           if (sym == ArrayClass)
@@ -387,7 +387,9 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
         })
     }
 
-    /** generate  ScalaRuntime.boxArray(tree) */
+    /** generate  ScalaRuntime.boxArray(tree)
+     *  !!! todo: optimize this in case the runtime type is known
+     */
     private def boxArray(tree: Tree): Tree = tree match {
       case LabelDef(name, params, rhs) =>
         val rhs1 = boxArray(rhs)
@@ -564,7 +566,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             if (args.length >= 2) REF(ArrayModule) DOT nme.ofDim
             else                  NEW(BoxedAnyArrayClass) DOT name
 
-          atPos(tree.pos) {
+          typedPos(tree.pos) {
             Typed(Apply(translated, args), tpt)
           }
         case Apply(TypeApply(sel @ Select(qual, name), List(targ)), List()) if tree.symbol == Any_asInstanceOf =>
@@ -874,7 +876,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
       else {
         val (bridges, toBeRemoved) = bridgeDefs(base)
         if (bridges.isEmpty) stats 
-        else (stats remove (stat => toBeRemoved contains stat.symbol)) ::: bridges
+        else (stats filterNot (stat => toBeRemoved contains stat.symbol)) ::: bridges
       }
 
     /** <p>

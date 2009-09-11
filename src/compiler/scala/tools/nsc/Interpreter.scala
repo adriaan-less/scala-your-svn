@@ -168,7 +168,13 @@ class Interpreter(val settings: Settings, out: PrintWriter)
   /** Generates names pre0, pre1, etc. via calls to apply method */
   class NameCreator(pre: String) {
     private var x = -1
-    def apply(): String = { x += 1 ; pre + x.toString }
+    def apply(): String = { 
+      x += 1
+      val name = pre + x.toString
+      // make sure we don't overwrite their unwisely named res3 etc.
+      if (allBoundNames exists (_.toString == name)) apply()
+      else name
+    }
     def reset(): Unit = x = -1
     def didGenerate(name: String) =
       (name startsWith pre) && ((name drop pre.length) forall (_.isDigit))
@@ -211,7 +217,7 @@ class Interpreter(val settings: Settings, out: PrintWriter)
   /** Indent some code by the width of the scala> prompt.
    *  This way, compiler error messages read better.
    */
-  private final val spaces = List.make(7, " ").mkString
+  private final val spaces = List.fill(7)(" ").mkString
   def indentCode(code: String) =
     stringFrom(str =>
       for (line <- code.lines) {

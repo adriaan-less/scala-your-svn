@@ -13,6 +13,7 @@ package scala.collection.immutable
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.generic._
+import annotation.tailrec
 
 /** A class representing an ordered collection of elements of type
  *  <code>a</code>. This class comes with two implementing case
@@ -102,6 +103,7 @@ sealed abstract class List[+A] extends LinearSequence[A]
    *  @return  the reversed list of results.
    */
   def reverseMap[B](f: A => B): List[B] = {
+    @tailrec
     def loop(l: List[A], res: List[B]): List[B] = l match {
       case Nil => res
       case head :: tail => loop(tail, f(head) :: res)
@@ -214,6 +216,7 @@ sealed abstract class List[+A] extends LinearSequence[A]
    *  @return the suffix of length <code>n</code> of the list
    */
   override def takeRight(n: Int): List[A] = {
+    @tailrec
     def loop(lead: List[A], lag: List[A]): List[A] = lead match {
       case Nil => lag
       case _ :: tail => loop(tail, lag.tail)
@@ -264,9 +267,14 @@ sealed abstract class List[+A] extends LinearSequence[A]
    *  @return  the longest suffix of the list whose first element
    *           does not satisfy the predicate <code>p</code>.
    */
-  override def dropWhile(p: A => Boolean): List[A] =
-    if (isEmpty || !p(head)) this
-    else tail dropWhile p
+  override def dropWhile(p: A => Boolean): List[A] = {
+    @tailrec
+    def loop(xs: List[A]): List[A] =
+      if (xs.isEmpty || !p(xs.head)) xs
+      else loop(xs.tail)
+
+    loop(this)
+  }
 
   /** Returns the longest prefix of the list whose elements all satisfy
    *  the given predicate, and the rest of the list.
@@ -420,7 +428,10 @@ sealed abstract class List[+A] extends LinearSequence[A]
 
     ms(this)
   }
-
+  
+  // !!! The above sort could be replaced by:
+  //   def sort(lt: (A, A) => Boolean): List[A] = super.sortWith(lt)
+  // except that it fails to find a ClassManifest.
 }
 
 /** The empty list.
@@ -435,6 +446,7 @@ case object Nil extends List[Nothing] {
     throw new NoSuchElementException("head of empty list")
   override def tail: List[Nothing] =
     throw new NoSuchElementException("tail of empty list")
+  // Removal of equals method here might lead to an infinite recusion similar to IntMap.equals.
   override def equals(that: Any) = that match {
     case that1: Sequence[_] => that1.isEmpty
     case _ => false
@@ -835,25 +847,6 @@ object List extends SequenceFactory[List] {
     }
     buf.toList
   }
-
-  /** Lists with ordered elements are ordered
-  implicit def list2ordered[a <% Ordered[a]](x: List[a]): Ordered[List[a]] = new Ordered[List[a]] {
-    def compare [b >: List[a] <% Ordered[b]](y: b): Int = y match {
-      case y1: List[a] => compareLists(x, y1);
-      case _ => -(y compare x)
-    }
-    private def compareLists(xs: List[a], ys: List[a]): Int = {
-      if (xs.isEmpty && ys.isEmpty) 0
-      else if (xs.isEmpty) -1
-      else if (ys.isEmpty) 1
-      else {
-        val s = xs.head compare ys.head;
-        if (s != 0) s
-        else compareLists(xs.tail, ys.tail)
-      }
-    }
-  }
-   */
 }
 
 /** Only used for list serialization */

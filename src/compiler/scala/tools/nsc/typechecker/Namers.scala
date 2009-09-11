@@ -34,7 +34,7 @@ trait Namers { self: Analyzer =>
       case PolyType(tparams1, restpe) =>
         new DeSkolemizeMap(tparams1 ::: tparams).mapOver(tp)
       case ClassInfoType(parents, decls, clazz) =>
-        val parents1 = List.mapConserve(parents)(this)
+        val parents1 = parents mapConserve (this)
         if (parents1 eq parents) tp else ClassInfoType(parents1, decls, clazz)
 */
       case _ => 
@@ -715,7 +715,7 @@ trait Namers { self: Analyzer =>
       Namers.this.caseClassOfModuleClass get clazz.linkedModuleOfClass.moduleClass match {
         case Some(cdef) =>
           def hasCopy(decls: Scope) = {
-            decls.elements exists (_.name == nme.copy)
+            decls.iterator exists (_.name == nme.copy)
           }
           if (!hasCopy(decls) &&
               !parents.exists(p => hasCopy(p.typeSymbol.info.decls)) &&
@@ -1007,7 +1007,11 @@ trait Namers { self: Analyzer =>
               }
             }
 
-            val defTpt = subst(copyUntyped(vparam.tpt))
+            val defTpt = subst(copyUntyped(vparam.tpt match {
+              // default getter for by-name params
+              case AppliedTypeTree(_, List(arg)) if sym.hasFlag(BYNAMEPARAM) => arg
+              case t => t
+            }))
             val defRhs = copyUntyped(vparam.rhs)
 
             val defaultTree = atPos(vparam.pos.focus) {
