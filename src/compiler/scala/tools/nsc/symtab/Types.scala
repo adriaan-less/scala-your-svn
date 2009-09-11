@@ -3823,7 +3823,7 @@ A type's typeSymbol should never be inspected directly.
       case BoundedWildcardType(bounds) =>
         tp1.bounds.lo <:< tp2
       case tv1 @ TypeVar(_, constr1) =>
-        if (constr1.inst != NoType) constr1.inst <:< tp2 
+        if (constr1.instValid) constr1.inst <:< tp2
         else isRelatable(tv1, tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
       case ExistentialType(_, _) =>
         try { 
@@ -4016,7 +4016,7 @@ A type's typeSymbol should never be inspected directly.
         if (constr2.inst != NoType) tp1 <:< constr2.inst
         else isRelatable(tv2, tp1) && { constr2.lobounds = tp1 :: constr2.lobounds; true }
       case (tv1 @ TypeVar(_, constr1), _) =>
-        if (constr1.inst != NoType) constr1.inst <:< tp2 
+        if (constr1.instValid) constr1.inst <:< tp2
         else isRelatable(tv1, tp2) && { constr1.hibounds = tp2 :: constr1.hibounds; true }
       case (_, _)  if (tp1.isHigherKinded || tp2.isHigherKinded) =>
         (tp1.typeSymbol == NothingClass 
