@@ -11,12 +11,15 @@
 
 package scala
 
+import collection.immutable.StringOps
+import collection.mutable.StringBuilder
+import collection.generic.BuilderFactory
 
 /** The <code>Predef</code> object provides definitions that are
  *  accessible in all Scala compilation units without explicit
  *  qualification.
  */
-object Predef {
+object Predef extends LowPriorityImplicits {
 
   // classOf dummy ------------------------------------------------------
 
@@ -64,7 +67,7 @@ object Predef {
   
   private val P = scala.`package`  // to force scala package object to be seen.
   private val L = scala.collection.immutable.List // to force Nil, :: to be seen.
-  private val S = scala.collection.mutable.StringBuilder // to force StringBuilder to be seen.
+  private val S = StringBuilder // to force StringBuilder to be seen.
   
   val $scope = scala.xml.TopScope
 
@@ -96,22 +99,29 @@ object Predef {
     java.lang.System.exit(status)
     throw new Throwable()
   }
+  
+  import annotation.elidable
+  import annotation.elidable.ASSERTION
 
+  @elidable(ASSERTION)
   def assert(assertion: Boolean) {
     if (!assertion)
       throw new java.lang.AssertionError("assertion failed")
   }
 
+  @elidable(ASSERTION)
   def assert(assertion: Boolean, message: => Any) {
     if (!assertion)
       throw new java.lang.AssertionError("assertion failed: "+ message)
   }
 
+  @elidable(ASSERTION)
   def assume(assumption: Boolean) {
     if (!assumption)
       throw new java.lang.AssertionError("assumption failed")
   }
 
+  @elidable(ASSERTION)
   def assume(assumption: Boolean, message: => Any) {
     if (!assumption)
       throw new java.lang.AssertionError("assumption failed: "+ message)
@@ -171,7 +181,7 @@ object Predef {
   def println() = Console.println()
   def println(x: Any) = Console.println(x)
   def printf(text: String, xs: Any*) = Console.printf(text, xs: _*)
-  def format(text: String, xs: Any*) = stringWrapper(text).format(xs: _*)
+  def format(text: String, xs: Any*) = augmentString(text).format(xs: _*)
 
   def readLine(): String = Console.readLine()
   def readLine(text: String, args: Any*) = Console.readLine(text, args)
@@ -200,7 +210,10 @@ object Predef {
   
   implicit def booleanWrapper(x: Boolean) = new runtime.RichBoolean(x)
 
-  implicit def stringWrapper(x: String) = new runtime.RichString(x)
+  implicit def augmentString(x: String): StringOps = new StringOps(x)
+  implicit def unaugmentString(x: StringOps): String = x.repr
+  implicit def stringBuilderFactory: BuilderFactory[Char, String, String] = 
+    new BuilderFactory[Char, String, String] { def apply(from: String) = new StringBuilder }
 
   implicit def any2stringadd(x: Any) = new runtime.StringAdd(x)
 
@@ -246,8 +259,7 @@ object Predef {
 
   /** any array projection can be automatically converted into an array */
   //implicit def forceArrayProjection[A](x: Array.Projection[A]): Array[A] = x.force !!! re-enable?
-  /** any random access character seq (including rich string can be converted into a string */
-  implicit def richString2String(x: runtime.RichString): String = if (x eq null) null else x.toString
+
   //implicit def lazyStreamToConsable[A](xs: => Stream[A]) = new runtime.StreamCons(xs)
 
   implicit def seqToCharSequence(xs: collection.Vector[Char]): CharSequence = new CharSequence {
