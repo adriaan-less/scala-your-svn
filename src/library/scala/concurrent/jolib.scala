@@ -11,6 +11,7 @@
 
 package scala.concurrent
 
+import ops._
 
 /**
  * Library for using join-calculus concurrent primitives in Scala.
@@ -18,7 +19,8 @@ package scala.concurrent
  * @author  Vincent Cremet
  * @version 1.0, 17/10/2003
  */ 
-@deprecated object jolib {
+@deprecated("Will be removed.")
+object jolib {
 
   type Pattern = List[Signal]
 
@@ -44,7 +46,7 @@ package scala.concurrent
         case None => () => ()
         case Some((p, r)) => {
           val args = values(p)
-          () => concurrent.ops.spawn(r(args))
+          () => spawn(r(args))
         }
       }
 

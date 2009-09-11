@@ -17,7 +17,7 @@
  */
 package scala.collection.immutable
 
-import generic._
+import scala.collection.generic._
 import annotation.unchecked.uncheckedVariance
 
 trait SortedMap[A, +B] extends Map[A, B] 
@@ -26,7 +26,7 @@ trait SortedMap[A, +B] extends Map[A, B]
                          with SortedMapTemplate[A, B, SortedMap[A, B]] {
 
   override protected[this] def newBuilder : Builder[(A, B), SortedMap[A, B]] = 
-    immutable.SortedMap.newBuilder[A, B]
+    SortedMap.newBuilder[A, B]
 
   override def updated [B1 >: B](key: A, value: B1): SortedMap[A, B1] = this + ((key, value))
 
@@ -54,7 +54,7 @@ trait SortedMap[A, +B] extends Map[A, B]
    *  @param elems     the traversable object.
    */
   override def ++[B1 >: B](elems: collection.Traversable[(A, B1)]): SortedMap[A, B1] = 
-    ((thisCollection: SortedMap[A, B1]) /: elems) (_ + _)
+    ((repr: SortedMap[A, B1]) /: elems) (_ + _)
 
   /** Adds a number of elements provided by an iterator
    *  and returns a new collection with the added elements.
@@ -62,7 +62,7 @@ trait SortedMap[A, +B] extends Map[A, B]
    *  @param iter   the iterator
    */
   override def ++[B1 >: B] (iter: Iterator[(A, B1)]): SortedMap[A, B1] = 
-    ((thisCollection: SortedMap[A, B1]) /: iter) (_ + _)
+    ((repr: SortedMap[A, B1]) /: iter) (_ + _)
 }
 
 object SortedMap extends ImmutableSortedMapFactory[SortedMap] {

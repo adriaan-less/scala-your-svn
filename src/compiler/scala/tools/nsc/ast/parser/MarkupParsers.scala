@@ -4,7 +4,8 @@
  */
 // $Id: MarkupParsers.scala 17754 2009-05-18 10:54:00Z milessabin $
 
-package scala.tools.nsc.ast.parser
+package scala.tools.nsc
+package ast.parser
 
 import scala.collection.mutable
 import scala.util.control.ControlException
@@ -488,18 +489,18 @@ trait MarkupParsers {self: Parsers =>
         var exit = false
         val buf = new StringBuilder
         while (!exit && (ch!=SU)) {
-          buf append ch
           val expectRBRACE = ch == '}'
-          // TODO check for "}}"
-          nextch
           if (expectRBRACE) {
-            if (ch == '}')
-              nextch
-            else {
+            val la = input.lookaheadReader
+            la.nextChar()
+            if (la.ch != '}') {
               reportSyntaxError("in XML content, please use '}}' to express '}'")
               throw ConfusedAboutBracesException
             }
+            nextch
           }
+          buf append ch
+          nextch
           exit = xCheckEmbeddedBlock ||(ch == '<') || (ch == '&')
         }
         val str = buf.toString()

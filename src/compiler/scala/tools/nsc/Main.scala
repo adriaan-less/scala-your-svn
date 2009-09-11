@@ -36,7 +36,7 @@ object Main extends AnyRef with EvalLoop {
 
   def resident(compiler: Global) {
     loop { line =>
-      val args = List.fromString(line, ' ')
+      val args = line.split(' ').toList
       val command = new CompilerCommand(args, new Settings(error), error, true)
       new compiler.Run() compile command.files
     }
@@ -51,20 +51,16 @@ object Main extends AnyRef with EvalLoop {
     else if (command.settings.Yidedebug.value) {
       command.settings.Xprintpos.value = true
       val compiler = new interactive.Global(command.settings, reporter)
-      import compiler._
+      import compiler.{ reporter => _, _ }
       
       val sfs = command.files.map(getSourceFile(_))
       val reloaded = new SyncVar[Either[Unit, Throwable]]
       askReload(sfs, reloaded)
       reloaded.get.right.toOption match {
-        case Some(thr) => logError("Failure in presentation compiler", thr)
-        case _ =>
+        case Some(ex) => reporter.cancelled = true // Causes exit code to be non-0
+        case None => reporter.reset // Causes other compiler errors to be ignored
       }
-      for (sf <- sfs) {
-        val cu = unitOf(sf)
-        val tree = cu.body
-        treePrinters.create(System.out).print(tree)
-      }
+      askShutdown
     }
     else {
       if (command.settings.target.value == "msil") {

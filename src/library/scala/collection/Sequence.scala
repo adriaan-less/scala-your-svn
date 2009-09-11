@@ -14,7 +14,7 @@ package scala.collection
 import mutable.ListBuffer
 // import immutable.{List, Nil, ::}
 import generic._
-import util.control.Breaks._
+import scala.util.control.Breaks._
 
 /** Class <code>Sequence[A]</code> represents sequences of elements
  *  of type <code>A</code>.
@@ -35,7 +35,9 @@ trait Sequence[+A] extends PartialFunction[Int, A]
   override def companion: Companion[Sequence] = Sequence
 }
 
-object Sequence extends SequenceFactory[Sequence] {
+object Sequence extends SequenceFactory[Sequence]
+{
+  private[collection] val hashSeed = "Sequence".hashCode
   
   implicit def builderFactory[A]: BuilderFactory[A, Sequence[A], Coll] = new VirtualBuilderFactory[A]
   def newBuilder[A]: Builder[A, Sequence[A]] = immutable.Sequence.newBuilder[A]

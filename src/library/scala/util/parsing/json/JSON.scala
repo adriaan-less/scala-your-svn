@@ -10,6 +10,9 @@
 
 
 package scala.util.parsing.json
+import scala.util.parsing.combinator._
+import scala.util.parsing.combinator.syntactical._
+import scala.util.parsing.combinator.lexical._
 
 /** 
  * This object provides a simple interface to the JSON parser class. The default conversion
@@ -71,13 +74,16 @@ object JSON extends Parser {
       case (key: String, value: List[_]) =>
         objMap = objMap.+[Any](key -> resolveType(value))
         true
-      case (key : String, value : Any) =>
+      case (key : String, value) =>
         objMap += key -> value
         true
       case _ => false
     }) objMap
     else
-      input
+      input.map {
+          case l : List[_] => resolveType(l)
+          case x => x
+      }
   }
   
   /**

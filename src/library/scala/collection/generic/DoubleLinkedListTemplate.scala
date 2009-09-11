@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 /** This extensible class may be used as a basis for implementing double
  *  linked lists. Type variable <code>A</code> refers to the element type
@@ -26,14 +27,14 @@ trait DoubleLinkedListTemplate[A, This >: Null <: LinearSequence[A] with DoubleL
   override def append(that: This): Unit = 
     if (next eq null) {
       next = that
-      if (that ne null) that.prev = thisCollection
+      if (that ne null) that.prev = repr
     } else
       next.append(that)
 
   override def insert(that: This): Unit = if (that ne null) {
     that.append(next)
     next = that
-    that.prev = thisCollection
+    that.prev = repr
   }
 
   def remove() {

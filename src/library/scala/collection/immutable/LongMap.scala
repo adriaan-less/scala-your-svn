@@ -45,8 +45,8 @@ object LongMap{
   def apply[T](elems : (Long, T)*) : LongMap[T] = 
     elems.foldLeft(empty[T])((x, y) => x.updated(y._1, y._2));
 
-
-  private[immutable] case object Nil extends LongMap[Nothing]{
+  private[immutable] case object Nil extends LongMap[Nothing] {
+    // Important, don't remove this! See IntMap for explanation.
     override def equals(that : Any) = that match {
       case (that : AnyRef) if (this eq that) => true;
       case (that : LongMap[_]) => false; // The only empty LongMaps are eq Nil
@@ -244,8 +244,8 @@ sealed abstract class LongMap[+T] extends scala.collection.immutable.Map[Long, T
 
   override def updated[S >: T](key : Long, value : S) : LongMap[S] = this match {
     case LongMap.Bin(prefix, mask, left, right) => if (!hasMatch(key, prefix, mask)) join(key, LongMap.Tip(key, value), prefix, this);
-                                          else if (zero(key, mask)) LongMap.Bin(prefix, mask, left.update(key, value), right)
-                                          else LongMap.Bin(prefix, mask, left, right.update(key, value)); 
+                                          else if (zero(key, mask)) LongMap.Bin(prefix, mask, left.updated(key, value), right)
+                                          else LongMap.Bin(prefix, mask, left, right.updated(key, value)); 
     case LongMap.Tip(key2, value2) => if (key == key2) LongMap.Tip(key, value);
                              else join(key, LongMap.Tip(key, value), key2, this);
     case LongMap.Nil => LongMap.Tip(key, value);

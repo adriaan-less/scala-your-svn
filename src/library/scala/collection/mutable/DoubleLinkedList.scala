@@ -1,5 +1,3 @@
-/* TODO: reintegrate
-
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
 **    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
@@ -13,7 +11,7 @@
 
 package scala.collection.mutable
 
-import generic._
+import scala.collection.generic._
 
 /** This class implements single linked lists where both the head (<code>elem</code>)
  *  and the tail (<code>next</code>) are mutable.
@@ -23,16 +21,29 @@ import generic._
  *  @version 2.8
  */
 @serializable
-class DoubleLinkedList[A]/*(_elem: A, _next: DoubleLinkedList[A])*/ extends LinearSequence[A] with DoubleLinkedListTemplate[A, DoubleLinkedList[A]] {
-  override protected[this] def newBuilder = DoubleLinkedList.newBuilder
-  override def traversableBuilder[B]: Builder[B, DoubleLinkedList[B]] = DoubleLinkedList.newBuilder[B]
+class DoubleLinkedList[A](_elem: A, _next: DoubleLinkedList[A]) extends LinearSequence[A]
+                                                                   with TraversableClass[A, DoubleLinkedList]
+                                                                   with DoubleLinkedListTemplate[A, DoubleLinkedList[A]] {
+  elem = _elem
+  next = _next
+  override def companion: Companion[DoubleLinkedList] = DoubleLinkedList
 }
 
 object DoubleLinkedList extends SequenceFactory[DoubleLinkedList] {
-  implicit def builderFactory[A]: BuilderFactory[A, DoubleLinkedList[A], Coll] = new BuilderFactory[A, DoubleLinkedList[A], Coll] { def apply(from: Coll) = from.traversableBuilder[A] }
-  def newBuilder[A]: Builder[A, DoubleLinkedList[A]] = null // !!! 
+  implicit def builderFactory[A]: BuilderFactory[A, DoubleLinkedList[A], Coll] = //new BuilderFactory[A, DoubleLinkedList[A], Coll] { def apply(from: Coll) = from.traversableBuilder[A] }
+    new VirtualBuilderFactory[A]
+  def newBuilder[A]: Builder[A, DoubleLinkedList[A]] =
+    new Builder[A, DoubleLinkedList[A]] {
+      var current: DoubleLinkedList[A] = _
+      def +=(elem: A): this.type = {
+        val tmp = new DoubleLinkedList(elem, null)
+        if (current != null)
+          current.insert(tmp)
+        else
+          current = tmp
+        this
+      }
+      def clear() { current = null }
+      def result() = current
+    }
 }
-
-
-
-*/

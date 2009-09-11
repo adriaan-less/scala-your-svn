@@ -10,6 +10,7 @@ import java.io.File
 import io.AbstractFile
 import util.SourceFile
 import Settings._
+import annotation.elidable
 
 class Settings(errorFn: String => Unit) extends ScalacSettings {
   def this() = this(Console.println)
@@ -25,8 +26,12 @@ class Settings(errorFn: String => Unit) extends ScalacSettings {
   protected def classpathDefault = 
     syspropopt("env.classpath") orElse syspropopt("java.class.path") getOrElse ""
 
-  protected def bootclasspathDefault =
+  protected def bootclasspathDefault = 
     concatPath(syspropopt("sun.boot.class.path"), guessedScalaBootClassPath)
+    // syspropopt("sun.boot.class.path") getOrElse ""
+    // XXX scala-library.jar was being added to both boot and regular classpath until 8/18/09
+    // Removing from boot classpath caused build/quick/bin/scala to fail.
+    // Note to self, figure out how/why the bootclasspath is tied up with the locker/quick/pack.
 
   protected def extdirsDefault =
     concatPath(syspropopt("java.ext.dirs"), guessedScalaExtDirs)
@@ -105,7 +110,7 @@ class Settings(errorFn: String => Unit) extends ScalacSettings {
     
     // if arg is of form -Xfoo:bar,baz,quux
     def parseColonArg(s: String): Option[List[String]] = {
-      val idx = s.findIndexOf(_ == ':')
+      val idx = s indexWhere (_ == ':')
       val (p, args) = (s.substring(0, idx), s.substring(idx+1).split(",").toList)
       
       // any non-Nil return value means failure and we return s unmodified
@@ -216,6 +221,9 @@ class Settings(errorFn: String => Unit) extends ScalacSettings {
   lazy val PhasesSetting       = untupled(tupled(phase _) andThen add[PhasesSetting])
   lazy val DefinesSetting      = add(defines())
   lazy val OutputSetting       = untupled(tupled(output _) andThen add[OutputSetting])
+  
+  override def toString() =
+    "Settings(\n%s)" format (settingSet filter (s => !s.isDefault) map ("  " + _ + "\n") mkString)
 }
 
 object Settings {
@@ -309,8 +317,14 @@ object Settings {
     def str(name: String, arg: String, descr: String, default: String) =
       new StringSetting(name, arg, descr, default)
         
-    def sint(name: String, descr: String, default: Int, min: Option[Int], max: Option[Int]) =
-      new IntSetting(name, descr, default, min, max)
+    def sint(
+      name: String,
+      descr: String, 
+      default: Int, 
+      range: Option[(Int, Int)] = None,
+      parser: String => Option[Int] = _ => None
+    ) =
+      new IntSetting(name, descr, default, range, parser)
       
     def multi(name: String, arg: String, descr: String) =
       new MultiStringSetting(name, arg, descr)
@@ -403,55 +417,58 @@ object Settings {
     def eqValues: List[Any] = List(name, value)
     def isEq(other: Setting) = eqValues == other.eqValues    
     override def hashCode() = name.hashCode
+    override def toString() = "%s = %s".format(name, value)
   }
 
-  /** A setting represented by a positive integer */
+  /** A setting represented by an integer */
   class IntSetting private[Settings](
     val name: String,
     val descr: String,
     val default: Int,
-    val min: Option[Int],
-    val max: Option[Int])
+    val range: Option[(Int, Int)],
+    parser: String => Option[Int])
   extends Setting(descr) {
     type T = Int
-    protected var v = default    
+    protected var v = default
+    
+    // not stable values!
+    val IntMin = Int.MinValue
+    val IntMax = Int.MaxValue
+    def min = range map (_._1) getOrElse IntMin
+    def max = range map (_._2) getOrElse IntMax
+    
     override def value_=(s: Int) = 
       if (isInputValid(s)) super.value_=(s) else errorMsg
     
     // Validate that min and max are consistent
-    (min, max) match {
-      case (Some(i), Some(j)) => assert(i <= j)
-      case _ => ()
-    }
+    assert(min <= max)
 
     // Helper to validate an input
-    private def isInputValid(k: Int): Boolean = (min, max) match {
-      case (Some(i), Some(j)) => (i <= k) && (k <= j)
-      case (Some(i), None) => (i <= k)
-      case (None, Some(j)) => (k <= j)
-      case _ => true
-    }
+    private def isInputValid(k: Int): Boolean = (min <= k) && (k <= max)
 
     // Helper to generate a textual explaination of valid inputs
     private def getValidText: String = (min, max) match {
-      case (Some(i), Some(j)) => "must be between "+i+" and "+j
-      case (Some(i), None)    => "must be greater than or equal to "+i
-      case (None, Some(j))    => "must be less than or equal to "+j
-      case _                  => throw new Error("this should never be used")
+      case (IntMin, IntMax)   => "can be any integer"
+      case (IntMin, x)        => "must be less than or equal to "+x
+      case (x, IntMax)        => "must be greater than or equal to "+x
+      case _                  => "must be between %d and %d".format(min, max)
     }
 
     // Ensure that the default value is actually valid
     assert(isInputValid(default))
     
-    def parseInt(x: String): Option[Int] =
-      try   { Some(x.toInt) }
-      catch { case _: NumberFormatException => None }
+    def parseArgument(x: String): Option[Int] = {
+      parser(x) orElse {
+        try   { Some(x.toInt) }
+        catch { case _: NumberFormatException => None }
+      }
+    }
 
     def errorMsg = errorFn("invalid setting for -"+name+" "+getValidText)
 
     def tryToSet(args: List[String]) = 
       if (args.isEmpty) errorAndValue("missing argument", None)
-      else parseInt(args.head) match {
+      else parseArgument(args.head) match {
         case Some(i)  => value = i ; Some(args.tail)
         case None     => errorMsg ; None
       }
@@ -715,7 +732,7 @@ trait ScalacSettings {
   val make          = ChoiceSetting     ("-make", "Specify recompilation detection strategy", List("all", "changed", "immediate", "transitive"), "all") .
                                           withHelpSyntax("-make:<strategy>")
   val nowarnings    = BooleanSetting    ("-nowarn", "Generate no warnings")
-  val XO            = BooleanSetting    ("-optimise", "Generates faster bytecode by applying optimisations to the program")
+  val XO            = BooleanSetting    ("-optimise", "Generates faster bytecode by applying optimisations to the program").withAbbreviation("-optimize")
   val printLate     = BooleanSetting    ("-print", "Print program with all Scala-specific features removed")
   val sourcepath    = StringSetting     ("-sourcepath", "path", "Specify where to find input source files", "")
   val target        = ChoiceSetting     ("-target", "Specify for which target object files should be built", List("jvm-1.5", "msil"), "jvm-1.5")
@@ -733,8 +750,10 @@ trait ScalacSettings {
   val Xchecknull    = BooleanSetting    ("-Xcheck-null", "Emit warning on selection of nullable reference")
   val checkInit     = BooleanSetting    ("-Xcheckinit", "Add runtime checks on field accessors. Uninitialized accesses result in an exception being thrown.")
   val noassertions  = BooleanSetting    ("-Xdisable-assertions", "Generate no assertions and assumptions")
+  val elideLevel    = IntSetting        ("-Xelide-level", "Generate calls to @elidable-marked methods only method priority is greater than argument.", 
+                                                elidable.ASSERTION, None, elidable.byName.get(_))
   val Xexperimental = BooleanSetting    ("-Xexperimental", "Enable experimental extensions")
-  val forwarders    = BooleanSetting    ("-Xforwarders", "Generate static forwarders in mirror classes")
+  val noForwarders  = BooleanSetting    ("-Xno-forwarders", "Do not generate static forwarders in mirror classes")
   val future        = BooleanSetting    ("-Xfuture", "Turn on future language features")
   val genPhaseGraph = StringSetting     ("-Xgenerate-phase-graph", "file", "Generate the phase graphs (outputs .dot files) to fileX.dot", "")
   val XlogImplicits = BooleanSetting    ("-Xlog-implicits", "Show more info on why some implicits are not applicable")
@@ -779,7 +798,7 @@ trait ScalacSettings {
   val Ynogenericsig = BooleanSetting    ("-Yno-generic-signatures", "Suppress generation of generic signatures for Java")
   val noimports     = BooleanSetting    ("-Yno-imports", "Compile without any implicit imports")
   val nopredefs     = BooleanSetting    ("-Yno-predefs", "Compile without any implicit predefined values")
-  val Yrecursion    = IntSetting        ("-Yrecursion", "Recursion depth used when locking symbols", 0, Some(0), None)
+  val Yrecursion    = IntSetting        ("-Yrecursion", "Recursion depth used when locking symbols", 0, Some(0, Int.MaxValue), _ => None)
   val selfInAnnots  = BooleanSetting    ("-Yself-in-annots", "Include a \"self\" identifier inside of annotations")
   val Xshowtrees    = BooleanSetting    ("-Yshow-trees", "Show detailed trees when used in connection with -print:phase")
   val skip          = PhasesSetting     ("-Yskip", "Skip")
@@ -795,6 +814,7 @@ trait ScalacSettings {
   val specialize    = BooleanSetting    ("-Yspecialize", "Specialize generic code on types.")
   val Yrangepos     = BooleanSetting    ("-Yrangepos", "Use range positions for syntax trees.")
   val Yidedebug     = BooleanSetting    ("-Yide-debug", "Generate, validate and output trees using the interactive compiler.")
+  val Ytyperdebug   = BooleanSetting    ("-Ytyper-debug", "Trace all type assignements")
   
   /**
    * -P "Plugin" settings

@@ -7,7 +7,10 @@
 
 // $Id$
 
-package scala.tools.scalap.scalax.rules.scalasig
+package scala.tools.scalap
+package scalax
+package rules
+package scalasig
 
 import java.io.{PrintStream, ByteArrayOutputStream}
 import java.util.regex.Pattern
@@ -212,6 +215,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
 
     val n = m.name
     if (underCaseClass(m) && n == CONSTRUCTOR_NAME) return
+    if (n.startsWith("super$")) return // do not print auxiliary qualified super accessors
     if (m.isAccessor && n.endsWith("_$eq")) return
     indent()
     printModifiers(m)

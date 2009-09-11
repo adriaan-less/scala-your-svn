@@ -4,8 +4,9 @@
  */
 // $Id$
 
-package scala.tools.nsc.symtab
-import nsc.ast.Trees
+package scala.tools.nsc
+package symtab
+import ast.Trees
 
 import util._
 
@@ -21,6 +22,7 @@ abstract class SymbolTable extends Names
                               with AnnotationInfos
                               with AnnotationCheckers
                               with Trees
+                              with Positions
 {
   def settings: Settings
   def rootLoader: LazyType

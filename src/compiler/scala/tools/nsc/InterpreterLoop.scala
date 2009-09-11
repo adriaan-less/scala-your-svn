@@ -55,6 +55,8 @@ object InterpreterControl {
 }
 import InterpreterControl._
 
+// import scala.concurrent.ops.defaultRunner
+
 /** The 
  *  <a href="http://scala-lang.org/" target="_top">Scala</a>
  *  interactive shell.  It provides a read-eval-print loop around
@@ -215,7 +217,7 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     val futLine = scala.concurrent.ops.future(readOneLine)
     bindSettings()
     if (!processLine(futLine()))
-      return out.println("Leaving already? That hurts, it really does.")
+      return
 
     // loops until false, then returns
     while (processLine(readOneLine)) { }
@@ -403,7 +405,7 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
   /** process command-line arguments and do as they request */
   def main(args: Array[String]) {
     def error1(msg: String) = out println ("scala: " + msg)
-    val command = new InterpreterCommand(List fromArray args, error1)
+    val command = new InterpreterCommand(args.toList, error1)
     def neededHelp(): String =
       (if (command.settings.help.value) command.usageMsg + "\n" else "") +
       (if (command.settings.Xhelp.value) command.xusageMsg + "\n" else "")

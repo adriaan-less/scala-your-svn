@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 
 /** The main attribution phase.
  */ 
@@ -54,6 +55,7 @@ trait Analyzer extends AnyRef
       def apply(unit: CompilationUnit) {
         try {
           unit.body = newTyper(rootContext(unit)).typed(unit.body)
+          if (global.settings.Yrangepos.value) global.validatePositions(unit.body)
           for (workItem <- unit.toCheck) workItem()
         } finally {
           unit.toCheck.clear()

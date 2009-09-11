@@ -6,7 +6,8 @@
 //todo: allow infix type patterns
 
 
-package scala.tools.nsc.javac
+package scala.tools.nsc
+package javac
 
 import scala.tools.nsc.util.{Position, OffsetPosition, NoPosition, BatchSourceFile}
 import scala.collection.mutable.ListBuffer
@@ -23,7 +24,7 @@ trait JavaParsers extends JavaScanners {
   class JavaUnitParser(val unit: global.CompilationUnit) extends JavaParser {
     val in = new JavaUnitScanner(unit)
     def freshName(pos : Position, prefix : String) = unit.fresh.newName(pos, prefix)
-    implicit def i2p(offset : Int) : Position = new OffsetPosition(unit.source,offset)
+    implicit def i2p(offset : Int) : Position = new OffsetPosition(unit.source, offset)
     def warning(pos : Int, msg : String) : Unit = unit.warning(pos, msg)
     def syntaxError(pos: Int, msg: String) : Unit = unit.error(pos, msg)
   }
@@ -34,7 +35,7 @@ trait JavaParsers extends JavaScanners {
     protected def posToReport: Int = in.currentPos
     protected def freshName(pos : Position, prefix : String): Name
     protected implicit def i2p(offset : Int) : Position
-    private implicit def p2i(pos : Position): Int = pos.offset.getOrElse(-1)
+    private implicit def p2i(pos : Position): Int = if (pos.isDefined) pos.point else -1
 
     /** The simple name of the package of the currently parsed file */
     private var thisPackageName: Name = nme.EMPTY
@@ -113,12 +114,8 @@ trait JavaParsers extends JavaScanners {
 
     def blankExpr = Ident(nme.WILDCARD)
 
-    def makePackaging(pkg: Tree, stats: List[Tree]): PackageDef = pkg match {
-      case Ident(name) =>
-        PackageDef(name, stats).setPos(pkg.pos)
-      case Select(qual, name) =>
-        makePackaging(qual, List(PackageDef(name, stats).setPos(pkg.pos)))
-    }
+    def makePackaging(pkg: RefTree, stats: List[Tree]): PackageDef = 
+      atPos(pkg.pos) {  PackageDef(pkg, stats) }
 
     def makeTemplate(parents: List[Tree], stats: List[Tree]) =
       Template(
@@ -215,7 +212,7 @@ trait JavaParsers extends JavaScanners {
       }
 
     def repsep[T <: Tree](p: () => T, sep: Int): List[T] = {
-      val buf = new ListBuffer[T] + p()
+      val buf = ListBuffer[T](p())
       while (in.token == sep) {
         in.nextToken
         buf += p()
@@ -239,8 +236,8 @@ trait JavaParsers extends JavaScanners {
 
     // -------------------- specific parsing routines ------------------
 
-    def qualId(): Tree = {
-      var t: Tree = atPos(in.currentPos) { Ident(ident()) }
+    def qualId(): RefTree = {
+      var t: RefTree = atPos(in.currentPos) { Ident(ident()) }
       while (in.token == DOT) { 
         in.nextToken
         t = atPos(in.currentPos) { Select(t, ident()) }
@@ -459,7 +456,7 @@ trait JavaParsers extends JavaScanners {
 
     def bound(): Tree = 
       atPos(in.currentPos) {
-        val buf = new ListBuffer[Tree] + typ()
+        val buf = ListBuffer[Tree](typ())
         while (in.token == AMP) {
           in.nextToken
           buf += typ()
@@ -580,7 +577,7 @@ trait JavaParsers extends JavaScanners {
      *  these potential definitions are real or not.
      */
     def fieldDecls(pos: Position, mods: Modifiers, tpt: Tree, name: Name): List[Tree] = {
-      val buf = new ListBuffer[Tree] + varDecl(pos, mods, tpt, name)
+      val buf = ListBuffer[Tree](varDecl(pos, mods, tpt, name))
       val maybe = new ListBuffer[Tree] // potential variable definitions.
       while (in.token == COMMA) {
         in.nextToken
@@ -861,7 +858,7 @@ trait JavaParsers extends JavaScanners {
      */
     def compilationUnit(): Tree = {
       var pos = in.currentPos;
-      val pkg = 
+      val pkg: RefTree = 
         if (in.token == AT || in.token == PACKAGE) {
           annotations()
           pos = in.currentPos

@@ -11,7 +11,7 @@
 
 package scala.collection.immutable
 
-import generic._
+import scala.collection.generic._
 
 /** <p>
  *    A generic trait for immutable sets. Concrete set implementations have
@@ -35,7 +35,6 @@ trait Set[A] extends Iterable[A]
                 with SetClass[A, Set]
                 with SetTemplate[A, Set[A]] { 
   override def companion: Companion[Set] = Set
-  override def hashCode = (Set.hashSeed /: this)(_ * 41 + _.hashCode)
 }
 
 object Set extends SetFactory[Set] {

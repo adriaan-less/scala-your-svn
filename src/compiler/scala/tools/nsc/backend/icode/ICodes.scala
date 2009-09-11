@@ -5,7 +5,9 @@
 
 // $Id$
 
-package scala.tools.nsc.backend.icode
+package scala.tools.nsc
+package backend
+package icode
 
 import java.io.PrintWriter
 
@@ -53,7 +55,7 @@ abstract class ICodes extends AnyRef
     val printer = new TextPrinter(new PrintWriter(Console.out, true),
                                   new DumpLinearizer)
 
-    classes.values foreach { c => printer.printClass(c) }
+    classes.valuesIterator foreach printer.printClass
   }
 
   object liveness extends Liveness {

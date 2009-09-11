@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 
 import symtab.Flags._
 import collection.mutable.{HashSet, HashMap}
@@ -630,6 +631,9 @@ abstract class RefChecks extends InfoTransform {
               nonSensibleWarning(pre+"values of types "+normalizeAll(qual.tpe.widen)+" and "+normalizeAll(args.head.tpe.widen),
                                  alwaysEqual) // @MAT normalize for consistency in error message, otherwise part is normalized due to use of `typeSymbol', but the rest isn't
             def hasObjectEquals = receiver.info.member(nme.equals_) == Object_equals
+            // see if it has any == methods beyond Any's and AnyRef's: ticket #2240
+            def hasOverloadedEqEq = receiver.info.member(nme.EQ).alternatives.length > 2
+            
             if (formal == UnitClass && actual == UnitClass)
               nonSensible("", true)
             else if ((receiver == BooleanClass || receiver == UnitClass) && 
@@ -645,7 +649,7 @@ abstract class RefChecks extends InfoTransform {
                      (name == nme.EQ || name == nme.LE))
               nonSensible("non-null ", false)
             else if ((isNew(qual) || isNew(args.head)) && hasObjectEquals &&
-                     (name == nme.EQ || name == nme.NE))
+                     (name == nme.EQ || name == nme.NE) && !hasOverloadedEqEq)
               nonSensibleWarning("a fresh object", false)
           case _ =>
         }
@@ -704,13 +708,7 @@ abstract class RefChecks extends InfoTransform {
             List(transform(cdef))
           }
         } else {
-          val vdef = 
-            localTyper.typed {
-              atPos(tree.pos) {
-                gen.mkModuleVarDef(sym)
-              }
-            }
-
+          val vdef = localTyper.typedPos(tree.pos) { gen.mkModuleVarDef(sym) }
           val ddef = 
             atPhase(phase.next) {
               localTyper.typed {
@@ -842,15 +840,15 @@ abstract class RefChecks extends InfoTransform {
 
       def isCaseApply(sym : Symbol) = sym.isSourceMethod && sym.hasFlag(CASE) && sym.name == nme.apply
       
-      def checkTypeRef(tp: TypeRef, pos: Position) {
-        val TypeRef(pre, sym, args) = tp
-        checkDeprecated(sym, pos)
-        if (!tp.isHigherKinded)
-          checkBoundsWithPos(pre, sym.owner, sym.typeParams, args, pos)
+      def checkTypeRef(tp: Type, pos: Position) = tp match {
+        case TypeRef(pre, sym, args) =>
+          checkDeprecated(sym, pos)
+          if (!tp.isHigherKinded)
+            checkBoundsWithPos(pre, sym.owner, sym.typeParams, args, pos)
+        case _ =>
       }
       def checkAnnotations(tpes: List[(Type, Position)]) {
-        for ((tp @ TypeRef(_,_,_), pos) <- tpes)
-          checkTypeRef(tp, pos)
+        for ((tp, pos) <- tpes) checkTypeRef(tp, pos)
       }
 
       val savedLocalTyper = localTyper
@@ -860,9 +858,7 @@ abstract class RefChecks extends InfoTransform {
       
       def doTypeTraversal(f: (Type) => Unit) =
         if (!inPattern) {
-          new TypeTraverser {
-            def traverse(tp: Type) { f(tp) }
-          } traverse tree.tpe
+          for (tp <- tree.tpe) f(tp)
         }
 
       // Apply RefChecks to annotations. Makes sure the annotations conform to
@@ -898,10 +894,18 @@ abstract class RefChecks extends InfoTransform {
           validateBaseTypes(currentOwner)
           checkAllOverrides(currentOwner)
         
-        case TypeTree() => doTypeTraversal {
-          case t: TypeRef => checkTypeRef(t, tree.pos)
-          case _ => 
-        }
+        case TypeTree() => 
+          val existentialParams = new ListBuffer[Symbol]
+          doTypeTraversal { // check all bounds, except those that are
+                            // existential type parameters
+            case ExistentialType(tparams, tpe) => 
+              existentialParams ++= tparams
+            case t: TypeRef => 
+              val exparams = existentialParams.toList
+              val wildcards = exparams map (_ => WildcardType)
+              checkTypeRef(t.subst(exparams, wildcards), tree.pos)
+            case _ => 
+          }
 
         case TypeApply(fn, args) =>
           checkBounds(NoPrefix, NoSymbol, fn.tpe.typeParams, args map (_.tpe)) 
@@ -920,6 +924,19 @@ abstract class RefChecks extends InfoTransform {
         if (tpt.tpe.typeSymbol == ArrayClass && args.length >= 2) =>
           unit.deprecationWarning(tree.pos, 
             "new Array(...) with multiple dimensions has been deprecated; use Array.ofDim(...) instead")
+          val manif = {
+            var etpe = tpt.tpe
+            for (_ <- args) { etpe = etpe.typeArgs.headOption.getOrElse(NoType) }
+            if (etpe == NoType) {
+              unit.error(tree.pos, "too many dimensions for array creation")
+              Literal(Constant(null))
+            } else {
+              localTyper.getManifestTree(tree.pos, etpe, false)
+            }
+          }
+          result = localTyper.typedPos(tree.pos) {
+            Apply(Apply(Select(gen.mkAttributedRef(ArrayModule), nme.ofDim), args), List(manif))
+          }
           currentApplication = tree
 
         case Apply(fn, args) =>

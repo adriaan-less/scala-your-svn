@@ -15,13 +15,13 @@ package scala.ref
  */
 trait ReferenceWrapper[+T <: AnyRef] extends Reference[T] with Proxy {
   val underlying: java.lang.ref.Reference[_ <: T]
-  @deprecated def isValid = underlying.get != null
+  @deprecated("Use .get.isDefined instead") def isValid = underlying.get != null
   override def get = {
-    val ret = underlying.get.asInstanceOf[T]
+    val ret = underlying.get
     if (ret eq null) None else Some(ret)
   }
   def apply() = {
-    val ret = underlying.get.asInstanceOf[T]
+    val ret = underlying.get
     if (ret eq null) throw new NoSuchElementException
     ret
   }

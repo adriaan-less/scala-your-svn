@@ -12,8 +12,8 @@
 package scala.collection.mutable
 
 import collection.generic._
-import scala.runtime.RichString
 import compat.Platform.arraycopy
+import scala.reflect.Manifest
 
 /** <p>
  *    A mutable sequence of characters.  This class provides an API compatible
@@ -31,7 +31,7 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
       extends Builder[Char, String]
          with Vector[Char] {
 
-  require(initCapacity > 0)
+  require(initCapacity >= 0)
 
   /** The value is used for character storage. */
   private var array = new Array[Char](initCapacity + initValue.length)
@@ -716,7 +716,7 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    *               substring, <code>-1</code> is returned.
    *  @throws NullPointerException if <code>str</code> is <code>null</code>.
    */
-  def indexOf(str: String): Int = indexOf(str, 0)
+  def indexOf(str: String): Int = indexOfSeq(str.toArray)
 
   /** <p>
    *    Returns the index within this string of the first occurrence of the
@@ -735,8 +735,7 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    *  @return           the index within this string of the first occurrence
    *                    of the specified substring, starting at the specified index.
    */
-  def indexOf(str: String, fromIndex: Int): Int =
-    StringBuilder.indexOf(array, 0, count, str.toCharArray, 0, str.length(), fromIndex)
+  def indexOf(str: String, fromIndex: Int): Int = indexOfSeq(str.toArray, fromIndex)
 
   /** <p>
    *    Returns the index within this string of the rightmost occurrence
@@ -758,7 +757,7 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    *              a substring, <code>-1</code> is returned.
    * @throws NullPointerException  if <code>str</code> is <code>null</code>.
    */
-  def lastIndexOf(str: String): Int = lastIndexOf(str, count)
+  def lastIndexOf(str: String): Int = lastIndexOfSeq(str.toArray, count)
 
   /** <p>
    *    Returns the index within this string of the last occurrence of the
@@ -777,8 +776,7 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    *  @return            the index within this sequence of the last occurrence
    *                     of the specified substring.
    */
-  def lastIndexOf(str: String, fromIndex: Int): Int =
-    StringBuilder.lastIndexOf(array, 0, count, str.toCharArray, 0, str.length(), fromIndex)
+  def lastIndexOf(str: String, fromIndex: Int): Int = lastIndexOfSeq(str.toArray, fromIndex)
 
   /** <p>
    *    Causes this character sequence to be replaced by the reverse of the
@@ -806,8 +804,8 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
       val temp2 = array(n - j)
       if (!hasSurrogate)
         hasSurrogate =
-          (temp >= StringBuilder.MIN_SURROGATE && temp <= StringBuilder.MAX_SURROGATE) ||
-       	  (temp2 >= StringBuilder.MIN_SURROGATE && temp2 <= StringBuilder.MAX_SURROGATE)
+          (temp >= Character.MIN_HIGH_SURROGATE && temp <= Character.MAX_LOW_SURROGATE) ||
+       	  (temp2 >= Character.MIN_HIGH_SURROGATE && temp2 <= Character.MAX_LOW_SURROGATE)
       array(j) = temp2
       array(n - j) = temp
       j -= 1
@@ -817,9 +815,9 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
       var i = 0
       while (i < count - 1) {
         val c2 = array(i)
-	if (StringBuilder.isLowSurrogate(c2)) {
+	if (Character.isLowSurrogate(c2)) {
           val c1 = array(i + 1)
-          if (StringBuilder.isHighSurrogate(c1)) {
+          if (Character.isHighSurrogate(c1)) {
             array(i) = c1; i += 1
             array(i) = c2
           }
@@ -849,99 +847,10 @@ object StringBuilder {
 
   type Array[T] = scala.Array[T] // !!!
 
-  private val MIN_HIGH_SURROGATE = '\uD800'
-  private val MAX_HIGH_SURROGATE = '\uDBFF'
-
-  private val MIN_LOW_SURROGATE = '\uDC00'
-  private val MAX_LOW_SURROGATE = '\uDFFF'
-
-  // constants <code>java.langCharacter.MIN-/MAX_SURROGATE</code> exist since 1.5
-  private val MIN_SURROGATE = MIN_HIGH_SURROGATE
-  private val MAX_SURROGATE = MAX_LOW_SURROGATE
-
-  // methods <code>java.langCharacter.isLow-/isHighSurrogate</code> exist since 1.5
-  private def isLowSurrogate(ch: Char): Boolean =
-    MIN_LOW_SURROGATE <= ch && ch <= MAX_LOW_SURROGATE
-
-  private def isHighSurrogate(ch: Char): Boolean =
-    MIN_HIGH_SURROGATE <= ch && ch <= MAX_HIGH_SURROGATE
-
   // method <code>java.util.Arrays.copyOf</code> exists since 1.6
   private def copyOf(src: Array[Char], newLength: Int): Array[Char] = {
     val dest = new Array[Char](newLength)
     arraycopy(src, 0, dest, 0, Math.min(src.length, newLength))
     dest
   }
-  
-  // KMP implementation by paulp, based on the undoubtedly reliable wikipedia entry
-  private def KMP(S: Array[Char], W: Array[Char]): Option[Int] = {
-    // trivial cases
-    if (W.length == 0) return Some(0)
-    else if (W.length == 1) return S.indexOf(W(0)) match {
-      case -1 => None
-      case x  => Some(x)
-    }
-    
-    val T: Array[Int] = {
-      val arr = new Array[Int](W.length)
-      var pos = 2
-      var cnd = 0
-      arr(0) = -1
-      arr(1) = 0
-      while (pos < W.length) {
-        if (W(pos - 1) == W(cnd)) {
-          arr(pos) = cnd + 1
-          pos += 1
-          cnd += 1
-        }
-        else if (cnd > 0) {
-          cnd = arr(cnd)
-        }
-        else {
-          arr(pos) = 0
-          pos += 1
-        }
-      }
-      arr
-    }
-    
-    var m, i = 0
-    def mi = m + i
-    
-    while (mi < S.length) {
-      if (W(i) == S(mi)) {
-        i += 1
-        if (i == W.length)
-          return Some(m)
-      }
-      else {
-        m = mi - T(i)
-        if (i > 0)
-          i = T(i)
-      }
-    }
-    None
-  }
-
-  private def indexOf(
-    source: Array[Char], sourceOffset: Int, sourceCount: Int,
-    target: Array[Char], targetOffset: Int, targetCount: Int,
-    fromIndex: Int): Int =
-      KMP(source.slice(sourceOffset, sourceCount) drop fromIndex, target.slice(targetOffset, targetCount)) match {
-        case None     => -1
-        case Some(x)  => x + fromIndex
-      }
-      
-  private def lastIndexOf(
-    source: Array[Char], sourceOffset: Int, sourceCount: Int,
-    target: Array[Char], targetOffset: Int, targetCount: Int,
-    fromIndex: Int): Int = {
-      val src = (source.slice(sourceOffset, sourceCount) take fromIndex).reverse
-      val tgt = target.slice(targetOffset, targetCount).reverse
-      
-      KMP(src, tgt) match {
-        case None     => -1
-        case Some(x)  => (src.length - tgt.length - x) + sourceOffset
-      }
-    }
 }

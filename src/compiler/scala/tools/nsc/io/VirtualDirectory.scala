@@ -2,7 +2,8 @@
  * Copyright 2005-2009 LAMP/EPFL
  */
 // $Id$
-package scala.tools.nsc.io
+package scala.tools.nsc
+package io
 import scala.collection.{mutable=>mut}
 
 /**
@@ -50,7 +51,7 @@ extends AbstractFile {
 
   // the toList is so that the directory may continue to be
   // modified while its elements are iterated
-  def iterator = files.values.toList.iterator
+  def iterator = files.valuesIterator.toList.iterator
   
   override def lookupName(name: String, directory: Boolean): AbstractFile = {
     files.get(name) match {

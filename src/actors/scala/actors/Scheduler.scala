@@ -10,14 +10,13 @@
 
 package scala.actors
 
-import java.lang.Runnable
 import java.util.concurrent._
+import scheduler.{DelegatingScheduler, ThreadPoolConfig, ThreadPoolScheduler, ForkJoinScheduler}
 
 /**
  * The <code>Scheduler</code> object is used by <code>Actor</code> to
  * execute tasks of an execution of an actor.
  *
- * @version 0.9.18
  * @author Philipp Haller
  */
 object Scheduler extends DelegatingScheduler {
@@ -25,12 +24,13 @@ object Scheduler extends DelegatingScheduler {
   Debug.info("initializing "+this+"...")
 
   def makeNewScheduler: IScheduler = {
-    val workQueue = new LinkedBlockingQueue[Runnable](100000)
+    val workQueue = new LinkedBlockingQueue[Runnable]
     val threadPool = new ThreadPoolExecutor(ThreadPoolConfig.corePoolSize,
                                             ThreadPoolConfig.maxPoolSize,
-                                            50L,
+                                            60000L,
                                             TimeUnit.MILLISECONDS,
-                                            workQueue)
+                                            workQueue,
+                                            new ThreadPoolExecutor.CallerRunsPolicy)
     val s = new ThreadPoolScheduler(threadPool, true)
     //val s = new ForkJoinScheduler
     Debug.info(this+": starting new "+s+" ["+s.getClass+"]")
@@ -38,53 +38,22 @@ object Scheduler extends DelegatingScheduler {
     s
   }
 
-  private var tasks: LinkedQueue = null
-
-  /* Assumes <code>sched</code> holds an instance
-   * of <code>FJTaskScheduler2</code>.
+  /* Only <code>ForkJoinScheduler</code> implements this method.
    */
-  @deprecated def snapshot(): Unit = synchronized {
-    if (sched.isInstanceOf[FJTaskScheduler2]) {
-      val fjts = sched.asInstanceOf[FJTaskScheduler2]
-      tasks = fjts.snapshot()
-      fjts.shutdown()
+  @deprecated def snapshot() {
+    if (sched.isInstanceOf[ForkJoinScheduler]) {
+      sched.asInstanceOf[ForkJoinScheduler].snapshot()
     } else
-      error("snapshot operation not supported.")
+      error("scheduler does not implement snapshot")
   }
 
-  /** Shuts down the current scheduler and creates and starts a new scheduler.
-   *
-   *  If the current scheduler is an <code>FJTaskScheduler2</code>
-   *  a new scheduler of the same class is created. In that case,
-   *  tasks resulting from a <code>snapshot</code> are
-   *  submitted for execution.
-   *
-   *  If the current scheduler is not an <code>FJTaskScheduler2</code>,
-   *  a <code>DefaultExecutorScheduler</code> is created.
+  /* Only <code>ForkJoinScheduler</code> implements this method.
    */
-  def restart(): Unit = synchronized {
-    // 1. shut down current scheduler
-    if (sched ne null) {
-      sched.shutdown()
-    }
-
-    // 2. create and start new scheduler
-    if ((sched ne null) && sched.isInstanceOf[FJTaskScheduler2]) {
-      sched = {
-        val s = new FJTaskScheduler2
-        s.start()
-        s
-      }
-      if (tasks != null) {
-        while (!tasks.isEmpty()) {
-          sched.execute(tasks.take().asInstanceOf[FJTask])
-        }
-        tasks = null
-      }
-    } else {
-      // will trigger creation of new delegate scheduler
-      sched = null
-    }
+  @deprecated def restart() {
+    if (sched.isInstanceOf[ForkJoinScheduler]) {
+      sched.asInstanceOf[ForkJoinScheduler].restart()
+    } else
+      error("scheduler does not implement restart")
   }
 
 }

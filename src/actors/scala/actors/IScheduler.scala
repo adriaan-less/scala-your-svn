@@ -16,8 +16,7 @@ package scala.actors
  *
  * Subclasses of <code>Actor</code> that override its
  * <code>scheduler</code> member must provide
- * an implementation of the <code>IScheduler</code>
- * trait.
+ * an <code>IScheduler</code> implementation.
  *
  * @author Philipp Haller
  */
@@ -34,6 +33,9 @@ trait IScheduler {
    *  @param  task  the task to be executed
    */
   def execute(task: Runnable): Unit
+
+  def executeFromActor(task: Runnable): Unit =
+    execute(task)
 
   /** Shuts down the scheduler.
    */
@@ -64,7 +66,5 @@ trait IScheduler {
    */
   def onTerminate(a: Reactor)(f: => Unit): Unit
 
-  def managedBlock(blocker: ManagedBlocker) {
-    blocker.block()
-  }
+  def managedBlock(blocker: scala.concurrent.ManagedBlocker): Unit
 }

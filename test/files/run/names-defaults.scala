@@ -127,6 +127,12 @@ object Test extends Application {
   def bn2(a: Int, b: => Int)(c: Int = b) = a + b
   println(bn2(b = get(2), a = get(1))()) // should get: 1, 2, 2
 
+  def bn3(a: => Int = get(10)) = 0
+  def bn4(a: => Int = get(20)) = {a; a}
+  println(bn3())
+  println(bn4())
+  println(bn4(a = 0))
+
 
   // constructors
   val a1 = new A(b = "dlkfj")(d = 102)
@@ -228,6 +234,13 @@ object Test extends Application {
   // would put "Nothing => Nothing", which is useless
   def transform(s: String, f: String => String = identity _) = f(s)
   println(transform("my text"))
+
+
+  // a bug reported on a mailing list: see comment in Typer.typedModuleDef
+  object TT
+  class TT(x: Int = 1)
+  val v = new TT()
+
 
   // result type of the default getter is inferred (parameter type mentions type parameter T)
   def test10[T](x: List[T] = List(1,2)) = x

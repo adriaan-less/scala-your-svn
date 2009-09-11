@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 import scala.tools.nsc.util.{Position, NoPosition}
 import scala.collection.mutable.ListBuffer
 import scala.util.control.ControlException
@@ -458,6 +459,29 @@ trait Infer {
 
     /* -- Type instantiation------------------------------------------------ */
 
+    /** Replace any (possibly bounded) wildcard types in type `tp`
+     *  by existentially bound variables.
+     */
+    def makeFullyDefined(tp: Type): Type = {
+      val tparams = new ListBuffer[Symbol]
+      def addTypeParam(bounds: TypeBounds): Type = {
+        val tparam =  
+          context.owner.newAbstractType(context.tree.pos.focus, newTypeName("_"+tparams.size))
+            .setFlag(EXISTENTIAL)
+            .setInfo(bounds)
+        tparams += tparam
+        tparam.tpe
+      }
+      val tp1 = tp map { 
+        case WildcardType =>
+          addTypeParam(TypeBounds(NothingClass.tpe, AnyClass.tpe))
+        case BoundedWildcardType(bounds) =>
+          addTypeParam(bounds)
+        case t => t
+      }
+      existentialAbstraction(tparams.toList, tp1)
+    }
+
     /** Return inferred type arguments of polymorphic expression, given 
      *  its type parameters and result type and a prototype <code>pt</code>.
      *  If no minimal type variables exist that make the
@@ -652,7 +676,7 @@ trait Infer {
       val argtpes1 = argtpes map {
         case NamedType(name, tp) => // a named argument
           var res = tp
-          val pos = params.findIndexOf(p => p.name == name && !p.hasFlag(SYNTHETIC))
+          val pos = params.indexWhere(p => p.name == name && !p.hasFlag(SYNTHETIC))
           if (pos == -1) {
             if (positionalAllowed) { // treat assignment as positional argument
               argPos(index) = index
@@ -1093,7 +1117,7 @@ trait Infer {
       val detargs = if (keepNothings || (targs eq null)) targs 
                     else adjustTypeArgs(tparams, targs, WildcardType, uninstantiated)
       val undetparams = uninstantiated.toList
-      val detparams = tparams remove (undetparams contains _)
+      val detparams = tparams filterNot (undetparams contains _)
       substExpr(tree, detparams, detargs, pt)
       if (inferInfo) 
         println("inferred expr instance "+tree+", detargs = "+detargs+", undetparams = "+undetparams)
@@ -1169,7 +1193,7 @@ trait Infer {
       case TypeRef(_, sym, _) if sym.isAliasType => 
         widen(tp.normalize)
       case rtp @ RefinedType(parents, decls) => 
-        copyRefinedType(rtp, List.mapConserve(parents)(widen), decls)
+        copyRefinedType(rtp, parents mapConserve (widen), decls)
       case AnnotatedType(_, underlying, _) =>
         widen(underlying)
       case _ =>
@@ -1228,7 +1252,7 @@ trait Infer {
             ptvars foreach instantiateTypeVar
           } else { if (settings.debug.value) Console.println("no instance: "); instError }
         } else { if (settings.debug.value) Console.println("not a subtype " + restpe.instantiateTypeParams(undetparams, tvars) + " of " + ptWithWildcards); instError }
-      } else { if (settings.debug.value) Console.println("not fuly defined: " + pt); instError }
+      } else { if (settings.debug.value) Console.println("not fully defined: " + pt); instError }
     }
 
     def instBounds(tvar: TypeVar): (Type, Type) = {

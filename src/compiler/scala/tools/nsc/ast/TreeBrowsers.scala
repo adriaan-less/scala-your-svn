@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.ast
+package scala.tools.nsc
+package ast
 
 import java.awt.{List => awtList, _}
 import java.awt.event._
@@ -111,7 +112,7 @@ abstract class TreeBrowsers {
     def isLeaf(node: Any): Boolean = packChildren(node).length == 0
 
     def removeTreeModelListener(l: TreeModelListener): Unit =
-      listeners remove (x => x == l)
+      listeners filterNot (_ == l)
 
     /** we ignore this message for now */
     def valueForPathChanged(path: TreePath, newValue: Any) = ()
@@ -412,7 +413,7 @@ abstract class TreeBrowsers {
         mods.annotations ::: impl :: children
       }
 
-      case PackageDef(name, stats) =>
+      case PackageDef(pid, stats) =>
         stats
 
       case ModuleDef(mods, name, impl) =>

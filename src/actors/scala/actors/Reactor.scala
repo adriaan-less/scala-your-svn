@@ -20,7 +20,7 @@ import scala.collection.mutable.Queue
 trait Reactor extends OutputChannel[Any] {
 
   /* The actor's mailbox. */
-  protected val mailbox = new MessageQueue
+  protected val mailbox = new MessageQueue("Reactor")
 
   protected var sendBuffer = new Queue[(Any, OutputChannel[Any])]
 
@@ -67,7 +67,7 @@ trait Reactor extends OutputChannel[Any] {
         val savedWaitingFor = waitingFor
         waitingFor = waitingForNone
         () => scheduler execute (makeReaction(() => {
-          val startMbox = new MessageQueue
+          val startMbox = new MessageQueue("Start")
           synchronized { startMbox.append(msg, replyTo) }
           searchMailbox(startMbox, savedWaitingFor, true)
         }))
@@ -121,7 +121,7 @@ trait Reactor extends OutputChannel[Any] {
         synchronized {
           // in mean time new stuff might have arrived
           if (!sendBuffer.isEmpty) {
-            tmpMbox = new MessageQueue
+            tmpMbox = new MessageQueue("Temp")
             drainSendBuffer(tmpMbox)
             // keep going
           } else {
@@ -144,10 +144,13 @@ trait Reactor extends OutputChannel[Any] {
     throw Actor.suspendException
   }
 
+  /* This method is guaranteed to be executed from inside
+     an actors act method.
+   */
   protected def scheduleActor(f: PartialFunction[Any, Unit], msg: Any) = {
-    scheduler execute (new LightReaction(this,
-                                         if (f eq null) continuation else f,
-                                         msg))
+    scheduler executeFromActor (new LightReaction(this,
+                                                  if (f eq null) continuation else f,
+                                                  msg))
   }
 
   def start(): Reactor = {

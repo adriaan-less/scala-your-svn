@@ -61,4 +61,8 @@ trait SchedulerAdapter extends IScheduler {
    */
   def onTerminate(a: Reactor)(f: => Unit) =
     Scheduler.onTerminate(a)(f)
+
+  def managedBlock(blocker: scala.concurrent.ManagedBlocker) {
+    blocker.block()
+  }
 }

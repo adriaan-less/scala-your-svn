@@ -67,6 +67,35 @@ class Random(val self: java.util.Random) {
    *  from this random number generator's sequence.
    */
   def nextLong(): Long = self.nextLong()
+  
+  /** Returns a pseudorandomly generated String.  This routine does
+   *  not take any measures to preserve the randomness of the distribution
+   *  in the face of factors like unicode's variable-length encoding,
+   *  so please don't use this for anything important.  It's primarily
+   *  intended for generating test data.
+   *
+   *  @param  length    the desired length of the String
+   *  @return           the String
+   */
+  def nextString(length: Int) = {
+    def safeChar() = {
+      val surrogateStart: Int = 0xD800
+      val res = nextInt(surrogateStart - 1) + 1
+      res.toChar
+    }
+    
+    List.fill(length)(safeChar()).mkString
+  }
+  
+  /** Returns a pseudorandomly generated String drawing upon
+   *  only ASCII characters between 33 and 126.
+   */
+  def nextASCIIString(length: Int) = {
+    val (min, max) = (33, 126)
+    def nextDigit = nextInt(max - min) + min
+
+    new String(Array.fill(length)(nextDigit.toByte), "ASCII")
+  }    
 
   def setSeed(seed: Long) { self.setSeed(seed) }
 }
@@ -84,13 +113,13 @@ object Random extends Random
    *  @param  seq   the sequence to shuffle
    *  @return       the shuffled sequence
    */
-  def shuffle[T](seq: Sequence[T]): Sequence[T] = {
+  def shuffle[T: ClassManifest](seq: Sequence[T]): Sequence[T] = {
     // It would be better if this preserved the shape of its container, but I have
     // again been defeated by the lack of higher-kinded type inference.  I can
     // only make it work that way if it's called like
     //   shuffle[Int,List](List.range(0,100))
     // which nicely defeats the "convenience" portion of "convenience method".
-    val buf: Array[T] = seq.toArray
+    val buf = seq.toArray
         
     def swap(i1: Int, i2: Int) {
       val tmp = buf(i1)
@@ -103,6 +132,29 @@ object Random extends Random
       swap(n - 1, k)
     }
     
-    buf.toSeq
-  }
+    buf.toSequence
+  }  
+  
+  /** I was consumed by weeping when I discovered how easy this
+   *  is to implement in SequenceTemplate rather than trying to
+   *  accomplish the inference from the outside.  For reference
+   *  here is the shape-preserving implementation.
+   */
+  // def shuffle: This = {
+  //   import scala.util.Random.nextInt
+  //   val buf = thisCollection.toVector
+  //   
+  //   def swap(i1: Int, i2: Int) {
+  //     val tmp = buf(i1)
+  //     buf(i1) = buf(i2)
+  //     buf(i2) = tmp
+  //   }
+  //   
+  //   for (n <- buf.length to 2 by -1) {
+  //     val k = nextInt(n)
+  //     swap(n - 1, k)
+  //   }
+  //   
+  //   newBuilder ++= buf result
+  // }
 }

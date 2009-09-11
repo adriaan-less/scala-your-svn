@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import Math.MAX_INT
 import TraversableView.NoBuilder
@@ -30,7 +31,7 @@ import TraversableView.NoBuilder
  *  @version 2.8
  */
 trait TraversableViewTemplate[+A, 
-                              +Coll <: Traversable[_], 
+                              +Coll, 
                               +This <: TraversableView[A, Coll] with TraversableViewTemplate[A, Coll, This]]
   extends Traversable[A] with TraversableTemplate[A, This] { 
 self =>
@@ -67,7 +68,7 @@ self =>
     }
     override def stringPrefix = self.stringPrefix+"S"
     override def slice(from1: Int, until1: Int): This =
-      newSliced(from + (from1 max 0), from + (until1 max 0)).asInstanceOf[This]
+      newSliced(from1 max 0, until1 max 0).asInstanceOf[This]
   }
 
   trait Mapped[B] extends Transformed[B] {
@@ -143,7 +144,7 @@ self =>
   
   override def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, This]): That = {
     newAppended(that).asInstanceOf[That]
-// was:    val b = bf(thisCollection)
+// was:    val b = bf(repr)
 //     if (b.isInstanceOf[NoBuilder[_]]) newAppended(that).asInstanceOf[That]
 //    else super.++[B, That](that)(bf) 
   }
@@ -152,14 +153,14 @@ self =>
 
   override def map[B, That](f: A => B)(implicit bf: BuilderFactory[B, That, This]): That = {
     newMapped(f).asInstanceOf[That]
-// was:        val b = bf(thisCollection)
+// was:        val b = bf(repr)
 //          if (b.isInstanceOf[NoBuilder[_]]) newMapped(f).asInstanceOf[That]
 //    else super.map[B, That](f)(bf) 
   }
 
   override def flatMap[B, That](f: A => Traversable[B])(implicit bf: BuilderFactory[B, That, This]): That = {
     newFlatMapped(f).asInstanceOf[That]
-// was:    val b = bf(thisCollection)
+// was:    val b = bf(repr)
 //     if (b.isInstanceOf[NoBuilder[_]]) newFlatMapped(f).asInstanceOf[That]
 //    else super.flatMap[B, That](f)(bf)
   }

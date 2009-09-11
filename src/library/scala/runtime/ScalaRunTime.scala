@@ -11,18 +11,45 @@
 
 package scala.runtime
 
+import scala.reflect.ClassManifest
+import scala.collection.Sequence
+import scala.collection.mutable._
+
 /* The object <code>ScalaRunTime</code> provides ...
  */
 object ScalaRunTime {
 
-  def isArray(x: AnyRef): Boolean = (x != null && x.getClass.isArray) || (x != null && x.isInstanceOf[BoxedArray[_]])
-  def isValueClass(clazz: Class[_]) = clazz.isPrimitive()
-  
+  def isArray(x: AnyRef): Boolean = x != null && (x.getClass.isArray || x.isInstanceOf[BoxedArray[_]])
+  def isValueClass(clazz: Class[_]) = clazz.isPrimitive() 
+
+  // todo: [for Gilles] replace with boxArray
   def forceBoxedArray[A <: Any](xs: Seq[A]): Array[A] = {
     val array = new Array[A](xs.length)
     var i = 0
     for (x <- xs.iterator) { array(i) = x; i += 1 }
     array
+  }
+
+  def toArray[T](xs: scala.collection.Sequence[T]) = {
+    val arr = new Array[AnyRef](xs.length)
+    var i = 0
+    for (x <- xs) arr(i) = x.asInstanceOf[AnyRef]
+    arr
+  }
+
+  /** Convert arrays to sequences, leave sequences as they are */ 
+  def toSequence[T](xs: AnyRef): Sequence[T] = xs match {
+    case ts: Sequence[T] => ts.asInstanceOf[Sequence[T]]
+    case x: Array[AnyRef] => new WrappedRefArray(x).asInstanceOf[Array[T]]
+    case x: Array[Int] => new WrappedIntArray(x).asInstanceOf[Array[T]]
+    case x: Array[Double] => new WrappedDoubleArray(x).asInstanceOf[Array[T]]
+    case x: Array[Long] => new WrappedLongArray(x).asInstanceOf[Array[T]]
+    case x: Array[Float] => new WrappedFloatArray(x).asInstanceOf[Array[T]]
+    case x: Array[Char] => new WrappedCharArray(x).asInstanceOf[Array[T]]
+    case x: Array[Byte] => new WrappedByteArray(x).asInstanceOf[Array[T]]
+    case x: Array[Short] => new WrappedShortArray(x).asInstanceOf[Array[T]]
+    case x: Array[Boolean] => new WrappedBooleanArray(x).asInstanceOf[Array[T]]
+    case null => null
   }
 
   def checkInitialized[T <: AnyRef](x: T): T = 
@@ -116,16 +143,24 @@ object ScalaRunTime {
   def arrayValue[A](x: BoxedArray[A], elemClass: Class[_]): AnyRef =
     if (x eq null) null else x.unbox(elemClass)
 
+  /** Temporary method to go to new array representation
+   *  !!! can be reomved once bootstrap is complete !!!
+   */
+  def unboxedArray[A](x: AnyRef): AnyRef = x match {
+    case ba: BoxedArray[_] => ba.value
+    case _ => x
+  }
+
   def boxArray(value: AnyRef): BoxedArray[_] = value match {
-    case x: Array[Byte] => new BoxedByteArray(x)
-    case x: Array[Short] => new BoxedShortArray(x)
-    case x: Array[Char] => new BoxedCharArray(x)
+    case x: Array[AnyRef] => new BoxedObjectArray(x, ClassManifest.classType(x.getClass.getComponentType))
     case x: Array[Int] => new BoxedIntArray(x)
+    case x: Array[Double] => new BoxedDoubleArray(x)
     case x: Array[Long] => new BoxedLongArray(x)
     case x: Array[Float] => new BoxedFloatArray(x)
-    case x: Array[Double] => new BoxedDoubleArray(x)
+    case x: Array[Char] => new BoxedCharArray(x)
+    case x: Array[Byte] => new BoxedByteArray(x)
+    case x: Array[Short] => new BoxedShortArray(x)
     case x: Array[Boolean] => new BoxedBooleanArray(x)
-    case x: Array[AnyRef] => new BoxedObjectArray(x)
     case x: BoxedArray[_] => x
     case null => null
   }

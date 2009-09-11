@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import script._
 
@@ -40,7 +41,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
      with Builder[A, This]
      with Growable[A]
      with Shrinkable[A] 
-     with Cloneable[This] 
+     with Cloneable[mutable.Set[A]] 
 { self =>
   
   /** A common implementation of <code>newBuilder</code> for all mutable sets
@@ -102,9 +103,9 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
    */
   def clear() { foreach(-=) }
 
-  override def clone(): This = empty ++= thisCollection
+  override def clone(): mutable.Set[A] = empty ++= repr
 
-  def result: This = thisCollection
+  def result: This = repr
 
   /** Adds a single element to this collection and returns 
    *  the collection itself.
@@ -113,7 +114,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
    */
   @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
               "Use `clone() +=' if you intend to create a new collection.")
- override def + (elem: A): This = { +=(elem); thisCollection }
+ override def + (elem: A): This = { +=(elem); repr }
 
   /** Adds two or more elements to this collection and returns
    *  the collection itself.
@@ -126,7 +127,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
               "Use `clone() +=' if you intend to create a new collection.")
   override def + (elem1: A, elem2: A, elems: A*): This = {
     this += elem1 += elem2 ++= elems
-    thisCollection
+    repr
   }
 
   /** Adds a number of elements provided by a traversable object and returns
@@ -138,7 +139,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
               "Use `clone() ++=' if you intend to create a new collection.")
   override def ++(iter: Traversable[A]): This = { 
     for (elem <- iter) +=(elem)
-    thisCollection
+    repr
   }
 
 
@@ -151,7 +152,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
               "Use `clone() ++=' if you intend to create a new collection.")
   override def ++ (iter: Iterator[A]): This = {
     for (elem <- iter) +=(elem)
-    thisCollection
+    repr
   }
 
   /** Removes a single element from this collection and returns 
@@ -161,7 +162,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
    */
   @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
               "Use `clone() -=' if you intend to create a new collection.")
-  override def -(elem: A): This = { -=(elem); thisCollection }
+  override def -(elem: A): This = { -=(elem); repr }
 
   /** Removes two or more elements from this collection and returns
    *  the collection itself.
@@ -174,19 +175,19 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
               "Use `clone() -=' if you intend to create a new collection.")
   override def -(elem1: A, elem2: A, elems: A*): This = {
     this -= elem1 -= elem2 --= elems
-    thisCollection
+    repr
   }
 
-  /** Removes a number of elements provided by a traversible object and returns
+  /** Removes a number of elements provided by a Traversable object and returns
    *  the collection itself.
    *
-   *  @param iter     the iterable object.
+   *  @param iter     the Traversable object.
    */
   @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
               "Use `clone() --=' if you intend to create a new collection.")
   override def --(iter: Traversable[A]): This = { 
     for (elem <- iter) -=(elem)
-    thisCollection
+    repr
   }
 
   /** Removes a number of elements provided by an iterator and returns
@@ -198,7 +199,7 @@ trait MutableSetTemplate[A, +This <: MutableSetTemplate[A, This] with mutable.Se
               "Use `clone() --=' if you intend to create a new collection.")
   override def --(iter: Iterator[A]): This = { 
     for (elem <- iter) -=(elem)
-    thisCollection
+    repr
   }
 
   /** Send a message to this scriptable object.

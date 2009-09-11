@@ -14,13 +14,7 @@ package scala.actors
 import scala.util.control.ControlException
 import java.lang.{InterruptedException, Runnable}
 
-private[actors] class KillActorException extends Throwable with ControlException {
-  /*
-   * For efficiency reasons we do not fill in
-   * the execution stack trace.
-   */
-  override def fillInStackTrace(): Throwable = this
-}
+private[actors] class KillActorException extends Throwable with ControlException
 
 /** <p>
  *    The abstract class <code>Reaction</code> associates
@@ -32,7 +26,7 @@ private[actors] class KillActorException extends Throwable with ControlException
  *  @version 0.9.10
  *  @author Philipp Haller
  */
-class Reaction(a: Actor, f: PartialFunction[Any, Unit], msg: Any) extends ActorTask(a, () => {
+private[actors] class Reaction(a: Actor, f: PartialFunction[Any, Unit], msg: Any) extends ActorTask(a, () => {
   if (f == null)
     a.act()
   else

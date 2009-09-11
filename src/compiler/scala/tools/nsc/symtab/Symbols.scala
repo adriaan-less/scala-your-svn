@@ -5,7 +5,8 @@
 // $Id$
 
 
-package scala.tools.nsc.symtab
+package scala.tools.nsc
+package symtab
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.Map
@@ -132,7 +133,7 @@ trait Symbols {
 
     /** Remove all annotations matching the given class. */
     def removeAnnotation(cls: Symbol): Unit = 
-      setAnnotations(annotations.remove(_.atp.typeSymbol == cls))
+      setAnnotations(annotations filterNot (_.atp.typeSymbol == cls))
 
     /** set when symbol has a modifier of the form private[X], NoSymbol otherwise.
      *  Here's some explanation how privateWithin gets combined with access flags:
@@ -247,7 +248,7 @@ trait Symbols {
       var cnt = 0
       def freshName() = { cnt += 1; newTermName("x$" + cnt) }
       def param(tp: Type) =
-        newValueParameter(owner.pos, freshName()).setFlag(SYNTHETIC).setInfo(tp)
+        newValueParameter(owner.pos.focus, freshName()).setFlag(SYNTHETIC).setInfo(tp)
       argtypess map (_.map(param))
     }
     
@@ -440,6 +441,16 @@ trait Symbols {
             None
         }
       }
+    def elisionLevel: Option[Int] = {
+      if (!hasAnnotation(ElidableMethodClass)) None
+      else annotations find (_.atp.typeSymbol == ElidableMethodClass) flatMap { annot =>
+        // since we default to enabled by default, only look hard for falsity
+        annot.args match {
+          case Literal(Constant(x: Int)) :: Nil => Some(x)
+          case x => println(x) ; None
+        }
+      }
+    }
 
     /** Does this symbol denote a wrapper object of the interpreter or its class? */
     final def isInterpreterWrapper = 
@@ -621,6 +632,12 @@ trait Symbols {
 
     def ownerChain: List[Symbol] = this :: owner.ownerChain
 
+    def ownersIterator: Iterator[Symbol] = new Iterator[Symbol] {
+      private var current = Symbol.this
+      def hasNext = current ne NoSymbol
+      def next = { val r = current; current = current.owner; r }
+    }
+
     // same as ownerChain contains sym, but more efficient
     def hasTransOwner(sym: Symbol) = {
       var o = this
@@ -701,7 +718,7 @@ trait Symbols {
         assert(infos.prev eq null, this.name)
         val tp = infos.info
         //if (settings.debug.value) System.out.println("completing " + this.rawname + tp.getClass());//debug
-	lock {
+        lock {
           setInfo(ErrorType)
           throw CyclicReference(this, tp)
         }
@@ -710,7 +727,7 @@ trait Symbols {
           phase = phaseOf(infos.validFrom)
           tp.complete(this)
           // if (settings.debug.value && runId(validTo) == currentRunId) System.out.println("completed " + this/* + ":" + info*/);//DEBUG
-	  unlock()
+          unlock()
         } finally {
           phase = current
         }
@@ -1387,7 +1404,7 @@ trait Symbols {
         if (settings.debug.value) "package class" else "package"
       else if (isModuleClass) 
         if (settings.debug.value) "singleton class" else "object"
-      else if (isAnonymousClass) "template"
+      else if (isAnonymousClass) "anonymous class"
       else if (isRefinementClass) ""
       else if (isTrait) "trait"
       else if (isClass) "class"
@@ -1852,6 +1869,7 @@ trait Symbols {
     override def owner: Symbol = throw new Error("no-symbol does not have owner")
     override def sourceFile: AbstractFile = null
     override def ownerChain: List[Symbol] = List()
+    override def ownersIterator: Iterator[Symbol] = Iterator.empty
     override def alternatives: List[Symbol] = List()
     override def reset(completer: Type) {}
     override def info: Type = NoType

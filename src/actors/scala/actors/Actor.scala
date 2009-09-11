@@ -640,10 +640,10 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       val task = new Reaction(this,
                               if (f eq null) continuation else f,
                               msg)
-      scheduler execute task
+      scheduler executeFromActor task
     }
 
-  class ActorBlocker(timeout: Long) extends ManagedBlocker {
+  private class ActorBlocker(timeout: Long) extends scala.concurrent.ManagedBlocker {
     def block() = {
       if (timeout > 0)
         Actor.this.suspendActorFor(timeout)
@@ -651,7 +651,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
         Actor.this.suspendActor()
       true
     }
-    def isReleasable() =
+    def isReleasable =
       !Actor.this.isSuspended
   }
 
@@ -882,10 +882,4 @@ case class Exit(from: AbstractActor, reason: AnyRef)
  * @version 0.9.8
  * @author Philipp Haller
  */
-private[actors] class SuspendActorException extends Throwable with ControlException {
-  /*
-   * For efficiency reasons we do not fill in
-   * the execution stack trace.
-   */
-  override def fillInStackTrace(): Throwable = this
-}
+private[actors] class SuspendActorException extends Throwable with ControlException

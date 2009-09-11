@@ -31,7 +31,7 @@ object RichString {
 
 import RichString._
 
-class RichString(val self: String) extends Proxy with Vector[Char] with VectorTemplate[Char, RichString] with PartialFunction[Int, Char] with Ordered[String] {
+class RichString(val self: String) extends Proxy with Vector[Char] with VectorTemplate[Char, RichString] with PartialFunction[Int, Char] with Ordered[String] with Boxed {
 
   /** Creates a string builder buffer as builder for this class */
   override protected[this] def newBuilder = RichString.newBuilder
@@ -134,6 +134,16 @@ class RichString(val self: String) extends Proxy with Vector[Char] with VectorTe
       new String(chars)
     }
 
+  /** Returns this string with the given <code>prefix</code> stripped. */
+  def stripPrefix(prefix: String) =
+    if (self.startsWith(prefix)) self.substring(prefix.length)
+    else self
+
+  /** Returns this string with the given <code>suffix</code> stripped. */
+  def stripSuffix(suffix: String) =
+    if (self.endsWith(suffix)) self.substring(0, self.length() - suffix.length)
+    else self
+
   /** <p>
    *    For every line in this string:
    *  </p>
@@ -199,11 +209,13 @@ class RichString(val self: String) extends Proxy with Vector[Char] with VectorTe
     else
       throw new NumberFormatException("For input string: \"null\"")
 
+  /* !!! causes crash?
   def toArray: Array[Char] = {
     val result = new Array[Char](length)
     self.getChars(0, length, result, 0)
     result
   }
+  */
 
   /** <p>
    *  Uses the underlying string as a pattern (in a fashion similar to
@@ -220,7 +232,7 @@ class RichString(val self: String) extends Proxy with Vector[Char] with VectorTe
    *  @throws java.lang.IllegalArgumentException
    */
   def format(args : Any*) : String =
-    java.lang.String.format(self, args.toArray[Any].asInstanceOf[Array[AnyRef]]: _*)
+    java.lang.String.format(self, args.asInstanceOf[Seq[AnyRef]].toArray: _*)
 
   /** <p>
    *  Like format(args*) but takes an initial Locale parameter
@@ -237,6 +249,6 @@ class RichString(val self: String) extends Proxy with Vector[Char] with VectorTe
    *  @throws java.lang.IllegalArgumentException
    */
   def format(l: java.util.Locale, args: Any*): String =
-    java.lang.String.format(l, self, args.toArray[Any].asInstanceOf[Array[AnyRef]]: _*)
+    java.lang.String.format(l, self, args.asInstanceOf[Seq[AnyRef]].toArray: _*)
 }
 

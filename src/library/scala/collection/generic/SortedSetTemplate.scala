@@ -10,6 +10,7 @@
 // !!! todo: integrate in new collections library
 
 package scala.collection.generic
+import scala.collection._
 
 /** A template for sets which are sorted.
  *
@@ -20,7 +21,7 @@ package scala.collection.generic
 trait SortedSetTemplate[A, +This <: SortedSet[A] with SortedSetTemplate[A, This]] extends Sorted[A, This] with SetTemplate[A, This] {
 self =>
 
-  override def keySet = thisCollection
+  override def keySet = repr
 
   override def firstKey: A = head
   override def lastKey: A = last

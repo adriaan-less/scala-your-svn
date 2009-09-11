@@ -11,8 +11,9 @@
 
 package scala.collection.generic
 
-import mutable.Buffer
-import script._
+import scala.collection._
+import scala.collection.mutable.Buffer
+import scala.collection.script._
 
 /** Buffers are used to create sequences of elements incrementally by
  *  appending, prepending, or inserting new elements. It is also
@@ -117,11 +118,11 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
 
   /** Prepends a number of elements provided by an iterable object
    *  via its <code>iterator</code> method. The identity of the
-   *  buffer is returned.(thisCollection /: elems) (_ plus _)
+   *  buffer is returned.(repr /: elems) (_ plus _)
    *
    *  @param iter  the iterable object.
    */
-  def ++:(iter: Traversable[A]): This = { for (x <- iter) x +: this; thisCollection }
+  def ++:(iter: Traversable[A]): This = { for (x <- iter) x +: this; repr }
 
   /** Prepends a number of elements provided by an iterator
    *  The identity of the buffer is returned.
@@ -129,7 +130,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
    *  @param iter   the iterator
    *  @return       the updated buffer.
    */
-  def ++:(iter: Iterator[A]): This = { for (x <- iter) x +: this; thisCollection }
+  def ++:(iter: Iterator[A]): This = { for (x <- iter) x +: this; repr }
 
   /** Appends elements to this buffer.
    *
@@ -240,7 +241,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
    */
   @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
               "Use `clone() ++=' if you intend to create a new collection.")
-  override def + (elem: A): This = { +=(elem); thisCollection }
+  override def + (elem: A): This = { +=(elem); repr }
 
   /** Adds two or more elements to this collection and returns
    *  the collection itself.
@@ -253,7 +254,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
               "Use `clone() ++=' if you intend to create a new collection.")
   override def + (elem1: A, elem2: A, elems: A*): This = {
     this += elem1 += elem2 ++= elems
-    thisCollection
+    repr
   }
 
   /** Adds a number of elements provided by a traversable object and returns
@@ -265,7 +266,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
               "Use `clone() ++=` if you intend to create a new collection.")
   override def ++(iter: Traversable[A]): This = { 
     for (elem <- iter) +=(elem)
-    thisCollection
+    repr
   }
 
   /** Adds a number of elements provided by an iterator and returns
@@ -277,7 +278,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
               "Use `clone() ++=` if you intend to create a new collection.")
   override def ++ (iter: Iterator[A]): This = {
     for (elem <- iter) +=(elem)
-    thisCollection
+    repr
   }
 
   /** Removes a single element from this collection and returns 
@@ -287,7 +288,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
    */
   @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
               "Use `clone() -=` if you intend to create a new collection.")
-  override def -(elem: A): This = { -=(elem); thisCollection }
+  override def -(elem: A): This = { -=(elem); repr }
 
   /** Removes two or more elements from this collection and returns
    *  the collection itself.
@@ -300,19 +301,19 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
               "Use `clone() -=` if you intend to create a new collection.")
   override def -(elem1: A, elem2: A, elems: A*): This = {
     this -= elem1 -= elem2 --= elems
-    thisCollection
+    repr
   }
 
-  /** Removes a number of elements provided by a traversible object and returns
+  /** Removes a number of elements provided by a Traversable object and returns
    *  the collection itself.
    *
-   *  @param iter     the iterable object.
+   *  @param iter     the Traversable object.
    */
   @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
               "Use `clone() --=` if you intend to create a new collection.")
   override def --(iter: Traversable[A]): This = { 
     for (elem <- iter) -=(elem)
-    thisCollection
+    repr
   }
 
   /** Removes a number of elements provided by an iterator and returns
@@ -324,7 +325,7 @@ trait BufferTemplate[A, +This <: BufferTemplate[A, This] with Buffer[A]]
               "Use `clone() --=` if you intend to create a new collection.")
   override def --(iter: Iterator[A]): This = { 
     for (elem <- iter) -=(elem)
-    thisCollection
+    repr
   }
 }
 

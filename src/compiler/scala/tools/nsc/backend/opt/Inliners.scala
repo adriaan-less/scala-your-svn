@@ -5,7 +5,8 @@
 
 // $Id$
 
-package scala.tools.nsc.backend.opt
+package scala.tools.nsc
+package backend.opt
 
 
 import scala.util.control.Breaks._
@@ -530,7 +531,7 @@ abstract class Inliners extends SubComponent {
     
   /** Is the given class a subtype of a function trait? */
   def isClosureClass(cls: Symbol): Boolean = {
-    val res = cls.isFinal && cls.hasFlag(Flags.SYNTHETIC) &&
+    val res = cls.isFinal && cls.hasFlag(Flags.SYNTHETIC) && !cls.isModuleClass &&
         cls.tpe.parents.exists { t => 
           val TypeRef(_, sym, _) = t;
           definitions.FunctionClass exists sym.==

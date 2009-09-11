@@ -5,7 +5,8 @@
 
 // $Id$
 
-package scala.tools.nsc.backend
+package scala.tools.nsc
+package backend
 
 import scala.tools.nsc.backend.icode._
 
@@ -446,9 +447,6 @@ abstract class ScalaPrimitives {
     // unary methods
     addPrimitives(DoubleClass, nme.UNARY_+, POS)
     addPrimitives(DoubleClass, nme.UNARY_-, NEG)
-    
-    // and the type map!
-    initPrimitiveTypeMap
   }
 
   /** Add a primitive operation to the map */

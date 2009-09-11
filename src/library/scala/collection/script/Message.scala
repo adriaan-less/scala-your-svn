@@ -10,6 +10,7 @@
 
 
 package scala.collection.script
+import scala.collection._
 
 import Predef._
 import mutable.ArrayBuffer
@@ -82,7 +83,4 @@ class Script[A] extends ArrayBuffer[Message[A]] with Message[A] {
     }
     res + ")"
   }
-
-  override def hashCode(): Int =
-    throw new UnsupportedOperationException("scripts are not suitable as hash keys")
 }

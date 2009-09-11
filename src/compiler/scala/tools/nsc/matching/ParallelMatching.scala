@@ -5,7 +5,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.matching
+package scala.tools.nsc
+package matching
 
 import util.Position
 import collection._
@@ -559,7 +560,7 @@ trait ParallelMatching extends ast.TreeDSL {
         val litMap  = 
           tags.zipWithIndex.reverse.foldLeft(IntMap.empty[List[Int]]) {
             // we reverse before the fold so the list can be built with :: 
-            case (map, (tag, index)) => map.update(tag, index :: map.getOrElse(tag, Nil))
+            case (map, (tag, index)) => map.updated(tag, index :: map.getOrElse(tag, Nil))
           }
         
         (litMap, varMap)
@@ -750,7 +751,8 @@ trait ParallelMatching extends ast.TreeDSL {
               // ...which means this logic must be applied more broadly than I had inferred from the comment
               // "...even if [x] failed to match *after* passing its length test." So one would think that means
               // the second case would only not be tried if scrut.length == 2, and reachable the rest of the time.
-              case (false, false) => nextLen == firstLen   // same length (self compare ruled out up top)
+              // XXX note this used to say "nextLen == firstLen" and this caused #2187.  Rewrite this.
+              case (false, false) => nextLen >= firstLen   // same length (self compare ruled out up top)
             })
         })
 
@@ -787,7 +789,9 @@ trait ParallelMatching extends ast.TreeDSL {
 
       protected def lengthCheck(tree: Tree, len: Int, op: TreeFunction2) = {
         def compareOp = head.tpe member nme.lengthCompare  // symbol for "lengthCompare" method
-        typer typed op((tree.duplicate DOT compareOp)(LIT(len)), ZERO)
+        def cmpFunction(t1: Tree) = op((t1.duplicate DOT compareOp)(LIT(len)), ZERO)
+        // first ascertain lhs is not null: bug #2241
+        typer typed nullSafe(cmpFunction _)(tree)
       }
 
       // precondition for matching: sequence is exactly length of arg
@@ -988,8 +992,9 @@ trait ParallelMatching extends ast.TreeDSL {
         // dig out case field accessors that were buried in (***)
         val cfa         = if (pats.isCaseHead) casted.accessors else Nil
         val caseTemps   = srep.tvars match { case x :: xs if x == casted.sym => xs ; case x => x }
-        def castedScrut = typedValDef(casted.sym, scrut.id AS castedTpe)
+        def castedScrut = typedValDef(casted.sym, scrut.id AS_ANY castedTpe)
         def needCast    = if (casted.sym ne scrut.sym) List(castedScrut) else Nil 
+        
         
         val vdefs       = needCast ::: (
           for ((tmp, accessor) <- caseTemps zip cfa) yield
@@ -1034,7 +1039,7 @@ trait ParallelMatching extends ast.TreeDSL {
         val newPats: List[Tree] = List.map2(pat, pat.indices.toList)(classifyPat)
         
         // expand alternatives if any are present
-        (newPats findIndexOf isAlternative) match {
+        (newPats indexWhere isAlternative) match {
           case -1     => List(replace(newPats))
           case index  =>
             val (prefix, alts :: suffix) = newPats splitAt index

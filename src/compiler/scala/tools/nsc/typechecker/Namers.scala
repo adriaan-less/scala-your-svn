@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 
 import scala.collection.mutable.HashMap
 import scala.tools.nsc.util.Position
@@ -33,7 +34,7 @@ trait Namers { self: Analyzer =>
       case PolyType(tparams1, restpe) =>
         new DeSkolemizeMap(tparams1 ::: tparams).mapOver(tp)
       case ClassInfoType(parents, decls, clazz) =>
-        val parents1 = List.mapConserve(parents)(this)
+        val parents1 = parents mapConserve (this)
         if (parents1 eq parents) tp else ClassInfoType(parents1, decls, clazz)
 */
       case _ => 
@@ -70,7 +71,7 @@ trait Namers { self: Analyzer =>
 
     def setPrivateWithin[Sym <: Symbol](tree: Tree, sym: Sym, mods: Modifiers): Sym = {
       if (!mods.privateWithin.isEmpty) 
-        sym.privateWithin = typer.qualifyingClassContext(tree, mods.privateWithin, true).owner
+        sym.privateWithin = typer.qualifyingClass(tree, mods.privateWithin, true)
       sym
     }
 
@@ -160,8 +161,10 @@ trait Namers { self: Analyzer =>
       else m.owner.isClass && context.scope == m.owner.info.decls
     }
 
+    /** Enter symbol into context's scope and return symbol itself */
     def enterInScope(sym: Symbol): Symbol = enterInScope(sym, context.scope)
 
+    /** Enter symbol into given scope and return symbol itself */
     def enterInScope(sym: Symbol, scope: Scope): Symbol = { 
       // allow for overloaded methods
       if (!(sym.isSourceMethod && sym.owner.isClass && !sym.owner.isPackageClass)) {
@@ -175,19 +178,21 @@ trait Namers { self: Analyzer =>
       } else scope enter sym
     }
 
-    def enterPackageSymbol(pos: Position, name: Name): Symbol = {
-      val (cscope, cowner) = 
-        if (context.owner == EmptyPackageClass) (RootClass.info.decls, RootClass)
-        else (context.scope, context.owner)
-      val p: Symbol = cscope.lookupWithContext(name)(context.owner)
-      if (p.isPackage && cscope == p.owner.info.decls) {
-        p
-      } else { 
-        val pkg = cowner.newPackage(pos, name)
+    def enterPackageSymbol(pos: Position, pid: RefTree, pkgOwner: Symbol): Symbol = {
+      val owner = pid match {
+        case Ident(name) => 
+          pkgOwner
+        case Select(qual: RefTree, name) => 
+          enterPackageSymbol(pos, qual, pkgOwner).moduleClass
+      }
+      var pkg = owner.info.decls.lookupWithContext(pid.name)(owner)
+      if (!pkg.isPackage || owner != pkg.owner) {
+        pkg = owner.newPackage(pos, pid.name)
         pkg.moduleClass.setInfo(new PackageClassInfoType(newScope, pkg.moduleClass, null))
         pkg.setInfo(pkg.moduleClass.tpe)
-        enterInScope(pkg, cscope)
+        enterInScope(pkg, owner.info.decls)
       }
+      pkg
     }
 
     def enterClassSymbol(tree : ClassDef): Symbol = {
@@ -324,8 +329,9 @@ trait Namers { self: Analyzer =>
       if (tree.symbol == NoSymbol) {
         val owner = context.owner
         tree match {
-          case PackageDef(name, stats) =>
-            tree.symbol = enterPackageSymbol(tree.pos, name)
+          case PackageDef(pid, stats) =>
+            tree.symbol = enterPackageSymbol(tree.pos, pid, 
+              if (context.owner == EmptyPackageClass) RootClass else context.owner)
             val namer = newNamer(
                 context.make(tree, tree.symbol.moduleClass, tree.symbol.info.decls))
             namer.enterSyms(stats)
@@ -382,7 +388,9 @@ trait Namers { self: Analyzer =>
                 setInfo(setter)(namerOf(setter).setterTypeCompleter(vd))
               }
               tree.symbol =
-                if (!mods.hasFlag(DEFERRED)) {
+                if (mods.hasFlag(DEFERRED)) {
+                  getter setPos tree.pos // unfocus getter position, because there won't be a separate value
+                } else {
                   var vsym =
                     if (!context.owner.isClass) {
                       assert((mods.flags & LAZY) != 0) // if not a field, it has to be a lazy val
@@ -392,12 +400,12 @@ trait Namers { self: Analyzer =>
                         .setFlag(mods.flags & FieldFlags | PRIVATE | LOCAL |
                                  (if (mods.hasFlag(LAZY)) MUTABLE else 0))
                     }
-                  vsym = enterInScope(vsym).asInstanceOf[TermSymbol]
+                  enterInScope(vsym)
                   setInfo(vsym)(namerOf(vsym).typeCompleter(tree))
                   if ((mods.flags & LAZY) != 0)
                     vsym.setLazyAccessor(getter)
                   vsym
-                } else getter
+                }
               addBeanGetterSetter(vd, getter)
             }
           case DefDef(mods, nme.CONSTRUCTOR, tparams, _, _, _) =>
@@ -446,7 +454,7 @@ trait Namers { self: Analyzer =>
     }
 
     def enterAliasMethod(tree: Tree, name: Name, flags: Long, mods: Modifiers): TermSymbol = 
-      enterNewMethod(tree, name, flags, mods, SyntheticAliasPosition(tree))
+      enterNewMethod(tree, name, flags, mods, tree.pos.focus)
 
     private def addBeanGetterSetter(vd: ValDef, getter: Symbol) {
       def isAnn(ann: Tree, demand: String) = ann match {
@@ -474,9 +482,9 @@ trait Namers { self: Analyzer =>
           val getterName = if (hasBoolBP) "is" + beanName
                            else "get" + beanName
           val getterMods = Modifiers(flags, mods.privateWithin,
-                                     mods.annotations map (_.syntheticDuplicate))
-          val beanGetterDef = atPos(vd.pos) {
-            DefDef(getterMods, getterName, Nil, List(Nil), tpt.syntheticDuplicate,
+                                     mods.annotations map (_.duplicate))
+          val beanGetterDef = atPos(vd.pos.focus) {
+            DefDef(getterMods, getterName, Nil, List(Nil), tpt.duplicate,
                    if (mods hasFlag DEFERRED) EmptyTree
                    else Select(This(getter.owner.name), name)) }
           enterSyntheticSym(beanGetterDef)
@@ -487,13 +495,12 @@ trait Namers { self: Analyzer =>
             // create and enter the symbol here, add the tree in Typer.addGettterSetter.
             val setterName = "set" + beanName
             val setter = enterAliasMethod(vd, setterName, flags, mods)
-              .setPos(SyntheticAliasPosition(vd))
+              .setPos(vd.pos.focus)
             setInfo(setter)(namerOf(setter).setterTypeCompleter(vd))
           }
         }
       }
     }
-
 
 // --- Lazy Type Assignment --------------------------------------------------
 
@@ -708,7 +715,7 @@ trait Namers { self: Analyzer =>
       Namers.this.caseClassOfModuleClass get clazz.linkedModuleOfClass.moduleClass match {
         case Some(cdef) =>
           def hasCopy(decls: Scope) = {
-            decls.elements exists (_.name == nme.copy)
+            decls.iterator exists (_.name == nme.copy)
           }
           if (!hasCopy(decls) &&
               !parents.exists(p => hasCopy(p.typeSymbol.info.decls)) &&
@@ -742,7 +749,7 @@ trait Namers { self: Analyzer =>
 
       if (tpt.isEmpty && meth.name == nme.CONSTRUCTOR) {
         tpt.tpe = context.enclClass.owner.tpe
-        tpt setPos meth.pos
+        tpt setPos meth.pos.focus
       }
 
       if (onlyPresentation && methodArgumentNames != null) 
@@ -812,7 +819,7 @@ trait Namers { self: Analyzer =>
           this
         }
       }
-      
+
       /** Called for all value parameter lists, right to left 
        *  @param vparams the symbols of one parameter list
        *  @param restpe  the result type (possibly a MethodType)
@@ -868,7 +875,7 @@ trait Namers { self: Analyzer =>
             for (vparam <- vparams) {
               if (vparam.tpt.isEmpty) {
                 vparam.tpt.tpe = pfs.head
-                vparam.tpt setPos vparam.pos
+                vparam.tpt setPos vparam.pos.focus
                 vparam.symbol setInfo pfs.head
               }
               pfs = pfs.tail
@@ -897,14 +904,28 @@ trait Namers { self: Analyzer =>
         vparam.tpt.tpe = ErrorType
       }
 
-      
-      // add the getter methods for default arguments.
+      addDefaultGetters(meth, vparamss, tparams, overriddenSymbol)
 
-      /** Adding the "override" and "defaultparam" (for inherited defaults) flags
-       *  has to be done here. Typer is too late, if an inherited default is used
-       *  before the method is typechecked, the corresponding param would not yet
-       *  have the "defaultparam" flag.
-       */
+      thisMethodType( 
+        if (tpt.isEmpty) {
+          // replace deSkolemized symbols with skolemized ones (for resultPt computed by looking at overridden symbol, right?)
+          val pt = resultPt.substSym(tparamSyms, tparams map (_.symbol))
+          // compute result type from rhs
+          tpt.tpe = widenIfNotFinal(meth, typer.computeType(rhs, pt), pt)
+          tpt setPos meth.pos.focus
+          tpt.tpe
+        } else typer.typedType(tpt).tpe)
+    }
+
+    /**
+     * For every default argument, insert a method computing that default
+     *
+     * Also adds the "override" and "defaultparam" (for inherited defaults) flags
+     * Typer is too late, if an inherited default is used before the method is
+     * typechecked, the corresponding param would not yet have the "defaultparam"
+     * flag.
+     */
+    private def addDefaultGetters(meth: Symbol, vparamss: List[List[ValDef]], tparams: List[TypeDef], overriddenSymbol: => Symbol) {
       val isConstr = meth.isConstructor
       val overridden = if (isConstr || !meth.owner.isClass) NoSymbol
                        else overriddenSymbol
@@ -932,7 +953,7 @@ trait Namers { self: Analyzer =>
           // true if the corresponding parameter of the base class has a default argument
           val baseHasDefault = overrides && (baseParams.head hasFlag DEFAULTPARAM)
           if (sym hasFlag DEFAULTPARAM) {
-        	// generate a default getter for that argument
+            // generate a default getter for that argument
             val oflag = if (baseHasDefault) OVERRIDE else 0
             val name = (if (isConstr) "init" else meth.name) +"$default$"+ posCounter
 
@@ -940,7 +961,7 @@ trait Namers { self: Analyzer =>
             var deftParams = tparams map copyUntyped[TypeDef]
             val defvParamss = previous map (_.map(p => {
               // in the default getter, remove the default parameter
-              val p1 = atPos(p.pos) { ValDef(p.mods &~ DEFAULTPARAM, p.name, p.tpt.syntheticDuplicate, EmptyTree) }
+              val p1 = atPos(p.pos.focus) { ValDef(p.mods &~ DEFAULTPARAM, p.name, p.tpt.duplicate, EmptyTree) }
               UnTyper.traverse(p1)
               p1
             }))
@@ -986,15 +1007,19 @@ trait Namers { self: Analyzer =>
               }
             }
 
-            val defTpt = subst(copyUntyped(vparam.tpt))
+            val defTpt = subst(copyUntyped(vparam.tpt match {
+              // default getter for by-name params
+              case AppliedTypeTree(_, List(arg)) if sym.hasFlag(BYNAMEPARAM) => arg
+              case t => t
+            }))
             val defRhs = copyUntyped(vparam.rhs)
 
-            val defaultTree = atPos(vparam.pos) {
+            val defaultTree = atPos(vparam.pos.focus) {
               DefDef(
                 Modifiers(meth.flags & (PRIVATE | PROTECTED | FINAL)) | SYNTHETIC | DEFAULTPARAM | oflag,
                 name, deftParams, defvParamss, defTpt, defRhs)
             }
-            meth.owner.resetFlag(INTERFACE)
+            meth.owner.resetFlag(INTERFACE) // there's a concrete member now
             val default = parentNamer.enterSyntheticSym(defaultTree)
             sym.defaultGetter = default
           } else if (baseHasDefault) {
@@ -1009,16 +1034,6 @@ trait Namers { self: Analyzer =>
         if (overrides) baseParamss = baseParamss.tail
         previous ::: List(vparams)
       })
-
-      thisMethodType( 
-        if (tpt.isEmpty) {
-          // replace deSkolemized symbols with skolemized ones (for resultPt computed by looking at overridden symbol, right?)
-          val pt = resultPt.substSym(tparamSyms, tparams map (_.symbol))
-          // compute result type from rhs
-          tpt.tpe = widenIfNotFinal(meth, typer.computeType(rhs, pt), pt)
-          tpt setPos meth.pos
-          tpt.tpe
-        } else typer.typedType(tpt).tpe)
     }
 
     //@M! an abstract type definition (abstract type member/type parameter) may take type parameters, which are in scope in its bounds
@@ -1125,7 +1140,7 @@ trait Namers { self: Analyzer =>
                     sym, 
                     newTyper(typer1.context.make(vdef, sym)).computeType(rhs, WildcardType), 
                     WildcardType)
-                  tpt setOriginal vdef
+                  tpt setPos vdef.pos.focus
                   tpt.tpe 
                 }
               } else typer1.typedType(tpt).tpe

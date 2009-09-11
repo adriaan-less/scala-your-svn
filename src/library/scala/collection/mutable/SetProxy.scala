@@ -10,7 +10,7 @@
 
 package scala.collection.mutable
 
-import generic.SetProxyTemplate
+import scala.collection.generic.SetProxyTemplate
 
 /** This is a simple wrapper class for <a href="Set.html"
  *  target="contentFrame"><code>scala.collection.mutable.Set</code></a>.
@@ -20,9 +20,9 @@ import generic.SetProxyTemplate
  *  @author  Matthias Zenger
  *  @version 1.1, 09/05/2004
  */
-trait SetProxy[A] extends mutable.Set[A] with SetProxyTemplate[A, mutable.Set[A]]
+trait SetProxy[A] extends Set[A] with SetProxyTemplate[A, Set[A]]
 {  
-  override def thisCollection = this
+  override def repr = this
   override def empty = new SetProxy[A] { val self = SetProxy.this.self.empty }
   override def + (elem: A) = { self += elem ; this }
   override def - (elem: A) = { self -= elem ; this }  

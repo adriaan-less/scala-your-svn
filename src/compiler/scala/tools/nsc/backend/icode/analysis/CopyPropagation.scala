@@ -5,7 +5,8 @@
 
 // $Id$
 
-package scala.tools.nsc.backend.icode.analysis
+package scala.tools.nsc
+package backend.icode.analysis
 
 import scala.collection.mutable.{Map, HashMap}
 import scala.tools.nsc.symtab.Flags.DEFERRED
@@ -22,7 +23,7 @@ abstract class CopyPropagation {
   import icodes._
 
   /** Locations can be local variables, this, and fields. */
-  abstract sealed class Location;
+  abstract sealed class Location
   case class LocalVar(l: Local) extends Location
   case class Field(r: Record, sym: Symbol) extends Location
   case object This extends Location
@@ -458,11 +459,14 @@ abstract class CopyPropagation {
     final def cleanReferencesTo(s: copyLattice.State, target: Location) {
       def cleanRecord(r: Record): Record = {
         r.bindings retain { (loc, value) =>
-          value match {
+          (value match {
             case Deref(loc1) if (loc1 == target) => false
             case Boxed(loc1) if (loc1 == target)  => false
             case _ => true
-          }
+          }) && (target match {
+            case Field(AllRecords, sym1) => !(loc == sym1)
+            case _ => true
+          })
         }
         r
       }
@@ -478,8 +482,8 @@ abstract class CopyPropagation {
         (value match {
           case Deref(loc1) if (loc1 == target) => false
           case Boxed(loc1) if (loc1 == target) => false
-          case Record(_, _) => 
-            cleanRecord(value.asInstanceOf[Record]);
+          case rec @ Record(_, _) =>
+            cleanRecord(rec);
             true
           case _ => true
         }) && 

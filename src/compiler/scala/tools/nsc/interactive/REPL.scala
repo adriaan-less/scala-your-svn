@@ -1,4 +1,5 @@
-package scala.tools.nsc.interactive
+package scala.tools.nsc
+package interactive
 
 import scala.concurrent.SyncVar
 import scala.tools.nsc.util._
@@ -91,7 +92,7 @@ object REPL {
       show(typeatResult)
     }
     def doComplete(pos: Position) {
-      comp.askCompletion(pos, completeResult)
+      comp.askTypeCompletion(pos, completeResult)
       show(completeResult)
     }
     loop { line =>

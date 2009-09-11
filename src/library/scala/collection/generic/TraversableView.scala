@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import TraversableView.NoBuilder
 
@@ -22,7 +23,7 @@ import TraversableView.NoBuilder
  *  @author Martin Odersky
  *  @version 2.8
  */
-trait TraversableView[+A, +Coll <: Traversable[_]] extends TraversableViewTemplate[A, Coll, TraversableView[A, Coll]]
+trait TraversableView[+A, +Coll] extends TraversableViewTemplate[A, Coll, TraversableView[A, Coll]]
 
 object TraversableView {
   class NoBuilder[A] extends Builder[A, Nothing] {
@@ -32,6 +33,6 @@ object TraversableView {
     def result() = throw new UnsupportedOperationException("TraversableView.Builder.result")
     def clear() {}
   }
-  type Coll = TraversableView[_, _]
+  type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def builderFactory[A]: BuilderFactory[A, TraversableView[A, Traversable[_]], Coll] = new BuilderFactory[A, TraversableView[A, Traversable[_]], Coll] { def apply(from: Coll) = new NoBuilder }
 }

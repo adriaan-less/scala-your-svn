@@ -9,6 +9,7 @@
 // $Id$
 
 package scala.collection.generic
+import scala.collection._
 
 /** This class represents collections that can be added to other
  *  collections using a '+' operator.
@@ -19,7 +20,7 @@ package scala.collection.generic
  */
 trait Addable[A, +This <: Addable[A, This]] { self => 
 
-  protected def thisCollection: This
+  protected def repr: This
 
   /** Creates a new collection with an additional element, unless the element is already present.
    *  @param elem the element to be added
@@ -42,14 +43,14 @@ trait Addable[A, +This <: Addable[A, This]] { self =>
    *
    *  @param elems     the traversable object.
    */
-  def ++ (elems: Traversable[A]): This = (thisCollection /: elems) (_ + _)
+  def ++ (elems: Traversable[A]): This = (repr /: elems) (_ + _)
 
   /** Adds a number of elements provided by an iterator
    *  and returns a new collection with the added elements.
    *
    *  @param iter   the iterator
    */
-  def ++ (iter: Iterator[A]): This = (thisCollection /: iter) (_ + _)
+  def ++ (iter: Iterator[A]): This = (repr /: iter) (_ + _)
 }
   
 

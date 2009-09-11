@@ -9,8 +9,8 @@
 // $Id$
 
 
-package scala.xml.parsing
-
+package scala.xml
+package parsing
 
 import scala.xml.dtd._
 import scala.util.logging.Logged
@@ -51,7 +51,7 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
       log("advanceDFA(trans): " + trans)
       trans.get(ContentModel.ElemName(label)) match {
           case Some(qNew) => qCurrent = qNew
-          case _          => reportValidationError(pos, "DTD says, wrong element, expected one of "+trans.keys.toString());
+          case _          => reportValidationError(pos, "DTD says, wrong element, expected one of "+trans.keysIterator);
         }
     }
     // advance in current automaton

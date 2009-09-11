@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import Sequence.fill
 import TraversableView.NoBuilder
@@ -20,7 +21,7 @@ import TraversableView.NoBuilder
  * @version 2.8
  */
 trait SequenceViewTemplate[+A, 
-                           +Coll <: Sequence[_],
+                           +Coll,
                            +This <: SequenceView[A, Coll] with SequenceViewTemplate[A, Coll, This]] 
   extends Sequence[A] with SequenceTemplate[A, This] with IterableView[A, Coll] with IterableViewTemplate[A, Coll, This] 
 { self =>
@@ -122,14 +123,6 @@ trait SequenceViewTemplate[+A,
     override def stringPrefix = super.stringPrefix+"P"
   }
 
-  trait Zipped[B] extends Transformed[(A, B)] {
-    protected[this] val other: Sequence[B]
-    override def iterator: Iterator[(A, B)] = self.iterator zip other.iterator
-    override def length = self.length min other.length
-    override def apply(idx: Int): (A, B) = (self.apply(idx), other.apply(idx))
-    override def stringPrefix = super.stringPrefix+"Z"
-  }
-
   /** Boilerplate method, to override in each subclass
    *  This method could be eliminated if Scala had virtual classes
    */
@@ -144,34 +137,18 @@ trait SequenceViewTemplate[+A,
   protected def newPatched[B >: A](_from: Int, _patch: Sequence[B], _replaced: Int): Transformed[B] = new Patched[B] {
     val from = _from; val patch = _patch; val replaced = _replaced
   }
-  protected def newZipped[B](that: Sequence[B]): Transformed[(A, B)] = new Zipped[B] {
-    val other = that
-  }
 
   override def reverse: This = newReversed.asInstanceOf[This]
 
   override def patch[B >: A, That](from: Int, patch: Sequence[B], replaced: Int)(implicit bf: BuilderFactory[B, That, This]): That = {
     newPatched(from, patch, replaced).asInstanceOf[That]
-// was:    val b = bf(thisCollection)
+// was:    val b = bf(repr)
 //    if (b.isInstanceOf[NoBuilder[_]]) newPatched(from, patch, replaced).asInstanceOf[That]
 //    else super.patch[B, That](from, patch, replaced)(bf) 
   }
 
   override def padTo[B >: A, That](len: Int, elem: B)(implicit bf: BuilderFactory[B, That, This]): That =
     patch(length, fill(len - length)(elem), 0)
-
-  override def zip[A1 >: A, B, That](that: Sequence[B])(implicit bf: BuilderFactory[(A1, B), That, This]): That = {
-    newZipped(that).asInstanceOf[That]
-// was:    val b = bf(thisCollection)
-//    if (b.isInstanceOf[NoBuilder[_]]) newZipped(that).asInstanceOf[That]
-//    else super.zip[A1, B, That](that)(bf)    
-  }
-
-  override def zipWithIndex[A1 >: A, That](implicit bf: BuilderFactory[(A1, Int), That, This]): That =
-    zip[A1, Int, That](Sequence.range(0, length))(bf)
-
-  override def zipAll[B, A1 >: A, That](that: Sequence[B], thisElem: A1, thatElem: B)(implicit bf: BuilderFactory[(A1, B), That, This]): That = 
-    self.padTo(that.length, thisElem).zip(that.padTo(this.length, thatElem))(bf.asInstanceOf[BuilderFactory[(A1, B), That, Any]])
 }
 
 

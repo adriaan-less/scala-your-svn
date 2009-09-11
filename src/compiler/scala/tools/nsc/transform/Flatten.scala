@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.transform
+package scala.tools.nsc
+package transform
 
 import symtab._
 import Flags._
@@ -44,7 +45,7 @@ abstract class Flatten extends InfoTransform {
         } else {
           val oldowner = clazz.owner
           atPhase(phase.next)(oldowner.info)
-          parents1 = List.mapConserve(parents)(this)
+          parents1 = parents mapConserve (this)
           for (sym <- decls.toList) {
             if (sym.isTerm && !sym.isStaticModule) {
               decls1 enter sym

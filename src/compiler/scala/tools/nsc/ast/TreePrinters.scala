@@ -4,7 +4,8 @@
  */
 // $Id$
 
-package scala.tools.nsc.ast
+package scala.tools.nsc
+package ast
 
 import compat.Platform.{EOL => LINE_SEPARATOR}
 import java.io.{OutputStream, PrintWriter, Writer}
@@ -119,7 +120,7 @@ abstract class TreePrinters {
     }
 
     def printAnnotations(tree: Tree) {
-      if (tree.symbol.rawInfo.isComplete) {
+      if (!tree.symbol.rawAnnotations.isEmpty) {
         val annots = tree.symbol.annotations
         if (!annots.isEmpty) {
           annots foreach { annot => print("@"+annot+" ") }
@@ -276,6 +277,9 @@ abstract class TreePrinters {
           print("("); printValueParams(vparams); print(" => "); print(body); print(")")
 
         case Assign(lhs, rhs) =>
+          print(lhs); print(" = "); print(rhs)
+
+        case AssignOrNamedArg(lhs, rhs) =>
           print(lhs); print(" = "); print(rhs)
 
         case If(cond, thenp, elsep) =>

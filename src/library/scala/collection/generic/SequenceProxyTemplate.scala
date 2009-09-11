@@ -10,6 +10,7 @@
 
 
 package scala.collection.generic
+import scala.collection._
 
 import collection.mutable.Buffer
 
@@ -28,14 +29,11 @@ trait SequenceProxyTemplate[+A, +This <: SequenceTemplate[A, This] with Sequence
   override def lengthCompare(len: Int): Int = self.lengthCompare(len)
   override def size = self.size
   override def isDefinedAt(x: Int): Boolean = self.isDefinedAt(x)
-  override def zip[A1 >: A, B, That](that: Sequence[B])(implicit bf: BuilderFactory[(A1, B), That, This]): That = self.zip[A1, B, That](that)(bf)
-  override def zipAll[B, A1 >: A, That](that: Sequence[B], thisElem: A1, thatElem: B)(implicit bf: BuilderFactory[(A1, B), That, This]): That = self.zipAll(that, thisElem, thatElem)(bf)
-  override def zipWithIndex[A1 >: A, That](implicit bf: BuilderFactory[(A1, Int), That, This]): That = self.zipWithIndex(bf)
   override def segmentLength(p: A => Boolean, from: Int): Int = self.segmentLength(p, from)
   override def prefixLength(p: A => Boolean) = self.prefixLength(p)
   override def indexWhere(p: A => Boolean): Int = self.indexWhere(p)
   override def indexWhere(p: A => Boolean, from: Int): Int = self.indexWhere(p, from)
-  override def findIndexOf(p: A => Boolean): Int = self.findIndexOf(p)
+  override def findIndexOf(p: A => Boolean): Int = self.indexWhere(p)
   override def indexOf[B >: A](elem: B): Int = self.indexOf(elem)
   override def indexOf[B >: A](elem: B, from: Int): Int = self.indexOf(elem, from)
   override def lastIndexOf[B >: A](elem: B): Int = self.lastIndexOf(elem)
@@ -58,8 +56,8 @@ trait SequenceProxyTemplate[+A, +This <: SequenceTemplate[A, This] with Sequence
   override def indices: Range = self.indices
   override def view = self.view
   override def view(from: Int, until: Int) = self.view(from, until)
-  override def findLastIndexOf(p: A => Boolean): Int = self.findLastIndexOf(p)
-  override def slice(from: Int): Sequence[A] = self.slice(from)
-  override def equalsWith[B](that: Sequence[B])(f: (A,B) => Boolean): Boolean = self.equalsWith(that)(f)
-  override def containsSlice[B](that: Sequence[B]): Boolean = self.containsSlice(that)
+  override def findLastIndexOf(p: A => Boolean): Int = self.lastIndexWhere(p)
+  override def slice(from: Int): Sequence[A] = self.drop(from)
+  override def equalsWith[B](that: Sequence[B])(f: (A,B) => Boolean): Boolean = (self zip that) forall { case (x,y) => f(x,y) }
+  override def containsSlice[B](that: Sequence[B]): Boolean = self.indexOfSeq(that) != -1
 }
