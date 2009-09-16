@@ -8,6 +8,7 @@
 
 // $Id: Iterable.scala 15188 2008-05-24 15:01:02Z stepancheg $
 
+
 package scala.collection
 
 import scala.util.control.Breaks._
@@ -57,7 +58,11 @@ trait Iterable[+A] extends Traversable[A]
 
 }
                                          
-/** Factory methods and utilities for instances of type Traversable */
+/** Factory methods and utilities for instances of type <code>Iterable</code>.
+ *
+ *  @author Martin Odersky
+ *  @version 2.8
+ */
 object Iterable extends TraversableFactory[Iterable] {
   
   implicit def builderFactory[A]: BuilderFactory[A, Iterable[A], Coll] = new VirtualBuilderFactory[A]
@@ -65,29 +70,12 @@ object Iterable extends TraversableFactory[Iterable] {
   
   /** The minimum element of a non-empty sequence of ordered elements */
   @deprecated("use seq.min instead")
-  def min[A <% Ordered[A]](seq: Iterable[A]): A = {
-    val xs = seq.iterator
-    if (!xs.hasNext) throw new IllegalArgumentException("min(<empty>)")
-    var min = xs.next
-    while (xs.hasNext) {
-      val x = xs.next
-      if (x < min) min = x
-    }
-    min
-  }
+  def min[A](seq: Iterable[A])(implicit ord: Ordering[A]): A = seq.min
 
   /** The maximum element of a non-empty sequence of ordered elements */
-  @deprecated("use seq.max iConstead")
-  def max[A <% Ordered[A]](seq: Iterable[A]): A = {
-    val xs = seq.iterator
-    if (!xs.hasNext) throw new IllegalArgumentException("max(<empty>)")
-    var max = xs.next
-    while (xs.hasNext) {
-      val x = xs.next
-      if (max < x) max = x
-    }
-    max
-  }
+  @deprecated("use seq.max instead")
+  def max[A](seq: Iterable[A])(implicit ord: Ordering[A]): A = seq.max
 
-  @deprecated("use View instead") type Projection[A] = IterableView[A, Coll]
+  @deprecated("use View instead")
+  type Projection[A] = IterableView[A, Coll]
 }

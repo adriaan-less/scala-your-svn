@@ -690,7 +690,7 @@ trait Infer {
       val argtpes1 = argtpes map {
         case NamedType(name, tp) => // a named argument
           var res = tp
-          val pos = params.findIndexOf(p => p.name == name && !p.hasFlag(SYNTHETIC))
+          val pos = params.indexWhere(p => p.name == name && !p.hasFlag(SYNTHETIC))
           if (pos == -1) {
             if (positionalAllowed) { // treat assignment as positional argument
               argPos(index) = index
@@ -1133,7 +1133,7 @@ trait Infer {
       val detargs = if (keepNothings || (targs eq null)) targs  //@M: adjustTypeArgs fails if targs==null, neg/t0226
                     else adjustTypeArgs(tparams, targs, WildcardType, uninstantiated)
       val undetparams = uninstantiated.toList
-      val detparams = tparams remove (undetparams contains _)
+      val detparams = tparams filterNot (undetparams contains _)
       substExpr(tree, detparams, detargs, pt)
       if (inferInfo) 
         println("inferred expr instance "+tree+", detargs = "+detargs+", undetparams = "+undetparams)
@@ -1209,7 +1209,7 @@ trait Infer {
       case TypeRef(_, sym, _) if sym.isAliasType => 
         widen(tp.normalize)
       case rtp @ RefinedType(parents, decls) => 
-        copyRefinedType(rtp, List.mapConserve(parents)(widen), decls)
+        copyRefinedType(rtp, parents mapConserve (widen), decls)
       case AnnotatedType(_, underlying, _) =>
         widen(underlying)
       case _ =>
@@ -1335,8 +1335,8 @@ trait Infer {
               patternWarning(tp, "abstract type ")
             else if (sym.isAliasType)
               check(tp.normalize, bound)
-            else if (sym == NothingClass || sym == NullClass) 
-              error(pos, "this type cannot be used in a type pattern")
+            else if (sym == NothingClass || sym == NullClass || sym == AnyValClass) 
+              error(pos, "type "+tp+" cannot be used in a type pattern or isInstanceOf test")
             else
               for (arg <- args) {
                 if (sym == ArrayClass) check(arg, bound)

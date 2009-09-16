@@ -82,6 +82,7 @@ trait StdNames {
     val INTERPRETER_VAR_PREFIX = "res"
     val INTERPRETER_IMPORT_WRAPPER = "$iw"
     val INTERPRETER_SYNTHVAR_PREFIX = "synthvar$"
+    val EVIDENCE_PARAM_PREFIX = "evidence$"
 
     def LOCAL(clazz: Symbol) = newTermName(LOCALDUMMY_PREFIX_STRING + clazz.name+">")
     def TUPLE_FIELD(index: Int) = newTermName(TUPLE_FIELD_PREFIX_STRING + index)
@@ -270,6 +271,8 @@ trait StdNames {
     val canEqual_ = newTermName("canEqual")
     val checkInitialized = newTermName("checkInitialized")
     val classOf = newTermName("classOf")
+    val identity = newTermName("identity")
+    val conforms = newTermName("conforms")
     val copy = newTermName("copy")
     val dottype = newTermName(".type")
     val drop = newTermName("drop")
@@ -325,7 +328,7 @@ trait StdNames {
     val tail = newTermName("tail")
     val toArray = newTermName("toArray")
     val toList = newTermName("toList")
-    val toSeq = newTermName("toSeq")
+    val toSequence = newTermName("toSequence")
     val toString_ = newTermName("toString")
     val clone_ = newTermName("clone")
     val this_ = newTermName("this")

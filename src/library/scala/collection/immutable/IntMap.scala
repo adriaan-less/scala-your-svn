@@ -1,9 +1,20 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+// $Id: $
+
+
 package scala.collection.immutable;
 
 /**
  * @author David MacIver
  */
-private[immutable] object IntMapUtils{
+private[immutable] object IntMapUtils {
   def zero(i : Int, mask : Int) = (i & mask) == 0;    
   def mask(i : Int, mask : Int) = i & (complement(mask - 1) ^ mask)
   def hasMatch(key : Int, prefix : Int, m : Int) = mask(key, m) == prefix;
@@ -38,14 +49,17 @@ private[immutable] object IntMapUtils{
 
 import IntMapUtils._
 
-object IntMap{
+object IntMap {
   def empty[T] : IntMap[T]  = IntMap.Nil;
   def singleton[T](key : Int, value : T) : IntMap[T] = IntMap.Tip(key, value);
   def apply[T](elems : (Int, T)*) : IntMap[T] = 
     elems.foldLeft(empty[T])((x, y) => x.updated(y._1, y._2));
 
-
-  private[immutable] case object Nil extends IntMap[Nothing]{
+  private[immutable] case object Nil extends IntMap[Nothing] {
+    // Important! Without this equals method in place, an infinite
+    // loop from Map.equals => size => pattern-match-on-Nil => equals
+    // develops.  Case objects and custom equality don't mix without
+    // careful handling.
     override def equals(that : Any) = that match {
       case (that : AnyRef) if (this eq that) => true;
       case (that : IntMap[_]) => false; // The only empty IntMaps are eq Nil
@@ -119,14 +133,14 @@ private[immutable] class IntMapEntryIterator[V](it : IntMap[V]) extends IntMapIt
 }
 
 private[immutable] class IntMapValueIterator[V](it : IntMap[V]) extends IntMapIterator[V, V](it){
-  def valueOf(tip : IntMap.Tip[V]) = tip.value;
+  def valueOf(tip : IntMap.Tip[V]) = tip.value
 }
 
 private[immutable] class IntMapKeyIterator[V](it : IntMap[V]) extends IntMapIterator[V, Int](it){
-  def valueOf(tip : IntMap.Tip[V]) = tip.key;
+  def valueOf(tip : IntMap.Tip[V]) = tip.key
 }
 
-import IntMap._;
+import IntMap._
 
 /**
  * Specialised immutable map structure for integer keys, based on 

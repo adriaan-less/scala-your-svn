@@ -13,7 +13,7 @@ package scala.actors
 import scala.compat.Platform
 import scala.util.control.ControlException
 import java.util.{Timer, TimerTask}
-import java.util.concurrent.ExecutionException
+import java.util.concurrent.{ExecutionException, Callable}
 
 /**
  * The <code>Actor</code> object provides functions for the definition of
@@ -376,7 +376,7 @@ object Actor {
  *
  * @author Philipp Haller
  */
-@serializable
+@serializable @SerialVersionUID(-781154067877019505L)
 trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
 
   /* The following two fields are only used when the actor
@@ -398,11 +398,14 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    */
   private var onTimeout: Option[TimerTask] = None
 
+  private class RunCallable(fun: () => Unit) extends Callable[Unit] with Runnable {
+    def call() = fun()
+    def run() = fun()
+  }
+
   protected[this] override def makeReaction(fun: () => Unit): Runnable = {
     if (isSuspended)
-      new Runnable {
-        def run() { fun() }
-      }
+      new RunCallable(fun)
     else
       new ActorTask(this, fun)
   }
@@ -882,10 +885,4 @@ case class Exit(from: AbstractActor, reason: AnyRef)
  * @version 0.9.8
  * @author Philipp Haller
  */
-private[actors] class SuspendActorException extends Throwable with ControlException {
-  /*
-   * For efficiency reasons we do not fill in
-   * the execution stack trace.
-   */
-  override def fillInStackTrace(): Throwable = this
-}
+private[actors] class SuspendActorException extends Throwable with ControlException

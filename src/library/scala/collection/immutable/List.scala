@@ -428,7 +428,10 @@ sealed abstract class List[+A] extends LinearSequence[A]
 
     ms(this)
   }
-
+  
+  // !!! The above sort could be replaced by:
+  //   def sort(lt: (A, A) => Boolean): List[A] = super.sortWith(lt)
+  // except that it fails to find a ClassManifest.
 }
 
 /** The empty list.
@@ -443,6 +446,7 @@ case object Nil extends List[Nothing] {
     throw new NoSuchElementException("head of empty list")
   override def tail: List[Nothing] =
     throw new NoSuchElementException("tail of empty list")
+  // Removal of equals method here might lead to an infinite recusion similar to IntMap.equals.
   override def equals(that: Any) = that match {
     case that1: Sequence[_] => that1.isEmpty
     case _ => false
@@ -739,6 +743,7 @@ object List extends SequenceFactory[List] {
 
   /** Returns the list resulting from applying the given function <code>f</code>
    *  to corresponding elements of the argument lists.
+   *
    *  @param f function to apply to each pair of elements.
    *  @return <code>[f(a0,b0), ..., f(an,bn)]</code> if the lists are 
    *          <code>[a0, ..., ak]</code>, <code>[b0, ..., bl]</code> and
@@ -833,7 +838,7 @@ object List extends SequenceFactory[List] {
    *  @param xss the list of lists
    *  @return    the transposed list of lists
    */
-  @deprecated("use p`xss.transpose' instead")
+  @deprecated("use `xss.transpose' instead")
   def transpose[A](xss: List[List[A]]): List[List[A]] = {
     val buf = new ListBuffer[List[A]]
     var yss = xss
@@ -843,25 +848,6 @@ object List extends SequenceFactory[List] {
     }
     buf.toList
   }
-
-  /** Lists with ordered elements are ordered
-  implicit def list2ordered[a <% Ordered[a]](x: List[a]): Ordered[List[a]] = new Ordered[List[a]] {
-    def compare [b >: List[a] <% Ordered[b]](y: b): Int = y match {
-      case y1: List[a] => compareLists(x, y1);
-      case _ => -(y compare x)
-    }
-    private def compareLists(xs: List[a], ys: List[a]): Int = {
-      if (xs.isEmpty && ys.isEmpty) 0
-      else if (xs.isEmpty) -1
-      else if (ys.isEmpty) 1
-      else {
-        val s = xs.head compare ys.head;
-        if (s != 0) s
-        else compareLists(xs.tail, ys.tail)
-      }
-    }
-  }
-   */
 }
 
 /** Only used for list serialization */

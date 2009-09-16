@@ -29,6 +29,9 @@ object Option
   @experimental
   def apply[A](x: A): Option[A] = if (x == null) None else Some(x)
   
+  // For methods which return -1 on failure
+  // def fromReturnValue(value: Int): Option[Int] = if (value < 0) None else Some(value)
+  
   class NullableOption[A >: Null <: AnyRef](x: Option[A]) {
     /** The option's value if it is nonempty, or <code>null</code> if it is empty.
      *  The use of null of course is discouraged, but code written to use Options
@@ -102,6 +105,13 @@ sealed abstract class Option[+A] extends Product {
    */
   def filter(p: A => Boolean): Option[A] = 
     if (isEmpty || p(this.get)) this else None
+    
+  /** If the option is nonempty, p(value), otherwise false.
+   *
+   *  @param  p   the predicate to test
+   */
+  def exists(p: A => Boolean): Boolean =
+    !isEmpty && p(this.get)
 
   /** Apply the given procedure <code>f</code> to the option's value,
    *  if it is nonempty. Do nothing if it is empty.

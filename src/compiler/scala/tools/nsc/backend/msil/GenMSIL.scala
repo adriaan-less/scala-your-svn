@@ -45,15 +45,15 @@ abstract class GenMSIL extends SubComponent {
       val codeGenerator = new BytecodeGenerator
 
       //classes is ICodes.classes, a HashMap[Symbol, IClass]
-      classes.values foreach codeGenerator.findEntryPoint
+      classes.valuesIterator foreach codeGenerator.findEntryPoint
 
       codeGenerator.initAssembly
 
-      classes.values foreach codeGenerator.createTypeBuilder
-      classes.values foreach codeGenerator.createClassMembers
+      classes.valuesIterator foreach codeGenerator.createTypeBuilder
+      classes.valuesIterator foreach codeGenerator.createClassMembers
 
       try {
-        classes.values foreach codeGenerator.genClass
+        classes.valuesIterator foreach codeGenerator.genClass
       } finally {
         codeGenerator.writeAssembly
       }
@@ -464,7 +464,7 @@ abstract class GenMSIL extends SubComponent {
     }
 
     private def createTypes() {
-      for (sym <- classes.keys) {
+      for (sym <- classes.keysIterator) {
         val iclass   = classes(sym)
         val tBuilder = types(sym.asInstanceOf[clrTypes.global.Symbol]).asInstanceOf[TypeBuilder]
           
@@ -494,7 +494,7 @@ abstract class GenMSIL extends SubComponent {
           if (settings.debug.value)
             log("auto-generating cloneable method for " + sym)
           val attrs: Short = (MethodAttributes.Public | MethodAttributes.Virtual |
-                              MethodAttributes.HideBySig)
+                              MethodAttributes.HideBySig).toShort
           val cloneMethod = tBuilder.DefineMethod("Clone", attrs, MOBJECT,
                                                   MsilType.EmptyTypes)
           val clCode = cloneMethod.GetILGenerator()
@@ -1141,7 +1141,7 @@ abstract class GenMSIL extends SubComponent {
       })
 
       // take care of order in which exHInstructions are executed (BeginExceptionBlock as last)
-      bb2exHInstructions.keys.foreach((b) => {
+      bb2exHInstructions.keysIterator.foreach((b) => {
         bb2exHInstructions(b).sort((i1, i2) => (!i1.isInstanceOf[BeginExceptionBlock]))
       })
 
@@ -2212,8 +2212,8 @@ abstract class GenMSIL extends SubComponent {
 
           // CHECK: verify if getMethodName is better than msilName
           val mirrorMethod = mirrorTypeBuilder.DefineMethod(getMethodName(m),
-                                                            MethodAttributes.Public |
-                                                            MethodAttributes.Static,
+                                                            (MethodAttributes.Public |
+                                                            MethodAttributes.Static).toShort,
                                                             msilType(m.tpe.resultType),
                                                             paramTypes)
 
@@ -2256,7 +2256,7 @@ abstract class GenMSIL extends SubComponent {
       val mFunctionType: MsilType = msilType(functionType)
       val anonfunField: FieldBuilder = delegateCallers.DefineField(
         "$anonfunField$$" + nbDelegateCallers, mFunctionType,
-        FieldAttributes.InitOnly | FieldAttributes.Public | FieldAttributes.Static)
+        (FieldAttributes.InitOnly | FieldAttributes.Public | FieldAttributes.Static).toShort)
       mcode.Emit(OpCodes.Stsfld, anonfunField)
 
 
@@ -2267,7 +2267,7 @@ abstract class GenMSIL extends SubComponent {
       }
       val caller: MethodBuilder = delegateCallers.DefineMethod(
         "$delegateCaller$$" + nbDelegateCallers,
-        MethodAttributes.Final | MethodAttributes.Public | MethodAttributes.Static,
+        (MethodAttributes.Final | MethodAttributes.Public | MethodAttributes.Static).toShort,
         msilType(returnType), (params map (_.tpe)).map(msilType).toArray)
       for (i <- 0 until params.length)
         caller.DefineParameter(i, ParameterAttributes.None, "arg" + i) // FIXME: use name of parameter symbol 

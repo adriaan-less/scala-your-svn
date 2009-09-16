@@ -31,7 +31,7 @@ trait NamesDefaults { self: Analyzer =>
 
   
   /** @param pos maps indicies from old to new */ 
-  def reorderArgs[T](args: List[T], pos: Int => Int): List[T] = {
+  def reorderArgs[T: ClassManifest](args: List[T], pos: Int => Int): List[T] = {
     val res = new Array[T](args.length)
     // (hopefully) faster than zipWithIndex
     (0 /: args) { case (index, arg) => res(pos(index)) = arg; index + 1 }
@@ -39,7 +39,7 @@ trait NamesDefaults { self: Analyzer =>
   }
   
   /** @param pos maps indicies from new to old (!) */
-  def reorderArgsInv[T](args: List[T], pos: Int => Int): List[T] = {
+  def reorderArgsInv[T: ClassManifest](args: List[T], pos: Int => Int): List[T] = {
     val argsArray = args.toArray
     val res = new ListBuffer[T]
     for (i <- 0 until argsArray.length)
@@ -390,9 +390,16 @@ trait NamesDefaults { self: Analyzer =>
               argPos(index) = pos
               rhs
             case t: Tree =>
-              errorTree(arg, "reference to "+ name +" is ambiguous; it is both, a parameter\n"+
+            // this throws an exception that's caught in `tryTypedApply` (as it uses `silent`)
+            // unfortunately, tryTypedApply recovers from the exception if you use errorTree(arg, ...) and conforms is allowed as a view (see tryImplicit in Implicits)
+            // because it tries to produce a new qualifier (if the old one was P, the new one will be conforms.apply(P)), and if that works, it pretends nothing happened
+            // so, to make sure tryTypedApply fails, would like to pass EmptyTree instead of arg, but can't do that because eventually setType(ErrorType) is called, and EmptyTree only accepts NoType as its tpe
+            // thus, we need to disable conforms as a view...
+                errorTree(arg, "reference to "+ name +" is ambiguous; it is both, a parameter\n"+
                              "name of the method and the name of a variable currently in scope.")
           }
+          //@M note that we don't get here when an ambiguity was detected (during the computation of res),
+          // as errorTree throws an exception
           typer.context.undetparams = udp
           res
         }

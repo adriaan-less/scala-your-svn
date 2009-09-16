@@ -12,7 +12,7 @@
 package scala.runtime
 
 import Predef._
-import scala.reflect.Manifest
+import scala.reflect.ClassManifest
 import collection.mutable.{Vector, ArrayBuilder, ArrayBuffer}
 import collection.generic._
 import collection.Sequence
@@ -26,7 +26,7 @@ import collection.Sequence
 abstract class BoxedArray[A] extends Vector[A] with VectorTemplate[A, BoxedArray[A]] with Boxed { self =>
 
   /** The manifest of the element type */
-  def elemManifest: Manifest[A]
+  def elemManifest: ClassManifest[A]
 
   /** The length of the array */
   def length: Int
@@ -45,33 +45,8 @@ abstract class BoxedArray[A] extends Vector[A] with VectorTemplate[A, BoxedArray
 
   // !!! todo: remove
   override def genericBuilder[B]: Builder[B, BoxedArray[B]] = new ArrayBuffer[B].mapResult {
-    _.toArray.asInstanceOf[BoxedArray[B]]
+    _.toArray(null).asInstanceOf[BoxedArray[B]]
   }
-
-  /** Creates a possible nested vector which consists of all the elements
-   *  of this array. If the elements are arrays themselves, the `deep' transformation
-   *  is applied recursively to them. The stringPrefix of the vector is
-   *  "Array", hence the vector prints like an array with all its
-   *  elements shown, and the same recursively for any subarrays.
-   *
-   *  Example:   Array(Array(1, 2), Array(3, 4)).deep.toString
-   *  prints:    Array(Array(1, 2), Array(3, 4))
-   */
-  def deep: Vector[Any] = new Vector[Any] {
-    def length = self.length
-    def apply(idx: Int): Any = self.apply(idx) match {
-      case elem: AnyRef if ScalaRunTime.isArray(elem) => ScalaRunTime.boxArray(elem).deep
-      case elem => elem
-    }
-    def update(idx: Int, elem: Any) = error("Result of deep cannot be updated.")
-    override def stringPrefix = "Array"
-  }
-
-  /*
-  override def genericBuilder[B]: Builder[B, BoxedArray[B]] = new ArrayBuffer[B].mapResult {
-    _.toArray.asInstanceOf[BoxedArray[B]]
-  }
-  */
 
   /** Convert to Java array.
    *  @param elemTag    Either one of the tags ".N" where N is the name of a primitive type
@@ -89,6 +64,12 @@ abstract class BoxedArray[A] extends Vector[A] with VectorTemplate[A, BoxedArray
   def copyTo(from: Int, dest: AnyRef, to: Int, len: Int): Unit = {
     Array.copy(value, from, dest, to, len)
   }
+
+  override def toArray[B >: A](implicit m: ClassManifest[B]): Array[B] = {
+    if ((elemManifest ne null) && (elemManifest.erasure eq m.erasure)) this.asInstanceOf[Array[B]]
+    else super.toArray[B]
+  }
+
 /*
   override def equals(other: Any) =
     (value eq other) ||        
@@ -106,6 +87,24 @@ abstract class BoxedArray[A] extends Vector[A] with VectorTemplate[A, BoxedArray
    */
   override def copyToArray[B](xs: Array[B], start: Int, len: Int): Unit =
     copyTo(0, xs, start, len)
+
+  /** Creates a possible nested vector which consists of all the elements
+   *  of this array. If the elements are arrays themselves, the `deep' transformation
+   *  is applied recursively to them. The stringPrefix of the vector is
+   *  "Array", hence the vector prints like an array with all its
+   *  elements shown, and the same recursively for any subarrays.
+   *
+   *  Example:   Array(Array(1, 2), Array(3, 4)).deep.toString
+   *  prints:    Array(Array(1, 2), Array(3, 4))
+   */
+  def deep: collection.Vector[Any] = new collection.Vector[Any] {
+    def length = self.length
+    def apply(idx: Int): Any = self.apply(idx) match {
+      case elem: AnyRef if ScalaRunTime.isArray(elem) => ScalaRunTime.boxArray(elem).deep
+      case elem => elem
+    }
+    override def stringPrefix = "Array"
+  }
 
   @deprecated("use deep.toString instead")
   final def deepToString() = deepMkString(stringPrefix + "(", ", ", ")")

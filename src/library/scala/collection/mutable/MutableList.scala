@@ -1,7 +1,7 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
 **    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
-**  __\ \/ /__/ __ |/ /__/ __ |                                         **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
@@ -12,19 +12,22 @@
 package scala.collection.mutable
 
 import scala.collection.generic._
-// import immutable.{List, Nil, ::}
 
-//import Predef.NoSuchElementException
-
-/** This class is used internally to represent mutable lists. It is the
- *  basis for the implementation of the classes
- *  <code>Stack</code>, and <code>Queue</code>.
+/** <p>
+ *    This class is used internally to represent mutable lists. It is the
+ *     basis for the implementation of the classes
+ *     <code>Stack</code>, and <code>Queue</code>.
+ *  </p>
  *  !!! todo: convert to LinkedListBuffer?
+ *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  */
-class MutableList[A] extends LinearSequence[A] with LinearSequenceTemplate[A, MutableList[A]] with Builder[A, MutableList[A]] {
+@serializable @SerialVersionUID(5938451523372603072L)
+class MutableList[A] extends LinearSequence[A]
+                        with LinearSequenceTemplate[A, MutableList[A]]
+                        with Builder[A, MutableList[A]] {
 
   override protected[this] def newBuilder = new MutableList[A]
 
@@ -71,7 +74,7 @@ class MutableList[A] extends LinearSequence[A] with LinearSequenceTemplate[A, Mu
    */
   def get(n: Int): Option[A] = first0.get(n)
 
-  protected def prependElem(elem: A): Unit = {
+  protected def prependElem(elem: A) {
     first0 = new LinkedList[A](elem, first0)
     if (len == 0)
       last0 = first0
@@ -87,7 +90,8 @@ class MutableList[A] extends LinearSequence[A] with LinearSequenceTemplate[A, Mu
       len = len + 1
     }
 
-  @deprecated("use clear instead") def reset() { clear() }
+  @deprecated("use clear instead")
+  def reset() { clear() }
 
   /** Returns an iterator over all elements of this list.
    */

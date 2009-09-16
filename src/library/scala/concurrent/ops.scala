@@ -11,49 +11,62 @@
 
 package scala.concurrent
 
-
 import java.lang.Thread
+import scala.util.control.Exception.allCatch
 
 /** The object <code>ops</code> ...
  *
  *  @author  Martin Odersky, Stepan Koltsov, Philipp Haller
  */
-object ops {
-
-  implicit val defaultRunner: TaskRunner[Unit] =
+object ops
+{
+  // !!! I don't think this should be implicit, but it does need to be
+  // made available as a default argument (difficult at present, see spawn.)
+  // If it is merely implicit without being specified as a default, then it
+  // will not be in scope for callers unless ops._ is first imported.
+  implicit val defaultRunner: FutureTaskRunner =
     TaskRunners.threadRunner
 
   /**
-   *  If expression computed successfully return it in <code>Left</code>,
-   *  otherwise return exception in <code>Right</code>.
+   *  If expression computed successfully return it in <code>Right</code>,
+   *  otherwise return exception in <code>Left</code>.
    */
-  private def tryCatch[A](left: => A): Either[A, Throwable] = {
-    try {
-      Left(left)
-    } catch {
-      case t => Right(t)
+  //TODO: make private
+  def tryCatch[A](body: => A): Either[Throwable, A] =
+    allCatch[A] either body
+  
+  //TODO: make private
+  def tryCatchEx[A](body: => A): Either[Exception, A] =
+    try Right(body) catch {
+      case ex: Exception  => Left(ex)
     }
-  }
+  
+  //TODO: make private
+  def getOrThrow[T <: Throwable, A](x: Either[T, A]): A =
+    x.fold[A](throw _, identity _)
 
   /** Evaluates an expression asynchronously.
    *
    *  @param  p the expression to evaluate
    */
-  def spawn(p: => Unit)(implicit runner: TaskRunner[Unit]): Unit = {
-    runner submit (() => p)
+  // !!! this should have a signature like:
+  //   def spawn(p: => Unit)(implicit runner: TaskRunner = defaultRunner): Unit 
+  // but at present the mixture of by-name argument and default implicit causes a crash.
+  
+  def spawn(p: => Unit): Unit = spawn(p, defaultRunner)
+  def spawn(p: => Unit, runner: TaskRunner): Unit = {
+    runner execute runner.functionAsTask(() => p)
   }
 
   /**
    *  @param p ...
    *  @return  ...
    */
-  def future[A](p: => A)(implicit runner: TaskRunner[Unit]): () => A = {
-    val result = new SyncVar[Either[A, Throwable]]
-    spawn({ result set tryCatch(p) })(runner)
-    () => result.get match {
-    	case Left(a) => a
-    	case Right(t) => throw t
-    }
+  // See spawn above, this should have a signature like
+  // def future[A](p: => A)(implicit runner: FutureTaskRunner = defaultRunner): () => A
+  def future[A](p: => A): () => A = future[A](p, defaultRunner)
+  def future[A](p: => A, runner: FutureTaskRunner): () => A = {
+    runner.futureAsFunction(runner submit runner.functionAsTask(() => p))
   }
 
   /**
@@ -62,12 +75,9 @@ object ops {
    *  @return   ...
    */
   def par[A, B](xp: => A, yp: => B): (A, B) = {
-    val y = new SyncVar[Either[B, Throwable]]
+    val y = new SyncVar[Either[Throwable, B]]
     spawn { y set tryCatch(yp) }
-    (xp, y.get match {
-    	case Left(b) => b
-    	case Right(t) => throw t
-    })
+    (xp, getOrThrow(y.get))
   }
 
   /**

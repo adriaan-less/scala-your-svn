@@ -133,7 +133,7 @@ trait Symbols {
 
     /** Remove all annotations matching the given class. */
     def removeAnnotation(cls: Symbol): Unit = 
-      setAnnotations(annotations.remove(_.atp.typeSymbol == cls))
+      setAnnotations(annotations filterNot (_.atp.typeSymbol == cls))
 
     /** set when symbol has a modifier of the form private[X], NoSymbol otherwise.
      *  Here's some explanation how privateWithin gets combined with access flags:
@@ -441,6 +441,16 @@ trait Symbols {
             None
         }
       }
+    def elisionLevel: Option[Int] = {
+      if (!hasAnnotation(ElidableMethodClass)) None
+      else annotations find (_.atp.typeSymbol == ElidableMethodClass) flatMap { annot =>
+        // since we default to enabled by default, only look hard for falsity
+        annot.args match {
+          case Literal(Constant(x: Int)) :: Nil => Some(x)
+          case _                                => None
+        }
+      }
+    }
 
     /** Does this symbol denote a wrapper object of the interpreter or its class? */
     final def isInterpreterWrapper = 
@@ -1061,24 +1071,8 @@ trait Symbols {
 
     /** Return every accessor of a primary constructor parameter in this case class
      */
-    final def caseFieldAccessors: List[Symbol] = {
-      val allAccessors = info.decls.toList filter (_ hasFlag CASEACCESSOR)
-
-      // if a case class has private fields, the accessors will come back in the wrong
-      // order unless we do some more work.  See ticket #1373 and test bug1373.scala.
-      def findRightAccessor(cpa: Symbol) = {
-        val toFind = cpa.fullNameString + "$"
-        // def fail = throw new Error("Accessor for %s not found among %s".format(cpa.fullNameString, allAccessors))
-        def isRightAccessor(s: Symbol) =
-          if (s hasFlag ACCESSOR) s.accessed.id == cpa.id
-          else s.fullNameString startsWith toFind
-        
-        if (cpa.isOuterAccessor || cpa.isOuterField) None
-        else allAccessors find isRightAccessor
-      }
-      
-      constrParamAccessors map findRightAccessor flatten
-    }
+    final def caseFieldAccessors: List[Symbol] =
+      info.decls.toList filter (sym => !(sym hasFlag PRIVATE) && sym.hasFlag(CASEACCESSOR))
 
     final def constrParamAccessors: List[Symbol] =
       info.decls.toList filter (sym => !sym.isMethod && sym.hasFlag(PARAMACCESSOR))
