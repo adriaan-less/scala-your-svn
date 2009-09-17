@@ -962,6 +962,12 @@ trait Typers { self: Analyzer =>
                 }
               }
             }
+
+// <experimental>
+            val pt1 = adaptType(pt) // last chance: maybe we can massage the expected type into something we can conform to? -- TODO: where else should we call adaptType?
+            if(pt ne pt1) return adapt(tree, mode, pt1)
+// </experimental>
+
             if (settings.debug.value) {
               log("error tree = "+tree)
               if (settings.explaintypes.value) explainTypes(tree.tpe, pt)
@@ -969,6 +975,74 @@ trait Typers { self: Analyzer =>
             typeErrorTree(tree, tree.tpe, pt)
           }
         }
+    }
+
+    // adapt types in ways not possible/warranted in (`normalize` in) Types (e.g. that rely on context/implicit resolution, such as expandImplicitSingleton)
+    def adaptType(tp: Type): Type = {
+      import annotation.elidable; import annotation.elidable._
+      @elidable(FINE) def trace(x: String) = println("<adaptType> "+x)
+
+      // safely widen `witness.type` singleton type where `witness` is an abstract implicit value
+      // by resolving the implicit and using the type of the concrete implicit instead of the singleton type
+      // this should be sound if the widened type is only used for the selection of an alias type
+      // maybe this condition isn't even necessary, since the implicit is resolved statically to the value whose type we use here
+      object expandImplicitSingleton extends TypeMap {
+        def apply(tp: Type) = tp match {
+          case TypeRef(pre, _, _) =>
+            mapOver(tp) match {
+              case TypeRef(pre1, sym1, _) if (pre1 ne pre) && !sym1.isAliasType => tp // undo transformation
+              case res => res // ok
+            }
+
+          // adapt a singleton type whose symbol points to an implicit (this singleton type is most likely a prefix to a further type selection)
+          case SingleType(pre, sym) if sym.hasFlag(IMPLICIT) =>
+            val pt = pre.memberType(sym)
+            assert(pt.typeParams.isEmpty) // to warrant .finalResultType below (need to unwrap polytype of getter)
+            val implicitForSym = inferImplicit(EmptyTree, pt.finalResultType, false, false, context)
+
+            val res = if(implicitForSym.tree ne EmptyTree){ // yay! found implicit value --> type check it and use that type instead
+              assert(implicitForSym.subst.from.isEmpty) // shouldn't have determined type parameters that we need to subst -- where would we subst them??
+
+              val implicitType = typed(implicitForSym.tree).tpe
+              implicitType
+            } else {  // no implicit value found --> does it have a default value?
+              // TODO: not very happy with this code -- should ultimately be improved and incorporated into Symbol:defaultGetter (or a variation thereof)
+              def correspondingSymWithDefault(sym: Symbol) = {
+                def hasDefault(sym: Symbol) = sym.hasFlag(DEFAULTPARAM) && !sym.defaultGetter.tpe.isError
+                def constrParamWithDefault = try { // TODO: is there a better way??? also, this probably doesn't work for inherited getters for default params of constructor in superclass
+                    (for(cons <- sym.owner.info.decls.filter(sym => sym.isConstructor);
+                        param <- List.flatten(cons.paramss);
+                        if param.name == sym.name) yield param) toStream
+                } catch { case _ => Stream() }
+                val candidates = Stream.cons(sym, Stream.cons(sym.accessed, constrParamWithDefault)) // first two just to be sure, the default is actually in constructor param
+                candidates find (hasDefault _)
+              }
+
+              correspondingSymWithDefault(sym) map {s =>
+                val (getterTp, getterOwner) =
+                  if(s.defaultGetter.owner.isModuleClass && s.defaultGetter.owner.linkedClassOfModule == pre.typeSymbol) {
+                    // default getter for arg in ctor is a poly method in the companion object --> replace poly method's type params with type params of class
+                    // this way, they should get instantiated by the asSeenFrom below
+                    (s.defaultGetter.tpe.finalResultType.substSym(s.defaultGetter.typeParams, pre.typeSymbolDirect.info.typeParams),
+                     s.defaultGetter.owner.linkedClassOfModule)
+                  } else
+                    (s.defaultGetter.tpe.finalResultType,
+                     s.defaultGetter.owner)
+
+                getterTp.asSeenFrom(pre, getterOwner)
+                // (hack!) need finalResultType because namesdefaults makes a poly-method for the default getter
+              } getOrElse tp
+            }
+
+            trace("adapted implicit singleton type: "+ res)
+
+            res
+
+          case _ => mapOver(tp)
+        }
+      }
+
+      expandImplicitSingleton(tp).normalize
     }
 
     /**
