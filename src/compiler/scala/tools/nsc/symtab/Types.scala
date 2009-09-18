@@ -114,15 +114,15 @@ trait Types {
 
   // @M toString that is safe during debugging (does not normalize, ...)
   def debugString(tp: Type): String = tp match { 
-    case TypeRef(pre, sym, args) => "TypeRef"+(debugString(pre), sym, args map debugString) 
-    case ThisType(sym) => "ThisType("+sym+")"
-    case SingleType(pre, sym) => "SingleType"+(debugString(pre), sym)
-    case RefinedType(parents, defs) => "RefinedType"+(parents map debugString, defs.toList)
-    case ClassInfoType(parents, defs, clazz) =>  "ClassInfoType"+(parents map debugString, defs.toList, clazz)
-    case PolyType(tparams, result) => "PolyType"+(tparams, debugString(result))
-    case TypeBounds(lo, hi) => "TypeBounds "+debugString(lo)+","+debugString(hi)
-    case TypeVar(origin, constr) => "TypeVar "+origin+","+constr
-    case ExistentialType(tparams, qtpe) => "ExistentialType("+(tparams map (_.defString))+","+debugString(qtpe)+")"
+    case TypeRef(pre, sym, args) =>  debugString(pre) +"."+ sym.nameString + (args map debugString).mkString("[",", ","]") 
+    case ThisType(sym) => sym.nameString+".this"
+    case SingleType(pre, sym) => debugString(pre) +"."+ sym.nameString +".type"
+    case RefinedType(parents, defs) => (parents map debugString).mkString("", " with ", "") + defs.toList.mkString(" {", " ;\n ", "}") 
+    case ClassInfoType(parents, defs, clazz) =>  "class "+ clazz.nameString + (parents map debugString).mkString("", " with ", "") + defs.toList.mkString("{", " ;\n ", "}") 
+    case PolyType(tparams, result) => tparams.mkString("[", ", ", "] ") + debugString(result)
+    case TypeBounds(lo, hi) => ">: "+ debugString(lo) +" <: "+ debugString(hi)
+    case tv : TypeVar => tv.toString
+    case ExistentialType(tparams, qtpe) => "forsome "+ tparams.mkString("[", ", ", "] ") + debugString(qtpe)
     case _ => tp.toString
   }
 
@@ -1483,15 +1483,14 @@ A type's typeSymbol should never be inspected directly.
     private def dummyArgs = typeParamsDirect map (_.typeConstructor) //@M must be .typeConstructor
 
     // (!result.isEmpty) IFF isHigherKinded
-    override def typeParams: List[Symbol] = if (args.isEmpty) typeParamsDirect else List()
+    override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
 
-    //@M equivalent to:
-    //  (!typeParams.isEmpty && args.isEmpty) &&   //  because args.isEmpty is checked in typeParams
-    //  !isRawType(this)                           // needed for subtyping
+    //  (args.isEmpty && !typeParamsDirect.isEmpty) && !isRawType(this)                              
+    //  check for isRawType: otherwise raw types are considered higher-kinded types during subtyping:
     override def isHigherKinded 
-      = !typeParams.isEmpty && 
-      // otherwise raw types are considered higher-kinded types during subtyping:
-        (phase.erasedTypes || !sym.hasFlag(JAVA))  
+      = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
+      // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
+        
 
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
