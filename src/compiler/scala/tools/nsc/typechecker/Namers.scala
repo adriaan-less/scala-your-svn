@@ -1060,7 +1060,7 @@ trait Namers { self: Analyzer =>
       // @M: make sure overriding in refinements respects rudimentary kinding
       // have to do this early, as otherwise we might get crashes: (see neg/bug1275.scala)
       //   suppose some parameterized type member is overridden by a type member w/o params, 
-      //   then appliedType will be called on a type that does not expect type args --> crash
+      //   then applyTypeArgs will be called on a type that does not expect type args --> crash
       if (tpsym.owner.isRefinementClass &&  // only needed in refinements
           !tpsym.allOverriddenSymbols.forall{verifyOverriding(_)})
 	      ErrorType 

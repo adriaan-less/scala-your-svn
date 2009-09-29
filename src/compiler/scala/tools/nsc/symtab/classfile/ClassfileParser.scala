@@ -545,7 +545,7 @@ abstract class ClassfileParser {
       assert(formals.last.typeSymbol == definitions.ArrayClass)
       val method = params.last.owner
       val newParams = method.newSyntheticValueParams(formals.init :::
-           List(appliedType(definitions.JavaRepeatedParamClass.typeConstructor, List(formals.last.typeArgs.head))))
+           List(definitions.JavaRepeatedParamClass.typeConstructor.applyTypeArgs(List(formals.last.typeArgs.head))))
       MethodType(newParams, rtpe)
     case PolyType(tparams, rtpe) =>
       PolyType(tparams, arrayToRepeated(rtpe))
@@ -640,7 +640,7 @@ abstract class ClassfileParser {
           tpe
         case ARRAY_TAG =>
           while ('0' <= sig(index) && sig(index) <= '9') index += 1
-          appliedType(definitions.ArrayClass.tpe, List(sig2type(tparams, skiptvs)))
+          definitions.ArrayClass.tpe.applyTypeArgs(List(sig2type(tparams, skiptvs)))
         case '(' =>
           // we need a method symbol. given in line 486 by calling getType(methodSym, ..)
           assert(sym ne null)

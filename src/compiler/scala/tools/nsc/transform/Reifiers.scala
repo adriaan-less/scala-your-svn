@@ -137,7 +137,7 @@ trait Reifiers {
 	if (untpe == NoType)
 	  NoType
 	else
-	  appliedType(untpe, args.map(unreify))
+	  untpe.applyTypeArgs(args.map(unreify))
       case reflect.TypeBounds(lo, hi) => 
 	TypeBounds(unreify(lo), unreify(hi))
       case reflect.MethodType(params, restpe) =>

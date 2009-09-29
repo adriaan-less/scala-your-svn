@@ -344,6 +344,19 @@ trait Types {
      */
     def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = this.subst(formals, actuals)
 
+    /** Apply this type to new type arguments. 
+     *
+     * If args is not empty, its length must match the number of type parameters of a higher-kinded type, or the number of type arguments of a proper type.
+     * 
+     * @pre args.isEmpty || (isHigherKinded && typeParams.length == args.length) || (!isHigherKinded && typeArgs.length == args.length)
+     * @post (args.isEmpty && result eq this) || (!args.isEmpty && result.typeArgs == args) 
+     **/
+    final def applyTypeArgs(newArgs: List[Type]): Type =  
+      if (newArgs.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
+      else doApplyTypeArgs(newArgs)
+      
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type = error("applyTypeArgs not allowed on "+this)
+
     def skolemizeExistential(owner: Symbol, origin: AnyRef): Type = this
     
     /** Reduce to beta eta-long normal form. Expands type aliases and converts higher-kinded TypeRef's to PolyTypes. @M */
@@ -884,6 +897,10 @@ trait Types {
       if (util.Statistics.enabled) singletonBaseTypeSeqCount += 1
       underlying.baseTypeSeq prepend this
     }
+
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type =
+      widen.applyTypeArgs(newArgs)
+    
     override def safeToString: String = prefixString + "type"
 /*
     override def typeOfThis: Type = typeSymbol.typeOfThis
@@ -908,6 +925,9 @@ trait Types {
       }
       sym
     }
+    
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type = this
+
     override def baseType(clazz: Symbol): Type = this
     override def safeToString: String = "<error>"
     override def narrow: Type = this
@@ -918,6 +938,7 @@ trait Types {
   /** An object representing an unknown type */
   case object WildcardType extends Type {
     override def safeToString: String = "?"
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type = this
     // override def isNullable: Boolean = true
     override def kind = "WildcardType"
   }
@@ -1046,6 +1067,10 @@ trait Types {
       case TypeBounds(_, _) => that <:< this 
       case _ => lo <:< that && that <:< hi
     }
+
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type =
+      TypeBounds(lo.applyTypeArgs(newArgs), hi.applyTypeArgs(newArgs))
+    
     // override def isNullable: Boolean = NullClass.tpe <:< lo;
     override def safeToString = ">: " + lo + " <: " + hi
     override def kind = "TypeBoundsType"
@@ -1163,6 +1188,9 @@ trait Types {
       else super.typeParams
 
     private def dummyArgs = typeParams map (_.typeConstructor)
+
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type =
+      RefinedType(parents map (_.applyTypeArgs(newArgs)), decls) // MO to AM: please check
 
     /* MO to AM: This is probably not correct
      * If they are several higher-kinded parents with different bounds we need
@@ -1417,8 +1445,8 @@ trait Types {
       else res.instantiateTypeParams(sym.typeParams, typeArgsOrDummies)
     }
 
-    //@M! use appliedType on the polytype that represents the bounds (or if aliastype, the rhs)
-    def transformInfo(tp: Type): Type = appliedType(tp.asSeenFrom(pre, sym.owner), typeArgsOrDummies)
+    //@M! use applyTypeArgs on the polytype that represents the bounds (or if aliastype, the rhs)
+    def transformInfo(tp: Type): Type = tp.asSeenFrom(pre, sym.owner).applyTypeArgs(typeArgsOrDummies)
 
     def thisInfo     = 
       if (sym.isAliasType) normalize
@@ -1487,23 +1515,20 @@ A type's typeSymbol should never be inspected directly.
 
     //  (args.isEmpty && !typeParamsDirect.isEmpty) && !isRawType(this)                              
     //  check for isRawType: otherwise raw types are considered higher-kinded types during subtyping:
-    override def isHigherKinded 
-      = (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
+    override def isHigherKinded = 
+      (args.isEmpty && !typeParamsDirect.isEmpty) && !isRaw(sym, args)
       // (args.isEmpty && !typeParamsDirect.isEmpty) && (phase.erasedTypes || !sym.hasFlag(JAVA))  
         
 
-    override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
-      if (isHigherKinded) {
-        val substTps = formals.intersect(typeParams)
-      
-        if (substTps.length == typeParams.length) 
-          typeRef(pre, sym, actuals)
-        else // partial application (needed in infer when bunching type arguments from classes and methods together)
-          typeRef(pre, sym, dummyArgs).subst(formals, actuals)
-      } 
-      else 
-        super.instantiateTypeParams(formals, actuals)
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type = 
+      typeRef(pre, sym, if(sym == NothingClass || sym == AnyClass) List() else newArgs) //@M drop type args to Any/Nothing
 
+    // for higher-kinded type, apply instantiateTypeParams to the proper type derived from this higher-kinded type applied to dummyArgs
+    //   this supports straight applyTypeArgs (when formals == typeParams)
+    //   as well as partial application (needed in infer when bunching type arguments from classes and methods together)
+    override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
+      if (isHigherKinded) applyTypeArgs(dummyArgs).instantiateTypeParams(formals, actuals)
+      else super.instantiateTypeParams(formals, actuals)
 
     private var normalized: Type = null
 
@@ -1745,7 +1770,10 @@ A type's typeSymbol should never be inspected directly.
                  PolyType(typeParams, resultType.bounds.hi))
 
     override def isHigherKinded = !typeParams.isEmpty
-    
+
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type =
+      resultType.instantiateTypeParams(typeParams, newArgs)
+
     override def safeToString: String =
       (if (typeParams.isEmpty) "=> "
        else (typeParams map (_.defString) mkString ("[", ",", "]")))+resultType
@@ -1771,15 +1799,6 @@ A type's typeSymbol should never be inspected directly.
     override def prefix = maybeRewrap(underlying.prefix)
     override def typeArgs = underlying.typeArgs map maybeRewrap
     override def paramTypes = underlying.paramTypes map maybeRewrap
-    override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]) = {
-//      maybeRewrap(underlying.instantiateTypeParams(formals, actuals))
-
-      val quantified1 = new SubstTypeMap(formals, actuals) mapOver quantified
-      val underlying1 = underlying.instantiateTypeParams(formals, actuals)
-      if ((quantified1 eq quantified) && (underlying1 eq underlying)) this
-      else existentialAbstraction(quantified1, underlying1.substSym(quantified, quantified1))
-
-    }
     override def baseType(clazz: Symbol) = maybeRewrap(underlying.baseType(clazz))
     override def baseTypeSeq = underlying.baseTypeSeq map maybeRewrap
     override def isHigherKinded = false
@@ -1798,6 +1817,19 @@ A type's typeSymbol should never be inspected directly.
         skolem setInfo skolem.info.substSym(quantified, skolems)
       underlying.substSym(quantified, skolems)
     }
+
+    override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]) = {
+//      maybeRewrap(underlying.instantiateTypeParams(formals, actuals))
+      assert(quantified.intersect(formals).isEmpty) //@M I think this method is only supposed to change variables that are not bound by the existential
+      val quantified1 = new SubstTypeMap(formals, actuals) mapOver quantified //@M subst formals --> actuals in info of quantified
+      val underlying1 = underlying.instantiateTypeParams(formals, actuals) //@M this would go wrong if formals and quantified overlap
+      if ((quantified1 eq quantified) && (underlying1 eq underlying)) this
+      else existentialAbstraction(quantified1, underlying1.substSym(quantified, quantified1))
+    }
+
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type =
+      existentialAbstraction(quantified, underlying.applyTypeArgs(newArgs)) //@M TODO: this seems wrong, but this is what appliedType did
+
 
     private def wildcardArgsString(available: Set[Symbol], args: List[Type]): List[String] = args match {
       case TypeRef(_, sym, _) :: args1 if (quantified contains sym) =>
@@ -1958,6 +1990,8 @@ A type's typeSymbol should never be inspected directly.
     }
 
     override val isHigherKinded = false
+
+    protected def doApplyTypeArgs(newArgs: List[Type]): Type = this // TODO: merge with type constructor inference
         
     override def normalize: Type = 
       if  (constr.instValid) constr.inst
@@ -2278,25 +2312,19 @@ A type's typeSymbol should never be inspected directly.
     case _ => refinedType(tps, commonOwner(tps))
   }
   
-  /** A creator for type applications */
-  def appliedType(tycon: Type, args: List[Type]): Type =  
-    if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
-    else tycon match { 
-      case TypeRef(pre, sym, _) => 
-        val args1 = if(sym == NothingClass || sym == AnyClass) List() else args //@M drop type args to Any/Nothing
-        typeRef(pre, sym, args1)
-      case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
-      case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
-      case st: SingletonType => appliedType(st.widen, args) // @M TODO: what to do? see bug1
-      case RefinedType(parents, decls) => RefinedType(parents map (appliedType(_, args)), decls) // MO to AM: please check
-      case TypeBounds(lo, hi) => TypeBounds(appliedType(lo, args), appliedType(hi, args))
-      case tv@TypeVar(_, _) => tv //@M: for tcpoly inference, this becomes: tv.applyArgs(args)
-      case ErrorType => tycon
-      case WildcardType => tycon // needed for neg/t0226
-      case _ => throw new Error(debugString(tycon))
-    }
+ 
+  /** A creator for type functions (type constructors)
+   *  If tparams is empty, simply returns result type 
+   */
+  def typeFun(tparams: List[Symbol], tpe: Type): Type = 
+    if (tparams.isEmpty) tpe 
+    else 
+      PolyType(tparams, tpe match { // TODO
+        case PolyType(List(), tpe1) => tpe1
+        case _ => tpe
+      })
 
-  /** A creator for type parameterizations 
+  /** A creator for universally quantified values
    *  If tparams is empty, simply returns result type 
    */
   def polyType(tparams: List[Symbol], tpe: Type): Type = 
@@ -2881,7 +2909,7 @@ A type's typeSymbol should never be inspected directly.
                 if (ps.isEmpty) throwError
                 else if (sym eq ps.head)  
                   // @M! don't just replace the whole thing, might be followed by type application
-                  appliedType(as.head, args mapConserve (this)) // @M: was as.head   
+                  as.head.applyTypeArgs(args mapConserve (this)) // @M: was as.head   
                 else instParam(ps.tail, as.tail);
               val symclazz = sym.owner
               if (symclazz == clazz && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
@@ -2960,7 +2988,7 @@ A type's typeSymbol should never be inspected directly.
         // (must not recurse --> loops)
         // 3) replacing m by List in m[Int] should yield List[Int], not just List
         case TypeRef(NoPrefix, sym, args) =>
-          appliedType(subst(tp, sym, from, to), args) // if args.isEmpty, appliedType is the identity
+          subst(tp, sym, from, to).applyTypeArgs(args) // if args.isEmpty, applyTypeArgs is the identity
         case SingleType(NoPrefix, sym) =>
           subst(tp, sym, from, to)
         case _ =>

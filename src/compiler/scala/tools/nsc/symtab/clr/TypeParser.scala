@@ -423,8 +423,7 @@ abstract class TypeParser {
     else if (typ == clrTypes.DOUBLE)
       definitions.DoubleClass.tpe
     else if (typ.IsArray())
-      appliedType(definitions.ArrayClass.tpe,
-                  List(getCLRType(typ.GetElementType())));
+      definitions.ArrayClass.tpe.applyTypeArgs(List(getCLRType(typ.GetElementType())))
     else {
       val res = clrTypes.sym2type.get (typ) match {
         case Some(sym) => sym.tpe

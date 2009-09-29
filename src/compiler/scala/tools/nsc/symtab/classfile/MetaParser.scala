@@ -59,7 +59,7 @@ abstract class MetaParser{
           nextToken(); args += parseType();
         } while (token == ",");
         nextToken();
-        appliedType(tp, args.toList)
+        tp.applyTypeArgs(args.toList)
       }
     }
   }

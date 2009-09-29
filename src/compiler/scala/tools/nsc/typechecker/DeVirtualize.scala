@@ -35,7 +35,7 @@ abstract class DeVirtualize extends InfoTransform with TypingTransformers {
       val clazz = sym.owner
       intersectionType(
         List(
-          appliedType(abstractType(clazz).typeConstructor, clazz.typeParams map (_.tpe)),
+          abstractType(clazz).typeConstructor.applyTypeArgs(clazz.typeParams map (_.tpe)),
           clazz.tpe))
     } else devirtualizeMap(tp)
 

@@ -228,7 +228,7 @@ trait Typers { self: Analyzer =>
           }
           val result = wrapImplicit(from)
           if (result != EmptyTree) result
-          else wrapImplicit(appliedType(ByNameParamClass.typeConstructor, List(from)))
+          else wrapImplicit(ByNameParamClass.typeConstructor.applyTypeArgs(List(from)))
       }
     }
 
@@ -349,7 +349,7 @@ trait Typers { self: Analyzer =>
         case TypeRef(pre, sym, args) =>
           (checkNotLocked(sym)) && (
             !sym.isTypeMember ||
-            checkNonCyclic(pos, appliedType(pre.memberInfo(sym), args), sym)   // @M! info for a type ref to a type parameter now returns a polytype
+            checkNonCyclic(pos, pre.memberInfo(sym).applyTypeArgs(args), sym)   // @M! info for a type ref to a type parameter now returns a polytype
             // @M was: checkNonCyclic(pos, pre.memberInfo(sym).subst(sym.typeParams, args), sym)
           )
         case SingleType(pre, sym) =>
@@ -1041,7 +1041,7 @@ trait Typers { self: Analyzer =>
         val supertparams = if (supertpt.hasSymbol) supertpt.symbol.typeParams else List()
         var supertpe = supertpt.tpe
         if (!supertparams.isEmpty)
-          supertpe = PolyType(supertparams, appliedType(supertpe, supertparams map (_.tpe)))
+          supertpe = PolyType(supertparams, supertpe.applyTypeArgs(supertparams map (_.tpe)))
 
         // A method to replace a super reference by a New in a supercall
         def transformSuperCall(scall: Tree): Tree = (scall: @unchecked) match {
@@ -2777,7 +2777,7 @@ trait Typers { self: Analyzer =>
         treeCopy.ArrayValue(tree, elemtpt1, elems1)
           .setType(
             (if (isFullyDefined(pt) && !phase.erasedTypes) pt
-             else appliedType(ArrayClass.typeConstructor, List(elemtpt1.tpe))).notNull)
+             else ArrayClass.typeConstructor.applyTypeArgs(List(elemtpt1.tpe))).notNull)
       }
 
       def typedAssign(lhs: Tree, rhs: Tree): Tree = {
@@ -2854,7 +2854,7 @@ trait Typers { self: Analyzer =>
           context.undetparams = cloneSymbols(tpt1.symbol.typeParams)
           tpt1 = TypeTree()
             .setOriginal(tpt1)
-            .setType(appliedType(tpt1.tpe, context.undetparams map (_.tpe)))
+            .setType(tpt1.tpe.applyTypeArgs(context.undetparams map (_.tpe)))
         }
         /** If current tree <tree> appears in <val x(: T)? = <tree>>
          *  return `tp with x.type' else return `tp'.
@@ -3452,7 +3452,7 @@ trait Typers { self: Analyzer =>
             val argtypes = args1 map (_.tpe)
             val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isTypeMember) 
                              // @M! added the latter condition
-                             appliedType(tpt1.tpe, argtypes) 
+                             tpt1.tpe.applyTypeArgs(argtypes) 
                           else tpt1.tpe.instantiateTypeParams(tparams, argtypes)
             List.map2(args, tparams) { (arg, tparam) => arg match {
               // note: can't use args1 in selector, because Bind's got replaced 
@@ -3895,7 +3895,7 @@ trait Typers { self: Analyzer =>
     def findManifest(tp: Type, full: Boolean) = atPhase(currentRun.typerPhase) {
       inferImplicit(
         EmptyTree, 
-        appliedType((if (full) FullManifestClass else PartialManifestClass).typeConstructor, List(tp)),
+        (if (full) FullManifestClass else PartialManifestClass).typeConstructor.applyTypeArgs(List(tp)),
         true, false, context)
     }
 
