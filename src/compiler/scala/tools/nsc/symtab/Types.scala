@@ -110,7 +110,7 @@ trait Types {
       }
     }
 
-    private[Types] def record(tv: TypeVar) = {log = (tv, tv.constr.duplicate) :: log}
+    private[Types] def record(tv: TypeVar) = {log = (tv, tv.constr.cloneInternal) :: log}
     private[Types] def clear {log = List()}
 
     // `block` should not affect constraints on typevars
@@ -2492,12 +2492,6 @@ A type's typeSymbol should never be inspected directly.
     var inst: Type = NoType // @M reduce visibility?
     def instValid = (inst ne null) && (inst ne NoType)
 
-    def duplicate = {
-      val tc = new TypeConstraint(lo0, hi0) // @M BUG?? why don't we use lobounds/hibounds here?
-      tc.inst = inst
-      tc
-    }
-
     def cloneInternal = {
       val tc = new TypeConstraint(lobounds, hibounds)
       tc.inst = inst
@@ -4074,7 +4068,7 @@ A type's typeSymbol should never be inspected directly.
         if (tv2 instValid) tp1 <:< constr2.inst
         else (tv2 isRelatable tp1) && { tv2 addLoBound tp1; true }
       case (tv1 @ TypeVar(_, constr1), _) =>
-        if (constr1.instValid) constr1.inst <:< tp2
+        if (tv1 instValid) constr1.inst <:< tp2
         else (tv1 isRelatable tp2) && { tv1 addHiBound tp2; true }
       case (_, _)  if (tp1.isHigherKinded || tp2.isHigherKinded) =>
         (tp1.typeSymbol == NothingClass 
