@@ -139,16 +139,16 @@ self: Analyzer =>
     // for every SearchResult of typedImplicit, we want only the tests that relate to that SearchResult 
     // to have an effect on the constraint of the type vars that are involved
     // (tests on TypeVars mutate the corresponding TypeConstraint to accumulate information)
-    val typeVarsOrigConstr: List[(TypeVar, TypeConstraint)] = typeVarsConstr.toList
-
-    def typeVarsConstr: Iterable[(TypeVar, TypeConstraint)] = 
-      (for(tv@TypeVar(_, constr) <- pt) yield (tv, constr /*unapply to get latest constr*/))
-
-    def typeVarsConstr_= (savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
-      for((tv, constr) <- savedConstr) tv.constr = constr
-      
-    def cloneConstrs(savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
-      for((tv, constr) <- savedConstr) yield (tv, constr.cloneInternal)
+    // val typeVarsOrigConstr: List[(TypeVar, TypeConstraint)] = typeVarsConstr.toList
+    // 
+    // def typeVarsConstr: Iterable[(TypeVar, TypeConstraint)] = 
+    //   (for(tv@TypeVar(_, constr) <- pt) yield (tv, constr /*unapply to get latest constr*/))
+    // 
+    // def typeVarsConstr_= (savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
+    //   for((tv, constr) <- savedConstr) tv.constr = constr
+    //   
+    // def cloneConstrs(savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
+    //   for((tv, constr) <- savedConstr) yield (tv, constr.cloneInternal)
       
     
 
@@ -272,7 +272,9 @@ self: Analyzer =>
            try {
              context.openImplicits = pt :: context.openImplicits
              // println("  "*context.openImplicits.length+"typed implicit "+info+" for "+pt) //@MDEBUG
-             typedImplicit0(info)
+             //undoLog undo {
+               typedImplicit0(info)
+            // }
            } catch {
              case DivergentImplicit => 
                // println("DivergentImplicit for pt:"+ pt +", open implicits:"+context.openImplicits) //@MDEBUG
@@ -306,7 +308,7 @@ self: Analyzer =>
         tp.instantiateTypeParams(undetParams, undetParams map (_ => WildcardType))
 
       // initialise all TypeVar's in pt with a clone of their initial TypeConstraint (saved when SearchImplicit was instatiated) 
-      typeVarsConstr = cloneConstrs(typeVarsConstr)
+      // typeVarsConstr = cloneConstrs(typeVarsConstr)
       
       /** Instantiated `pt' so that undetermined type parameters are replaced by wildcards
        */
@@ -372,13 +374,13 @@ self: Analyzer =>
                 for(tv@TypeVar(_, _) <- result.tree.tpe)
                   assert(false, tv)
                 //  check that all the original typevars have been instantiated
-                for((tv, _) <- typeVarsOrigConstr)
-                  assert(tv.instValid, tv)
+                // for((tv, _) <- typeVarsOrigConstr)
+                //   assert(tv.instValid, tv)
               }
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
             } else {
-              if (traceImplicits) println("incompatible??? typeVarsConstr="+ typeVarsConstr)
+              if (traceImplicits) println("incompatible???")
               SearchFailure
             }
           } else if (settings.XlogImplicits.value) 
