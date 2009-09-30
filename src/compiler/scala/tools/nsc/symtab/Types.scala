@@ -717,10 +717,10 @@ trait Types {
             val sym = entry.sym
             if (sym.getFlag(requiredFlags) == requiredFlags) {
               val excl = sym.getFlag(excluded)
-              if (excl == 0 && 
+              if (excl == 0L && 
                   (// omit PRIVATE LOCALS unless selector class is contained in class owning the def.
                    (bcs eq bcs0) || 
-                   sym.getFlag(PRIVATE | LOCAL) != (PRIVATE | LOCAL) ||
+                   sym.getFlag(PRIVATE | LOCAL) != (PRIVATE | LOCAL).toLong ||
                    (bcs0.head.hasTransOwner(bcs.head)))) {
                 if (name.isTypeName || stableOnly && sym.isStable) {
 //                  if (util.Statistics.enabled) findMemberNanos += System.nanoTime() - startTime
@@ -752,7 +752,7 @@ trait Types {
                     members enter sym
                   }
                 }
-              } else if (excl == DEFERRED) {
+              } else if (excl == DEFERRED.toLong) {
                 continue = true
               }
             }
@@ -1949,7 +1949,7 @@ A type's typeSymbol should never be inspected directly.
     
     /** Add a number of annotations to this type */
     override def withAnnotations(annots: List[AnnotationInfo]): Type =
-      AnnotatedType(annots:::this.annotations, this, selfsym)
+      copy(annots:::this.annotations)
 
     /** Remove any annotations from this type */
     override def withoutAnnotations = underlying.withoutAnnotations
@@ -2086,7 +2086,9 @@ A type's typeSymbol should never be inspected directly.
     if (phase.erasedTypes)
       if (parents.isEmpty) ObjectClass.tpe else parents.head
     else { 
-      val clazz = recycle(owner.newRefinementClass(NoPosition))
+      // having $anonfun as owner causes the pickler to break upon unpickling; see ticket #2323
+      val nonAnonOwner = (owner.ownerChain dropWhile (_.isAnonymousFunction)).headOption getOrElse NoSymbol
+      val clazz = recycle(nonAnonOwner.newRefinementClass(NoPosition))
       val result = refinementOfClass(clazz, parents, decls)
       clazz.setInfo(result)
       result
@@ -2658,7 +2660,8 @@ A type's typeSymbol should never be inspected directly.
   private val emptySymCount = scala.collection.immutable.Map[Symbol, Int]() 
 
   /** Make an existential variable.
-   *  @param suffix  A suffix to be appended to the freshly generated name
+   *  [martin:] this should get moved to Symbols where the other symbols are created. 
+   *  @param name    suffix to be appended to the freshly generated name
    *                 It's ususally "", except for type variables abstracting
    *                 over values, where it is ".type".
    *  @param owner   The owner of the variable

@@ -43,7 +43,7 @@ trait TreeDSL {
       if (f isDefinedAt x) Some(f(x)) else None
     
     // Applies a function to a value and then returns the value.
-    def applyAndReturn[T](f: T => Unit)(x: T): T = { f(x) ; x }
+    def returning[T](f: T => Unit)(x: T): T = { f(x) ; x }
     
     // strip bindings to find what lies beneath
     final def unbind(x: Tree): Tree = x match {
@@ -91,7 +91,14 @@ trait TreeDSL {
         if (target == EmptyTree) other
         else if (other == EmptyTree) target
         else gen.mkAnd(target, other)
-                
+      
+      /** Note - calling ANY_== in the matcher caused primitives to get boxed
+       *  for the comparison, whereas looking up nme.EQ does not.
+       */
+      def MEMBER_== (other: Tree)   = {
+        if (target.tpe == null) ANY_==(other)
+        else fn(target, target.tpe member nme.EQ, other)
+      }
       def ANY_NE  (other: Tree)     = fn(target, nme.ne, toAnyRef(other))
       def ANY_EQ  (other: Tree)     = fn(target, nme.eq, toAnyRef(other))
       def ANY_==  (other: Tree)     = fn(target, Any_==, other)
@@ -121,7 +128,7 @@ trait TreeDSL {
       /** Methods for sequences **/      
       def DROP(count: Int): Tree =
         if (count == 0) target
-        else (target DOT nme.drop)(LIT(count)) DOT nme.toSequence
+        else (target DOT nme.drop)(LIT(count))
       
       /** Casting & type tests -- working our way toward understanding exactly
        *  what differs between the different forms of IS and AS.

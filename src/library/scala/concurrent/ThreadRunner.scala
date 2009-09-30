@@ -1,3 +1,14 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+// $Id$
+
+
 package scala.concurrent
 
 import java.lang.Thread
@@ -6,12 +17,23 @@ import java.lang.Thread
  *  
  *  @author Philipp Haller
  */
-class ThreadRunner[T] extends TaskRunner[T] {
+class ThreadRunner extends FutureTaskRunner {
 
-  type Future[+S] = () => S
+  type Task[T] = () => T
+  type Future[T] = () => T
 
-  def submit(task: () => T): this.Future[T] = {
-    val result = new SyncVar[Either[Exception, T]]
+  implicit def functionAsTask[S](fun: () => S): Task[S] = fun
+  implicit def futureAsFunction[S](x: Future[S]): () => S = x
+
+  def execute[S](task: Task[S]) {
+    val runnable = new Runnable {
+      def run() { tryCatch(task()) }
+    }
+    (new Thread(runnable)).start()
+  }
+
+  def submit[S](task: Task[S]): Future[S] = {
+    val result = new SyncVar[Either[Exception, S]]
     val runnable = new Runnable {
       def run() { result set tryCatch(task()) }
     }

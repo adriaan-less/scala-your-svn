@@ -3,26 +3,39 @@ package scheduler
 
 import java.lang.Thread.State
 import java.util.{Collection, ArrayList}
-import forkjoin._
+import scala.concurrent.forkjoin._
 
 /** The <code>ForkJoinScheduler</code> is backed by a lightweight
  *  fork-join task execution framework.
  *
  * @author Philipp Haller
  */
-class ForkJoinScheduler extends Runnable with IScheduler with TerminationMonitor {
+class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean) extends Runnable with IScheduler with TerminationMonitor {
 
   private var pool = makeNewPool()
   private var terminating = false
   private var snapshoting = false
+
+  // this has to be a java.util.Collection, since this is what
+  // the ForkJoinPool returns.
   private var drainedTasks: Collection[ForkJoinTask[_]] = null
 
-  private val CHECK_FREQ = 10
+  protected val CHECK_FREQ = 10
+
+  def this(d: Boolean) {
+    this(ThreadPoolConfig.corePoolSize, ThreadPoolConfig.maxPoolSize, d)
+  }
+
+  def this() {
+    this(false)
+  }
 
   private def makeNewPool(): DrainableForkJoinPool = {
     val p = new DrainableForkJoinPool()
     // enable locally FIFO scheduling mode
     p.setAsyncMode(true)
+    p.setParallelism(initCoreSize)
+    p.setMaximumPoolSize(maxSize)
     Debug.info(this+": parallelism "+p.getParallelism())
     Debug.info(this+": max pool size "+p.getMaximumPoolSize())
     p
@@ -31,7 +44,15 @@ class ForkJoinScheduler extends Runnable with IScheduler with TerminationMonitor
   /** Starts this scheduler.
    */
   def start() {
-    (new Thread(this)).start()
+    try {
+      val t = new Thread(this)
+      t.setDaemon(daemon)
+      t.setName("ForkJoinScheduler")
+      t.start()
+    } catch {
+      case e: Exception =>
+        Debug.info(this+": could not create scheduler thread: "+e)
+    }
   }
 
   private def allWorkersBlocked: Boolean =
@@ -62,6 +83,9 @@ class ForkJoinScheduler extends Runnable with IScheduler with TerminationMonitor
           }
 
           if (!snapshoting) {
+            gc()
+
+            // check if we need more threads to avoid deadlock
             val poolSize = pool.getPoolSize()
             if (allWorkersBlocked && (poolSize < ThreadPoolConfig.maxPoolSize)) {
               pool.setParallelism(poolSize + 1)
@@ -90,11 +114,13 @@ class ForkJoinScheduler extends Runnable with IScheduler with TerminationMonitor
     }
   }
 
+  // TODO: when do we pass a task that is not a RecursiveAction?
   def execute(task: Runnable) {
     pool.execute(task)
   }
 
   override def executeFromActor(task: Runnable) {
+    // TODO: only pass RecursiveAction (with Runnable), and cast to it
     val recAction = new RecursiveAction {
       def compute() = task.run()
     }
@@ -110,13 +136,6 @@ class ForkJoinScheduler extends Runnable with IScheduler with TerminationMonitor
       def run() { fun }
     })
 
-  override def managedBlock(blocker: scala.concurrent.ManagedBlocker) {
-    ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker {
-      def block = blocker.block()
-      def isReleasable() = blocker.isReleasable
-    }, true)
-  }
-
   /** Shuts down the scheduler.
    */
   def shutdown(): Unit = synchronized {
@@ -125,6 +144,13 @@ class ForkJoinScheduler extends Runnable with IScheduler with TerminationMonitor
 
   def isActive =
     (pool ne null) && !pool.isShutdown()
+
+  override def managedBlock(blocker: scala.concurrent.ManagedBlocker) {
+    ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker {
+      def block = blocker.block()
+      def isReleasable() = blocker.isReleasable
+    }, true)
+  }
 
   /** Suspends the scheduler. All threads that were in use by the
    *  scheduler and its internal thread pool are terminated.

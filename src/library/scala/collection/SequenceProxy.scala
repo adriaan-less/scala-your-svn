@@ -6,18 +6,16 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: SequenceProxy.scala 15458 2008-06-28 20:23:22Z stepancheg $
+// $Id$
 
 
 package scala.collection
-
-import generic._
-
 
 /** This trait implements a proxy for sequence objects. It forwards
  *  all calls to a different sequence object.
  *
  *  @author  Martin Odersky
  *  @version 2.8
+ *  @since   2.8
  */
-trait SequenceProxy[+A] extends Sequence[A] with SequenceProxyTemplate[A, Sequence[A]] 
+trait SequenceProxy[+A] extends Sequence[A] with SequenceProxyLike[A, Sequence[A]] 
