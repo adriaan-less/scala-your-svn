@@ -6,9 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: VectorTemplate.scala 18646 2009-09-04 16:56:11Z odersky $
+// $Id$
+
 
 package scala.collection
+
 import generic._
 import mutable.ArrayBuffer
 
@@ -19,13 +21,14 @@ import mutable.ArrayBuffer
  *  @author Sean McDirmid
  *  @author Martin Odersky
  *  @version 2.8
+ *  @since   2.8
  */
 trait VectorLike[+A, +Repr] extends SequenceLike[A, Repr] { self =>
 
   override protected[this] def thisCollection: Vector[A] = this.asInstanceOf[Vector[A]]
   override protected[this] def toCollection(repr: Repr): Vector[A] = repr.asInstanceOf[Vector[A]]
 
-  // Overridden methods from IterableTemplate
+  // Overridden methods from IterableLike
 
   /** The iterator returned by the iterator method
    */

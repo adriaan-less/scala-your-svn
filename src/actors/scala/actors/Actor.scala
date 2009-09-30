@@ -13,7 +13,7 @@ package scala.actors
 import scala.compat.Platform
 import scala.util.control.ControlException
 import java.util.{Timer, TimerTask}
-import java.util.concurrent.ExecutionException
+import java.util.concurrent.{ExecutionException, Callable}
 
 /**
  * The <code>Actor</code> object provides functions for the definition of
@@ -376,7 +376,7 @@ object Actor {
  *
  * @author Philipp Haller
  */
-@serializable
+@serializable @SerialVersionUID(-781154067877019505L)
 trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
 
   /* The following two fields are only used when the actor
@@ -398,16 +398,22 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    */
   private var onTimeout: Option[TimerTask] = None
 
-  protected[this] override def makeReaction(fun: () => Unit): Runnable = {
+  /* Used for notifying scheduler when blocking inside <code>receive</code>. */
+  private lazy val blocker = new ActorBlocker(0)
+
+  private class RunCallable(fun: () => Unit) extends Callable[Unit] with Runnable {
+    def call() = fun()
+    def run() = fun()
+  }
+
+  private[actors] override def makeReaction(fun: () => Unit): Runnable = {
     if (isSuspended)
-      new Runnable {
-        def run() { fun() }
-      }
+      new RunCallable(fun)
     else
       new ActorTask(this, fun)
   }
 
-  protected[this] override def resumeReceiver(item: (Any, OutputChannel[Any]), onSameThread: Boolean) {
+  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), onSameThread: Boolean) {
     if (!onTimeout.isEmpty) {
       onTimeout.get.cancel()
       onTimeout = None
@@ -454,7 +460,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
           } else {
             waitingFor = f.isDefinedAt
             isSuspended = true
-            scheduler.managedBlock(new ActorBlocker(0))
+            scheduler.managedBlock(blocker)
             done = true
           }
         }
@@ -508,7 +514,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             drainSendBuffer(mailbox)
             // keep going
             () => {}
-          } else if (msec == 0) {
+          } else if (msec == 0L) {
             done = true
             receiveTimeout
           } else {
@@ -598,7 +604,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             drainSendBuffer(mailbox)
             // keep going
             () => {}
-          } else if (msec == 0) {
+          } else if (msec == 0L) {
             done = true
             receiveTimeout
           } else {
@@ -632,7 +638,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   }
 
   // guarded by lock of this
-  protected override def scheduleActor(f: PartialFunction[Any, Unit], msg: Any) =
+  private[actors] override def scheduleActor(f: PartialFunction[Any, Unit], msg: Any) =
     if ((f eq null) && (continuation eq null)) {
       // do nothing (timeout is handled instead)
     }

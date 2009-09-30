@@ -33,8 +33,7 @@ trait Infer {
   private def assertNonCyclic(tvar: TypeVar) =
     assert(tvar.constr.inst != tvar, tvar.origin)
 
-  def isVarArgs(formals: List[Type]) = 
-    !formals.isEmpty && (formals.last.typeSymbol == RepeatedParamClass)
+  def isVarArgs(formals: List[Type]) = !formals.isEmpty && isRepeatedParamType(formals.last)
 
   /** The formal parameter types corresponding to <code>formals</code>.
    *  If <code>formals</code> has a repeated last parameter, a list of
@@ -167,7 +166,7 @@ trait Infer {
           // this can happen if during solving a cyclic type paramater
           // such as T <: T gets completed. See #360
           tvar.constr.inst = ErrorType
-        } else assert(false, tvar.origin)
+        } else assert(false, tvar.origin+" at "+tvar.origin.typeSymbol.owner)
     tvars map instantiate
   }
 
@@ -452,6 +451,19 @@ trait Infer {
       tp.isInstanceOf[MethodType] && // can perform implicit () instantiation
       tp.paramTypes.length == 0 && isCompatible(tp.resultType, pt)
 
+    /** Like weakly compatible but don't apply any implicit conversions yet.
+     *  Used when comparing the result type of a method with its prototype.
+     */
+    def isConservativelyCompatible(tp: Type, pt: Type): Boolean = {
+      val savedImplicitsEnabled = context.implicitsEnabled
+      context.implicitsEnabled = false
+      try {
+        isWeaklyCompatible(tp, pt)
+      } finally {
+        context.implicitsEnabled = savedImplicitsEnabled
+      }
+    }
+
     def isCoercible(tp: Type, pt: Type): Boolean = false
 
     def isCompatible(tps: List[Type], pts: List[Type]): Boolean =
@@ -557,7 +569,7 @@ trait Infer {
         case ex: NoInstance => WildcardType
       }
       val tvars = tparams map freshVar
-      if (isWeaklyCompatible(restpe.instantiateTypeParams(tparams, tvars), pt))
+      if (isConservativelyCompatible(restpe.instantiateTypeParams(tparams, tvars), pt))
         List.map2(tparams, tvars) ((tparam, tvar) =>
           instantiateToBound(tvar, varianceInTypes(formals)(tparam)))
       else 
@@ -575,6 +587,8 @@ trait Infer {
           tparam.tpe  
         } else if (targ.typeSymbol == RepeatedParamClass) {
           targ.baseType(SeqClass)
+        } else if (targ.typeSymbol == JavaRepeatedParamClass) {
+          targ.baseType(ArrayClass)
         } else {
           targ.widen
         }
@@ -610,7 +624,7 @@ trait Infer {
       }
       // check first whether type variables can be fully defined from
       // expected result type.
-      if (!isWeaklyCompatible(restpe.instantiateTypeParams(tparams, tvars), pt)) {
+      if (!isConservativelyCompatible(restpe.instantiateTypeParams(tparams, tvars), pt)) {
 //      just wait and instantiate from the arguments.
 //      that way, we can try to apply an implicit conversion afterwards. 
 //      This case could happen if restpe is not fully defined, so that
@@ -820,9 +834,13 @@ trait Infer {
       case OverloadedType(pre, alts) =>
         alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
       case et: ExistentialType =>
-        et.withTypeVars(isAsSpecific(_, ftpe2)) // !!! why isStrictly?
+        et.withTypeVars(isAsSpecific(_, ftpe2)) 
+      case mt: ImplicitMethodType =>
+        isAsSpecific(ftpe1.resultType, ftpe2)
       case MethodType(params @ (x :: xs), _) =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
+      case PolyType(tparams, mt: ImplicitMethodType) =>
+        isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
       case PolyType(_, MethodType(params @ (x :: xs), _)) =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
       case ErrorType =>
@@ -833,12 +851,17 @@ trait Infer {
             alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
           case et: ExistentialType =>
             et.withTypeVars(isAsSpecific(ftpe1, _))
+          case mt: ImplicitMethodType =>
+            isAsSpecific(ftpe1, mt.resultType)
+          case PolyType(tparams, mt: ImplicitMethodType) =>
+            isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
           case MethodType(_, _) | PolyType(_, MethodType(_, _)) =>
             true
           case _ =>
             isAsSpecificValueType(ftpe1, ftpe2, List(), List())
         }
     }
+
 /*
     def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type): Boolean =
       ftpe1.isError || isAsSpecific(ftpe1, ftpe2) && 
@@ -859,7 +882,7 @@ trait Infer {
     def isInProperSubClassOrObject(sym1: Symbol, sym2: Symbol) = 
       sym2 == NoSymbol || isProperSubClassOrObject(sym1.owner, sym2.owner)
 
-    def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type, sym1: Symbol, sym2: Symbol): Boolean =
+    def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type, sym1: Symbol, sym2: Symbol): Boolean = {
       // ftpe1 / ftpe2 are OverloadedTypes (possibly with one single alternative) if they
       // denote the type of an "apply" member method (see "followApply")
       ftpe1.isError || {
@@ -870,8 +893,11 @@ trait Infer {
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
         val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
                             (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
+        //println("is more specific? "+sym1+sym1.locationString+"/"+sym2+sym2.locationString+":"+
+        //        specificCount+"/"+subClassCount+"/"+)
         specificCount + subClassCount > 0
       }
+    }
 /*
       ftpe1.isError || {
         if (isAsSpecific(ftpe1, ftpe2)) 
@@ -1319,8 +1345,8 @@ trait Infer {
               patternWarning(tp, "abstract type ")
             else if (sym.isAliasType)
               check(tp.normalize, bound)
-            else if (sym == NothingClass || sym == NullClass) 
-              error(pos, "this type cannot be used in a type pattern")
+            else if (sym == NothingClass || sym == NullClass || sym == AnyValClass) 
+              error(pos, "type "+tp+" cannot be used in a type pattern or isInstanceOf test")
             else
               for (arg <- args) {
                 if (sym == ArrayClass) check(arg, bound)

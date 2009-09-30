@@ -92,7 +92,9 @@ trait PatternNodes extends ast.TreeDSL
       lazy val tpe = tpeWRTEquality(_tpe)
 
       // These tests for final classes can inspect the typeSymbol
-      private def is(s: Symbol) = tpe.typeSymbol eq s      
+      private def is(s: Symbol) = tpe.typeSymbol eq s
+      def      isByte = is(ByteClass)
+      def     isShort = is(ShortClass)
       def       isInt = is(IntClass)
       def      isChar = is(CharClass)
       def   isBoolean = is(BooleanClass)
@@ -123,6 +125,7 @@ trait PatternNodes extends ast.TreeDSL
   }
 
   final def getDummies(i: Int): List[Tree] = List.fill(i)(EmptyTree)
+  final def getDummyPatterns(i: Int): List[Pattern] = List.fill(i)(NoPattern)
 
   def makeBind(vs: List[Symbol], pat: Tree): Tree = vs match {
     case Nil      => pat
