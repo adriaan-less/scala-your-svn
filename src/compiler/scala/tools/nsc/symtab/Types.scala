@@ -1937,7 +1937,7 @@ A type's typeSymbol should never be inspected directly.
     /** The variable's skolemizatuon level */
     val level = skolemizationLevel
 
-    override def isHigherKinded = origin.isHigherKinded
+    override def isHigherKinded = false
 
     def setInst(tp: Type) {
 //      assert(!(tp containsTp this), this)
@@ -1948,7 +1948,7 @@ A type's typeSymbol should never be inspected directly.
      *  This is not the case if `tp' contains type skolems whose
      *  skolemization level is higher than the level of this variable.
      */
-    private[Types] def isRelatable(tp: Type): Boolean =
+    def isRelatable(tp: Type): Boolean =
       !tp.exists { t =>
         t.typeSymbol match {
           case ts: TypeSkolem => ts.level > level
