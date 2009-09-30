@@ -102,14 +102,11 @@ self: Analyzer =>
     }
 
     override def equals(other: Any) = other match {
-      case that: ImplicitInfo =>
-        if (this eq NoImplicitInfo) that eq this
-        else 
+      case that: ImplicitInfo => 
           this.name == that.name &&
           this.pre =:= that.pre &&
           this.sym == that.sym
-      case _ => 
-        false
+      case _ => false
     }
 
     override def hashCode = 
@@ -119,7 +116,12 @@ self: Analyzer =>
   }
 
   /** A sentinel indicating no implicit was found */
-  val NoImplicitInfo = new ImplicitInfo(null, NoType, NoSymbol)
+  val NoImplicitInfo = new ImplicitInfo(null, NoType, NoSymbol) {
+    // equals used to be implemented in ImplicitInfo with an `if(this eq NoImplicitInfo)` 
+    // overriding the equals here seems cleaner and benchmarks show no difference in performance 
+    override def equals(other: Any) = other match { case that: AnyRef => that eq this  case _ => false }
+    override def hashCode = 1
+  }
 
   /** A class that sets up an implicit search. For more info, see comments for `inferImplicit`.
    *  @param tree             The tree for which the implicit needs to be inserted.
