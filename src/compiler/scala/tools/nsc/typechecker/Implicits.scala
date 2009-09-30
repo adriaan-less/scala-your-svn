@@ -102,14 +102,11 @@ self: Analyzer =>
     }
 
     override def equals(other: Any) = other match {
-      case that: ImplicitInfo =>
-        if (this eq NoImplicitInfo) that eq this
-        else 
+      case that: ImplicitInfo => 
           this.name == that.name &&
           this.pre =:= that.pre &&
           this.sym == that.sym
-      case _ => 
-        false
+      case _ => false
     }
 
     override def hashCode = 
@@ -119,7 +116,12 @@ self: Analyzer =>
   }
 
   /** A sentinel indicating no implicit was found */
-  val NoImplicitInfo = new ImplicitInfo(null, NoType, NoSymbol)
+  val NoImplicitInfo = new ImplicitInfo(null, NoType, NoSymbol) {
+    // equals used to be implemented in ImplicitInfo with an `if(this eq NoImplicitInfo)` 
+    // overriding the equals here seems cleaner and benchmarks show no difference in performance 
+    override def equals(other: Any) = other match { case that: AnyRef => that eq this  case _ => false }
+    override def hashCode = 1
+  }
 
   /** A class that sets up an implicit search. For more info, see comments for `inferImplicit`.
    *  @param tree             The tree for which the implicit needs to be inserted.
@@ -133,24 +135,6 @@ self: Analyzer =>
 //    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
-    
-    // save original constraints on type variables, so that different iterations of implicit search act 
-    // on different type constraints (clones of the original ones)
-    // for every SearchResult of typedImplicit, we want only the tests that relate to that SearchResult 
-    // to have an effect on the constraint of the type vars that are involved
-    // (tests on TypeVars mutate the corresponding TypeConstraint to accumulate information)
-    // val typeVarsOrigConstr: List[(TypeVar, TypeConstraint)] = typeVarsConstr.toList
-    // 
-    // def typeVarsConstr: Iterable[(TypeVar, TypeConstraint)] = 
-    //   (for(tv@TypeVar(_, constr) <- pt) yield (tv, constr /*unapply to get latest constr*/))
-    // 
-    // def typeVarsConstr_= (savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
-    //   for((tv, constr) <- savedConstr) tv.constr = constr
-    //   
-    // def cloneConstrs(savedConstr: Iterable[(TypeVar, TypeConstraint)]) = 
-    //   for((tv, constr) <- savedConstr) yield (tv, constr.cloneInternal)
-      
-    
 
     /** Is implicit info `info1` better than implicit info `info2`?
      */
@@ -272,9 +256,7 @@ self: Analyzer =>
            try {
              context.openImplicits = pt :: context.openImplicits
              // println("  "*context.openImplicits.length+"typed implicit "+info+" for "+pt) //@MDEBUG
-             //undoLog undo {
-               typedImplicit0(info)
-            // }
+             typedImplicit0(info)
            } catch {
              case DivergentImplicit => 
                // println("DivergentImplicit for pt:"+ pt +", open implicits:"+context.openImplicits) //@MDEBUG
@@ -369,14 +351,6 @@ self: Analyzer =>
               // to methTypeArgs
               val result = new SearchResult(itree2, subst)
               if (traceImplicits) println("RESULT = "+result)
-              if(settings.debug.value) {
-                // check that no spurious typevars remain in the result,
-                for(tv@TypeVar(_, _) <- result.tree.tpe)
-                  assert(false, tv)
-                //  check that all the original typevars have been instantiated
-                // for((tv, _) <- typeVarsOrigConstr)
-                //   assert(tv.instValid, tv)
-              }
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
             } else {
