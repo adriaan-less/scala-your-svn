@@ -121,7 +121,7 @@ public class LinkedTransferQueue<E> extends AbstractQueue<E>
         }
 
         final void clearNext() {
-            nextUpdater.lazySet(this, this);
+            nextUpdater.set(this,this);//TR;lazySet(this, this);
         }
 
     }
@@ -304,12 +304,12 @@ public class LinkedTransferQueue<E> extends AbstractQueue<E>
             else if (s.waiter == null)
                 s.waiter = w;
             else if (mode != TIMEOUT) {
-                LockSupport.park(this);
+                LockSupport.park();//TR(this);
                 s.waiter = null;
                 spins = -1;
             }
             else if (nanos > spinForTimeoutThreshold) {
-                LockSupport.parkNanos(this, nanos);
+                LockSupport.parkNanos(nanos);//(this, nanos);
                 s.waiter = null;
                 spins = -1;
             }

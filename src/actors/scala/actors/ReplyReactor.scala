@@ -24,6 +24,7 @@ trait ReplyReactor extends Reactor {
   /* A list of the current senders. The head of the list is
    * the sender of the message that was received last.
    */
+  @volatile
   private[actors] var senders: List[OutputChannel[Any]] =
     Nil
 
@@ -57,7 +58,7 @@ trait ReplyReactor extends Reactor {
     if (onSameThread)
       continuation(item._1)
     else
-      scheduleActor(null, item._1)
+      scheduleActor(continuation, item._1)
   }
 
 }

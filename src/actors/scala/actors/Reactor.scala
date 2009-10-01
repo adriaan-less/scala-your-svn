@@ -27,6 +27,7 @@ trait Reactor extends OutputChannel[Any] {
   /* If the actor waits in a react, continuation holds the
    * message handler that react was called with.
    */
+  @volatile
   private[actors] var continuation: PartialFunction[Any, Unit] = null
 
   /* Whenever this Actor executes on some thread, waitingFor is
@@ -37,6 +38,8 @@ trait Reactor extends OutputChannel[Any] {
    * thread.
    */
   private[actors] val waitingForNone = (m: Any) => false
+
+  // guarded by lock of this
   private[actors] var waitingFor: Any => Boolean = waitingForNone
 
   /**
@@ -82,12 +85,15 @@ trait Reactor extends OutputChannel[Any] {
   private[actors] def makeReaction(fun: () => Unit): Runnable =
     new ReactorTask(this, fun)
 
+  /* Note that this method is called without holding a lock.
+   * Therefore, to read an up-to-date continuation, it must be @volatile.
+   */
   private[actors] def resumeReceiver(item: (Any, OutputChannel[Any]), onSameThread: Boolean) {
     // assert continuation != null
     if (onSameThread)
       continuation(item._1)
     else
-      scheduleActor(null, item._1)
+      scheduleActor(continuation, item._1)
   }
 
   def !(msg: Any) {
@@ -107,7 +113,7 @@ trait Reactor extends OutputChannel[Any] {
     }
   }
 
-  // assume continuation has been set
+  // assume continuation != null
   private[actors] def searchMailbox(startMbox: MessageQueue,
                                     handlesMessage: Any => Boolean,
                                     resumeOnSameThread: Boolean) {
@@ -145,19 +151,20 @@ trait Reactor extends OutputChannel[Any] {
   }
 
   /* This method is guaranteed to be executed from inside
-     an actors act method.
+   * an actors act method.
+   *
+   * assume handler != null
    */
-  private[actors] def scheduleActor(f: PartialFunction[Any, Unit], msg: Any) = {
-    scheduler executeFromActor (new LightReaction(this,
-                                                  if (f eq null) continuation else f,
-                                                  msg))
+  private[actors] def scheduleActor(handler: PartialFunction[Any, Unit], msg: Any) = {
+    val fun = () => handler(msg)
+    val task = new ReactorTask(this, fun)
+    scheduler executeFromActor task
   }
 
   def start(): Reactor = {
-    scheduler execute {
-      scheduler.newActor(this)
-      (new LightReaction(this)).run()
-    }
+    scheduler.newActor(this)
+    val task = new ReactorTask(this, () => act())
+    scheduler execute task
     this
   }
 
@@ -165,6 +172,7 @@ trait Reactor extends OutputChannel[Any] {
    * built on top of `seq`. Note that the only invocation of
    * `kill` is supposed to be inside `Reaction.run`.
    */
+  @volatile
   private[actors] var kill: () => Unit =
     () => { exit() }
 
