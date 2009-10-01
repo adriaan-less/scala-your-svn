@@ -3883,14 +3883,14 @@ trait Typers { self: Analyzer =>
 
       //@M fix for #2208
       // if there are no type arguments, normalization does not bypass any checks, so perform it to get rid of AnyRef
-      if(result.tpe.typeArgs.isEmpty) {  
-        // minimal check: if(result.tpe.typeSymbolDirect eq AnyRefClass) { 
+      if(result.tpe.typeArgs.isEmpty) {
+        // minimal check: if(result.tpe.typeSymbolDirect eq AnyRefClass) {
         // must expand the fake AnyRef type alias, because bootstrapping (init in Definitions) is not
         // designed to deal with the cycles in the scala package (ScalaObject extends
         // AnyRef, but the AnyRef type alias is entered after the scala package is
         // loaded and completed, so that ScalaObject is unpickled while AnyRef is not
         // yet defined )
-        result setType(restpe) 
+        result setType(restpe)
       } else { // must not normalize: type application must be (bounds-)checked (during RefChecks), see #2208
         // during uncurry (after refchecks), all types are normalized
         result
