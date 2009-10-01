@@ -729,8 +729,13 @@ self: Analyzer =>
       var result = searchImplicit(context.implicitss, true)
       val timer1 = System.nanoTime()
       if (result == SearchFailure) inscopeFail += timer1 - start else inscopeSucceed += timer1 - start
-      if (result == SearchFailure) 
-        result = searchImplicit(implicitsOfExpectedType, false)
+      if (result == SearchFailure) {
+        result = pt match {
+          case _: UniqueType => cacheResult(pt)
+          case WildcardName(name) => cacheResult(name)
+          case _ => uncached += 1; searchImplicit(implicitsOfExpectedType, false)
+         }
+      }
 
       val timer2 = System.nanoTime()
       if (result == SearchFailure) oftypeFail += timer2 - timer1 else oftypeSucceed += timer2 - timer1
