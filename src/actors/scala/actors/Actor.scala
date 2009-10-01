@@ -390,6 +390,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    * the invocation of send to the place where the thread of
    * the receiving actor resumes inside receive/receiveWithin.
    */
+  @volatile
   private var received: Option[Any] = None
 
   /* This option holds a TimerTask when the actor waits in a
@@ -430,7 +431,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       if (onSameThread)
         continuation(item._1)
       else
-        scheduleActor(null, item._1)
+        scheduleActor(continuation, item._1)
     }
   }
 
@@ -843,7 +844,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
         if (isSuspended)
           resumeActor()
         else if (waitingFor ne waitingForNone) {
-          scheduleActor(null, null)
+          scheduleActor(continuation, null)
         }
       }
   }
