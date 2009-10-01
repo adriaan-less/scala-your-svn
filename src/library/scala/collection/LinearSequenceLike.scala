@@ -6,15 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: LinearSequenceTemplate.scala 18646 2009-09-04 16:56:11Z odersky $
+// $Id$
 
 
 package scala.collection
 import generic._
 
 import mutable.ListBuffer
-// import immutable.{List, Nil, ::}
-import generic._
 import scala.util.control.Breaks._
 
 /** Class <code>Linear[A]</code> represents linear sequences of elements.
@@ -26,6 +24,7 @@ import scala.util.control.Breaks._
  *  @author  Martin Odersky
  *  @author  Matthias Zenger
  *  @version 1.0, 16/07/2003
+ *  @since   2.8
  */
 trait LinearSequenceLike[+A, +Repr <: LinearSequenceLike[A, Repr]] extends SequenceLike[A, Repr] { self: Repr =>
 
@@ -312,7 +311,8 @@ trait LinearSequenceLike[+A, +Repr <: LinearSequenceLike[A, Repr]] extends Seque
     (b.result, these)
   }  
 
-  /** Returns true iff the other linear sequence contains the same elements as this one.
+  /** Returns <code>true</code> iff the other linear sequence contains the
+   *  same elements as this one.
    *
    *  @note will not terminate for two infinite-sized linear sequences.
    *  @param that  the other linear sequence
@@ -320,13 +320,14 @@ trait LinearSequenceLike[+A, +Repr <: LinearSequenceLike[A, Repr]] extends Seque
   override def sameElements[B >: A](that: Iterable[B]): Boolean = that match {
     case that1: LinearSequence[_] =>
       var these = this
-      var those = that
+      var those = that1
       while (!these.isEmpty && !those.isEmpty && these.head == those.head) {
         these = these.tail
         those = those.tail
       }
       these.isEmpty && those.isEmpty
-    case _ => super.sameElements(that)
+    case _ =>
+      super.sameElements(that)
   }
   
   // Overridden methods from Sequence

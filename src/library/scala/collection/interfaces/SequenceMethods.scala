@@ -6,14 +6,17 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala.collection.interfaces
+package scala.collection
+package interfaces
 
-import scala.collection._
 import generic._
 import mutable.Buffer
 import scala.reflect.ClassManifest
 
-trait SequenceMethods[+A, +This <: SequenceTemplate[A, This] with Sequence[A]] extends IterableMethods[A, This]
+/**
+ * @since 2.8
+ */
+trait SequenceMethods[+A, +This <: SequenceLike[A, This] with Sequence[A]] extends IterableMethods[A, This]
 {
   // abstract
   def apply(idx: Int): A

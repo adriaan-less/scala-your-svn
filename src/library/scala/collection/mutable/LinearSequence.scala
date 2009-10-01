@@ -6,21 +6,24 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: $
+// $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
-import scala.collection.generic._
+import generic._
 
 /** A subtrait of <code>collection.Sequence</code> which represents sequences
  *  that cannot be mutated.
+ *
+ *  @since 2.8
  */
 trait LinearSequence[A] extends Sequence[A] 
-                           with collection.LinearSequence[A] 
-                           with TraversableClass[A, LinearSequence]
-                           with LinearSequenceTemplate[A, LinearSequence[A]] {
-  override def companion: Companion[LinearSequence] = LinearSequence
+                           with scala.collection.LinearSequence[A] 
+                           with GenericTraversableTemplate[A, LinearSequence]
+                           with LinearSequenceLike[A, LinearSequence[A]] {
+  override def companion: GenericCompanion[LinearSequence] = LinearSequence
 }
 
 object LinearSequence extends SequenceFactory[LinearSequence] {

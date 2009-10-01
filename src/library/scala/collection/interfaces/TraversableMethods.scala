@@ -6,14 +6,17 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala.collection.interfaces
+package scala.collection
+package interfaces
 
-import scala.collection._
 import generic._
 import mutable.Buffer
 import scala.reflect.ClassManifest
 
-trait TraversableMethods[+A, +This <: TraversableTemplate[A, This] with Traversable[A]]
+/**
+ * @since 2.8
+ */
+trait TraversableMethods[+A, +This <: TraversableLike[A, This] with Traversable[A]]
 {
   // abstract
   def foreach[U](f: A => U): Unit

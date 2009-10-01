@@ -6,7 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: $
+// $Id$
 
 package scala.actors
 package scheduler
@@ -54,15 +54,6 @@ abstract class TerminationService(terminate: Boolean)
         // allow thread to exit
     }
   }
-
-  /** Submits a closure for execution.
-   *
-   *  @param  fun  the closure to be executed
-   */
-  def execute(fun: => Unit): Unit =
-    execute(new Runnable {
-      def run() { fun }
-    })
 
   /** Shuts down the scheduler.
    */
