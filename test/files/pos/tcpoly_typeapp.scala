@@ -1,4 +1,6 @@
-abstract class x {
+abstract class Test {
  type t[m[x] <: Bound[x], Bound[x]]
- val x: t[scala.collection.mutable.MutableList, Iterable]
+ class Super[X]
+ class Sub[X] extends Super[X]
+ val x: t[Sub, Super]
 }

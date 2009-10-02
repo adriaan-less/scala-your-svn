@@ -259,6 +259,7 @@ trait Namers { self: Analyzer =>
     }
 
     def newTypeSkolems(tparams: List[Symbol]): List[Symbol] = {
+      println("NTS: "+tparams)
       val tskolems = tparams map (_.newTypeSkolem)
       val ltp = new LazyType {
         override def complete(sym: Symbol) {
@@ -302,12 +303,13 @@ trait Namers { self: Analyzer =>
           //@M e.g., in [A[x <: B], B], A and B are entered first as both are in scope in the definition of x 
           //@M x is only in scope in `A[x <: B]'
           // if(!sym.isAbstractType) //@M TODO: change to isTypeMember ?
-            newNamer(context.makeNewScope(tree, sym)(FinishWithScopeKind)).enterSyms(tparams) 
+          newNamer(context.makeNewScope(tree, sym)(FinishWithScopeKind)).enterSyms(tparams) 
           // else
           //   log("delaying completion of polytype: "+ sym +" params: "+ tparams)
+          // problem: higher-order type params don't pick up the skolemized version
+          if (sym.isTerm) skolemize(tparams)
 
           ltype = new PolyTypeCompleter(tparams, ltype, tree, sym, context) //@M
-          if (sym.isTerm) skolemize(tparams)
         }
         def copyIsSynthetic() = sym.owner.info.member(nme.copy).hasFlag(SYNTHETIC)
         if (sym.name == nme.copy && sym.hasFlag(SYNTHETIC) ||
@@ -1298,7 +1300,7 @@ trait Namers { self: Analyzer =>
 
   /** A class representing a lazy type with known type parameters.
    */
-  class PolyTypeCompleter(tparams: List[Tree], restp: TypeCompleter, owner: Tree, ownerSym: Symbol, ctx: Context) extends TypeCompleter { 
+  class PolyTypeCompleter(tparams: List[TypeDef], restp: TypeCompleter, owner: Tree, ownerSym: Symbol, ctx: Context) extends TypeCompleter { 
     override val typeParams: List[Symbol]= tparams map (_.symbol) //@M
     override val tree = restp.tree
     override def complete(sym: Symbol) {
@@ -1306,6 +1308,7 @@ trait Namers { self: Analyzer =>
       //   log("completing polytype: "+ ownerSym +" params: "+ tparams)
       //   newNamer(ctx.makeNewScope(owner, ownerSym)(PolyTypeCompleterScopeKind)).enterSyms(tparams) //@M
       // }
+      if(ownerSym.isTerm) newTyper(ctx).reenterTypeParams(tparams) // otherwise 
       restp.complete(sym)
     }
   }
