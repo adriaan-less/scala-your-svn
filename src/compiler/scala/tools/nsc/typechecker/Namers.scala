@@ -301,10 +301,10 @@ trait Namers { self: Analyzer =>
           //@M! TypeDef's type params are handled differently
           //@M e.g., in [A[x <: B], B], A and B are entered first as both are in scope in the definition of x 
           //@M x is only in scope in `A[x <: B]'
-          if(!sym.isAbstractType) //@M TODO: change to isTypeMember ?
+          // if(!sym.isAbstractType) //@M TODO: change to isTypeMember ?
             newNamer(context.makeNewScope(tree, sym)(FinishWithScopeKind)).enterSyms(tparams) 
-          else
-            log("delaying completion of polytype: "+ sym +" params: "+ tparams)
+          // else
+          //   log("delaying completion of polytype: "+ sym +" params: "+ tparams)
 
           ltype = new PolyTypeCompleter(tparams, ltype, tree, sym, context) //@M
           if (sym.isTerm) skolemize(tparams)
@@ -381,7 +381,6 @@ trait Namers { self: Analyzer =>
                  else mods.flags & ~PRESUPER | STABLE)
               if (nme.isSetterName(name))
                 context.error(tree.pos, "Names of vals or vars may not end in `_='")
-              // .isInstanceOf[..]: probably for (old) IDE hook. is this obsolete?
               val getter = enterAliasMethod(tree, name, accflags, mods)
               setInfo(getter)(namerOf(getter).getterTypeCompleter(vd))
               if ((mods.flags & MUTABLE) != 0L) {
@@ -745,6 +744,7 @@ trait Namers { self: Analyzer =>
       val meth = context.owner 
 
       // enters the skolemized version into scope, returns the deSkolemized symbols
+      // skolemization is performed in enterSym/finishWith
       val tparamSyms = typer.reenterTypeParams(tparams)
       // since the skolemized tparams are in scope, the TypeRefs in vparamSymss refer to skolemized tparams
       var vparamSymss = enterValueParams(meth, vparamss)
@@ -1302,10 +1302,10 @@ trait Namers { self: Analyzer =>
     override val typeParams: List[Symbol]= tparams map (_.symbol) //@M
     override val tree = restp.tree
     override def complete(sym: Symbol) {
-      if(ownerSym.isAbstractType) {//@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
-        log("completing polytype: "+ ownerSym +" params: "+ tparams)
-        newNamer(ctx.makeNewScope(owner, ownerSym)(PolyTypeCompleterScopeKind)).enterSyms(tparams) //@M
-      }
+      // if(ownerSym.isAbstractType) {//@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
+      //   log("completing polytype: "+ ownerSym +" params: "+ tparams)
+      //   newNamer(ctx.makeNewScope(owner, ownerSym)(PolyTypeCompleterScopeKind)).enterSyms(tparams) //@M
+      // }
       restp.complete(sym)
     }
   }

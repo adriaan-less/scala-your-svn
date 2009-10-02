@@ -1517,7 +1517,7 @@ A type's typeSymbol should never be inspected directly.
         (phase.erasedTypes || !sym.hasFlag(JAVA))  
 
     // (!result.isEmpty) IFF isHigherKinded
-    override def typeParams: List[Symbol] = if (!isHigherKinded) typeParamsDirect else List()
+    override def typeParams: List[Symbol] = if (isHigherKinded) typeParamsDirect else List()
 
     override def instantiateTypeParams(formals: List[Symbol], actuals: List[Type]): Type = 
       if (isHigherKinded) {
