@@ -6,13 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: IterableLike.scala 18602 2009-08-29 00:54:16Z extempore $
+// $Id$
 
 package scala.collection
 import generic._
 import annotation.unchecked.uncheckedVariance
-
-// import immutable.Stream // !!!
 
 /** <p>
  *    A template trait for iterable collections.
@@ -41,6 +39,7 @@ import annotation.unchecked.uncheckedVariance
  *
  *  @author Martin Odersky
  *  @version 2.8
+ *  @since   2.8
  */
 trait IterableLike[+A, +Repr] extends Equals with TraversableLike[A, Repr] { 
 self =>
@@ -311,31 +310,6 @@ self =>
       b += ((x, i))
       i +=1 
     }
-    b.result
-  }
-  
-  /** Sort the iterable according to the comparison function
-   *  <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>,
-   *  which should be true iff <code>e1</code> is smaller than
-   *  <code>e2</code>.
-   *  The sort is stable. That is elements that are equal wrt `lt` appear in the
-   *  same order in the sorted sequence as in the original.
-   *
-   *  @param lt the comparison function
-   *  @return   an iterable sorted according to the comparison function
-   *            <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>.
-   *  @ex <pre>
-   *    List("Steve", "Tom", "John", "Bob")
-   *      .sortWith((e1, e2) => (e1 compareTo e2) &lt; 0) =
-   *    List("Bob", "John", "Steve", "Tom")</pre>
-   */
-  def sortWith(lt: (A, A) => Boolean)(implicit m: ClassManifest[A @uncheckedVariance]): Repr = {
-    // !!! can we supply a default argument to m: ClassManifest ?
-    val arr = toArray
-    java.util.Arrays.sort(arr, Ordering fromLessThan lt)
-    
-    val b = newBuilder
-    for (x <- arr) b += x
     b.result
   }
 

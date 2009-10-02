@@ -1,3 +1,14 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+// $Id$
+
+
 package scala.concurrent
 
 import java.util.concurrent.{ExecutorService, Executor}
@@ -8,8 +19,8 @@ import java.util.concurrent.{ExecutorService, Executor}
  */
 object JavaConversions {
 
-  implicit def asTaskRunner(exec: ExecutorService): TaskRunner[Unit] =
-    new ThreadPoolRunner[Unit] {
+  implicit def asTaskRunner(exec: ExecutorService): FutureTaskRunner =
+    new ThreadPoolRunner {
       override protected def executor =
         exec
 
@@ -17,17 +28,16 @@ object JavaConversions {
         exec.shutdown()
     }
 
-  implicit def asTaskRunner(exec: Executor): TaskRunner[Unit] =
-    new TaskRunner[Unit] {
-      type Future[+R] = () => R
+  implicit def asTaskRunner(exec: Executor): TaskRunner =
+    new TaskRunner {
+      type Task[T] = Runnable
 
-      def submit(task: () => Unit): this.Future[Unit] = {
-        val result = new SyncVar[Either[Throwable, Unit]]
-        val runnable = new Runnable {
-          def run() { result set tryCatch(task()) }
-        }
-        exec.execute(runnable)
-        () => ops getOrThrow result.get
+      implicit def functionAsTask[T](fun: () => T): Task[T] = new Runnable {
+        def run() { fun() }
+      }
+
+      def execute[S](task: Task[S]) {
+        exec.execute(task)
       }
 
       def managedBlock(blocker: ManagedBlocker) {

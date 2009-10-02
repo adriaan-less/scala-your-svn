@@ -6,15 +6,94 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: SequenceTemplate.scala 18646 2009-09-04 16:56:11Z odersky $
+// $Id$
 
 
 package scala.collection
 import generic._
-import mutable.{ListBuffer, HashMap}
+import mutable.{ListBuffer, HashMap, GenericArray}
 
 // import immutable.{List, Nil, ::}
 import generic._
+
+/** Contains a KMP implementation, based on the undoubtedly reliable wikipedia entry.
+ *
+ *  @author paulp
+ *  @since  2.8
+ */
+object SequenceLike {
+
+  private def KMP[B](S: Seq[B], W: Seq[B]): Option[Int] = {
+    // trivial cases
+    if (W.isEmpty) return Some(0)
+    else if (W drop 1 isEmpty) return (S indexOf W(0)) match {
+      case -1 => None
+      case x  => Some(x)
+    }
+    
+    val T: Array[Int] = {
+      val arr = new Array[Int](W.length)
+      var pos = 2
+      var cnd = 0
+      arr(0) = -1
+      arr(1) = 0
+      while (pos < W.length) {
+        if (W(pos - 1) == W(cnd)) {
+          arr(pos) = cnd + 1
+          pos += 1
+          cnd += 1
+        }
+        else if (cnd > 0) {
+          cnd = arr(cnd)
+        }
+        else {
+          arr(pos) = 0
+          pos += 1
+        }
+      }
+      arr
+    }
+    
+    var m, i = 0
+    def mi = m + i
+    
+    while (mi < S.length) {
+      if (W(i) == S(mi)) {
+        i += 1
+        if (i == W.length)
+          return Some(m)
+      }
+      else {
+        m = mi - T(i)
+        if (i > 0)
+          i = T(i)
+      }
+    }
+    None
+  }
+
+  def indexOf[B](
+    source: Seq[B], sourceOffset: Int, sourceCount: Int,
+    target: Seq[B], targetOffset: Int, targetCount: Int,
+    fromIndex: Int): Int =
+      KMP(source.slice(sourceOffset, sourceCount) drop fromIndex, target.slice(targetOffset, targetCount)) match {
+        case None    => -1
+        case Some(x) => x + fromIndex
+      }
+
+  def lastIndexOf[B](
+    source: Seq[B], sourceOffset: Int, sourceCount: Int,
+    target: Seq[B], targetOffset: Int, targetCount: Int,
+    fromIndex: Int): Int = {
+      val src = (source.slice(sourceOffset, sourceCount) take fromIndex).reverse
+      val tgt = target.slice(targetOffset, targetCount).reverse
+
+      KMP(src, tgt) match {
+        case None    => -1
+        case Some(x) => (src.length - tgt.length - x) + sourceOffset
+      }
+    }
+}
 
 /** Class <code>Sequence[A]</code> represents sequences of elements
  *  of type <code>A</code>.
@@ -27,6 +106,7 @@ import generic._
  *  @author  Martin Odersky
  *  @author  Matthias Zenger
  *  @version 1.0, 16/07/2003
+ *  @since   2.8
  */
 trait SequenceLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
 
@@ -262,7 +342,7 @@ trait SequenceLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   
   def indexOfSeq[B >: A](that: Sequence[B], fromIndex: Int): Int = 
     if (this.hasDefiniteSize && that.hasDefiniteSize)
-      KMP.indexOf(thisCollection, 0, length, that, 0, that.length, fromIndex)
+      SequenceLike.indexOf(thisCollection, 0, length, that, 0, that.length, fromIndex)
     else {
       var i = fromIndex
       var s: Sequence[A] = thisCollection drop i
@@ -285,7 +365,7 @@ trait SequenceLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   // since there's no way to find the last index in an infinite sequence,
   // we just document it may not terminate and assume it will.
   def lastIndexOfSeq[B >: A](that: Sequence[B], fromIndex: Int): Int = 
-    KMP.lastIndexOf(thisCollection, 0, length, that, 0, that.length, fromIndex)
+    SequenceLike.lastIndexOf(thisCollection, 0, length, that, 0, that.length, fromIndex)
 
   /** Tests if the given value <code>elem</code> is a member of this 
    *  sequence.
@@ -370,11 +450,7 @@ trait SequenceLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   }
 
   private def occCounts[B](seq: Sequence[B]): mutable.Map[B, Int] = {
-    val occ = 
-      if (seq.isEmpty || seq.head.isInstanceOf[Unhashable]) 
-        new mutable.ListMap[B, Int] { override def default(k: B) = 0 }
-      else         
-        new mutable.HashMap[B, Int] { override def default(k: B) = 0 }
+    val occ = new mutable.HashMap[B, Int] { override def default(k: B) = 0 }
     for (y <- seq) occ(y) += 1
     occ
   }
@@ -422,6 +498,35 @@ trait SequenceLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     b.result
   }
 
+  /** Sort the iterable according to the comparison function
+   *  <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>,
+   *  which should be true iff <code>e1</code> is smaller than
+   *  <code>e2</code>.
+   *  The sort is stable. That is elements that are equal wrt `lt` appear in the
+   *  same order in the sorted sequence as in the original.
+   *  
+   *  @param lt the comparison function
+   *  @return   an iterable sorted according to the comparison function
+   *            <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>.
+   *  @ex <pre>
+   *    List("Steve", "Tom", "John", "Bob")
+   *      .sortWith((e1, e2) => (e1 compareTo e2) &lt; 0) =
+   *    List("Bob", "John", "Steve", "Tom")</pre>
+   */
+  def sortWith(lt: (A, A) => Boolean): Repr = {
+    val arr = new GenericArray[A](this.length)
+    var i = 0
+    for (x <- this) {
+      arr(i) = x
+      i += 1
+    }
+    java.util.Arrays.sort(
+      arr.array, (Ordering fromLessThan lt).asInstanceOf[Ordering[Object]])
+    val b = newBuilder
+    for (x <- arr) b += x
+    b.result
+  }
+
   /**
    *  Overridden for efficiency.
    *
@@ -445,7 +550,7 @@ trait SequenceLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   override def hashCode() = (Sequence.hashSeed /: this)(_ * 41 + _.hashCode)
 
   override def equals(that: Any): Boolean = that match {
-    case that: Sequence[_]  => /*(that canEqual this)!!! &&*/ (this sameElements that)
+    case that: Sequence[_]  => (that canEqual this) && (this sameElements that)
     case _                  => false
   }
 
