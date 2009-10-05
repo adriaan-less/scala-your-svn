@@ -27,7 +27,7 @@ trait Namers { self: Analyzer =>
   class DeSkolemizeMap(tparams: List[Symbol]) extends TypeMap {
     def apply(tp: Type): Type = tp match {
       case TypeRef(pre, sym, args) 
-      if (sym.isTypeSkolem && (tparams contains sym.deSkolemize)) =>
+      if (sym.isTypeSkolem && {val res = (tparams contains undoRenaming(sym.deSkolemize)); println("DSM: "+(tparams, (sym.deSkolemize), undoRenaming(sym.deSkolemize), res)); (new RuntimeException).printStackTrace(); res }) =>
         println("DESKOLEMIZING "+sym+" in "+sym.owner)
         val res = mapOver(rawTypeRef(NoPrefix, sym.deSkolemize, args))
         println("DESKOLEMIZED "+sym+" to "+ res)

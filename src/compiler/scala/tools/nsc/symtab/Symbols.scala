@@ -57,10 +57,10 @@ trait Symbols {
 
     val id = { ids += 1; ids } // identity displayed when -uniqid
     
-    if(this.isInstanceOf[TypeSymbol]){
-      println("new type symbol: "+ (id, initName, initOwner))
-      (new RuntimeException).printStackTrace()
-    }
+    // if(this.isInstanceOf[TypeSymbol]){
+    //   println("new type symbol: "+ (id, initName, initOwner))
+    //   (new RuntimeException).printStackTrace()
+    // }
       
 //    assert(id != 7498, initName+"/"+initOwner)
 

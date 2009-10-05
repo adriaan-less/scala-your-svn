@@ -2578,8 +2578,20 @@ A type's typeSymbol should never be inspected directly.
       else newScope(elems1)
     }
 
+// specific to     def mapOver(origSyms: List[Symbol]): List[Symbol] 
+// to allow derived functions to undo the cloning of the bound symbols (see e.g. DeskolemizeMap)
+    private var fixupSyms: List[Symbol => Option[Symbol]] = List({sym => None})
+    def undoRenaming(sym: Symbol): Symbol = {
+      def undoRenamingRec(sym: Symbol, funs: List[Symbol => Option[Symbol]]): Symbol = 
+        if(funs.isEmpty) sym
+        else funs.head(sym) getOrElse undoRenamingRec(sym, funs.tail)
+      undoRenamingRec(sym, fixupSyms)
+    }
     /** Map this function over given list of symbols */
     def mapOver(origSyms: List[Symbol]): List[Symbol] = { 
+      def project(f: Symbol, from: List[Symbol], to: List[Symbol]): Symbol = if(from.isEmpty) f else if(from.head eq f) to.head else project(f, from.tail, to.tail)
+      def projectOpt(f: Symbol, from: List[Symbol], to: List[Symbol]): Option[Symbol] = if(from.isEmpty) None else if(from.head eq f) Some(to.head) else projectOpt(f, from.tail, to.tail)
+
       val change = origSyms exists { sym =>
         val v = variance
         if (sym.isAliasType) variance = 0
@@ -2599,6 +2611,8 @@ A type's typeSymbol should never be inspected directly.
         // now, since the info of type skolems is computed lazily based on the info of the `deSkolemize` type symbol,
         // `sk.info` will refer to `sk`, whose info did not get transformed by this map
         
+        // I think this is correct, but this breaks e.g. DeskolemizeMap, since it has a list of symbols it is looking for, 
+        // and we replace these symbols by other ones in this `mapOver` method
         val affectedSkolems = 
           (for(sym <- clonedSyms;
                part <- sym.info;
@@ -2609,7 +2623,6 @@ A type's typeSymbol should never be inspected directly.
         val (origSymsSubst, clonedSymsSubst) =
           if(affectedSkolems.isEmpty) (origSyms, clonedSyms) else {
             val skolemizedTparams = affectedSkolems map (_.deSkolemize)
-            def project(f: Symbol, from: List[Symbol], to: List[Symbol]): Symbol = if(from.head eq f) to.head else project(f, from.tail, to.tail)
             val clonedSkolemizedTparams = skolemizedTparams map {from => project(from, origSyms, clonedSyms)}
             val clonedSkolems = clonedSkolemizedTparams map (_.newTypeSkolem)
 
@@ -2628,7 +2641,13 @@ A type's typeSymbol should never be inspected directly.
           }
         
         val clonedInfos = clonedSyms map (_.info.substSym(origSymsSubst, clonedSymsSubst))
+
+        println("fixup: "+ (clonedSyms, origSyms))
+        fixupSyms = {(from: Symbol) => projectOpt(from, clonedSyms, origSyms)} :: fixupSyms 
         val transformedInfos = clonedInfos mapConserve (this)
+        fixupSyms = fixupSyms.tail
+        println("fixup removed: "+ (clonedSyms, origSyms))
+
         List.map2(clonedSyms, transformedInfos) { 
           ((newSym, newInfo) => newSym.setInfo(newInfo)) 
         }
