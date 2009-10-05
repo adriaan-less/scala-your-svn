@@ -2590,11 +2590,51 @@ A type's typeSymbol should never be inspected directly.
       if (!change) origSyms // fast path in case nothing changes due to map
       else { // map is not the identity --> do cloning properly
         val clonedSyms = origSyms map (_.cloneSymbol)
-        val clonedInfos = clonedSyms map (_.info.substSym(origSyms, clonedSyms))
+
+        // while working on #2308, discovered another subtle bug in this method:
+        // we also need to clone&update any TypeSkolem associated to a TypeSymbol in orginSyms
+        // suppose we have a type symbol `ts` in `from` and some type skolem `sk` for which `sk.deSkolemize eq ts`
+        // mapping over a list of symbols using this method will clone `ts` to `tsCloned`,
+        // however, without SubstSymsAndSkolemsMap, `sk` will still `deSkolemize` to `ts` instead of `tsCloned`
+        // now, since the info of type skolems is computed lazily based on the info of the `deSkolemize` type symbol,
+        // `sk.info` will refer to `sk`, whose info did not get transformed by this map
+        
+        val affectedSkolems = 
+          (for(sym <- clonedSyms;
+               part <- sym.info;
+               if part.typeSymbolDirect.isTypeSkolem && 
+                  (origSyms contains part.typeSymbolDirect.deSkolemize)) 
+                    yield part.typeSymbolDirect).toList
+      
+        val (origSymsSubst, clonedSymsSubst) =
+          if(affectedSkolems.isEmpty) (origSyms, clonedSyms) else {
+            val skolemizedTparams = affectedSkolems map (_.deSkolemize)
+            def project(f: Symbol, from: List[Symbol], to: List[Symbol]): Symbol = if(from.head eq f) to.head else project(f, from.tail, to.tail)
+            val clonedSkolemizedTparams = skolemizedTparams map {from => project(from, origSyms, clonedSyms)}
+            val clonedSkolems = clonedSkolemizedTparams map (_.newTypeSkolem)
+
+            val ltp = new LazyType {
+              override def complete(sym: Symbol) {
+                println("completing cloned skolem: "+sym)
+                // sym.deSkolemize is the corresponding symbol from clonedSyms, whose info will be the transformed info (set below)
+                // in that info, the symbols for the type params are chosen from clonedSyms, of which clonedSkolemizedTparams is the subset that has a corresponding typeskolem
+                // thus, this skolemizes the transformed info to used the cloned skolems
+                sym setInfo sym.deSkolemize.info.substSym(clonedSkolemizedTparams, clonedSkolems) //@M the info of a skolem is the skolemized info of the actual type parameter of the skolem
+              }
+            }
+        
+            clonedSkolems foreach (_.setInfo(ltp))
+            (origSyms ::: affectedSkolems, clonedSyms ::: clonedSkolems)
+          }
+        
+        val clonedInfos = clonedSyms map (_.info.substSym(origSymsSubst, clonedSymsSubst))
         val transformedInfos = clonedInfos mapConserve (this)
         List.map2(clonedSyms, transformedInfos) { 
           ((newSym, newInfo) => newSym.setInfo(newInfo)) 
         }
+
+        println("TypeMap::mapOver syms -- subst "+ origSymsSubst +" to "+ clonedSymsSubst)
+
         clonedSyms
       }
     }

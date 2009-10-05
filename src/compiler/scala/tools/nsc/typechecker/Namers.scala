@@ -28,8 +28,10 @@ trait Namers { self: Analyzer =>
     def apply(tp: Type): Type = tp match {
       case TypeRef(pre, sym, args) 
       if (sym.isTypeSkolem && (tparams contains sym.deSkolemize)) =>
-//        println("DESKOLEMIZING "+sym+" in "+sym.owner)
-        mapOver(rawTypeRef(NoPrefix, sym.deSkolemize, args))
+        println("DESKOLEMIZING "+sym+" in "+sym.owner)
+        val res = mapOver(rawTypeRef(NoPrefix, sym.deSkolemize, args))
+        println("DESKOLEMIZED "+sym+" to "+ res)
+        res
 /*
       case PolyType(tparams1, restpe) =>
         new DeSkolemizeMap(tparams1 ::: tparams).mapOver(tp)
@@ -38,6 +40,7 @@ trait Namers { self: Analyzer =>
         if (parents1 eq parents) tp else ClassInfoType(parents1, decls, clazz)
 */
       case _ => 
+        println("DeSkolemize mapping over "+tp)
         mapOver(tp)
     }
   }
@@ -263,6 +266,7 @@ trait Namers { self: Analyzer =>
       val tskolems = tparams map (_.newTypeSkolem)
       val ltp = new LazyType {
         override def complete(sym: Symbol) {
+          println("completing skolemized: "+sym)
           sym setInfo sym.deSkolemize.info.substSym(tparams, tskolems) //@M the info of a skolem is the skolemized info of the actual type parameter of the skolem
         }
       }
@@ -306,7 +310,10 @@ trait Namers { self: Analyzer =>
           newNamer(context.makeNewScope(tree, sym)(FinishWithScopeKind)).enterSyms(tparams) 
           // else
           //   log("delaying completion of polytype: "+ sym +" params: "+ tparams)
-          // problem: higher-order type params don't pick up the skolemized version
+
+          // do tparams need to be skolemized?
+          // this is the case if they are defined directly in the tpars section of a method 
+          // additionally, must replace tparams by their skolems in the info of the higher-order type parameters of tparams
           if (sym.isTerm) skolemize(tparams)
 
           ltype = new PolyTypeCompleter(tparams, ltype, tree, sym, context) //@M
@@ -1220,7 +1227,9 @@ trait Namers { self: Analyzer =>
             // effects like this.
             //tparams.exists(!_.typeParams.isEmpty)
             ) =>
-          new DeSkolemizeMap(tparams) mapOver result
+          val res = new DeSkolemizeMap(tparams) mapOver result
+          println("deskolemized "+ result + " to "+ res)
+          res
         case _ => 
 //          println("not skolemizing "+result+" in "+context.owner)
 //          new DeSkolemizeMap(List()) mapOver result

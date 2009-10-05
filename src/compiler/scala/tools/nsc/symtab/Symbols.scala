@@ -57,6 +57,11 @@ trait Symbols {
 
     val id = { ids += 1; ids } // identity displayed when -uniqid
     
+    if(this.isInstanceOf[TypeSymbol]){
+      println("new type symbol: "+ (id, initName, initOwner))
+      (new RuntimeException).printStackTrace()
+    }
+      
 //    assert(id != 7498, initName+"/"+initOwner)
 
     var validTo: Period = NoPeriod
@@ -1734,7 +1739,7 @@ trait Symbols {
       new TypeSkolem(owner, pos, name, origin)
 
     override def nameString: String = 
-      if (settings.debug.value) (super.nameString + "&" + level)
+      if (settings.debug.value) (super.nameString +"#"+ deSkolemize.id +"&"+ level)
       else super.nameString
   }
 
