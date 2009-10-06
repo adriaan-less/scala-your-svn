@@ -28,7 +28,7 @@ final class ListBuffer[A]
          with GenericTraversableTemplate[A, ListBuffer]
          with BufferLike[A, ListBuffer[A]]
          with Builder[A, List[A]] 
-         with SequenceForwarder[A] 
+         with SeqForwarder[A] 
 { 
   override def companion: GenericCompanion[ListBuffer] = ListBuffer
 
@@ -39,7 +39,7 @@ final class ListBuffer[A]
   private var exported: Boolean = false
   private var len = 0
 
-  protected def underlying: immutable.Sequence[A] = start
+  protected def underlying: immutable.Seq[A] = start
  
   /** The current length of the buffer
    */
@@ -62,7 +62,6 @@ final class ListBuffer[A]
         val newElem = new :: (x, start.tail);
         if (last0 eq start) { 
           last0 = newElem
-          len += 1
         }	
         start = newElem
       } else {
@@ -75,7 +74,6 @@ final class ListBuffer[A]
         val newElem = new :: (x, cursor.tail.tail)
         if (last0 eq cursor.tail) {
           last0 = newElem
-          len += 1
         }	
         cursor.asInstanceOf[::[A]].tl = newElem
       }
@@ -330,7 +328,7 @@ final class ListBuffer[A]
  *  @author  Martin Odersky
  *  @version 2.8
  */
-object ListBuffer extends SequenceFactory[ListBuffer] {
+object ListBuffer extends SeqFactory[ListBuffer] {
   implicit def builderFactory[A]: BuilderFactory[A, ListBuffer[A], Coll] =
     new VirtualBuilderFactory[A]
   def newBuilder[A]: Builder[A, ListBuffer[A]] =

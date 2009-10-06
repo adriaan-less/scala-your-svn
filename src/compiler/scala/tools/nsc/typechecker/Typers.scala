@@ -1425,7 +1425,7 @@ trait Typers { self: Analyzer =>
      *  into the symbol's ``annotations'' in the type completer / namer)
      */
     def removeAnnotations(mods: Modifiers): Modifiers =
-      Modifiers(mods.flags, mods.privateWithin, Nil)
+      Modifiers(mods.flags, mods.privateWithin, Nil, mods.positions)
 
     /**
      *  @param vdef ...
@@ -3589,7 +3589,7 @@ trait Typers { self: Analyzer =>
             def subArrayType(pt: Type) =
               if (isValueClass(pt.typeSymbol) || !isFullyDefined(pt)) arrayType(pt)
               else {
-                val tparam = makeFreshExistential("", context.owner, TypeBounds(NothingClass.tpe, pt))
+                val tparam = context.owner freshExistential "" setInfo TypeBounds(NothingClass.tpe, pt)
                 ExistentialType(List(tparam), arrayType(tparam.tpe))
               }
             val (expr1, baseClass) = 
@@ -3875,11 +3875,26 @@ trait Typers { self: Analyzer =>
     /** Types a type constructor tree used in a new or supertype */
     def typedTypeConstructor(tree: Tree, mode: Int): Tree = {
       val result = typed(tree, typeMode(mode) | FUNmode, WildcardType)
-      val restpe = result.tpe.normalize
+
+      val restpe = result.tpe.normalize // normalize to get rid of type aliases for the following check (#1241)
       if (!phase.erasedTypes && restpe.isInstanceOf[TypeRef] && !restpe.prefix.isStable) {
         error(tree.pos, restpe.prefix+" is not a legal prefix for a constructor")
       }
-      result setType restpe // @M: normalization is done during erasure
+
+      //@M fix for #2208
+      // if there are no type arguments, normalization does not bypass any checks, so perform it to get rid of AnyRef
+      if(result.tpe.typeArgs.isEmpty) {
+        // minimal check: if(result.tpe.typeSymbolDirect eq AnyRefClass) {
+        // must expand the fake AnyRef type alias, because bootstrapping (init in Definitions) is not
+        // designed to deal with the cycles in the scala package (ScalaObject extends
+        // AnyRef, but the AnyRef type alias is entered after the scala package is
+        // loaded and completed, so that ScalaObject is unpickled while AnyRef is not
+        // yet defined )
+        result setType(restpe)
+      } else { // must not normalize: type application must be (bounds-)checked (during RefChecks), see #2208
+        // during uncurry (after refchecks), all types are normalized
+        result
+      }
     }
 
     def typedTypeConstructor(tree: Tree): Tree = typedTypeConstructor(tree, NOmode)
