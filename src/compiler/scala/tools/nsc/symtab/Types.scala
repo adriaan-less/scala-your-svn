@@ -2082,6 +2082,7 @@ A type's typeSymbol should never be inspected directly.
     else if (sym.isRootPackage)
       mkThisType(RootClass)
     else {
+      assert(pre.isStable)
       var sym1 = rebind(pre, sym)
       val pre1 = removeSuper(pre, sym1)
       if (pre1 ne pre) sym1 = rebind(pre1, sym1)
@@ -2315,6 +2316,14 @@ A type's typeSymbol should never be inspected directly.
           
       val extrapolate = new TypeMap {
         variance = 1
+        override def mapOver(tp: Type): Type = tp match {
+          case SingleType(pre, sym) =>
+            val pre1 = this(pre)
+            if (!pre1.isStable) pre1.memberType(sym)
+            else super.mapOver(tp)
+          case _ => super.mapOver(tp)
+        }
+
         def apply(tp: Type): Type = {
           val tp1 = mapOver(tp) 
           tp1 match {
