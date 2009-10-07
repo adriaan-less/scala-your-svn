@@ -979,6 +979,7 @@ trait Typers { self: Analyzer =>
               log("error tree = "+tree)
               if (settings.explaintypes.value) explainTypes(tree.tpe, pt)
             }
+            println("fatal error: "+(debugString(tree.tpe), debugString(pt)))
             typeErrorTree(tree, tree.tpe, pt)
           }
         }

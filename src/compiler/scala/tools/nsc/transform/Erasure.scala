@@ -901,21 +901,6 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             treeCopy.DefDef(tree, mods, name, List(), vparamss, tpt, rhs)
           case TypeDef(_, _, _, _) =>
             EmptyTree
-          case TypeApply(fun, args @ List(arg)) // !!! todo: simplify by having GenericArray also extract trees
-          if ((fun.symbol == Any_isInstanceOf || fun.symbol == Object_isInstanceOf) &&
-              unboundedGenericArrayLevel(arg.tpe) > 0) =>
-            val level = unboundedGenericArrayLevel(arg.tpe)
-            def isArrayTest(arg: Tree) = 
-              gen.mkRuntimeCall("isArray", List(arg, Literal(Constant(level))))
-            typedPos(tree.pos) {
-              if (level == 1) isArrayTest(fun)
-              else 
-                gen.evalOnce(fun, currentOwner, unit) { fun1 =>
-                  gen.mkAnd(
-                    treeCopy.TypeApply(tree, fun1(), args),
-                    isArrayTest(fun1()))
-                }
-            }
           case TypeApply(fun, args) if (fun.symbol.owner != AnyClass && 
                                         fun.symbol != Object_asInstanceOf &&
                                         fun.symbol != Object_isInstanceOf) =>
@@ -933,8 +918,28 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
                 tree,
                 SelectFromArray(qual, name, erasure(qual.tpe)).copyAttrs(fn),
                 args)
+          case Apply(fn @ TypeApply(instanceOfCall @ Select(qual, name), args @ List(arg)), List()) 
+                if (fn.symbol == Any_isInstanceOf || fn.symbol == Object_isInstanceOf) &&
+                   unboundedGenericArrayLevel(arg.tpe) > 0 =>
+            val level = unboundedGenericArrayLevel(arg.tpe)
+            def isArrayTest(instanceOfCall: Tree) =  {
+              val arrayTree = instanceOfCall match {
+                case Select(qual, _) => gen.mkAttributedCast(qual, ObjectClass.tpe)
+                case other => println((other, other.getClass)); other
+              }
+              gen.mkRuntimeCall("isArray", List(arrayTree, Literal(Constant(level))))
+            }
+            val tree2 = 
+              if (level == 1) isArrayTest(instanceOfCall)
+              else gen.evalOnce(instanceOfCall, currentOwner, unit) { instanceOfCall1 =>
+                gen.mkAnd(
+                  treeCopy.TypeApply(tree, instanceOfCall1(), args),
+                  isArrayTest(instanceOfCall1()))
+              }
+            println(tree2)
+            typedPos(tree.pos)(tree2)
           case Apply(fn, args) =>
-            if (fn.symbol == Any_asInstanceOf)
+           if (fn.symbol == Any_asInstanceOf)
               fn match {
                 case TypeApply(Select(qual, _), List(targ)) =>
                   if (qual.tpe <:< targ.tpe) {
@@ -948,8 +953,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
                     atPos(tree.pos) { Apply(Select(qual, csym), List()) }
                   } else 
                     tree
-              }
-              // todo: also handle the case where the singleton type is buried in a compound
+              }            
+            // todo: also handle the case where the singleton type is buried in a compound
             else if (fn.symbol == Any_isInstanceOf)
               fn match {
                 case TypeApply(sel @ Select(qual, name), List(targ)) =>
