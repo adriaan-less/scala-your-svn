@@ -441,9 +441,7 @@ trait Infer {
 
     def isCompatible(tp: Type, pt: Type): Boolean = {
       val tp1 = normalize(tp)
-      val res = (tp1 <:< pt) || isCoercible(tp, pt)
-      // println("isCompatible: "+(tp, tp1, pt, res)) //@MDEBUG
-      res
+      (tp1 <:< pt) || isCoercible(tp1, pt) //@M: was isCoercible(tp, pt), but I assume this was a typo...
     }
 
     def isWeaklyCompatible(tp: Type, pt: Type): Boolean =
