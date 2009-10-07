@@ -9,9 +9,10 @@
 // $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
-import scala.collection.generic._
+import generic._
 
 private object Utils {
   def growArray(x: Array[AnyRef]) = {
@@ -32,10 +33,11 @@ private object Utils {
  * than the standard mutable stack. 
  *
  * @author David MacIver
+ * @since  2.7
  */
 @cloneable
 class ArrayStack[T] private(private var table : Array[AnyRef],
-                            private var index : Int) extends collection.Sequence[T] with Cloneable[ArrayStack[T]] {
+                            private var index : Int) extends scala.collection.Seq[T] with Cloneable[ArrayStack[T]] {
   def this() = this(new Array[AnyRef](1), 0)
 
   /** Retrieve n'th element from stack, where top of stack has index 0 */
@@ -102,7 +104,7 @@ class ArrayStack[T] private(private var table : Array[AnyRef],
    *
    * @param x The source of elements to push
    */
-  def ++=(x: collection.Iterable[T]): this.type = { x.foreach(this +=(_)); this }
+  def ++=(x: scala.collection.Iterable[T]): this.type = { x.foreach(this +=(_)); this }
 
 
   /**

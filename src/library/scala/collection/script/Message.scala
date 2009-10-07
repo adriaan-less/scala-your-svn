@@ -9,8 +9,8 @@
 // $Id$
 
 
-package scala.collection.script
-import scala.collection._
+package scala.collection
+package script
 
 import Predef._
 import mutable.ArrayBuffer
@@ -23,6 +23,7 @@ import mutable.ArrayBuffer
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 08/07/2003
+ *  @since   2.8
  */
 trait Message[+A]
 

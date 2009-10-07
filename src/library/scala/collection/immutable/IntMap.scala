@@ -6,10 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: $
+// $Id$
 
 
-package scala.collection.immutable;
+package scala.collection
+package immutable;
 
 /**
  * @author David MacIver
@@ -49,6 +50,9 @@ private[immutable] object IntMapUtils {
 
 import IntMapUtils._
 
+/**
+ * @since 2.7
+ */
 object IntMap {
   def empty[T] : IntMap[T]  = IntMap.Nil;
   def singleton[T](key : Int, value : T) : IntMap[T] = IntMap.Tip(key, value);
@@ -146,8 +150,10 @@ import IntMap._
  * Specialised immutable map structure for integer keys, based on 
  * <a href="http://citeseer.ist.psu.edu/okasaki98fast.html">Fast Mergeable Integer Maps</a>
  * by Okasaki and Gill. Essentially a trie based on binary digits of the the integers.
+ *
+ * @since 2.7
  */
-sealed abstract class IntMap[+T] extends scala.collection.immutable.Map[Int, T] with scala.collection.generic.ImmutableMapTemplate[Int, T, IntMap[T]] {
+sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap[T]] {
   override def empty: IntMap[T] = IntMap.Nil;
 
   override def toList = {

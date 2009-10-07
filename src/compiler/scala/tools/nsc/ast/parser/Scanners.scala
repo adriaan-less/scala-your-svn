@@ -2,7 +2,7 @@
  * Copyright 2005-2009 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id: Scanners.scala 17285 2009-03-11 13:51:56Z rytz $
+// $Id$
 package scala.tools.nsc
 package ast.parser
 
@@ -11,6 +11,7 @@ import SourceFile.{LF, FF, CR, SU}
 import Tokens._
 import scala.annotation.switch
 import scala.collection.mutable.{ListBuffer, ArrayBuffer}
+import scala.xml.Utility.{ isNameStart }
 
 trait Scanners {
   val global : Global
@@ -115,6 +116,8 @@ trait Scanners {
     protected def putDocChar(c: Char) {
       if (docBuffer ne null) docBuffer.append(c)
     }
+      
+    protected def foundComment(value: String, start: Int, end: Int) = ()
 
     private class TokenData0 extends TokenData
 
@@ -264,7 +267,7 @@ trait Scanners {
           val last = if (charOffset >= 2) buf(charOffset - 2) else ' '
           nextChar()
           last match {
-            case ' '|'\t'|'\n'|'{'|'('|'>' if xml.Parsing.isNameStart(ch) || ch == '!' || ch == '?' =>
+            case ' '|'\t'|'\n'|'{'|'('|'>' if isNameStart(ch) || ch == '!' || ch == '?' =>
               token = XMLSTART
             case _ =>
               // Console.println("found '<', but last is '"+in.last+"'"); // DEBUG
@@ -392,39 +395,48 @@ trait Scanners {
     }
 
     private def skipComment(): Boolean = {
-      if (ch == '/') {
-        do {
-          nextChar()
-        } while ((ch != CR) && (ch != LF) && (ch != SU))
-        true
-      } else if (ch == '*') {
-        docBuffer = null
-        var openComments = 1
-        nextChar()
-        if (ch == '*' && buildDocs)
-          docBuffer = new StringBuilder("/**")
-        while (openComments > 0) {
+
+      if (ch == '/' || ch == '*') {
+    	  
+        val comment = new StringBuilder("//")
+        def appendToComment() = comment.append(ch)
+
+        if (ch == '/') {
           do {
+        	appendToComment()
+            nextChar()
+          } while ((ch != CR) && (ch != LF) && (ch != SU))
+        } else {
+          docBuffer = null
+          var openComments = 1
+          nextChar()
+          appendToComment()
+          if (ch == '*' && buildDocs)
+            docBuffer = new StringBuilder("/**")
+          while (openComments > 0) {
             do {
-              if (ch == '/') {
-                nextChar(); putDocChar(ch)
-                if (ch == '*') {
-                  nextChar(); putDocChar(ch)
-                  openComments += 1
+              do {
+                if (ch == '/') {
+                  nextChar(); putDocChar(ch); appendToComment()
+                  if (ch == '*') {
+                    nextChar(); putDocChar(ch); appendToComment()
+                    openComments += 1
+                  }
                 }
+                if (ch != '*' && ch != SU) {
+                  nextChar(); putDocChar(ch); appendToComment()
+                }
+              } while (ch != '*' && ch != SU)
+              while (ch == '*') {
+                nextChar(); putDocChar(ch); appendToComment()
               }
-              if (ch != '*' && ch != SU) {
-                nextChar(); putDocChar(ch)
-              }
-            } while (ch != '*' && ch != SU)
-            while (ch == '*') {
-              nextChar(); putDocChar(ch)
-            }
-          } while (ch != '/' && ch != SU)
-          if (ch == '/') nextChar()
-          else incompleteInputError("unclosed comment")
-          openComments -= 1
+            } while (ch != '/' && ch != SU)
+            if (ch == '/') nextChar()
+            else incompleteInputError("unclosed comment")
+            openComments -= 1
+          }
         }
+        foundComment(comment.toString, offset, charOffset - 2)
         true
       } else {
         false
@@ -854,7 +866,7 @@ trait Scanners {
 
   def isSpecial(c: Char) = {
     val chtp = Character.getType(c)
-    chtp == Character.MATH_SYMBOL || chtp == Character.OTHER_SYMBOL
+    chtp == Character.MATH_SYMBOL.toInt || chtp == Character.OTHER_SYMBOL.toInt
   }
 
   def isOperatorPart(c : Char) : Boolean = (c: @switch) match {
@@ -1038,6 +1050,10 @@ trait Scanners {
           false
         }
       }
+    }
+    
+    override def foundComment(value: String, start: Int, end: Int) {
+    	unit.comments += unit.Comment(value, new RangePosition(unit.source, start, start, end))
     }
   }
 

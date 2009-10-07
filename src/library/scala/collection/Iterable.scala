@@ -6,14 +6,14 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: Iterable.scala 15188 2008-05-24 15:01:02Z stepancheg $
+// $Id$
 
 
 package scala.collection
 
-import scala.util.control.Breaks._
-// import immutable.Stream
 import generic._
+import scala.util.control.Breaks._
+import mutable.Builder
 
 /** <p>
  *    A template trait for iterable collections.
@@ -40,13 +40,14 @@ import generic._
  *
  *  @author Martin Odersky
  *  @version 2.8
+ *  @since   2.8
  */
 trait Iterable[+A] extends Traversable[A] 
-                      with TraversableClass[A, Iterable]
-                      with IterableTemplate[A, Iterable[A]] {
-   override def companion: Companion[Iterable] = Iterable
+                      with GenericTraversableTemplate[A, Iterable]
+                      with IterableLike[A, Iterable[A]] {
+   override def companion: GenericCompanion[Iterable] = Iterable
  
-  /* The following methods are inherited from trait IterableTemplate
+  /* The following methods are inherited from trait IterableLike
    *
   override def iterator: Iterator[A]
   override def takeRight(n: Int): Iterable[A]

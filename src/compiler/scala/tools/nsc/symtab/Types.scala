@@ -77,6 +77,8 @@ trait Types {
 
   private var explainSwitch = false
 
+  private final val alternativeNarrow = false
+
   private final val LogPendingSubTypesThreshold = 50
   private final val LogPendingBaseTypesThreshold = 50
 
@@ -266,10 +268,15 @@ trait Types {
     def typeOfThis: Type = typeSymbol.typeOfThis
 
     /** Map to a singleton type which is a subtype of this type.
+     *  todo: change to singleton type of an existentgially defined variable
+     *  of the right type instead of making this a `this` of a refined type.
      */
     def narrow: Type =
       if (phase.erasedTypes) this
-      else {
+      else if (alternativeNarrow) { // investigate why this does not work!
+        val tparam = commonOwner(this) freshExistential ".type" setInfo singletonBounds(this)
+        tparam.tpe
+      } else {
         val cowner = commonOwner(this)
         refinedType(List(this), cowner, EmptyScope, cowner.pos).narrow
       }
@@ -721,10 +728,10 @@ trait Types {
             val sym = entry.sym
             if (sym.getFlag(requiredFlags) == requiredFlags) {
               val excl = sym.getFlag(excluded)
-              if (excl == 0 && 
+              if (excl == 0L && 
                   (// omit PRIVATE LOCALS unless selector class is contained in class owning the def.
                    (bcs eq bcs0) || 
-                   sym.getFlag(PRIVATE | LOCAL) != (PRIVATE | LOCAL) ||
+                   sym.getFlag(PRIVATE | LOCAL) != (PRIVATE | LOCAL).toLong ||
                    (bcs0.head.hasTransOwner(bcs.head)))) {
                 if (name.isTypeName || stableOnly && sym.isStable) {
 //                  if (util.Statistics.enabled) findMemberNanos += System.nanoTime() - startTime
@@ -756,7 +763,7 @@ trait Types {
                     members enter sym
                   }
                 }
-              } else if (excl == DEFERRED) {
+              } else if (excl == DEFERRED.toLong) {
                 continue = true
               }
             }
@@ -1069,13 +1076,37 @@ trait Types {
       if (period != currentPeriod) { // no caching in IDE
         baseTypeSeqPeriod = currentPeriod
         if (!isValidForBaseClasses(period)) {
-          if (util.Statistics.enabled)
-            compoundBaseTypeSeqCount += 1
-          baseTypeSeqCache = undetBaseTypeSeq
-          baseTypeSeqCache = memo(compoundBaseTypeSeq(this))(_.baseTypeSeq updateHead typeSymbol.tpe)
-//          println("normalizing baseTypeSeq of "+typeSymbol+"/"+parents+": "+baseTypeSeqCache)//DEBUG
-          baseTypeSeqCache.normalize(parents)
-//          println("normalized baseTypeSeq of "+typeSymbol+"/"+parents+": "+baseTypeSeqCache)//DEBUG
+          if (parents.exists(_.exists(_.isInstanceOf[TypeVar]))) {
+            // rename type vars to fresh type params, take base type sequence of
+            // resulting type, and rename back allthe entries in thats sequence
+            var tvs = Set[TypeVar]()
+            for (p <- parents)
+              for (t <- p) t match {
+                case tv: TypeVar => tvs += tv
+                case _ =>
+              }
+            val varToParamMap = (Map[Type, Symbol]() /: tvs)((m, tv) => m + (tv -> tv.origin.typeSymbol.cloneSymbol))
+            val paramToVarMap = Map[Symbol, Type]() ++ (varToParamMap map { case (t, tsym) => (tsym -> t) })
+            val varToParam = new TypeMap {
+              def apply(tp: Type): Type = tp match {
+                case tv: TypeVar => varToParamMap(tp).tpe
+                case _ => mapOver(tp)
+              }
+            }
+            val paramToVar = new TypeMap {
+              def apply(tp: Type) = tp match {
+                case TypeRef(_, tsym, _) if paramToVarMap.isDefinedAt(tsym) => paramToVarMap(tsym)
+                case _ => mapOver(tp)
+              }
+            }
+            val bts = copyRefinedType(this.asInstanceOf[RefinedType], parents map varToParam, varToParam mapOver decls).baseTypeSeq
+            baseTypeSeqCache = bts lateMap paramToVar
+          } else {
+            if (util.Statistics.enabled)
+              compoundBaseTypeSeqCount += 1
+            baseTypeSeqCache = undetBaseTypeSeq
+            baseTypeSeqCache = memo(compoundBaseTypeSeq(this))(_.baseTypeSeq updateHead typeSymbol.tpe)
+          }
         }
         //Console.println("baseTypeSeq(" + typeSymbol + ") = " + baseTypeSeqCache.toList);//DEBUG
       }
@@ -1542,6 +1573,8 @@ A type's typeSymbol should never be inspected directly.
         PolyType(typeParams, typeRef(pre, sym.initialize, dummyArgs))
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
+        //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
+        // see typedTypeConstructor in Typers
       } else {
         super.normalize
       }
@@ -1973,6 +2006,8 @@ A type's typeSymbol should never be inspected directly.
      *     if so, tracks tp as a upper bound of this type variable
      */
     def registerBound(tp: Type, isLowerBound: Boolean): Boolean = { //println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
+      if(isLowerBound) assert(tp != this)
+      
       def checkSubtype(tp1: Type, tp2: Type) = 
         if(isLowerBound) tp1 <:< tp2 
         else             tp2 <:< tp1
@@ -2076,7 +2111,7 @@ A type's typeSymbol should never be inspected directly.
     
     /** Add a number of annotations to this type */
     override def withAnnotations(annots: List[AnnotationInfo]): Type =
-      AnnotatedType(annots:::this.annotations, this, selfsym)
+      copy(annots:::this.annotations)
 
     /** Remove any annotations from this type */
     override def withoutAnnotations = underlying.withoutAnnotations
@@ -2677,7 +2712,7 @@ A type's typeSymbol should never be inspected directly.
       }
 
     /** Map this function over given scope */
-    private def mapOver(scope: Scope): Scope = {
+    def mapOver(scope: Scope): Scope = {
       val elems = scope.toList
       val elems1 = mapOver(elems)
       if (elems1 eq elems) scope
@@ -2793,25 +2828,9 @@ A type's typeSymbol should never be inspected directly.
   private val emptySymMap = scala.collection.immutable.Map[Symbol, Symbol]() 
   private val emptySymCount = scala.collection.immutable.Map[Symbol, Int]() 
 
-  /** Make an existential variable.
-   *  @param suffix  A suffix to be appended to the freshly generated name
-   *                 It's ususally "", except for type variables abstracting
-   *                 over values, where it is ".type".
-   *  @param owner   The owner of the variable
-   *  @param bounds  The variable's bounds
-   */
-  def makeExistential(name: String, owner: Symbol, bounds: TypeBounds): Symbol = 
-    recycle(
-      owner.newAbstractType(owner.pos, newTypeName(name)).setFlag(EXISTENTIAL)
-    ).setInfo(bounds)
-
-  /** Make an existential variable with a fresh name. */
-  def makeFreshExistential(suffix: String, owner: Symbol, bounds: TypeBounds): Symbol = 
-    makeExistential(freshName()+suffix, owner, bounds)
-
   def typeParamsToExistentials(clazz: Symbol, tparams: List[Symbol]): List[Symbol] = {
     val eparams = for ((tparam, i) <- tparams.zipWithIndex) yield {
-      makeExistential("?"+i, clazz, tparam.info.bounds)
+      clazz.newExistential(clazz.pos, "?"+i).setInfo(tparam.info.bounds)
     }
     for (tparam <- eparams) tparam setInfo tparam.info.substSym(tparams, eparams)
     eparams
@@ -2892,7 +2911,7 @@ A type's typeSymbol should never be inspected directly.
     def stabilize(pre: Type, clazz: Symbol): Type = {
       capturedPre get clazz match {
         case None =>
-          val qvar = makeFreshExistential(".type", clazz, singletonBounds(pre))
+          val qvar = clazz freshExistential ".type" setInfo singletonBounds(pre)
           capturedPre += (clazz -> qvar)
           capturedParams = qvar :: capturedParams
           qvar
@@ -3166,13 +3185,9 @@ A type's typeSymbol should never be inspected directly.
         val symowner = oldSym.owner // what should be used??
         val bound = singletonBounds(actuals(actualIdx))
 
-        val sym =
-          symowner.newAbstractType(oldSym.pos, oldSym.name+".type")
-
+        val sym = symowner.newExistential(oldSym.pos, oldSym.name+".type")
         sym.setInfo(bound)
         sym.setFlag(oldSym.flags)
-        sym.setFlag(EXISTENTIAL)
-
 
         existSyms = existSyms + (actualIdx -> sym)
         sym
@@ -3465,12 +3480,6 @@ A type's typeSymbol should never be inspected directly.
 
 // Helper Methods  -------------------------------------------------------------
 
-  private var nextid = 0
-  private def freshName() = {
-    nextid += 1
-    "_"+nextid
-  }
-
   final val LubGlbMargin = 0
 
   /** The maximum allowable depth of lubs or glbs over types `ts'
@@ -3590,18 +3599,8 @@ A type's typeSymbol should never be inspected directly.
 
   private var subsametypeRecursions: Int = 0
 
-  /** Does this type have a prefix that begins with a type variable */
-  def beginsWithTypeVar(tp: Type): Boolean = tp match {
-    case SingleType(pre, sym) =>
-      !(sym hasFlag PACKAGE) && beginsWithTypeVar(pre)
-    case TypeVar(_, constr) =>
-      constr.inst == NoType || beginsWithTypeVar(constr.inst)
-    case _ =>
-      false
-  }
-  
   private def isUnifiable(pre1: Type, pre2: Type) =
-    (beginsWithTypeVar(pre1) || beginsWithTypeVar(pre2)) && (pre1 =:= pre2)
+    (beginsWithTypeVarOrIsRefined(pre1) || beginsWithTypeVarOrIsRefined(pre2)) && (pre1 =:= pre2)
 
   private def equalSymsAndPrefixes(sym1: Symbol, pre1: Type, sym2: Symbol, pre2: Type): Boolean =
     if (sym1 == sym2) phase.erasedTypes || pre1 =:= pre2
@@ -3797,6 +3796,33 @@ A type's typeSymbol should never be inspected directly.
     if (subsametypeRecursions == 0) undoLog = List()
   }
 
+  /** Does this type have a prefix that begins with a type variable,
+   *  or is it a refinement type? For type prefixes that fulfil this condition,
+   *  type selections with the same name of equal (wrt) =:= prefixes are
+   *  considered equal wrt =:=
+   */
+  def beginsWithTypeVarOrIsRefined(tp: Type): Boolean = tp match {
+    case SingleType(pre, sym) =>
+      !(sym hasFlag PACKAGE) && beginsWithTypeVarOrIsRefined(pre)
+    case TypeVar(_, constr) =>
+      constr.inst == NoType || beginsWithTypeVarOrIsRefined(constr.inst)
+    case RefinedType(_, _) => 
+      true
+    case _ =>
+      false
+  }
+
+  def instTypeVar(tp: Type): Type = tp match {
+    case TypeRef(pre, sym, args) =>
+      typeRef(instTypeVar(pre), sym, args)
+    case SingleType(pre, sym) =>
+      singleType(instTypeVar(pre), sym)
+    case TypeVar(_, constr) =>
+      instTypeVar(constr.inst)
+    case _ =>
+      tp
+  }
+
   def isErrorOrWildcard(tp: Type) = (tp eq ErrorType) || (tp eq WildcardType)
 
   def isSingleType(tp: Type) = tp match {
@@ -3817,10 +3843,29 @@ A type's typeSymbol should never be inspected directly.
     || // @M! normalize reduces higher-kinded case to PolyType's
     ((tp1.normalize, tp2.normalize) match {
       case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => // @assume tp1.isHigherKinded && tp2.isHigherKinded (as they were both normalized to PolyType)
-        tparams1.length == tparams2.length &&
-        List.forall2(tparams1, tparams2) (
-          (p1, p2) => p2.info.substSym(tparams2, tparams1) <:< p1.info) &&
-        res1 <:< res2.substSym(tparams2, tparams1)
+        tparams1.length == tparams2.length && {
+          if(tparams1.isEmpty) res1 <:< res2 // fast-path: monomorphic nullary method type
+          else if(tparams1.head.owner.isMethod) {  // fast-path: polymorphic method type -- type params cannot be captured
+            List.forall2(tparams1, tparams2)((p1, p2) =>
+              p2.info.substSym(tparams2, tparams1) <:< p1.info) &&
+            res1 <:< res2.substSym(tparams2, tparams1)
+          } else { // normalized higher-kinded type
+            //@M for an example of why we need to generate fresh symbols, see neg/tcpoly_ticket2101.scala
+            val tpsFresh = cloneSymbols(tparams1) // @M cloneSymbols(tparams2) should be equivalent -- TODO: check
+
+            (List.forall2(tparams1, tparams2)((p1, p2) =>
+              p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&
+              res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh))
+
+            //@M the forall in the previous test could be optimised to the following,
+            // but not worth the extra complexity since it only shaves 1s from quick.comp
+            //   (List.forall2(tpsFresh/*optimisation*/, tparams2)((p1, p2) =>
+            //   p2.info.substSym(tparams2, tpsFresh) <:< p1.info /*optimisation, == (p1 from tparams1).info.substSym(tparams1, tpsFresh)*/) &&
+            // this optimisation holds because inlining cloneSymbols in `val tpsFresh = cloneSymbols(tparams1)` gives:
+            // val tpsFresh = tparams1 map (_.cloneSymbol)
+            // for (tpFresh <- tpsFresh) tpFresh.setInfo(tpFresh.info.substSym(tparams1, tpsFresh))
+          }
+        }
 
       case (_, _) => false // @assume !tp1.isHigherKinded || !tp2.isHigherKinded 
       // --> thus, cannot be subtypes (Any/Nothing has already been checked)
@@ -4022,6 +4067,7 @@ A type's typeSymbol should never be inspected directly.
     firstTry
   }
 
+/* DEAD
   /** Does type `tp1' conform to `tp2'?
    */
   private def isSubType1(tp1: Type, tp2: Type, depth: Int): Boolean = {
@@ -4071,11 +4117,30 @@ A type's typeSymbol should never be inspected directly.
          matchingParams(tp1.paramTypes, tp2.paramTypes, tp1.isInstanceOf[JavaMethodType], tp2.isInstanceOf[JavaMethodType]) && 
          (res1 <:< res2) &&
          tp1.isInstanceOf[ImplicitMethodType] == tp2.isInstanceOf[ImplicitMethodType])
-      case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
-        (tparams1.length == tparams2.length &&
-          List.forall2(tparams1, tparams2) 
-           ((p1, p2) => p2.info.substSym(tparams2, tparams1) <:< p1.info) && //@M TODO: should also check that the kinds of the type parameters conform (ticket 2066)
-         res1 <:< res2.substSym(tparams2, tparams1))
+      case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => 
+        tparams1.length == tparams2.length && {
+          if(tparams1.isEmpty) res1 <:< res2 // fast-path: monomorphic nullary method type
+          else if(tparams1.head.owner.isMethod) {  // fast-path: polymorphic method type -- type params cannot be captured
+            List.forall2(tparams1, tparams2)((p1, p2) => 
+              p2.info.substSym(tparams2, tparams1) <:< p1.info) &&
+            res1 <:< res2.substSym(tparams2, tparams1)          
+          } else { // normalized higher-kinded type 
+            //@M for an example of why we need to generate fresh symbols, see neg/tcpoly_ticket2101.scala
+            val tpsFresh = cloneSymbols(tparams1) // @M cloneSymbols(tparams2) should be equivalent -- TODO: check
+          
+            (List.forall2(tparams1, tparams2)((p1, p2) => 
+            p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&
+            res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh))
+            //@M TODO: should also check that the kinds of the type parameters conform (ticket 2066)  
+            //@M the forall in the previous test could be optimised to the following, 
+            // but not worth the extra complexity since it only shaves 1s from quick.comp
+            //   (List.forall2(tpsFresh/*optimisation*/, tparams2)((p1, p2) => 
+            //   p2.info.substSym(tparams2, tpsFresh) <:< p1.info /*optimisation, == (p1 from tparams1).info.substSym(tparams1, tpsFresh)*/) &&
+            // this optimisation holds because inlining cloneSymbols in `val tpsFresh = cloneSymbols(tparams1)` gives:
+            // val tpsFresh = tparams1 map (_.cloneSymbol)
+            // for (tpFresh <- tpsFresh) tpFresh.setInfo(tpFresh.info.substSym(tparams1, tpsFresh))
+          }
+        }
       case (TypeBounds(lo1, hi1), TypeBounds(lo2, hi2)) =>
         lo2 <:< lo1 && hi1 <:< hi2
       case (AnnotatedType(_,_,_), _) =>
@@ -4146,6 +4211,7 @@ A type's typeSymbol should never be inspected directly.
       ((tp1n ne tp1) || (tp2n ne tp2)) && isSubType(tp1n, tp2n, depth)
     }
   }
+*/
 
   /** Are `tps1' and `tps2' lists of equal length such
    *  that all elements of `tps1' conform to corresponding elements
@@ -4687,8 +4753,7 @@ A type's typeSymbol should never be inspected directly.
               else { // Martin: I removed this, because incomplete. Not sure there is a good way to fix it. For the moment we
                      // just err on the conservative side, i.e. with a bound that is too high.
                      // if(!(tparam.info.bounds contains tparam)){ //@M can't deal with f-bounds, see #2251
-                val owner = commonOwner(as)
-                val qvar = makeFreshExistential("", commonOwner(as), mkTypeBounds(g, l))
+                val qvar = commonOwner(as) freshExistential "" setInfo mkTypeBounds(g, l)
                 capturedParams += qvar
                 qvar.tpe
               }
@@ -4827,7 +4892,7 @@ A type's typeSymbol should never be inspected directly.
   val shorthands = Set(
     "scala.collection.immutable.List", 
     "scala.collection.immutable.Nil",
-    "scala.collection.Sequence",
+    "scala.collection.Seq",
     "scala.collection.Traversable",
     "scala.collection.Iterable",
     "scala.collection.mutable.StringBuilder",

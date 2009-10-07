@@ -9,9 +9,8 @@
 // $Id$
 
 
-package scala.collection.immutable
-
-import scala.collection.generic.SetProxyTemplate
+package scala.collection
+package immutable
 
 /** <p>
  *    This is a simple wrapper class for <a href="Set.html"
@@ -21,8 +20,10 @@ import scala.collection.generic.SetProxyTemplate
  *    It is most useful for assembling customized set abstractions
  *    dynamically using object composition and forwarding.
  *  </p>
+ *
+ *  @since 2.8
  */
-trait SetProxy[A] extends Set[A] with SetProxyTemplate[A, Set[A]]
+trait SetProxy[A] extends Set[A] with SetProxyLike[A, Set[A]]
 {
   override def repr = this
   private def newProxy[B >: A](newSelf: Set[B]): SetProxy[B] =

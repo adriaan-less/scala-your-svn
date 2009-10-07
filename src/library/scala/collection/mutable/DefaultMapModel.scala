@@ -9,7 +9,8 @@
 // $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
 /** This class is used internally. It implements the mutable <code>Map</code>
  *  class in terms of three functions: <code>findEntry</code>,
@@ -17,6 +18,7 @@ package scala.collection.mutable
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 08/07/2003
+ *  @since   1
  */
 trait DefaultMapModel[A, B] extends Map[A, B] {
 

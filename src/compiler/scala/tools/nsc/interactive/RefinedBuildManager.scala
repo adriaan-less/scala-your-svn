@@ -1,3 +1,9 @@
+/* NSC -- new Scala compiler
+ * Copyright 2005-2009 LAMP/EPFL
+ * @author  Martin Odersky
+ */
+// $Id$
+
 package scala.tools.nsc
 package interactive
 
@@ -52,6 +58,7 @@ class RefinedBuildManager(val settings: Settings) extends Changes with BuildMana
   /** Remove the given files from the managed build process. */
   def removeFiles(files: Set[AbstractFile]) {
     sources --= files
+    deleteClassfiles(files)
     update(invalidatedByRemove(files))
   }
 
@@ -66,6 +73,7 @@ class RefinedBuildManager(val settings: Settings) extends Changes with BuildMana
 
   def update(added: Set[AbstractFile], removed: Set[AbstractFile]) {
     sources --= removed
+    deleteClassfiles(removed)
     update(added ++ invalidatedByRemove(removed))
   }
 
@@ -74,6 +82,8 @@ class RefinedBuildManager(val settings: Settings) extends Changes with BuildMana
    *  have been previously added as source files are recompiled.
    */
   private def update(files: Set[AbstractFile]): Unit = if (!files.isEmpty) {
+    deleteClassfiles(files)
+    
     val run = compiler.newRun()
     compiler.inform("compiling " + files)
     buildingFiles(files)
@@ -87,7 +97,7 @@ class RefinedBuildManager(val settings: Settings) extends Changes with BuildMana
     val changesOf = new mutable.HashMap[Symbol, List[Change]]
 
     val defs = compiler.dependencyAnalysis.definitions
-    for (val src <- files; val syms = defs(src); val sym <- syms) {
+    for (src <- files; val syms = defs(src); sym <- syms) {
       definitions(src).find(_.fullNameString == sym.fullNameString) match {
         case Some(oldSym) => 
           changesOf(oldSym) = changeSet(oldSym, sym)

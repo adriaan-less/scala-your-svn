@@ -9,7 +9,8 @@
 // $Id$
 
 
-package scala.collection.script
+package scala.collection
+package script
 
 
 /** Classes that mix in the <code>Scriptable</code> class allow
@@ -17,6 +18,7 @@ package scala.collection.script
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 09/05/2004
+ *  @since   2.8
  */
 trait Scriptable[A] {
   /** Send a message to this scriptable object.

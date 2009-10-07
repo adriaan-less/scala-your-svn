@@ -12,7 +12,7 @@
 package scala.collection
 
 import generic._
-import mutable.ArrayBuffer
+import mutable.{Builder, ArrayBuffer}
 
 /** <p>
  *    Sequences that support O(1) element access and O(1) length computation.
@@ -25,14 +25,15 @@ import mutable.ArrayBuffer
  *  @author Sean McDirmid
  *  @author Martin Odersky
  *  @version 2.8
+ *  @since   2.8
  */
-trait Vector[+A] extends Sequence[A] 
-                    with TraversableClass[A, Vector]
-                    with VectorTemplate[A, Vector[A]] {
-  override def companion: Companion[Vector] = Vector
+trait Vector[+A] extends Seq[A] 
+                    with GenericTraversableTemplate[A, Vector]
+                    with VectorLike[A, Vector[A]] {
+  override def companion: GenericCompanion[Vector] = Vector
 }
 
-object Vector extends SequenceFactory[Vector] {
+object Vector extends SeqFactory[Vector] {
   implicit def builderFactory[A]: BuilderFactory[A, Vector[A], Coll] = new VirtualBuilderFactory[A]
   def newBuilder[A]: Builder[A, Vector[A]] = mutable.Vector.newBuilder[A]
 }

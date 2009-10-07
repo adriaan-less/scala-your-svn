@@ -9,7 +9,8 @@
 // $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
 
 /** <code>Publisher[A,This]</code> objects publish events of type <code>A</code>
@@ -21,6 +22,7 @@ package scala.collection.mutable
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 08/07/2003
+ *  @since   1
  */
 trait Publisher[A, This <: Publisher[A, This]] {
   self: This =>

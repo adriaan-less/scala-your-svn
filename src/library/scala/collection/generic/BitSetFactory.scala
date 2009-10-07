@@ -9,11 +9,16 @@
 // $Id$
 
 
-package scala.collection.generic
+package scala.collection
+package generic
 
 import scala.collection._
+import mutable.{Builder, AddingBuilder}
 
-trait BitSetFactory[Coll <: BitSet with BitSetTemplate[Coll]] { 
+/**
+ * @since 2.8
+ */
+trait BitSetFactory[Coll <: BitSet with BitSetLike[Coll]] { 
   def newBuilder: Builder[Int, Coll] = new AddingBuilder[Int, Coll](empty)
   def empty: Coll
   def apply(elems: Int*): Coll = (empty /: elems) (_ + _)

@@ -9,7 +9,8 @@
 // $Id$
 
 
-package scala.collection.immutable
+package scala.collection
+package immutable
 
 import scala.annotation.tailrec
 
@@ -23,12 +24,13 @@ object Queue {
  *
  *  @author  Erik Stenman
  *  @version 1.0, 08/07/2003
+ *  @since   1
  */
 @serializable
 @SerialVersionUID(-7622936493364270175L)
 class Queue[+A] protected(
   protected val  in: List[A],
-  protected val out: List[A]) extends Sequence[A]
+  protected val out: List[A]) extends Seq[A]
 {
   /** Returns the <code>n</code>-th element of this queue. 
    *  The first element is at position 0.

@@ -9,10 +9,10 @@
 // $Id$
 
 
-package scala.collection.immutable
+package scala.collection
+package immutable
 
-import scala.collection.generic._
-import scala.collection.mutable
+import generic._
 
 /** <p>
  *    This class implements immutable sets using a hash table.
@@ -30,13 +30,14 @@ import scala.collection.mutable
  *
  *  @author  Martin Odersky
  *  @version 2.8
+ *  @since   2.3
  */
 @serializable @SerialVersionUID(4020728942921483037L)
 class HashSet[A] extends Set[A] 
-                    with SetClass[A, HashSet]
-                    with SetTemplate[A, HashSet[A]] 
+                    with GenericSetTemplate[A, HashSet]
+                    with SetLike[A, HashSet[A]] 
                     with mutable.FlatHashTable[A] {
-  override def companion: Companion[HashSet] = HashSet
+  override def companion: GenericCompanion[HashSet] = HashSet
 
   protected var later: HashSet[A] = null
   protected var changedElem: A = _
@@ -137,6 +138,7 @@ class HashSet[A] extends Set[A]
  *
  *  @author  Martin Odersky
  *  @version 2.8
+ *  @since   2.3
  */
 object HashSet extends SetFactory[HashSet] {
   implicit def builderFactory[A]: BuilderFactory[A, HashSet[A], Coll] = setBuilderFactory[A]

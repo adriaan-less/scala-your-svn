@@ -9,22 +9,28 @@
 // $Id$
 
 
-package scala.collection.immutable
+package scala.collection
+package immutable
 
-import scala.collection.generic._
-import scala.collection.mutable.ArrayBuffer
+import generic._
+import mutable.{Builder, ArrayBuffer}
 
 /** A subtrait of <code>collection.Vector</code> which represents sequences
  *  that cannot be mutated.
+ *
+ *  @since 2.8
  */
-trait Vector[+A] extends Sequence[A] 
-                    with collection.Vector[A] 
-                    with TraversableClass[A, Vector]
-                    with VectorTemplate[A, Vector[A]] { 
-  override def companion: Companion[Vector] = Vector
+trait Vector[+A] extends Seq[A] 
+                    with scala.collection.Vector[A] 
+                    with GenericTraversableTemplate[A, Vector]
+                    with VectorLike[A, Vector[A]] { 
+  override def companion: GenericCompanion[Vector] = Vector
 }
 
-object Vector extends SequenceFactory[Vector] {
+/**
+ * @since 2.8
+ */
+object Vector extends SeqFactory[Vector] {
   // todo: insert better vector implementation here
   @serializable @SerialVersionUID(7129304555082767876L)
   class Impl[A](buf: ArrayBuffer[A]) extends Vector[A] {

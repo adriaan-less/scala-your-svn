@@ -9,10 +9,10 @@
 // $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
-import scala.collection.generic._
-import scala.collection.immutable
+import generic._
 
 /** A Buffer implementation back up by a list. It provides constant time
  *  prepend and append. Most other operations are linear.
@@ -20,25 +20,26 @@ import scala.collection.immutable
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
+ *  @since   1
  */
 @serializable @SerialVersionUID(3419063961353022661L)
 final class ListBuffer[A] 
       extends Buffer[A] 
-         with TraversableClass[A, ListBuffer]
-         with BufferTemplate[A, ListBuffer[A]]
+         with GenericTraversableTemplate[A, ListBuffer]
+         with BufferLike[A, ListBuffer[A]]
          with Builder[A, List[A]] 
-         with SequenceForwarder[A] 
+         with SeqForwarder[A] 
 { 
-  override def companion: Companion[ListBuffer] = ListBuffer
+  override def companion: GenericCompanion[ListBuffer] = ListBuffer
 
-  import collection.Traversable
+  import scala.collection.Traversable
 
   private var start: List[A] = Nil
   private var last0: ::[A] = _
   private var exported: Boolean = false
   private var len = 0
 
-  protected def underlying: immutable.Sequence[A] = start
+  protected def underlying: immutable.Seq[A] = start
  
   /** The current length of the buffer
    */
@@ -61,7 +62,6 @@ final class ListBuffer[A]
         val newElem = new :: (x, start.tail);
         if (last0 eq start) { 
           last0 = newElem
-          len += 1
         }	
         start = newElem
       } else {
@@ -74,7 +74,6 @@ final class ListBuffer[A]
         val newElem = new :: (x, cursor.tail.tail)
         if (last0 eq cursor.tail) {
           last0 = newElem
-          len += 1
         }	
         cursor.asInstanceOf[::[A]].tl = newElem
       }
@@ -291,7 +290,7 @@ final class ListBuffer[A]
   }
 
   /** expose the underlying list but do not mark it as exported */
-  def readOnly: List[A] = start
+  override def readOnly: List[A] = start
 
   // Private methods
 
@@ -329,7 +328,7 @@ final class ListBuffer[A]
  *  @author  Martin Odersky
  *  @version 2.8
  */
-object ListBuffer extends SequenceFactory[ListBuffer] {
+object ListBuffer extends SeqFactory[ListBuffer] {
   implicit def builderFactory[A]: BuilderFactory[A, ListBuffer[A], Coll] =
     new VirtualBuilderFactory[A]
   def newBuilder[A]: Builder[A, ListBuffer[A]] =

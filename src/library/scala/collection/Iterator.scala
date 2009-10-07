@@ -6,7 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: Iterator.scala 15939 2008-08-26 14:33:17Z stepancheg $
+// $Id$
 
 
 package scala.collection
@@ -21,6 +21,7 @@ import annotation.{ tailrec, experimental }
  *  @author  Martin Odersky
  *  @author  Matthias Zenger
  *  @version 2.8
+ *  @since   2.8
  */
 object Iterator {
 
@@ -269,6 +270,7 @@ import Iterator.empty
  *
  *  @author  Martin Odersky, Matthias Zenger
  *  @version 2.8
+ *  @since   2.8
  */
 trait Iterator[+A] { self =>
 
@@ -365,6 +367,15 @@ trait Iterator[+A] { self =>
       def next() = { skip(); self.next() }
     }
   }
+  
+  /** Returns an iterator over all the elements of this iterator which
+   *  do not satisfy the predicate <code>p</code>.
+   *
+   *  @param p the predicate used to filter.
+   *  @return  the elements of this iterator not satisfying <code>p</code>.
+   */
+  
+  def filterNot(p: A => Boolean): Iterator[A] = filter(!p(_))
   
  /** Returns a new iterator based on the partial function <code>pf</code>,  
   *  containing <code>pf(x)</code> for all the elements which are defined on pf.
@@ -669,7 +680,7 @@ trait Iterator[+A] { self =>
    *
    *  @param op  The operator to apply
    *  @return <code>op(... op(a<sub>0</sub>,a<sub>1</sub>), ..., a<sub>n</sub>)</code> 
-      if the iterator yields elements
+   *  if the iterator yields elements
    *          <code>a<sub>0</sub>, a<sub>1</sub>, ..., a<sub>n</sub></code>.
    *  @throws Predef.UnsupportedOperationException if the iterator is empty.
    */
@@ -741,7 +752,7 @@ trait Iterator[+A] { self =>
    *  understand) this method takes the way one might expect, leaving
    *  the original iterator with 'size' fewer elements.
    */
-  private def takeDestructively(size: Int): Sequence[A] = {
+  private def takeDestructively(size: Int): Seq[A] = {
     val buf = new ArrayBuffer[A]
     var i = 0
     while (self.hasNext && i < size) {
@@ -752,12 +763,12 @@ trait Iterator[+A] { self =>
   }
   
   /** A flexible iterator for transforming an <code>Iterator[A]</code> into an
-   *  Iterator[Sequence[A]], with configurable sequence size, step, and
+   *  Iterator[Seq[A]], with configurable sequence size, step, and
    *  strategy for dealing with elements which don't fit evenly.
    * 
    *  Typical uses can be achieved via methods `grouped' and `sliding'.
    */
-  class GroupedIterator[B >: A](self: Iterator[A], size: Int, step: Int) extends Iterator[Sequence[B]] {
+  class GroupedIterator[B >: A](self: Iterator[A], size: Int, step: Int) extends Iterator[Seq[B]] {
     require(size >= 1 && step >= 1)
 
     private[this] var buffer: ArrayBuffer[B] = ArrayBuffer()  // the buffer    
@@ -997,7 +1008,7 @@ trait Iterator[+A] { self =>
    *
    *  @return  A sequence which enumerates all elements of this iterator.
    */ 
-  def toSequence: Sequence[A] = {
+  def toSeq: Seq[A] = {
     val buffer = new ArrayBuffer[A]
     this copyToBuffer buffer
     buffer 
@@ -1085,8 +1096,8 @@ trait Iterator[+A] { self =>
    *
    * @return  a sequence which enumerates all elements of this iterator.
    */
-  @deprecated("use toSequence instead")
-  def collect: Sequence[A] = toSequence
+  @deprecated("use toSeq instead")
+  def collect: Seq[A] = toSeq
 
   /** Returns a counted iterator from this iterator.
    */
