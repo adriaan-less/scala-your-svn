@@ -3818,7 +3818,7 @@ A type's typeSymbol should never be inspected directly.
   def beginsWithTypeVarOrIsRefined(tp: Type): Boolean = tp match {
     case SingleType(pre, sym) =>
       !(sym hasFlag PACKAGE) && beginsWithTypeVarOrIsRefined(pre)
-    case TypeVar(_, constr) =>
+    case tv@TypeVar(_, constr) =>
       !tv.instValid || beginsWithTypeVarOrIsRefined(constr.inst)
     case RefinedType(_, _) => 
       true

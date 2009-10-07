@@ -14,7 +14,7 @@ package scala
 
 import annotation.unchecked.uncheckedVariance
 import scala.collection.Traversable
-import scala.collection.generic.TraversableClass
+import scala.collection.generic.GenericTraversableTemplate
 
 object Tuple2 {
 /* !!! todo: enable
@@ -95,8 +95,8 @@ case class Tuple2[+T1, +T2](_1:T1, _2:T2) extends Product2[T1, T2]  {
   
 // must use <:< instead of =>, otherwise bogus any2stringadd conversion is also eligible (in case of type errors)
 
-  type Traverserable[CC[X] <: Traversable[X], X] = TraversableClass[X, CC] with Iterable[X]
-
+  type Traverserable[CC[X] <: Traversable[X], X] = GenericTraversableTemplate[X, CC] with Iterable[X]
+  
   def zip[CC[X] <: Traverserable[CC, X], A1, A2](implicit fst: T1 <:< CC[A1], snd: T2 <:< Traverserable[Iterable, A2]/*CC[A2] does not work*/): CC[(A1, A2)] = {
     map2(Tuple2((_: A1), (_: A2))) // TODO:  fix crash: 
     
