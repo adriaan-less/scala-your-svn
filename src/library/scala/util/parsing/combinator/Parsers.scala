@@ -535,7 +535,7 @@ trait Parsers {
   def success[T](v: T) = Parser{ in => Success(v, in) }
 
   def log[T](p: => Parser[T])(name: String): Parser[T] = Parser{ in =>
-    println("trying "+ name +" at "+ in)
+    println("trying "+ name +" at:\n"+ in.pos.longString)
     val r = p(in)
     println(name +" --> "+ r)
     r
@@ -653,6 +653,7 @@ trait Parsers {
 
   /** A parser generator that, roughly, generalises the rep1sep generator so that `q', which parses the separator,
    * produces a left-associative function that combines the elements it separates.
+   * Note that, for the resulting parser to succeed, it suffices that the `p` parser succeeds.
    *
    * <p> From: J. Fokker. Functional parsers. In J. Jeuring and E. Meijer, editors, Advanced Functional Programming, volume 925 of Lecture Notes in Computer Science, pages 1--23. Springer, 1995.</p>
    *
@@ -664,7 +665,8 @@ trait Parsers {
     = chainl1(p, p, q)
 
   /** A parser generator that, roughly, generalises the rep1sep generator so that `q', which parses the separator,
-   * produces a left-associative function that combines the elements it separates.
+   * produces a left-associative function that combines the elements it separates. 
+   * Note that, for the resulting parser to succeed, it suffices that the `first` parser succeeds.
    *
    * @param first a parser that parses the first element
    * @param p a parser that parses the subsequent elements
@@ -673,6 +675,31 @@ trait Parsers {
    */
   def chainl1[T, U](first: => Parser[T], p: => Parser[U], q: => Parser[(T, U) => T]): Parser[T] 
     = first ~ rep(q ~ p) ^^ {
+        case x ~ xs => xs.foldLeft(x){(_, _) match {case (a, f ~ b) => f(a, b)}}
+      }
+
+  /** A parser generator that, roughly, generalises the rep1sep generator so that `q', which parses the separator,
+   * produces a left-associative function that combines the elements it separates. 
+   * At least two elements, separated by one separator, must be parsed for the resulting parser to succeed.
+   *
+   * @param p a parser that parses the elements
+   * @param q a parser that parses the token(s) separating the elements, yielding a left-associative function that 
+   *          combines two elements into one 
+   */
+  def chainl2[T](p: => Parser[T], q: => Parser[(T, T) => T]): Parser[T]  
+    = chainl2(p, p, q)
+
+  /** A parser generator that, roughly, generalises the rep1sep generator so that `q', which parses the separator,
+   * produces a left-associative function that combines the elements it separates. 
+   * At least two elements, separated by one separator, must be parsed for the resulting parser to succeed.
+   *
+   * @param first a parser that parses the first element
+   * @param p a parser that parses the subsequent elements
+   * @param q a parser that parses the token(s) separating the elements, yielding a left-associative function that 
+   *          combines two elements into one 
+   */
+  def chainl2[T, U](first: => Parser[T], p: => Parser[U], q: => Parser[(T, U) => T]): Parser[T] 
+    = first ~ rep1(q ~ p) ^^ {
         case x ~ xs => xs.foldLeft(x){(_, _) match {case (a, f ~ b) => f(a, b)}}
       }
         
