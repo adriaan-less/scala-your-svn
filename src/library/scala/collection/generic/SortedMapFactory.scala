@@ -29,6 +29,7 @@ abstract class SortedMapFactory[CC[A, B] <: SortedMap[A, B] with SortedMapLike[A
   def apply[A, B](elems: (A, B)*)(implicit ord: Ordering[A]): CC[A, B] = (newBuilder[A, B](ord) ++= elems).result
 
   class SortedMapBuilderFactory[A, B](implicit ord: Ordering[A]) extends BuilderFactory[(A, B), CC[A, B], Coll] {
-    def apply(from: Coll) = newBuilder[A, B](ord)
+    : Coll) = newBuilder[A, B](ord)
+    def apply() = newBuilder[A, B]
   }
 }

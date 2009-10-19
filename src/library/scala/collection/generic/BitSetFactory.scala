@@ -23,7 +23,8 @@ trait BitSetFactory[Coll <: BitSet with BitSetLike[Coll]] {
   def empty: Coll
   def apply(elems: Int*): Coll = (empty /: elems) (_ + _)
   def bitsetBuilderFactory = new BuilderFactory[Int, Coll, Coll] {
-    def apply(from: Coll) = newBuilder
+    : Coll) = newBuilder
+    def apply() = newBuilder
   }
 }
 

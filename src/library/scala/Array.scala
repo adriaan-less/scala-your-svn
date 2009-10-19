@@ -32,7 +32,8 @@ class FallbackArrayBuilding {
    */
   implicit def fallbackBuilderFactory[T](implicit m: DummyImplicit): BuilderFactory[T, GenericArray[T], Array[_]] = 
     new BuilderFactory[T, GenericArray[T], Array[_]] { 
-      def apply(from: Array[_]) = GenericArray.newBuilder[T]
+      : Array[_]) = GenericArray.newBuilder[T]
+      def apply() = GenericArray.newBuilder[T]
     }
 }
 
@@ -47,7 +48,10 @@ object Array extends FallbackArrayBuilding {
   import scala.runtime.ScalaRunTime.boxArray;
 
   implicit def builderFactory[T](implicit m: ClassManifest[T]): BuilderFactory[T, Array[T], Array[_]] = 
-    new BuilderFactory[T, Array[T], Array[_]] { def apply(from: Array[_]) = ArrayBuilder.make[T]()(m) }
+    new BuilderFactory[T, Array[T], Array[_]] { 
+      : Array[_]) = ArrayBuilder.make[T]()(m) 
+      def apply() = ArrayBuilder.make[T]()(m) 
+    }
 
   def newBuilder[T](implicit m: ClassManifest[T]): ArrayBuilder[T] = ArrayBuilder.make[T]()(m)
 

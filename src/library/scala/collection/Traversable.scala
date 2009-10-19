@@ -106,8 +106,9 @@ object Traversable extends TraversableFactory[Traversable] { self =>
   private[collection] val breaks: Breaks = new Breaks
   
   implicit def builderFactory[A]: BuilderFactory[A, Traversable[A], Coll] =
-    new VirtualBuilderFactory[A]
-
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, Traversable[A]] = immutable.Traversable.newBuilder[A]
 }
 

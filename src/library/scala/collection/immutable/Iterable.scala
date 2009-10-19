@@ -37,7 +37,10 @@ trait Iterable[+A] extends Traversable[A]
  *  @since   2.8
  */
 object Iterable extends TraversableFactory[Iterable] {
-  implicit def builderFactory[A]: BuilderFactory[A, Iterable[A], Coll] = new VirtualBuilderFactory[A]
+  implicit def builderFactory[A]: BuilderFactory[A, Iterable[A], Coll] = 
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, Iterable[A]] = new mutable.ListBuffer
 }
 

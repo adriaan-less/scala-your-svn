@@ -30,6 +30,7 @@ abstract class MapFactory[CC[A, B] <: Map[A, B] with MapLike[A, B, CC[A, B]]] {
   def apply[A, B](elems: (A, B)*): CC[A, B] = (newBuilder[A, B] ++= elems).result
 
   class MapBuilderFactory[A, B] extends BuilderFactory[(A, B), CC[A, B], Coll] {
-    def apply(from: Coll) = newBuilder[A, B]
+    : Coll) = newBuilder[A, B]
+    def apply() = newBuilder
   }
 }

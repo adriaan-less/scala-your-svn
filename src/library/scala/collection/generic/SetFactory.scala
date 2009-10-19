@@ -25,6 +25,7 @@ abstract class SetFactory[CC[X] <: Set[X] with SetLike[X, CC[X]]]
   def newBuilder[A]: Builder[A, CC[A]] = new AddingBuilder[A, CC[A]](empty[A])
 
   def setBuilderFactory[A] = new BuilderFactory[A, CC[A], CC[_]] {
-    def apply(from: CC[_]) = newBuilder[A]
+    : CC[_]) = newBuilder[A]
+    def apply() = newBuilder[A]
   }
 }

@@ -44,7 +44,8 @@ class LowPriorityImplicits {
 
   implicit def fallbackStringBuilderFactory[T]: BuilderFactory[T, collection.immutable.Vector[T], String] = 
     new BuilderFactory[T, collection.immutable.Vector[T], String] { 
-      def apply(from: String) = scala.collection.immutable.Vector.newBuilder[T]
+      : String) = scala.collection.immutable.Vector.newBuilder[T]
+      def apply() = scala.collection.immutable.Vector.newBuilder[T]
     }
 
   /** Can go away after next newstarr */

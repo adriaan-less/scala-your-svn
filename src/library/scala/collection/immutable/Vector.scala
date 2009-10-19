@@ -37,7 +37,9 @@ trait Vector[+A] extends Seq[A]
  */
 object Vector extends SeqFactory[Vector] {
   implicit def builderFactory[A]: BuilderFactory[A, Vector[A], Coll] = 
-    new VirtualBuilderFactory[A]
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
   override def empty[A] = NewVector.empty[A]
   def newBuilder[A]: Builder[A, Vector[A]] = NewVector.newBuilder[A]
 }
@@ -55,7 +57,9 @@ trait NewVector[+A]  extends Vector[A]
  
  
 object NewVector extends SeqFactory[NewVector] {
-  private[immutable] val bf = new VirtualBuilderFactory[Nothing]
+  private[immutable] val bf = new VirtualBuilderFactory[Nothing] {
+    def apply() = newBuilder[Nothing]
+  }
   implicit def builderFactory[A]: BuilderFactory[A, NewVector[A], Coll] =
     bf.asInstanceOf[BuilderFactory[A, NewVector[A], Coll]]
   def newBuilder[A]: Builder[A, NewVector[A]] = new NewVectorBuilder[A]

@@ -169,7 +169,9 @@ class ArrayBuffer[A](override protected val initialSize: Int)
  */
 object ArrayBuffer extends SeqFactory[ArrayBuffer] {
   implicit def builderFactory[A]: BuilderFactory[A, ArrayBuffer[A], Coll] =
-    new VirtualBuilderFactory[A]
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, ArrayBuffer[A]] = new ArrayBuffer[A]
 }
 

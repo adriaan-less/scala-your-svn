@@ -233,7 +233,11 @@ abstract class Enumeration(initial: Int, names: String*) {
     /** A builder object for value sets */
     def newBuilder: Builder[Value, ValueSet] = new AddingBuilder(empty)
     /** The implicit builder for value sets */
-    implicit def builderFactory: BuilderFactory[Value, ValueSet, ValueSet] = new BuilderFactory[Value, ValueSet, ValueSet] { def apply(from: ValueSet) = newBuilder }
+    implicit def builderFactory: BuilderFactory[Value, ValueSet, ValueSet] = 
+      new BuilderFactory[Value, ValueSet, ValueSet] { 
+        : ValueSet) = newBuilder 
+        def apply() = newBuilder 
+      }
   }
   
   /** The name of this enumeration. */

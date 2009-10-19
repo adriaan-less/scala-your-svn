@@ -502,7 +502,11 @@ object List extends SeqFactory[List] {
   
   import scala.collection.{Iterable, Seq, Vector}
 
-  implicit def builderFactory[A]: BuilderFactory[A, List[A], Coll] = new VirtualBuilderFactory[A]
+  implicit def builderFactory[A]: BuilderFactory[A, List[A], Coll] = 
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
+
   def newBuilder[A]: Builder[A, List[A]] = new ListBuffer[A]
 
   override def empty[A]: List[A] = Nil

@@ -67,7 +67,9 @@ object WrappedArray {
 
   implicit def builderFactory[T](implicit m: ClassManifest[T]): BuilderFactory[T, WrappedArray[T], WrappedArray[_]] =
     new BuilderFactory[T, WrappedArray[T], WrappedArray[_]] {
-      def apply(from: WrappedArray[_]): Builder[T, WrappedArray[T]] =
+      : WrappedArray[_]): Builder[T, WrappedArray[T]] =
+        ArrayBuilder.make[T]()(m) mapResult WrappedArray.make[T]
+      def apply: Builder[T, WrappedArray[T]] =
         ArrayBuilder.make[T]()(m) mapResult WrappedArray.make[T]
   }
     

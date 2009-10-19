@@ -408,7 +408,10 @@ object Stream extends SeqFactory[Stream] {
    *        Stream as its From type parameter must yield a stream as its result parameter.
    *        If that assumption is broken, cast errors might result.
    */
-  class StreamBuilderFactory[A] extends VirtualBuilderFactory[A]
+  class StreamBuilderFactory[A] extends VirtualBuilderFactory[A] {
+    def apply() = newBuilder[A]
+  }
+
 
   implicit def builderFactory[A]: BuilderFactory[A, Stream[A], Coll] = new StreamBuilderFactory[A]
 
@@ -419,7 +422,7 @@ object Stream extends SeqFactory[Stream] {
 
   /** A builder for streams
    *  @note: This builder is lazy only in the sense that it does not go downs the spine
-   *         of traversables taht are added as a whole. If more layzness can be achieved,
+   *         of traversables that are added as a whole. If more laziness can be achieved,
    *         this builder should be bypassed.
    */
   class StreamBuilder[A] extends scala.collection.mutable.LazyBuilder[A, Stream[A]] {

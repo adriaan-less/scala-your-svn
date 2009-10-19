@@ -216,7 +216,10 @@ object Predef extends LowPriorityImplicits {
   implicit def unaugmentString(x: StringOps): String = x.repr
 
   implicit def stringBuilderFactory: BuilderFactory[Char, String, String] = 
-    new BuilderFactory[Char, String, String] { def apply(from: String) = new scala.collection.mutable.StringBuilder }
+    new BuilderFactory[Char, String, String] { 
+      : String) = new scala.collection.mutable.StringBuilder 
+      def apply() = new scala.collection.mutable.StringBuilder 
+    }
 
   implicit def any2stringadd(x: Any) = new runtime.StringAdd(x)
 

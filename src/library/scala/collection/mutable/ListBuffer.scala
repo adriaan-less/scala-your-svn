@@ -330,7 +330,9 @@ final class ListBuffer[A]
  */
 object ListBuffer extends SeqFactory[ListBuffer] {
   implicit def builderFactory[A]: BuilderFactory[A, ListBuffer[A], Coll] =
-    new VirtualBuilderFactory[A]
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, ListBuffer[A]] =
     new AddingBuilder(new ListBuffer[A])
 }

@@ -35,7 +35,9 @@ trait Traversable[A] extends scala.collection.Traversable[A]
  */
 object Traversable extends TraversableFactory[Traversable] {
   implicit def builderFactory[A]: BuilderFactory[A, Traversable[A], Coll] =
-    new VirtualBuilderFactory[A]
+    new VirtualBuilderFactory[A] {
+      def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, Traversable[A]] = new ArrayBuffer
 }
 
