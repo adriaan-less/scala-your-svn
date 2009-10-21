@@ -2490,11 +2490,20 @@ A type's typeSymbol should never be inspected directly.
               tp1
           }
         }
+        override def mapOver(tp: Type): Type = tp match {
+          case SingleType(pre, sym) =>
+            if (sym.isPackageClass) tp // short path
+            else {
+              val pre1 = this(pre)
+              if ((pre1 eq pre) || !pre1.isStable) tp
+              else singleType(pre1, sym)
+            }
+          case _ => super.mapOver(tp)
+        }
+
         override def mapOver(tree: Tree) = 
           tree match {
-            case tree:Ident
-            if tree.tpe.isStable
-            =>
+            case tree:Ident if tree.tpe.isStable =>
               // Do not discard the types of existential ident's.
               // The symbol of the Ident itself cannot be listed
               // in the existential's parameters, so the
@@ -2504,9 +2513,6 @@ A type's typeSymbol should never be inspected directly.
             case _ =>
               super.mapOver(tree)
           }
-
-
-
       }
       val tpe1 = extrapolate(tpe)
       var tparams0 = tparams
@@ -2864,11 +2870,14 @@ A type's typeSymbol should never be inspected directly.
     for (tparam <- eparams) tparam setInfo tparam.info.substSym(tparams, eparams)
     eparams
   }
+  
+  //  note: it's important to write the two tests in this order,
+  //  as only typeParams forces the classfile to be read. See #400
+  private def isRawIfWithoutArgs(sym: Symbol) =
+    !sym.typeParams.isEmpty && sym.hasFlag(JAVA)
 
   def isRaw(sym: Symbol, args: List[Type]) = 
-    !phase.erasedTypes && !sym.typeParams.isEmpty && sym.hasFlag(JAVA) && args.isEmpty 
-      //  note: it's important to write the two first tests in this order,
-      //  as only typeParams forces the classfile to be read. See #400
+    !phase.erasedTypes && isRawIfWithoutArgs(sym) && args.isEmpty
   
   /** Is type tp a ``raw type''? */
   def isRawType(tp: Type) = tp match {
@@ -2886,9 +2895,7 @@ A type's typeSymbol should never be inspected directly.
    */
   object rawToExistential extends TypeMap {
     def apply(tp: Type): Type = tp match {
-      case TypeRef(pre, sym, List()) if !sym.typeParams.isEmpty && sym.hasFlag(JAVA) =>
-        //  note: it's important to write the two tests in this order,
-        //  as only typeParams forces the classfile to be read. See #400
+      case TypeRef(pre, sym, List()) if isRawIfWithoutArgs(sym) =>
         val eparams = typeParamsToExistentials(sym, sym.typeParams)
         existentialAbstraction(eparams, TypeRef(pre, sym, eparams map (_.tpe)))
       case _ =>
@@ -3412,6 +3419,9 @@ A type's typeSymbol should never be inspected directly.
     }
   }
 
+  class MissingAliasException extends Exception
+  val missingAliasException = new MissingAliasException
+
   object adaptToNewRunMap extends TypeMap {
     private def adaptToNewRun(pre: Type, sym: Symbol): Symbol = {
       if (sym.isModuleClass && !phase.flatClasses) {
@@ -3421,7 +3431,9 @@ A type's typeSymbol should never be inspected directly.
       } else {
         var rebind0 = pre.findMember(sym.name, BRIDGE, 0, true)(NoSymbol)
         if (rebind0 == NoSymbol) {
-          assert(false, ""+pre+"."+sym+" does no longer exist, phase = "+phase) }
+          if (sym.isAliasType) throw missingAliasException
+          assert(false, pre+"."+sym+" does no longer exist, phase = "+phase)
+        }
         /** The two symbols have the same fully qualified name */
         def corresponds(sym1: Symbol, sym2: Symbol): Boolean =
           sym1.name == sym2.name && (sym1.isPackageClass || corresponds(sym1.owner, sym2.owner))
@@ -3459,9 +3471,14 @@ A type's typeSymbol should never be inspected directly.
         else {
           val pre1 = this(pre)
           val args1 = args mapConserve (this)
-          val sym1 = adaptToNewRun(pre1, sym)
-          if ((pre1 eq pre) && (sym1 eq sym) && (args1 eq args)/* && sym.isExternal*/) tp
-          else typeRef(pre1, sym1, args1)
+          try {
+            val sym1 = adaptToNewRun(pre1, sym)
+            if ((pre1 eq pre) && (sym1 eq sym) && (args1 eq args)/* && sym.isExternal*/) tp
+            else typeRef(pre1, sym1, args1)
+          } catch {
+            case ex: MissingAliasException =>
+              apply(tp.dealias)
+          }
         }
       case MethodType(params, restp) =>
         val restp1 = this(restp)

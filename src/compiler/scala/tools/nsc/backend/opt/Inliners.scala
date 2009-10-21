@@ -47,10 +47,10 @@ abstract class Inliners extends SubComponent {
   class Inliner {
 
     val fresh = new HashMap[String, Int]
-    
+
     /* fresh name counter */
     var count = 0
-    
+
     def freshName(s: String) = fresh.get(s) match {
       case Some(count) =>
         fresh(s) = count + 1
@@ -390,7 +390,8 @@ abstract class Inliners extends SubComponent {
       if (settings.debug.value) log("shouldLoad: " + receiver + "." + method)
       ((method.isFinal && isMonadMethod(method) && isHigherOrderMethod(method))
         || (receiver.enclosingPackage == definitions.ScalaRunTimeModule.enclosingPackage)
-        || (receiver == definitions.PredefModule.moduleClass))
+        || (receiver == definitions.PredefModule.moduleClass)
+        || (method.hasAnnotation(ScalaInlineAttr)))
     }
     
     /** Cache whether a method calls private members. */

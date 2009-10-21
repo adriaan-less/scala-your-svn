@@ -14,7 +14,7 @@ package scala.collection
 import generic._
 import TraversableView.NoBuilder
 
-/** A base class for views of Iterables.
+/** A template trait for a non-strict view of an iterable.
  *
  *  @author Martin Odersky
  *  @version 2.8
@@ -64,23 +64,23 @@ extends Iterable[A] with IterableLike[A, This] with TraversableView[A, Coll] wit
   
   trait ZippedAll[A1 >: A, B] extends Transformed[(A1, B)] {
     protected[this] val other: Iterable[B]
-    val thisElem: A1
-    val thatElem: B
+    protected[this] val thisElem: A1
+    protected[this] val thatElem: B
     override def iterator: Iterator[(A1, B)] = 
       self.iterator.zipAll(other.iterator, thisElem, thatElem)
   }
   
-  override def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: BuilderFactory[(A1, B), That, This]): That = {
+  override def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: CanBuildFrom[This, (A1, B), That]): That = {
     newZipped(that).asInstanceOf[That]
 // was:    val b = bf(repr)
 //    if (b.isInstanceOf[NoBuilder[_]]) newZipped(that).asInstanceOf[That]
 //    else super.zip[A1, B, That](that)(bf)    
   }
 
-  override def zipWithIndex[A1 >: A, That](implicit bf: BuilderFactory[(A1, Int), That, This]): That =
+  override def zipWithIndex[A1 >: A, That](implicit bf: CanBuildFrom[This, (A1, Int), That]): That =
     zip[A1, Int, That](Stream from 0)(bf)
 
-  override def zipAll[B, A1 >: A, That](that: Iterable[B], thisElem: A1, thatElem: B)(implicit bf: BuilderFactory[(A1, B), That, This]): That =
+  override def zipAll[B, A1 >: A, That](that: Iterable[B], thisElem: A1, thatElem: B)(implicit bf: CanBuildFrom[This, (A1, B), That]): That =
     newZippedAll(that, thisElem, thatElem).asInstanceOf[That]
 
   protected def newZipped[B](that: Iterable[B]): Transformed[(A, B)] = new Zipped[B] {

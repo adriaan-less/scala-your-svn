@@ -13,7 +13,7 @@ package scala
 
 import collection.immutable.StringOps
 import collection.mutable.ArrayOps
-import collection.generic.BuilderFactory
+import collection.generic.CanBuildFrom
 
 /** The <code>Predef</code> object provides definitions that are
  *  accessible in all Scala compilation units without explicit
@@ -215,8 +215,11 @@ object Predef extends LowPriorityImplicits {
   implicit def augmentString(x: String): StringOps = new StringOps(x)
   implicit def unaugmentString(x: StringOps): String = x.repr
 
-  implicit def stringBuilderFactory: BuilderFactory[Char, String, String] = 
-    new BuilderFactory[Char, String, String] { def apply(from: String) = new scala.collection.mutable.StringBuilder }
+  implicit def stringCanBuildFrom: CanBuildFrom[String, Char, String] = 
+    new CanBuildFrom[String, Char, String] { 
+      def apply(from: String) = new scala.collection.mutable.StringBuilder 
+      def apply() = new scala.collection.mutable.StringBuilder 
+    }
 
   implicit def any2stringadd(x: Any) = new runtime.StringAdd(x)
 
@@ -246,10 +249,6 @@ object Predef extends LowPriorityImplicits {
   implicit def unitArrayOps(xs: Array[Unit]): ArrayOps[Unit] = new ArrayOps.ofUnit(xs)
 
   implicit def exceptionWrapper(exc: Throwable) = new runtime.RichException(exc)
-  
-  /** Lens from Ordering[T] to Ordered[T] */
-  implicit def orderingToOrdered[T](x: T)(implicit ord: Ordering[T]): Ordered[T] = 
-    new Ordered[T] { def compare(that: T): Int = ord.compare(x, that) }
 
   implicit def byte2short(x: Byte): Short = x.toShort
   implicit def byte2int(x: Byte): Int = x.toInt
@@ -313,14 +312,14 @@ object Predef extends LowPriorityImplicits {
   implicit def conforms[A]: A <:< A = new (A <:< A) {def apply(x: A) = x}
 
   /** A type for which there is aways an implicit value.
-   *  @see fallbackBuilderFactory in Array.scala
+   *  @see fallbackCanBuildFrom in Array.scala
    */
   class DummyImplicit
   
   object DummyImplicit {
   
     /** An implicit value yielding a DummyImplicit.
-     *   @see fallbackBuilderFactory in Array.scala
+     *   @see fallbackCanBuildFrom in Array.scala
      */
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }

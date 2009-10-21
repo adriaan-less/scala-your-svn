@@ -10,20 +10,18 @@
 
 
 package object scala {
+
+  type Travarsable[+A] = scala.collection.Traversable[A]
+  val Traversable = scala.collection.Traversable
+
   type Iterable[+A] = scala.collection.Iterable[A]
   val Iterable = scala.collection.Iterable
-
-  @deprecated("use Iterable instead") type Collection[+A] = Iterable[A]
-  @deprecated("use Iterable instead") val Collection = Iterable
 
   type Seq[+A] = scala.collection.Seq[A]
   val Seq = scala.collection.Seq
 
-  @deprecated("use Seq instead") type Sequence[+A] = scala.collection.Seq[A]
-  @deprecated("use Seq instead") val Sequence = scala.collection.Seq
-
-  type RandomAccessSeq[+A] = scala.collection.Vector[A]
-  val RandomAccessSeq = scala.collection.Vector
+  type Vector[+A] = scala.collection.Vector[A]
+  val Vector = scala.collection.Vector
 
   type Iterator[+A] = scala.collection.Iterator[A]
   val Iterator = scala.collection.Iterator
@@ -40,7 +38,20 @@ package object scala {
 
   type Stream[+A] = scala.collection.immutable.Stream[A]
   val Stream = scala.collection.immutable.Stream
+  val #:: = scala.collection.immutable.Stream.#::
 
   type StringBuilder = scala.collection.mutable.StringBuilder
   val StringBuilder = scala.collection.mutable.StringBuilder
+
+  type Range = scala.collection.immutable.Range
+  val Range = scala.collection.immutable.Range
+
+  @deprecated("use Iterable instead") type Collection[+A] = Iterable[A]
+  @deprecated("use Iterable instead") val Collection = Iterable
+
+  @deprecated("use Seq instead") type Sequence[+A] = scala.collection.Seq[A]
+  @deprecated("use Seq instead") val Sequence = scala.collection.Seq
+
+  @deprecated("use Vector instead") type RandomAccessSeq[+A] = scala.collection.Vector[A]
+  @deprecated("use Vector instead") val RandomAccessSeq = scala.collection.Vector
 }

@@ -13,6 +13,7 @@ package scala.collection
 
 import generic._
 import mutable.ArrayBuffer
+import scala.annotation.tailrec
 
 /** Sequences that support O(1) element access and O(1) length computation.
  *  This class does not add any methods to Seq but overrides several
@@ -77,31 +78,26 @@ trait VectorLike[+A, +Repr] extends SeqLike[A, Repr] { self =>
     if (i < length) Some(this(i)) else None
   }
 
-  private def foldl[B](start: Int, z: B, op: (B, A) => B): B = {
-    var i = start
-    val len = length
-    var result = z
-    while (i < len) {
-      result = op(result, this(i))
-      i += 1
-    }
-    result
-  }
-    
-  private def foldr[B](start: Int, len: Int, z: B, op: (A, B) => B): B = 
-    if (start == len) z
-    else op(this(start), foldr(start + 1, len, z, op))
+  @tailrec
+  private def foldl[B](start: Int, end: Int, z: B, op: (B, A) => B): B =
+    if (start == end) z
+    else foldl(start + 1, end, op(z, this(start)), op)
+
+  @tailrec
+  private def foldr[B](start: Int, end: Int, z: B, op: (A, B) => B): B =
+    if (start == end) z
+    else foldr(start, end - 1, op(this(end - 1), z), op)
 
   override def foldLeft[B](z: B)(op: (B, A) => B): B = 
-    foldl(0, z, op)
+    foldl(0, length, z, op)
   override def foldRight[B](z: B)(op: (A, B) => B): B = 
     foldr(0, length, z, op)
   override def reduceLeft[B >: A](op: (B, A) => B): B = 
-    if (length > 0) foldl(1, this(0), op) else super.reduceLeft(op)
+    if (length > 0) foldl(1, length, this(0), op) else super.reduceLeft(op)
   override def reduceRight[B >: A](op: (A, B) => B): B = 
     if (length > 0) foldr(0, length - 1, this(length - 1), op) else super.reduceRight(op)
   
-  override def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: BuilderFactory[(A1, B), That, Repr]): That = that match {
+  override def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: CanBuildFrom[Repr, (A1, B), That]): That = that match {
     case that: Vector[_] =>
       val b = bf(repr)
       var i = 0
@@ -116,7 +112,7 @@ trait VectorLike[+A, +Repr] extends SeqLike[A, Repr] { self =>
       super.zip[A1, B, That](that)(bf)
   }
 
-  override def zipWithIndex[A1 >: A, That](implicit bf: BuilderFactory[(A1, Int), That, Repr]): That = {
+  override def zipWithIndex[A1 >: A, That](implicit bf: CanBuildFrom[Repr, (A1, Int), That]): That = {
     val b = bf(repr)
     val len = length
     b.sizeHint(len)

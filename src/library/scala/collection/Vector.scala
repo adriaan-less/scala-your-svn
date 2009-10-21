@@ -6,13 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
+// $Id: Vector.scala 19035 2009-10-10 22:54:28Z rompf $
 
 
 package scala.collection
 
 import generic._
-import mutable.{Builder, ArrayBuffer}
+import scala.collection.mutable.Builder
 
 /** <p>
  *    Sequences that support O(1) element access and O(1) length computation.
@@ -34,6 +34,12 @@ trait Vector[+A] extends Seq[A]
 }
 
 object Vector extends SeqFactory[Vector] {
-  implicit def builderFactory[A]: BuilderFactory[A, Vector[A], Coll] = new VirtualBuilderFactory[A]
-  def newBuilder[A]: Builder[A, Vector[A]] = mutable.Vector.newBuilder[A]
+  override def empty[A]: Vector[A] = immutable.Vector.empty[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Vector[A]] = 
+    new GenericCanBuildFrom[A] {
+      def apply() = newBuilder[A]
+    }  
+  def newBuilder[A]: Builder[A, Vector[A]] = immutable.Vector.newBuilder[A]
+
+  @deprecated("use collection.mutable.Vector instead") type Mutable[A] = scala.collection.mutable.Vector[A]
 }

@@ -549,7 +549,8 @@ object Settings {
       }
   }
 
-  /** A setting that accumulates all strings supplied to it */
+  /** A setting that accumulates all strings supplied to it,
+   *  until it encounters one starting with a '-'. */
   class MultiStringSetting private[Settings](
     val name: String,
     val arg: String,
@@ -559,9 +560,11 @@ object Settings {
     protected var v: List[String] = Nil
     def appendToValue(str: String) { value ++= List(str) }
     
-    def tryToSet(args: List[String]) = {      
-      args foreach appendToValue
-      Some(Nil)
+    def tryToSet(args: List[String]) = {
+      val (strings, rest) = args span (x => !x.startsWith("-"))
+      strings foreach appendToValue
+      
+      Some(rest)
     }
     override def tryToSetColon(args: List[String]) = tryToSet(args)
     def unparse: List[String] = value map { name + ":" + _ }
@@ -830,6 +833,7 @@ trait ScalacSettings {
   val Yidedebug     = BooleanSetting    ("-Yide-debug", "Generate, validate and output trees using the interactive compiler.")
   val Ytyperdebug   = BooleanSetting    ("-Ytyper-debug", "Trace all type assignements")
   val Ypmatdebug    = BooleanSetting    ("-Ypmat-debug", "Trace all pattern matcher activity.")
+  val Xwarnings     = BooleanSetting    ("-Xstrict-warnings", "Emit extra (usually spurious) warnings.")
   
   /**
    * -P "Plugin" settings

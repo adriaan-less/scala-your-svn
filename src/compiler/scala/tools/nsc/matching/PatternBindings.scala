@@ -16,6 +16,7 @@ trait PatternBindings extends ast.TreeDSL
   import global.{ typer => _, _ }
   import definitions.{ EqualsPatternClass }
   import CODE._
+  import Debug._
   
   /** EqualsPattern **/
   def isEquals(tpe: Type)           = cond(tpe) { case TypeRef(_, EqualsPatternClass, _) => true }
@@ -30,17 +31,16 @@ trait PatternBindings extends ast.TreeDSL
 
   // If the given pattern contains alternatives, return it as a list of patterns.
   // Makes typed copies of any bindings found so all alternatives point to final state.
-  def extractBindings(p: Tree, prevBindings: Tree => Tree = identity[Tree] _): List[Tree] = {
+  def extractBindings(p: Pattern): List[Pattern] =
+    toPats(_extractBindings(p.boundTree, identity))
+  
+  private def _extractBindings(p: Tree, prevBindings: Tree => Tree): List[Tree] = {
     def newPrev(b: Bind) = (x: Tree) => treeCopy.Bind(b, b.name, x) setType x.tpe
 
     p match {
-      case b @ Bind(_, body)  => extractBindings(body, newPrev(b))
+      case b @ Bind(_, body)  => _extractBindings(body, newPrev(b))
       case Alternative(ps)    => ps map prevBindings
     }
-  }
-  def makeBind(vs: List[Symbol], pat: Tree): Tree = vs match {
-    case Nil      => pat
-    case x :: xs  => Bind(x, makeBind(xs, pat)) setType pat.tpe
   }
   
   trait PatternBindingLogic {
@@ -50,26 +50,42 @@ trait PatternBindings extends ast.TreeDSL
     // bound variables beneath them return a list of said patterns for flatMapping.
     def subpatternsForVars: List[Pattern] = Nil
     
-    // This is what calls subpatternsForVars.
-    def definedVars: List[Symbol] =
-      (boundVariables ::: (subpatternsForVars flatMap (_.definedVars))).reverse // XXX reverse?
+    private def shallowBoundVariables = strip(boundTree)
+    private def otherBoundVariables = subpatternsForVars flatMap (_.deepBoundVariables)
+    
+    def deepBoundVariables: List[Symbol] = shallowBoundVariables ::: otherBoundVariables
+    // An indiscriminate deep search would be:
+    //
+    // def deepBoundVariables = deepstrip(boundTree)
+    
+    lazy val boundVariables = {
+      val res = shallowBoundVariables
+      val deep = deepBoundVariables
       
-    lazy val boundVariables = strip(boundTree)
+      if (res.size != deep.size)
+        TRACE("deep variable list %s is larger than bound %s", deep, res)
+
+      res
+    }
     
     // XXX only a var for short-term experimentation.
     private var _boundTree: Bind = null
     def boundTree = if (_boundTree == null) tree else _boundTree
     def withBoundTree(x: Bind): this.type = {
       _boundTree = x
-      this
+      tracing[this.type]("Bound", this)
     }
     
     // If a tree has bindings, boundTree looks something like
     //   Bind(v3, Bind(v2, Bind(v1, tree)))
     // This takes the given tree and creates a new pattern
     //   using the same bindings.
-    def rebindTo(t: Tree): Pattern =
+    def rebindTo(t: Tree): Pattern = {
+      if (boundVariables.size < deepBoundVariables.size)
+        TRACE("ALERT: rebinding %s is losing %s", this, otherBoundVariables)
+        
       Pattern(wrapBindings(boundVariables, t))
+    }
 
     // Wrap this pattern's bindings around (_: Type)
     def rebindToType(tpe: Type, annotatedType: Type = null): Pattern = {
@@ -88,12 +104,11 @@ trait PatternBindings extends ast.TreeDSL
     // Like rebindToEqualsCheck, but subtly different.  Not trying to be
     // mysterious -- I haven't sorted it all out yet.
     def rebindToObjectCheck(): Pattern = {
-      val sType = mkSingleton
+      val sType = sufficientType
       rebindToType(mkEqualsRef(sType), sType)
     }
        
-    /** Helpers **/
-    
+    /** Helpers **/    
     private def wrapBindings(vs: List[Symbol], pat: Tree): Tree = vs match {
       case Nil      => pat
       case x :: xs  => Bind(x, wrapBindings(xs, pat)) setType pat.tpe
@@ -102,6 +117,8 @@ trait PatternBindings extends ast.TreeDSL
       case b @ Bind(_, pat) => b.symbol :: strip(pat)
       case _                => Nil
     }
+    private def deepstrip(t: Tree): List[Symbol] =
+      t filter { case _: Bind => true ; case _ => false } map (_.symbol)
   }
 
   case class Binding(pvar: Symbol, tvar: Symbol) {
@@ -111,37 +128,24 @@ trait PatternBindings extends ast.TreeDSL
     // in the compiler, but it suffices for now.
     if (tvar.info containsTp WildcardType)
       tvar setInfo pvar.info
-    
-    def toIdent       = Ident(tvar) setType pvar.tpe
-    def castIfNeeded  = 
-      if (tvar.tpe <:< pvar.tpe) ID(tvar)
-      else ID(tvar) AS_ANY pvar.tpe
+
+    override def toString() = pp(pvar -> tvar)
   }
 
-  case class BindingsInfo(xs: List[Binding]) {
-    def patternVars = xs map (_.pvar)
-    def temporaryVars = xs map (_.tvar)
-    def idents = xs map (_.toIdent)
-    
-    def patternValDefs(implicit context: MatrixContext) =
-      for (b @ Binding(pvar, tvar) <- xs) yield
-        context.typedValDef(pvar, b.toIdent)
-  }
-  
-  class Bindings(private val vlist: List[Binding]) extends Function1[Symbol, Option[Ident]] {
-    def vmap(v: Symbol): Option[Binding] = vlist find (_.pvar eq v)
-    
-    // filters the given list down to those defined in these bindings
-    def infoFor(vs: List[Symbol]) = BindingsInfo(vs map vmap flatten)
-    def infoForAll                = BindingsInfo(vlist)
+  class Bindings(private val vlist: List[Binding]) {
+    if (!vlist.isEmpty)
+      traceCategory("Bindings", this.toString)
+
+    def get() = vlist
     
     def add(vs: Iterable[Symbol], tvar: Symbol): Bindings = {
       val newBindings = vs.toList map (v => Binding(v, tvar))
       new Bindings(newBindings ++ vlist)
     }
-    def apply(v: Symbol): Option[Ident] = vmap(v) map (_.toIdent)
 
-    override def toString() = " Bound(%s)".format(vlist)
+    override def toString() = 
+      if (vlist.isEmpty) "No Bindings"
+      else "%d Bindings(%s)".format(vlist.size, pp(vlist))
   }
 
   val NoBinding: Bindings = new Bindings(Nil)

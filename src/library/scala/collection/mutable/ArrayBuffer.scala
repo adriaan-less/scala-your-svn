@@ -86,7 +86,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param elem  the element to append.
    *  @return      the updated buffer. 
    */
-  def +:(elem: A): this.type = {
+  def +=:(elem: A): this.type = {
     ensureSize(size0 + 1)
     copy(0, 1, size0)
     array(0) = elem.asInstanceOf[AnyRef]
@@ -101,7 +101,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param iter  the iterable object.
    *  @return      the updated buffer.
    */
-  override def ++:(iter: Traversable[A]): this.type = { insertAll(0, iter); this }
+  override def ++=:(iter: Traversable[A]): this.type = { insertAll(0, iter); this }
   
   /** Inserts new elements at the index <code>n</code>. Opposed to method
    *  <code>update</code>, this method will not replace an element with a
@@ -168,8 +168,10 @@ class ArrayBuffer[A](override protected val initialSize: Int)
  *  @since   2.8
  */
 object ArrayBuffer extends SeqFactory[ArrayBuffer] {
-  implicit def builderFactory[A]: BuilderFactory[A, ArrayBuffer[A], Coll] =
-    new VirtualBuilderFactory[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ArrayBuffer[A]] =
+    new GenericCanBuildFrom[A] {
+      def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, ArrayBuffer[A]] = new ArrayBuffer[A]
 }
 

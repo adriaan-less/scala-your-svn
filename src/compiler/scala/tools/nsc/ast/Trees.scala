@@ -64,6 +64,7 @@ trait Trees {
     def isAbstract  = hasFlag(ABSTRACT )
     def isDeferred  = hasFlag(DEFERRED )
     def isCase      = hasFlag(CASE     )
+    def isLazy      = hasFlag(LAZY     )
     def isSealed    = hasFlag(SEALED   )
     def isFinal     = hasFlag(FINAL    )
     def isTrait     = hasFlag(TRAIT | notDEFERRED) // (part of DEVIRTUALIZE)
@@ -535,12 +536,23 @@ trait Trees {
       LabelDef(sym.name, params map Ident, rhs) setSymbol sym
     }
 
+  /** Import selector
+   *
+   * Representation of an imported name its optional rename and their optional positions
+   * 
+   * @param name      the imported name
+   * @param namePos   its position or -1 if undefined
+   * @param rename    the name the import is renamed to (== name if no renaming)
+   * @param renamePos the position of the rename or -1 if undefined
+   */
+  case class ImportSelector(name: Name, namePos: Int, rename: Name, renamePos: Int)
+  
   /** Import clause
    *
    *  @param expr
    *  @param selectors
    */
-  case class Import(expr: Tree, selectors: List[(Name, Name)])
+  case class Import(expr: Tree, selectors: List[ImportSelector])
        extends SymTree 
     // The symbol of an Import is an import symbol @see Symbol.newImport
     // It's used primarily as a marker to check that the import has been typechecked.
@@ -658,12 +670,6 @@ trait Trees {
 
   /** casedef shorthand */
   def CaseDef(pat: Tree, body: Tree): CaseDef = CaseDef(pat, EmptyTree, body)
-
-  /** Sequence of patterns (comma separated expressions), eliminated by the
-   *  <code>TransMatch</code> phase.
-   */
-  case class Sequence(trees: List[Tree])
-       extends TermTree
 
   /** Alternatives of patterns, eliminated by TransMatch, except for
    *  occurences in encoded Switch stmt (=remaining Match(CaseDef(...))
@@ -959,8 +965,6 @@ trait Trees {
      // { stats; expr }
   case CaseDef(pat, guard, body) =>                               (eliminated by transmatch/explicitouter)
     // case pat if guard => body
-  case Sequence(trees) =>                                         (eliminated by transmatch/explicitouter)
-    // pat1, ..., pat_n
   case Alternative(trees) =>                                      (eliminated by transmatch/explicitouter)
     // pat1 | ... | patn
   case Star(elem) =>                                              (eliminated by transmatch/explicitouter)
@@ -1042,12 +1046,11 @@ trait Trees {
     def DefDef(tree: Tree, mods: Modifiers, name: Name, tparams: List[TypeDef], vparamss: List[List[ValDef]], tpt: Tree, rhs: Tree): DefDef
     def TypeDef(tree: Tree, mods: Modifiers, name: Name, tparams: List[TypeDef], rhs: Tree): TypeDef
     def LabelDef(tree: Tree, name: Name, params: List[Ident], rhs: Tree): LabelDef
-    def Import(tree: Tree, expr: Tree, selectors: List[(Name, Name)]): Import
+    def Import(tree: Tree, expr: Tree, selectors: List[ImportSelector]): Import
     def DocDef(tree: Tree, comment: String, definition: Tree): DocDef
     def Template(tree: Tree, parents: List[Tree], self: ValDef, body: List[Tree]): Template
     def Block(tree: Tree, stats: List[Tree], expr: Tree): Block
     def CaseDef(tree: Tree, pat: Tree, guard: Tree, body: Tree): CaseDef
-    def Sequence(tree: Tree, trees: List[Tree]): Sequence
     def Alternative(tree: Tree, trees: List[Tree]): Alternative
     def Star(tree: Tree, elem: Tree): Star
     def Bind(tree: Tree, name: Name, body: Tree): Bind
@@ -1097,7 +1100,7 @@ trait Trees {
       new TypeDef(mods, name, tparams, rhs).copyAttrs(tree)
     def LabelDef(tree: Tree, name: Name, params: List[Ident], rhs: Tree) =
       new LabelDef(name, params, rhs).copyAttrs(tree)
-    def Import(tree: Tree, expr: Tree, selectors: List[(Name, Name)]) =
+    def Import(tree: Tree, expr: Tree, selectors: List[ImportSelector]) =
       new Import(expr, selectors).copyAttrs(tree)
     def DocDef(tree: Tree, comment: String, definition: Tree) =
       new DocDef(comment, definition).copyAttrs(tree)
@@ -1107,8 +1110,6 @@ trait Trees {
       new Block(stats, expr).copyAttrs(tree)
     def CaseDef(tree: Tree, pat: Tree, guard: Tree, body: Tree) =
       new CaseDef(pat, guard, body).copyAttrs(tree)
-    def Sequence(tree: Tree, trees: List[Tree]) =
-      new Sequence(trees).copyAttrs(tree)
     def Alternative(tree: Tree, trees: List[Tree]) =
       new Alternative(trees).copyAttrs(tree)
     def Star(tree: Tree, elem: Tree) =
@@ -1213,7 +1214,7 @@ trait Trees {
       if (name0 == name) && (params0 == params) && (rhs0 == rhs) => t
       case _ => treeCopy.LabelDef(tree, name, params, rhs)
     }
-    def Import(tree: Tree, expr: Tree, selectors: List[(Name, Name)]) = tree match {
+    def Import(tree: Tree, expr: Tree, selectors: List[ImportSelector]) = tree match {
       case t @ Import(expr0, selectors0)
       if (expr0 == expr) && (selectors0 == selectors) => t
       case _ => treeCopy.Import(tree, expr, selectors)
@@ -1237,11 +1238,6 @@ trait Trees {
       case t @ CaseDef(pat0, guard0, body0)
       if (pat0 == pat) && (guard0 == guard) && (body0 == body) => t
       case _ => treeCopy.CaseDef(tree, pat, guard, body)
-    }
-    def Sequence(tree: Tree, trees: List[Tree]) = tree match {
-      case t @ Sequence(trees0)
-      if trees0 == trees => t
-      case _ => treeCopy.Sequence(tree, trees)
     }
     def Alternative(tree: Tree, trees: List[Tree]) = tree match {
       case t @ Alternative(trees0)
@@ -1458,8 +1454,6 @@ trait Trees {
         treeCopy.Block(tree, transformStats(stats, currentOwner), transform(expr))
       case CaseDef(pat, guard, body) =>
         treeCopy.CaseDef(tree, transform(pat), transform(guard), transform(body))
-      case Sequence(trees) =>
-        treeCopy.Sequence(tree, transformTrees(trees))
       case Alternative(trees) =>
         treeCopy.Alternative(tree, transformTrees(trees))
       case Star(elem) =>
@@ -1611,8 +1605,6 @@ trait Trees {
         traverseTrees(stats); traverse(expr)
       case CaseDef(pat, guard, body) =>
         traverse(pat); traverse(guard); traverse(body)
-      case Sequence(trees) =>
-        traverseTrees(trees) 
       case Alternative(trees) =>
         traverseTrees(trees)
       case Star(elem) =>
