@@ -27,12 +27,12 @@ object VectorView {
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def canBuildFrom[A]: CanBuildFrom[Vector[_], A, VectorView[A], Coll] = 
     new CanBuildFrom[Vector[_], A, VectorView[A], Coll] { 
-      : Coll) = new NoBuilder 
+      def apply(from: Coll) = new NoBuilder 
       def apply() = new NoBuilder 
     }
   implicit def arrCanBuildFrom[A]: CanBuildFrom[Array[A], A, VectorView[A], TraversableView[_, Array[_]]] = 
     new CanBuildFrom[Array[A], A, VectorView[A], TraversableView[_, Array[_]]] { 
-      : TraversableView[_, Array[_]]) = new NoBuilder 
+      def apply(from: TraversableView[_, Array[_]]) = new NoBuilder 
       def apply() = new NoBuilder 
     }
 }

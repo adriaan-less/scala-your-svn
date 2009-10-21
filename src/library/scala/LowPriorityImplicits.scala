@@ -44,7 +44,7 @@ class LowPriorityImplicits {
 
   implicit def fallbackStringCanBuildFrom[T]: CanBuildFrom[String, T, collection.immutable.Vector[T]] = 
     new CanBuildFrom[String, T, collection.immutable.Vector[T]] { 
-      : String) = scala.collection.immutable.Vector.newBuilder[T]
+      def apply(from: String) = scala.collection.immutable.Vector.newBuilder[T]
       def apply() = scala.collection.immutable.Vector.newBuilder[T]
     }
 

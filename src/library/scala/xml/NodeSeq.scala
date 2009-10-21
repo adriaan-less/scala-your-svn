@@ -29,7 +29,7 @@ object NodeSeq {
   type Coll = NodeSeq
   implicit def canBuildFrom: CanBuildFrom[Coll, Node, NodeSeq] = 
     new CanBuildFrom[Coll, Node, NodeSeq] { 
-      : Coll) = newBuilder 
+      def apply(from: Coll) = newBuilder 
       def apply() = newBuilder 
     }
   def newBuilder: Builder[Node, NodeSeq] = new ListBuffer[Node] mapResult fromSeq

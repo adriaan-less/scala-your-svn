@@ -217,7 +217,7 @@ object Predef extends LowPriorityImplicits {
 
   implicit def stringCanBuildFrom: CanBuildFrom[String, Char, String] = 
     new CanBuildFrom[String, Char, String] { 
-      : String) = new scala.collection.mutable.StringBuilder 
+      def apply(from: String) = new scala.collection.mutable.StringBuilder 
       def apply() = new scala.collection.mutable.StringBuilder 
     }
 

@@ -22,12 +22,12 @@ object RichString {
   def newBuilder: Builder[Char, RichString] = new StringBuilder() mapResult (new RichString(_))
   implicit def canBuildFrom: CanBuildFrom[RichString, Char, RichString] = 
     new CanBuildFrom[RichString, Char, RichString] { 
-      : RichString) = newBuilder 
+      def apply(from: RichString) = newBuilder 
       def apply() = newBuilder 
     }
   implicit def canBuildFrom2: CanBuildFrom[String, Char, RichString] = 
     new CanBuildFrom[String, Char, RichString] { 
-      : String) = newBuilder 
+      def apply(from: String) = newBuilder 
       def apply() = newBuilder 
     }
 

@@ -19,7 +19,7 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
   extends GenericCompanion[CC] {
 
   abstract class GenericCanBuildFrom[A] extends CanBuildFrom[CC[_], A, CC[A]] {
-    : Coll) = from.genericBuilder[A] 
+    def apply(from: Coll) = from.genericBuilder[A] 
   }
 
   /** Concatenate all the argument collections into a single collection.

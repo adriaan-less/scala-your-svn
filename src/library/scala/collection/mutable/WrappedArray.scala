@@ -67,7 +67,7 @@ object WrappedArray {
 
   implicit def canBuildFrom[T](implicit m: ClassManifest[T]): CanBuildFrom[WrappedArray[_], T, WrappedArray[T]] =
     new CanBuildFrom[WrappedArray[_], T, WrappedArray[T]] {
-      : WrappedArray[_]): Builder[T, WrappedArray[T]] =
+      def apply(from: WrappedArray[_]): Builder[T, WrappedArray[T]] =
         ArrayBuilder.make[T]()(m) mapResult WrappedArray.make[T]
       def apply: Builder[T, WrappedArray[T]] =
         ArrayBuilder.make[T]()(m) mapResult WrappedArray.make[T]

@@ -25,7 +25,7 @@ object SeqView {
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def canBuildFrom[A]: CanBuildFrom[Seq[_], A, SeqView[A], Coll] = 
     new CanBuildFrom[Seq[_], A, SeqView[A], Coll] { 
-      : Coll) = new NoBuilder 
+      def apply(from: Coll) = new NoBuilder 
       def apply() = new NoBuilder 
     }
 }

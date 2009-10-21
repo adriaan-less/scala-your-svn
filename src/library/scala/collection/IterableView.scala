@@ -26,7 +26,7 @@ object IterableView {
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
   implicit def canBuildFrom[A]: CanBuildFrom[Iterable[_], A, IterableView[A], Coll] = 
     new CanBuildFrom[Iterable[_], A, IterableView[A], Coll] { 
-      : Coll) = new NoBuilder 
+      def apply(from: Coll) = new NoBuilder 
       def apply() = new NoBuilder 
     }
 }

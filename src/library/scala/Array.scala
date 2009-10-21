@@ -32,7 +32,7 @@ class FallbackArrayBuilding {
    */
   implicit def fallbackCanBuildFrom[T](implicit m: DummyImplicit): CanBuildFrom[Array[_], T, GenericArray[T]] = 
     new CanBuildFrom[Array[_], T, GenericArray[T]] { 
-      : Array[_]) = GenericArray.newBuilder[T]
+      def apply(from: Array[_]) = GenericArray.newBuilder[T]
       def apply() = GenericArray.newBuilder[T]
     }
 }
@@ -49,7 +49,7 @@ object Array extends FallbackArrayBuilding {
 
   implicit def canBuildFrom[T](implicit m: ClassManifest[T]): CanBuildFrom[Array[_], T, Array[T]] = 
     new CanBuildFrom[Array[_], T, Array[T]] { 
-      : Array[_]) = ArrayBuilder.make[T]()(m) 
+      def apply(from: Array[_]) = ArrayBuilder.make[T]()(m) 
       def apply() = ArrayBuilder.make[T]()(m) 
     }
 
