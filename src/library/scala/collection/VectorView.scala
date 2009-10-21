@@ -25,13 +25,13 @@ trait VectorView[+A, +Coll] extends VectorViewLike[A, Coll, VectorView[A, Coll]]
 
 object VectorView {
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
-  implicit def canBuildFrom[A]: CanBuildFrom[Vector[_], A, VectorView[A], Coll] = 
-    new CanBuildFrom[Vector[_], A, VectorView[A], Coll] { 
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, VectorView[A, Vector[_]]] = 
+    new CanBuildFrom[Coll, A, VectorView[A, Vector[_]]] { 
       def apply(from: Coll) = new NoBuilder 
       def apply() = new NoBuilder 
     }
-  implicit def arrCanBuildFrom[A]: CanBuildFrom[Array[A], A, VectorView[A], TraversableView[_, Array[_]]] = 
-    new CanBuildFrom[Array[A], A, VectorView[A], TraversableView[_, Array[_]]] { 
+  implicit def arrCanBuildFrom[A]: CanBuildFrom[TraversableView[_, Array[_]], A, VectorView[A, Array[A]]] = 
+    new CanBuildFrom[TraversableView[_, Array[_]], A, VectorView[A, Array[A]]] { 
       def apply(from: TraversableView[_, Array[_]]) = new NoBuilder 
       def apply() = new NoBuilder 
     }

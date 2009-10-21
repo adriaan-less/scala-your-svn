@@ -23,8 +23,8 @@ trait SeqView[+A, +Coll] extends SeqViewLike[A, Coll, SeqView[A, Coll]]
 
 object SeqView {
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
-  implicit def canBuildFrom[A]: CanBuildFrom[Seq[_], A, SeqView[A], Coll] = 
-    new CanBuildFrom[Seq[_], A, SeqView[A], Coll] { 
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, SeqView[A, Seq[_]]] = 
+    new CanBuildFrom[Coll, A, SeqView[A, Seq[_]]] { 
       def apply(from: Coll) = new NoBuilder 
       def apply() = new NoBuilder 
     }

@@ -61,7 +61,7 @@ object NewVector extends SeqFactory[NewVector] {
     def apply() = newBuilder[Nothing]
   }
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, NewVector[A]] =
-    bf.asInstanceOf[CanBuildFrom[Coll], A, NewVector[A]]
+    bf.asInstanceOf[CanBuildFrom[Coll, A, NewVector[A]]]
   def newBuilder[A]: Builder[A, NewVector[A]] = new NewVectorBuilder[A]
   override def empty[A]: NewVector[A] = new NewVectorImpl[A](0, 0, 0)
 
