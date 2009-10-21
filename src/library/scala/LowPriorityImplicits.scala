@@ -13,7 +13,7 @@ package scala
 
 import collection.mutable._
 import collection.immutable.{WrappedString, Vector}
-import collection.generic.BuilderFactory
+import collection.generic.CanBuildFrom
 
 /** The `LowPriorityImplicits` class provides implicit values that
  *  are valid in all Scala compilation units without explicit qualification,
@@ -42,8 +42,8 @@ class LowPriorityImplicits {
   implicit def wrapString(s: String): WrappedString = new WrappedString(s)
   implicit def unwrapString(ws: WrappedString): String = ws.self
 
-  implicit def fallbackStringBuilderFactory[T]: BuilderFactory[T, collection.immutable.Vector[T], String] = 
-    new BuilderFactory[T, collection.immutable.Vector[T], String] { 
+  implicit def fallbackStringCanBuildFrom[T]: CanBuildFrom[T, collection.immutable.Vector[T], String] = 
+    new CanBuildFrom[T, collection.immutable.Vector[T], String] { 
       : String) = scala.collection.immutable.Vector.newBuilder[T]
       def apply() = scala.collection.immutable.Vector.newBuilder[T]
     }

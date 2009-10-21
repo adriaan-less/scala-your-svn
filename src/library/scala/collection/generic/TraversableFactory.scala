@@ -18,7 +18,7 @@ package generic
 abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversableTemplate[X, CC]]
   extends GenericCompanion[CC] {
 
-  abstract class VirtualBuilderFactory[A] extends BuilderFactory[A, CC[A], CC[_]] {
+  abstract class GenericCanBuildFrom[A] extends CanBuildFrom[A, CC[A], CC[_]] {
     : Coll) = from.genericBuilder[A] 
   }
 

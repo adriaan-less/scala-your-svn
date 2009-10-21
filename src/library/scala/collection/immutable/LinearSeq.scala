@@ -31,8 +31,8 @@ trait LinearSeq[+A] extends Seq[A]
  * @since 2.8
  */
 object LinearSeq extends SeqFactory[LinearSeq] {
-  implicit def builderFactory[A]: BuilderFactory[A, LinearSeq[A], Coll] = 
-    new VirtualBuilderFactory[A] {
+  implicit def builderFactory[A]: CanBuildFrom[A, LinearSeq[A], Coll] = 
+    new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }
   def newBuilder[A]: Builder[A, LinearSeq[A]] = new mutable.ListBuffer

@@ -40,7 +40,7 @@ trait Set[A] extends Iterable[A]
 }
 
 object Set extends SetFactory[Set] {
-  implicit def builderFactory[A]: BuilderFactory[A, Set[A], Coll] = setBuilderFactory[A]
+  implicit def builderFactory[A]: CanBuildFrom[A, Set[A], Coll] = setCanBuildFrom[A]
   override def empty[A]: Set[A] = new EmptySet[A]
 
   private val hashSeed = "Set".hashCode 

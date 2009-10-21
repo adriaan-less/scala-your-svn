@@ -65,8 +65,8 @@ object WrappedArray {
     case x: Array[Unit] => wrapUnitArray(x).asInstanceOf[WrappedArray[T]]
   }
 
-  implicit def builderFactory[T](implicit m: ClassManifest[T]): BuilderFactory[T, WrappedArray[T], WrappedArray[_]] =
-    new BuilderFactory[T, WrappedArray[T], WrappedArray[_]] {
+  implicit def builderFactory[T](implicit m: ClassManifest[T]): CanBuildFrom[T, WrappedArray[T], WrappedArray[_]] =
+    new CanBuildFrom[T, WrappedArray[T], WrappedArray[_]] {
       : WrappedArray[_]): Builder[T, WrappedArray[T]] =
         ArrayBuilder.make[T]()(m) mapResult WrappedArray.make[T]
       def apply: Builder[T, WrappedArray[T]] =

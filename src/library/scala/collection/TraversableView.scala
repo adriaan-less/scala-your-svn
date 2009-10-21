@@ -36,8 +36,8 @@ object TraversableView {
     def clear() {}
   }
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
-  implicit def builderFactory[A]: BuilderFactory[A, TraversableView[A, Traversable[_]], Coll] = 
-    new BuilderFactory[A, TraversableView[A, Traversable[_]], Coll] { 
+  implicit def builderFactory[A]: CanBuildFrom[A, TraversableView[A, Traversable[_]], Coll] = 
+    new CanBuildFrom[A, TraversableView[A, Traversable[_]], Coll] { 
       : Coll) = new NoBuilder 
       def apply() = new NoBuilder 
     }

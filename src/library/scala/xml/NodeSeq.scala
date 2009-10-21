@@ -14,7 +14,7 @@ package scala.xml
 import collection.immutable
 import collection.SeqLike
 import collection.mutable.{Builder, ListBuffer}
-import collection.generic.BuilderFactory
+import collection.generic.CanBuildFrom
 
 /** This object ...
  *
@@ -27,8 +27,8 @@ object NodeSeq {
     def theSeq = s
   }
   type Coll = NodeSeq
-  implicit def builderFactory: BuilderFactory[Node, NodeSeq, Coll] = 
-    new BuilderFactory[Node, NodeSeq, Coll] { 
+  implicit def builderFactory: CanBuildFrom[Node, NodeSeq, Coll] = 
+    new CanBuildFrom[Node, NodeSeq, Coll] { 
       : Coll) = newBuilder 
       def apply() = newBuilder 
     }

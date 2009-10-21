@@ -115,8 +115,8 @@ trait ResizableArray[A] extends Vector[A]
 }
 
 object ResizableArray extends SeqFactory[ResizableArray] {
-  implicit def builderFactory[A]: BuilderFactory[A, ResizableArray[A], Coll] =
-    new VirtualBuilderFactory[A] {
+  implicit def builderFactory[A]: CanBuildFrom[A, ResizableArray[A], Coll] =
+    new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }  
   def newBuilder[A]: Builder[A, ResizableArray[A]] = new ArrayBuffer[A]

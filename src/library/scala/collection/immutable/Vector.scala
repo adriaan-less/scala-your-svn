@@ -36,8 +36,8 @@ trait Vector[+A] extends Seq[A]
  * @since 2.8
  */
 object Vector extends SeqFactory[Vector] {
-  implicit def builderFactory[A]: BuilderFactory[A, Vector[A], Coll] = 
-    new VirtualBuilderFactory[A] {
+  implicit def builderFactory[A]: CanBuildFrom[A, Vector[A], Coll] = 
+    new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }
   override def empty[A] = NewVector.empty[A]
@@ -57,11 +57,11 @@ trait NewVector[+A]  extends Vector[A]
  
  
 object NewVector extends SeqFactory[NewVector] {
-  private[immutable] val bf = new VirtualBuilderFactory[Nothing] {
+  private[immutable] val bf = new GenericCanBuildFrom[Nothing] {
     def apply() = newBuilder[Nothing]
   }
-  implicit def builderFactory[A]: BuilderFactory[A, NewVector[A], Coll] =
-    bf.asInstanceOf[BuilderFactory[A, NewVector[A], Coll]]
+  implicit def builderFactory[A]: CanBuildFrom[A, NewVector[A], Coll] =
+    bf.asInstanceOf[CanBuildFrom[A, NewVector[A], Coll]]
   def newBuilder[A]: Builder[A, NewVector[A]] = new NewVectorBuilder[A]
   override def empty[A]: NewVector[A] = new NewVectorImpl[A](0, 0, 0)
 
@@ -111,17 +111,17 @@ private class NewVectorImpl[+A](startIndex: Int, endIndex: Int, focus: Int) exte
 
   // SeqLike api
   
-  override def updated[B >: A, That](index: Int, elem: B)(implicit bf: BuilderFactory[B, That, NewVector[A]]): That = {
+  override def updated[B >: A, That](index: Int, elem: B)(implicit bf: CanBuildFrom[B, That, NewVector[A]]): That = {
     // just ignore bf
     updateAt(index, elem).asInstanceOf[That]
   }
 
-  override def +:[B >: A, That](elem: B)(implicit bf: BuilderFactory[B, That, NewVector[A]]): That = {
+  override def +:[B >: A, That](elem: B)(implicit bf: CanBuildFrom[B, That, NewVector[A]]): That = {
     // just ignore bf
     appendFront(elem).asInstanceOf[That]
   }
 
-  override def :+[B >: A, That](elem: B)(implicit bf: BuilderFactory[B, That, NewVector[A]]): That = {
+  override def :+[B >: A, That](elem: B)(implicit bf: CanBuildFrom[B, That, NewVector[A]]): That = {
     // just ignore bf
     appendBack(elem).asInstanceOf[That]
   }

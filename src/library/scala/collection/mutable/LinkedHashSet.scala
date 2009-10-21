@@ -56,7 +56,7 @@ class LinkedHashSet[A] extends Set[A]
 
 /** Factory object for `LinkedHashSet` class */
 object LinkedHashSet extends SetFactory[LinkedHashSet] {
-  implicit def builderFactory[A]: BuilderFactory[A, LinkedHashSet[A], Coll] = setBuilderFactory[A]
+  implicit def builderFactory[A]: CanBuildFrom[A, LinkedHashSet[A], Coll] = setCanBuildFrom[A]
   override def empty[A]: LinkedHashSet[A] = new LinkedHashSet[A]
 }
 

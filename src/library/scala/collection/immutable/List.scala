@@ -147,7 +147,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
   /** Create a new list which contains all elements of this list
    *  followed by all elements of Traversable `that'
    */
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, List[A]]): That = {
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[B, That, List[A]]): That = {
     val b = bf(this)
     if (b.isInstanceOf[ListBuffer[_]]) (this ::: that.toList).asInstanceOf[That]
     else super.++(that)
@@ -156,7 +156,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
   /** Create a new list which contains all elements of this list
    *  followed by all elements of Iterator `that'
    */
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: BuilderFactory[B, That, List[A]]): That =
+  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[B, That, List[A]]): That =
     this ++ that.toList
 
   /** Overrides the method in Iterable for efficiency.
@@ -502,8 +502,8 @@ object List extends SeqFactory[List] {
   
   import scala.collection.{Iterable, Seq, Vector}
 
-  implicit def builderFactory[A]: BuilderFactory[A, List[A], Coll] = 
-    new VirtualBuilderFactory[A] {
+  implicit def builderFactory[A]: CanBuildFrom[A, List[A], Coll] = 
+    new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }
 

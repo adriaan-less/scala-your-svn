@@ -30,8 +30,8 @@ class FallbackArrayBuilding {
    *  by Array.builderFactory). We make sure that that implicit search is always
    *  succesfull. 
    */
-  implicit def fallbackBuilderFactory[T](implicit m: DummyImplicit): BuilderFactory[T, GenericArray[T], Array[_]] = 
-    new BuilderFactory[T, GenericArray[T], Array[_]] { 
+  implicit def fallbackCanBuildFrom[T](implicit m: DummyImplicit): CanBuildFrom[T, GenericArray[T], Array[_]] = 
+    new CanBuildFrom[T, GenericArray[T], Array[_]] { 
       : Array[_]) = GenericArray.newBuilder[T]
       def apply() = GenericArray.newBuilder[T]
     }
@@ -47,8 +47,8 @@ object Array extends FallbackArrayBuilding {
   import runtime.BoxedArray;
   import scala.runtime.ScalaRunTime.boxArray;
 
-  implicit def builderFactory[T](implicit m: ClassManifest[T]): BuilderFactory[T, Array[T], Array[_]] = 
-    new BuilderFactory[T, Array[T], Array[_]] { 
+  implicit def builderFactory[T](implicit m: ClassManifest[T]): CanBuildFrom[T, Array[T], Array[_]] = 
+    new CanBuildFrom[T, Array[T], Array[_]] { 
       : Array[_]) = ArrayBuilder.make[T]()(m) 
       def apply() = ArrayBuilder.make[T]()(m) 
     }

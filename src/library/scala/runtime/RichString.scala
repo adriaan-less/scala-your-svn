@@ -20,13 +20,13 @@ import collection.mutable.{Builder, StringBuilder}
 object RichString {
 
   def newBuilder: Builder[Char, RichString] = new StringBuilder() mapResult (new RichString(_))
-  implicit def builderFactory: BuilderFactory[Char, RichString, RichString] = 
-    new BuilderFactory[Char, RichString, RichString] { 
+  implicit def builderFactory: CanBuildFrom[Char, RichString, RichString] = 
+    new CanBuildFrom[Char, RichString, RichString] { 
       : RichString) = newBuilder 
       def apply() = newBuilder 
     }
-  implicit def builderFactory2: BuilderFactory[Char, RichString, String] = 
-    new BuilderFactory[Char, RichString, String] { 
+  implicit def builderFactory2: CanBuildFrom[Char, RichString, String] = 
+    new CanBuildFrom[Char, RichString, String] { 
       : String) = newBuilder 
       def apply() = newBuilder 
     }

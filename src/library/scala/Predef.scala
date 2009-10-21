@@ -13,7 +13,7 @@ package scala
 
 import collection.immutable.StringOps
 import collection.mutable.ArrayOps
-import collection.generic.BuilderFactory
+import collection.generic.CanBuildFrom
 
 /** The <code>Predef</code> object provides definitions that are
  *  accessible in all Scala compilation units without explicit
@@ -215,8 +215,8 @@ object Predef extends LowPriorityImplicits {
   implicit def augmentString(x: String): StringOps = new StringOps(x)
   implicit def unaugmentString(x: StringOps): String = x.repr
 
-  implicit def stringBuilderFactory: BuilderFactory[Char, String, String] = 
-    new BuilderFactory[Char, String, String] { 
+  implicit def stringCanBuildFrom: CanBuildFrom[Char, String, String] = 
+    new CanBuildFrom[Char, String, String] { 
       : String) = new scala.collection.mutable.StringBuilder 
       def apply() = new scala.collection.mutable.StringBuilder 
     }
@@ -312,14 +312,14 @@ object Predef extends LowPriorityImplicits {
   implicit def conforms[A]: A <:< A = new (A <:< A) {def convert(x: A) = x}
 
   /** A type for which there is aways an implicit value.
-   *  @see fallbackBuilderFactory in Array.scala
+   *  @see fallbackCanBuildFrom in Array.scala
    */
   class DummyImplicit
   
   object DummyImplicit {
   
     /** An implicit value yielding a DummyImplicit.
-     *   @see fallbackBuilderFactory in Array.scala
+     *   @see fallbackCanBuildFrom in Array.scala
      */
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }
