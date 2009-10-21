@@ -13,10 +13,10 @@
 package scala
 
 import annotation.unchecked.uncheckedVariance
+import scala.collection.Traversable
+import scala.collection.generic.GenericTraversableTemplate
 
 object Tuple2 {
-
-  import collection.generic._
 /* !!! todo: enable
   class IterableOps[CC[+B] <: Iterable[B] with IterableTemplate[CC, B @uncheckedVariance], A1, A2](tuple: (CC[A1], Iterable[A2])) {
     def zip: CC[(A1, A2)] = {
@@ -79,20 +79,11 @@ object Tuple2 {
 */
 }
 
+
 /** Tuple2 is the canonical representation of a @see Product2 
  *  
  */
 case class Tuple2[+T1, +T2](_1:T1, _2:T2) extends Product2[T1, T2]  {
-/*
-  def map[CC[X] <: Traversable[X], A1, A2, B](implicit fst: T1 => CC[A1], snd: T2 => Traversable[A2]) = (f: (A1, A2) => B) => {
-    val b = fst(_1).genericBuilder[B]
-    val it1 = _1.iterator
-    val it2 = _2.iterator
-    while (it1.hasNext && it2.hasNext)
-      b += f(it1.next, it2.next)
-    b.result
-  }
-*/
   override def toString() = {
      val sb = new StringBuilder
      sb.append('(').append(_1).append(',').append(_2).append(')')
@@ -101,5 +92,30 @@ case class Tuple2[+T1, +T2](_1:T1, _2:T2) extends Product2[T1, T2]  {
   
   /** Swap the elements of the tuple */
   def swap: Tuple2[T2,T1] = Tuple2(_2, _1)
-
+  
+  // type Traverserable[CC[X] <: Traversable[X], X] = GenericTraversableTemplate[X, CC] with Iterable[X]
+  // 
+  // // must use <:< instead of =>, otherwise bogus any2stringadd conversion is also eligible (in case of type errors)
+  // def zip[CC[X] <: Traverserable[CC, X], A1, A2](implicit fst: T1 <:< CC[A1], snd: T2 <:< Traverserable[Iterable, A2]/*CC[A2] does not work*/): CC[(A1, A2)] = {
+  //   map2(Tuple2((_: A1), (_: A2))) // TODO:  fix crash: 
+  //   
+  // /*Exception in thread "main" scala.tools.nsc.symtab.Types$NoCommonType: lub/glb of incompatible types: [X]Tuple2.this.Traverserable[?CC,X] and CC[(A1, A2)]
+  //    at scala.tools.nsc.symtab.Types$$anonfun$matchingBounds$1.apply(Types.scala:4729)
+  //    ...
+  //    at scala.tools.nsc.symtab.Types$class.solve(Types.scala:4292)
+  //    
+  //    should have been computing glb of:
+  //      Tuple2.this.Traverserable[CC,(A1, A2)] and CC[(A1, A2)], with result CC[(A1, A2)]
+  //   */
+  //   
+  // }
+  // 
+  // def map2[CC[X] <: Traverserable[CC, X], A1, A2, B](f: (A1, A2) => B)(implicit fst: T1 <:< CC[A1], snd: T2 <:< Traverserable[Iterable, A2]/*CC[A2] does not work*/): CC[B] = {
+  //   val b = _1.genericBuilder[B]
+  //   val it1 = _1.iterator
+  //   val it2 = _2.iterator
+  //   while (it1.hasNext && it2.hasNext)
+  //     b += f(it1.next, it2.next)
+  //   b.result
+  // }
 }
