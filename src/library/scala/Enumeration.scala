@@ -233,8 +233,8 @@ abstract class Enumeration(initial: Int, names: String*) {
     /** A builder object for value sets */
     def newBuilder: Builder[Value, ValueSet] = new AddingBuilder(empty)
     /** The implicit builder for value sets */
-    implicit def builderFactory: CanBuildFrom_Done[ValueSet, Value, ValueSet] = 
-      new CanBuildFrom_Done[ValueSet, Value, ValueSet] { 
+    implicit def canBuildFrom: CanBuildFrom[ValueSet, Value, ValueSet] = 
+      new CanBuildFrom[ValueSet, Value, ValueSet] { 
         : ValueSet) = newBuilder 
         def apply() = newBuilder 
       }

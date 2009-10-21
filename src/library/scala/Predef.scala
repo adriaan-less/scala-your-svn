@@ -215,8 +215,8 @@ object Predef extends LowPriorityImplicits {
   implicit def augmentString(x: String): StringOps = new StringOps(x)
   implicit def unaugmentString(x: StringOps): String = x.repr
 
-  implicit def stringCanBuildFrom: CanBuildFrom_Done[String, Char, String] = 
-    new CanBuildFrom_Done[String, Char, String] { 
+  implicit def stringCanBuildFrom: CanBuildFrom[String, Char, String] = 
+    new CanBuildFrom[String, Char, String] { 
       : String) = new scala.collection.mutable.StringBuilder 
       def apply() = new scala.collection.mutable.StringBuilder 
     }

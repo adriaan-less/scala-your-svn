@@ -92,6 +92,6 @@ self =>
 /*
  * object VectorView {
   type Coll = TraversableView[_, C] forSome { type C <: scala.collection.Traversable[_] }
-  implicit def builderFactory[A]: CanBuildFrom_Done[Vector[_], A, VectorView[A], Coll] = new CanBuildFrom_Done[mutable.Vector[_], A, VectorView[A], Coll] { : Coll) = new NoBuilder }
+  implicit def canBuildFrom[A]: CanBuildFrom[Vector[_], A, VectorView[A], Coll] = new CanBuildFrom[mutable.Vector[_], A, VectorView[A], Coll] { : Coll) = new NoBuilder }
 }
 */

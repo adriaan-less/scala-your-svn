@@ -46,7 +46,7 @@ object Seq extends SeqFactory[Seq] {
 
   private[collection] val hashSeed = "Seq".hashCode
   
-  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, Seq[A]] =
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[A]] =
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }  

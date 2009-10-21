@@ -42,7 +42,7 @@ trait Map[A, +B] extends Iterable[(A, B)]
  * @since 1
  */
 object Map extends ImmutableMapFactory[Map] {
-  implicit def builderFactory[A, B]: CanBuildFrom[(A, B), Map[A, B], Coll] = new MapCanBuildFrom[A, B]
+  implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), Map[A, B]] = new MapCanBuildFrom[A, B]
 
   def empty[A, B]: Map[A, B] = new EmptyMap[A, B]
 

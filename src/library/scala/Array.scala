@@ -27,11 +27,11 @@ class FallbackArrayBuilding {
    *  Called instead of Array.newBuilder if the element type of an array
    *  does not have a class manifest. Note that fallbackBuilder fcatory
    *  needs an implicit parameter (otherwise it would not be dominated in implicit search
-   *  by Array.builderFactory). We make sure that that implicit search is always
+   *  by Array.canBuildFrom). We make sure that that implicit search is always
    *  succesfull. 
    */
-  implicit def fallbackCanBuildFrom[T](implicit m: DummyImplicit): CanBuildFrom_Done[Array[_], T, GenericArray[T]] = 
-    new CanBuildFrom_Done[Array[_], T, GenericArray[T]] { 
+  implicit def fallbackCanBuildFrom[T](implicit m: DummyImplicit): CanBuildFrom[Array[_], T, GenericArray[T]] = 
+    new CanBuildFrom[Array[_], T, GenericArray[T]] { 
       : Array[_]) = GenericArray.newBuilder[T]
       def apply() = GenericArray.newBuilder[T]
     }
@@ -47,8 +47,8 @@ object Array extends FallbackArrayBuilding {
   import runtime.BoxedArray;
   import scala.runtime.ScalaRunTime.boxArray;
 
-  implicit def builderFactory[T](implicit m: ClassManifest[T]): CanBuildFrom_Done[Array[_], T, Array[T]] = 
-    new CanBuildFrom_Done[Array[_], T, Array[T]] { 
+  implicit def canBuildFrom[T](implicit m: ClassManifest[T]): CanBuildFrom[Array[_], T, Array[T]] = 
+    new CanBuildFrom[Array[_], T, Array[T]] { 
       : Array[_]) = ArrayBuilder.make[T]()(m) 
       def apply() = ArrayBuilder.make[T]()(m) 
     }

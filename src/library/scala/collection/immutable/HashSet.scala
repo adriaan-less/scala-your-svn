@@ -141,7 +141,7 @@ class HashSet[A] extends Set[A]
  *  @since   2.3
  */
 object HashSet extends SetFactory[HashSet] {
-  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, HashSet[A]] = setCanBuildFrom[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, HashSet[A]] = setCanBuildFrom[A]
   override def empty[A]: HashSet[A] = new HashSet
 }
 

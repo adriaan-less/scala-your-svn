@@ -19,7 +19,7 @@ import generic._
  *  @since 1
  */
 object ListMap extends ImmutableMapFactory[ListMap] {
-  implicit def builderFactory[A, B]: CanBuildFrom[(A, B), ListMap[A, B], Coll] =
+  implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), ListMap[A, B]] =
     new MapCanBuildFrom[A, B]
   def empty[A, B]: ListMap[A, B] = new ListMap
 }

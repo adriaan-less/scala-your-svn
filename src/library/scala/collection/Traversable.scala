@@ -39,10 +39,10 @@ trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
   override def isEmpty: Boolean
   override def size: Int
   override def hasDefiniteSize
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom_Done[Traversable[A], B, That]): That
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom_Done[Traversable[A], B, That]): That
-  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom_Done[Traversable[A], B, That]): That
-  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom_Done[Traversable[A], B, That]): That
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
   override def filter(p: A => Boolean): Traversable[A]
   override def remove(p: A => Boolean): Traversable[A]
   override def partition(p: A => Boolean): (Traversable[A], Traversable[A])
@@ -105,7 +105,7 @@ object Traversable extends TraversableFactory[Traversable] { self =>
   /** provide break functionality separate from client code */
   private[collection] val breaks: Breaks = new Breaks
   
-  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, Traversable[A]] =
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] =
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }
