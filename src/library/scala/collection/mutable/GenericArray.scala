@@ -68,7 +68,7 @@ extends Vector[A]
 }
 
 object GenericArray extends SeqFactory[GenericArray] {
-  implicit def builderFactory[A]: CanBuildFrom[A, GenericArray[A], Coll] = 
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, GenericArray[A]] = 
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }  

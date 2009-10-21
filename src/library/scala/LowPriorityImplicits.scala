@@ -42,8 +42,8 @@ class LowPriorityImplicits {
   implicit def wrapString(s: String): WrappedString = new WrappedString(s)
   implicit def unwrapString(ws: WrappedString): String = ws.self
 
-  implicit def fallbackStringCanBuildFrom[T]: CanBuildFrom[T, collection.immutable.Vector[T], String] = 
-    new CanBuildFrom[T, collection.immutable.Vector[T], String] { 
+  implicit def fallbackStringCanBuildFrom[T]: CanBuildFrom_Done[String, T, collection.immutable.Vector[T]] = 
+    new CanBuildFrom_Done[String, T, collection.immutable.Vector[T]] { 
       : String) = scala.collection.immutable.Vector.newBuilder[T]
       def apply() = scala.collection.immutable.Vector.newBuilder[T]
     }

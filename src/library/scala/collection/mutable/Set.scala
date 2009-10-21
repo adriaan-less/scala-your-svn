@@ -38,7 +38,7 @@ trait Set[A] extends Iterable[A]
  *  Currently this returns a HashSet.
  */
 object Set extends SetFactory[Set] {
-  implicit def builderFactory[A]: CanBuildFrom[A, Set[A], Coll] = setCanBuildFrom[A]
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, Set[A]] = setCanBuildFrom[A]
   override def empty[A]: Set[A] = HashSet.empty[A]
 }
 

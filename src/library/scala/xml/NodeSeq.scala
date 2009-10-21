@@ -27,8 +27,8 @@ object NodeSeq {
     def theSeq = s
   }
   type Coll = NodeSeq
-  implicit def builderFactory: CanBuildFrom[Node, NodeSeq, Coll] = 
-    new CanBuildFrom[Node, NodeSeq, Coll] { 
+  implicit def builderFactory: CanBuildFrom_Done[Coll, Node, NodeSeq] = 
+    new CanBuildFrom_Done[Coll, Node, NodeSeq] { 
       : Coll) = newBuilder 
       def apply() = newBuilder 
     }

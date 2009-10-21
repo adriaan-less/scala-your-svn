@@ -168,7 +168,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
  *  @since   2.8
  */
 object ArrayBuffer extends SeqFactory[ArrayBuffer] {
-  implicit def builderFactory[A]: CanBuildFrom[A, ArrayBuffer[A], Coll] =
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, ArrayBuffer[A]] =
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }

@@ -55,7 +55,7 @@ class HashSet[A] extends Set[A]
 
 /** Factory object for `HashSet` class */
 object HashSet extends SetFactory[HashSet] {
-  implicit def builderFactory[A]: CanBuildFrom[A, HashSet[A], Coll] = setCanBuildFrom[A]
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, HashSet[A]] = setCanBuildFrom[A]
   override def empty[A]: HashSet[A] = new HashSet[A]
 }
 

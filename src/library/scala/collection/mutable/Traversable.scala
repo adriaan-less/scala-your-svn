@@ -34,7 +34,7 @@ trait Traversable[A] extends scala.collection.Traversable[A]
  *  @version 2.8
  */
 object Traversable extends TraversableFactory[Traversable] {
-  implicit def builderFactory[A]: CanBuildFrom[A, Traversable[A], Coll] =
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, Traversable[A]] =
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }

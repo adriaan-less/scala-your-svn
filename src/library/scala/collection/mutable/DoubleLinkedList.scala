@@ -32,7 +32,7 @@ class DoubleLinkedList[A](_elem: A, _next: DoubleLinkedList[A]) extends LinearSe
 }
 
 object DoubleLinkedList extends SeqFactory[DoubleLinkedList] {
-  implicit def builderFactory[A]: CanBuildFrom[A, DoubleLinkedList[A], Coll] = //new CanBuildFrom[A, DoubleLinkedList[A], Coll] { : Coll) = from.traversableBuilder[A] }
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, DoubleLinkedList[A]] = //new CanBuildFrom_Done[Coll, A, DoubleLinkedList[A]] { : Coll) = from.traversableBuilder[A] }
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }

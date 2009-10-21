@@ -42,7 +42,7 @@ self =>
 
   protected def underlying: Coll
 
-  def force[B >: A, That](implicit bf: CanBuildFrom[B, That, Coll]) = {
+  def force[B >: A, That](implicit bf: CanBuildFrom_Done[Coll, B, That]) = {
     val b = bf(underlying)
     b ++= this
     b.result()
@@ -143,23 +143,23 @@ self =>
   protected def newDroppedWhile(p: A => Boolean): Transformed[A] = new DroppedWhile { val pred = p }
   protected def newTakenWhile(p: A => Boolean): Transformed[A] = new TakenWhile { val pred = p }
   
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[B, That, This]): That = {
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom_Done[This, B, That]): That = {
     newAppended(that).asInstanceOf[That]
 // was:    val b = bf(repr)
 //     if (b.isInstanceOf[NoBuilder[_]]) newAppended(that).asInstanceOf[That]
 //    else super.++[B, That](that)(bf) 
   }
  
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[B, That, This]): That = ++[B, That](that.toStream)
+  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom_Done[This, B, That]): That = ++[B, That](that.toStream)
 
-  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[B, That, This]): That = {
+  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom_Done[This, B, That]): That = {
     newMapped(f).asInstanceOf[That]
 // was:        val b = bf(repr)
 //          if (b.isInstanceOf[NoBuilder[_]]) newMapped(f).asInstanceOf[That]
 //    else super.map[B, That](f)(bf) 
   }
 
-  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[B, That, This]): That = {
+  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom_Done[This, B, That]): That = {
     newFlatMapped(f).asInstanceOf[That]
 // was:    val b = bf(repr)
 //     if (b.isInstanceOf[NoBuilder[_]]) newFlatMapped(f).asInstanceOf[That]

@@ -17,7 +17,7 @@ import mutable.Builder
  *
  *  @since 2.8
  */
-trait CanBuildFrom[-Elem, +To, -From] {
+trait CanBuildFrom_Done[-From, -Elem, +To] {
 
   /** Creates a new builder, using `from` as a prototype
    * the resulting Builder will build the same kind of collection

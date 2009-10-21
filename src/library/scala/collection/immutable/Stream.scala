@@ -117,7 +117,7 @@ self =>
    *  then StreamBuilder will be chosen for the implicit.
    *  we recognize that fact and optimize to get more laziness. 
    */
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[B, That, Stream[A]]): That = {
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom_Done[Stream[A], B, That]): That = {
     // we assume there is no other builder factory on streams and therefore know that That = Stream[A]
     (if (isEmpty) that.toStream
      else new Stream.Cons(head, (tail ++ that).asInstanceOf[Stream[A]])).asInstanceOf[That]
@@ -126,7 +126,7 @@ self =>
   /** Create a new stream which contains all elements of this stream
    *  followed by all elements of Iterator `that'
    */
-  override def++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[B, That, Stream[A]]): That =
+  override def++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom_Done[Stream[A], B, That]): That =
     this ++ that.toStream
 
   /** Returns the stream resulting from applying the given function
@@ -136,7 +136,7 @@ self =>
    *  @return  <code>f(a<sub>0</sub>), ..., f(a<sub>n</sub>)</code> if this
    *           sequence is <code>a<sub>0</sub>, ..., a<sub>n</sub></code>.
    */
-  override final def map[B, That](f: A => B)(implicit bf: CanBuildFrom[B, That, Stream[A]]): That = {
+  override final def map[B, That](f: A => B)(implicit bf: CanBuildFrom_Done[Stream[A], B, That]): That = {
     (if (isEmpty) Stream.Empty
      else new Stream.Cons(f(head), (tail map f).asInstanceOf[Stream[B]])).asInstanceOf[That]
   }
@@ -148,7 +148,7 @@ self =>
    *  @return  <code>f(a<sub>0</sub>) ::: ... ::: f(a<sub>n</sub>)</code> if
    *           this stream is <code>[a<sub>0</sub>, ..., a<sub>n</sub>]</code>.
    */
-  override final def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[B, That, Stream[A]]): That = {
+  override final def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom_Done[Stream[A], B, That]): That = {
     // we assume there is no other builder factory on streams and therefore know that That = Stream[B]
     // optimization: drop A's for which f yields no B
     var rest = this
@@ -349,7 +349,7 @@ self =>
   /** Returns a new sequence of given length containing the elements of this sequence followed by zero
    *  or more occurrences of given elements. 
    */
-  override def padTo[B >: A, That](len: Int, elem: B)(implicit bf: CanBuildFrom[B, That, Stream[A]]): That = {
+  override def padTo[B >: A, That](len: Int, elem: B)(implicit bf: CanBuildFrom_Done[Stream[A], B, That]): That = {
     def loop(len: Int, these: Stream[A]): Stream[B] = 
       if (these.isEmpty) Stream.fill(len)(elem)
       else new Stream.Cons(these.head, loop(len - 1, these.tail))
@@ -413,7 +413,7 @@ object Stream extends SeqFactory[Stream] {
   }
 
 
-  implicit def builderFactory[A]: CanBuildFrom[A, Stream[A], Coll] = new StreamCanBuildFrom[A]
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, Stream[A]] = new StreamCanBuildFrom[A]
 
   /** Creates a new builder for a stream */
   def newBuilder[A]: Builder[A, Stream[A]] = new StreamBuilder[A]

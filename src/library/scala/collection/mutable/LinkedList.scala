@@ -32,7 +32,7 @@ class LinkedList[A](_elem: A, _next: LinkedList[A]) extends LinearSeq[A]
 }
 
 object LinkedList extends SeqFactory[LinkedList] {
-  implicit def builderFactory[A]: CanBuildFrom[A, LinkedList[A], Coll] =
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, LinkedList[A]] =
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }

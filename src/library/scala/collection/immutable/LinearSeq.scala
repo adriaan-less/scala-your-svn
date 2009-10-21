@@ -31,7 +31,7 @@ trait LinearSeq[+A] extends Seq[A]
  * @since 2.8
  */
 object LinearSeq extends SeqFactory[LinearSeq] {
-  implicit def builderFactory[A]: CanBuildFrom[A, LinearSeq[A], Coll] = 
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, LinearSeq[A]] = 
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }

@@ -329,7 +329,7 @@ final class ListBuffer[A]
  *  @version 2.8
  */
 object ListBuffer extends SeqFactory[ListBuffer] {
-  implicit def builderFactory[A]: CanBuildFrom[A, ListBuffer[A], Coll] =
+  implicit def builderFactory[A]: CanBuildFrom_Done[Coll, A, ListBuffer[A]] =
     new GenericCanBuildFrom[A] {
       def apply() = newBuilder[A]
     }
