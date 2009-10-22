@@ -1963,9 +1963,9 @@ A type's typeSymbol should never be inspected directly.
   // now, pattern-matching returns the most recent constr
   object TypeVar {
     def unapply(tv: TypeVar): Some[(Type, TypeConstraint)] = Some((tv.origin, tv.constr))
-    def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr, List(), List())    
+    def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr, List(), List())
     def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint(List(),List()), List(), tparam.typeParams)
-    def apply(origin: Type, constr: TypeConstraint, args: List[Type], params: List[Symbol]) = new TypeVar(origin, constr, args, params)    
+    def apply(origin: Type, constr: TypeConstraint, args: List[Type], params: List[Symbol]) = new TypeVar(origin, constr, args, params)
   }
   
   /** A class representing a type variable 
@@ -1992,7 +1992,7 @@ A type's typeSymbol should never be inspected directly.
      *  constr for ?CC only tracks type constructors anyway, so when ?CC[Int] <:< List[Int] and ?CC[String] <:< Iterable[String]
      *  ?CC's hibounds contains List and Iterable
      */
-    def applyArgs(newArgs: List[Type]): TypeVar = 
+    def applyArgs(newArgs: List[Type]): TypeVar =
       if(newArgs.isEmpty) this // SubstMap relies on this (though this check is redundant when called from appliedType...)
       else TypeVar(origin, constr, newArgs, params) // @M TODO: interaction with undoLog??
         // newArgs.length may differ from args.length (could've been empty before)
@@ -2002,7 +2002,7 @@ A type's typeSymbol should never be inspected directly.
       // thus, we need to track a TypeVar's arguments, and map over them (see TypeMap::mapOver)
       // OBSOLETE BECAUSE: can't update imperatively because TypeVars do get applied to different arguments over type (in asSeenFrom) -- see pos/tcpoly_infer_implicit_tuplewrapper.scala
       // CONSEQUENCE: make new TypeVar's for every application of a TV to args,
-      //   inference may generate several TypeVar's for a single type parameter that must be inferred, 
+      //   inference may generate several TypeVar's for a single type parameter that must be inferred,
       //   one of them is in the set of tvars that need to be solved, and they all share the same constr instance
 
 
@@ -2045,23 +2045,23 @@ A type's typeSymbol should never be inspected directly.
         else             constr.hibounds = tp :: constr.hibounds 
         // println("addedBound: "+(this, tp)) // @MDEBUG
         }
-      def checkArgs(args1: List[Type], args2: List[Type], params: List[Symbol]) = 
-        if(isLowerBound) isSubArgs(args1, args2, params)      
-        else             isSubArgs(args2, args1, params)      
+      def checkArgs(args1: List[Type], args2: List[Type], params: List[Symbol]) =
+        if(isLowerBound) isSubArgs(args1, args2, params)
+        else             isSubArgs(args2, args1, params)
 
       if (constr.instValid) // type var is already set
         checkSubtype(tp, constr.inst)
       else isRelatable(tp) && { 
         if(params.isEmpty) { // type var has kind *
           addBound(tp)
-          true 
+          true
         } else // higher-kinded type var with same arity as tp
-          (typeArgs.length == tp.typeArgs.length) && { 
+          (typeArgs.length == tp.typeArgs.length) && {
             // register type constructor (the type without its type arguments) as bound
             addBound(tp.typeConstructor)
             // check subtyping of higher-order type vars
             // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
-            checkArgs(tp.typeArgs, typeArgs, params)  
+            checkArgs(tp.typeArgs, typeArgs, params)
           }
       }
     }
