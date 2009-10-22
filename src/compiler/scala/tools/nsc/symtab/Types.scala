@@ -568,7 +568,7 @@ trait Types {
 //      val startTime = if (util.Statistics.enabled) System.nanoTime() else 0l
       val result =
         ((this eq that) ||
-         (if (explainSwitch) explain("<", isSubType, this, that)
+         (if (explainSwitch) explain("<:", isSubType, this, that)
           else isSubType(this, that, AnyDepth)))
 //      if (util.Statistics.enabled) {
 //        subtypeNanos += System.nanoTime() - startTime
@@ -2004,7 +2004,6 @@ A type's typeSymbol should never be inspected directly.
       // CONSEQUENCE: make new TypeVar's for every application of a TV to args,
       //   inference may generate several TypeVar's for a single type parameter that must be inferred, 
       //   one of them is in the set of tvars that need to be solved, and they all share the same constr instance
-    
 
 
     def setInst(tp: Type) {
@@ -4926,6 +4925,6 @@ A type's typeSymbol should never be inspected directly.
     "scala.collection.Traversable",
     "scala.collection.Iterable",
     "scala.collection.mutable.StringBuilder",
-    "scala.collection.Vector",
+    "scala.collection.IndexedSeq",
     "scala.collection.Iterator")
 }
