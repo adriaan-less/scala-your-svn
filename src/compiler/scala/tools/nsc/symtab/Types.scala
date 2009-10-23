@@ -1974,6 +1974,7 @@ A type's typeSymbol should never be inspected directly.
    * A TypeVar whose list of args is non-empty can only be instantiated by a higher-kinded type that can be applied to these args   
    * NOTE:
    */
+   // todo don't store typeparams, use origin.typesymbol
   class TypeVar(val origin: Type, val constr0: TypeConstraint, override val typeArgs: List[Type], override val params: List[Symbol]) extends Type {
     // params are needed to keep track of variance (see mapOverArgs in SubstMap)
     assert(typeArgs.isEmpty || typeArgs.length == params.length)
@@ -2107,7 +2108,7 @@ A type's typeSymbol should never be inspected directly.
     override def isStable = origin.isStable
     override def isVolatile = origin.isVolatile
     override def kind = "TypeVar"
-
+// TODO rename to duplicate
     def cloneInternal = TypeVar(origin, constr cloneInternal, typeArgs, params) // @M TODO: clone args/params?
   }
 
