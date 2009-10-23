@@ -783,11 +783,12 @@ trait Typers { self: Analyzer =>
         val tparams1 = cloneSymbols(tparams)
         val tree1 = if (tree.isType) tree 
                     else TypeApply(tree, tparams1 map (tparam => 
-                      TypeTree(tparam.tpe) setPos tree.pos.focus)) setPos tree.pos
+                      TypeTree(tparam.tpeHK) setPos tree.pos.focus)) setPos tree.pos //@M/tcpolyinfer: changed tparam.tpe to tparam.tpeHK
         context.undetparams = context.undetparams ::: tparams1
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
       case mt: ImplicitMethodType if ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
+          // println("adapt IMT: "+(context.undetparams, pt)) //@MDEBUG
           context.undetparams = inferExprInstance(
             tree, context.extractUndetparams(), pt, mt.paramTypes exists isManifest)
               // if we are looking for a manifest, instantiate type to Nothing anyway,
@@ -800,8 +801,8 @@ trait Typers { self: Analyzer =>
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
             case result: Tree => result
             case ex: TypeError => 
-              if (settings.debug.value) log("fallback on implicits: "+tree)
-              val tree1 = typed(original, mode, WildcardType)
+              if (settings.debug.value) log("fallback on implicits: "+tree+"/"+resetAttrs(original, true))
+              val tree1 = typed(resetAttrs(original, true), mode, WildcardType)
               tree1.tpe = addAnnotations(tree1, tree1.tpe)
               if (tree1.isEmpty) tree1 else adapt(tree1, mode, pt, EmptyTree)
           }
@@ -879,23 +880,16 @@ trait Typers { self: Analyzer =>
           if (extractor != NoSymbol) {
             tree setSymbol extractor
             val unapply = unapplyMember(extractor.tpe)
-            val clazz = if (unapply.tpe.paramTypes.length == 1) unapply.tpe.paramTypes.head.typeSymbol 
-                        else NoSymbol
-            if ((unapply hasFlag CASE) && (clazz hasFlag CASE) && 
-                !(clazz.info.baseClasses.tail exists (_ hasFlag CASE))) {
-              if (!phase.erasedTypes) checkStable(tree) //todo: do we need to demand this?
+            val clazz = unapplyParameterType(unapply)
+
+            if ((unapply hasFlag CASE) && (clazz hasFlag CASE) && !(clazz.ancestors exists (_ hasFlag CASE))) {
+              if (!phase.erasedTypes) checkStable(tree) // todo: do we need to demand this?
               // convert synthetic unapply of case class to case class constructor
               val prefix = tree.tpe.prefix
               val tree1 = TypeTree(clazz.primaryConstructor.tpe.asSeenFrom(prefix, clazz.owner))
                   .setOriginal(tree)
-              try {
-                inferConstructorInstance(tree1, clazz.typeParams, pt)
-              } catch {
-                case tpe : TypeError => throw tpe
-                case t : Exception =>
-                  logError("CONTEXT: " + (tree.pos).dbgString, t)
-                  throw t
-              }
+              
+              inferConstructorInstance(tree1, clazz.typeParams, pt)
               tree1
             } else {
               tree
@@ -1050,6 +1044,20 @@ trait Typers { self: Analyzer =>
       namer.enterValueParams(context.owner, vparamss)
       typed(cbody)
     }
+    
+    private def validateNoCaseAncestor(clazz: Symbol) = {
+      // XXX I think this should issue a sharper warning of some kind like
+      // "change your code now!" as there are material bugs (which are very unlikely 
+      // to be fixed) associated with case class inheritance.
+      if (!phase.erasedTypes) {
+        for (ancestor <- clazz.ancestors find (_ hasFlag CASE))
+          unit.deprecationWarning(clazz.pos, ( 
+            "case class `%s' has case class ancestor `%s'.  This has been deprecated " +
+            "for unduly complicating both usage and implementation.  You should instead " + 
+            "use extractors for pattern matching on non-leaf nodes." ).format(clazz, ancestor)
+          )
+      }
+    }
 
     def parentTypes(templ: Template): List[Tree] = 
       if (templ.parents.isEmpty) List()
@@ -1177,17 +1185,6 @@ trait Typers { self: Analyzer =>
           if (psym hasFlag FINAL) {
             error(parent.pos, "illegal inheritance from final "+psym)
           } 
-          // XXX I think this should issue a sharper warning of some kind like
-          // "change your code now!" as there are material bugs (which will not be fixed)
-          // associated with case class inheritance.
-          if ((context.owner hasFlag CASE) && !phase.erasedTypes) {
-            for (ancestor <- parent.tpe.baseClasses find (_ hasFlag CASE))
-              unit.deprecationWarning(parent.pos, ( 
-                "case class `%s' has case class ancestor `%s'.  This has been deprecated " +
-                "for unduly complicating both usage and implementation.  You should instead " + 
-                "use extractors for pattern matching on non-leaf nodes." ).format(context.owner, ancestor)                
-              )
-          }
           if (psym.isSealed && !phase.erasedTypes) {
             if (context.unit.source.file != psym.sourceFile)
               error(parent.pos, "illegal inheritance from sealed "+psym)
@@ -1435,6 +1432,9 @@ trait Typers { self: Analyzer =>
       assert(clazz.info.decls != EmptyScope)
       enterSyms(context.outer.make(templ, clazz, clazz.info.decls), templ.body)
       validateParentClasses(parents1, selfType)
+      if (clazz hasFlag CASE)
+        validateNoCaseAncestor(clazz)
+      
       if ((clazz isSubClass ClassfileAnnotationClass) && !clazz.owner.isPackageClass)
         unit.error(clazz.pos, "inner classes cannot be classfile annotations")
       if (!phase.erasedTypes && !clazz.info.resultType.isError) // @S: prevent crash for duplicated type members
@@ -1652,7 +1652,7 @@ trait Typers { self: Analyzer =>
       // catches method parameters shadowing identifiers declared in the same file, so more
       // work is needed.  Most of the code here is to filter out false positives.
       def isAuxConstructor(sym: Symbol) = sym.isConstructor && !sym.isPrimaryConstructor
-      if (settings.Xwarnings.value && !isAuxConstructor(ddef.symbol)) {
+      if (settings.YwarnShadow.value && !isAuxConstructor(ddef.symbol)) {
         for (v <- ddef.vparamss.flatten ; if v.symbol != null && !(v.symbol hasFlag SYNTHETIC))
           checkShadowings(v, (sym => !sym.isDeferred && !sym.isMethod))
       }
@@ -1753,7 +1753,7 @@ trait Typers { self: Analyzer =>
           while ((e ne null) && (e.sym ne stat.symbol)) e = e.tail
           if (e eq null) context.scope.enter(stat.symbol)
         }
-        if (settings.Xwarnings.value) checkShadowings(stat)
+        if (settings.YwarnShadow.value) checkShadowings(stat)
         enterLabelDef(stat)
       }
       val stats1 = typedStats(block.stats, context.owner)
@@ -1897,7 +1897,7 @@ trait Typers { self: Analyzer =>
         val stats1 = typedStats(stats, NoSymbol)
         for (stat <- stats1 if stat.isDef) {
           val member = stat.symbol
-          if (!(context.owner.info.baseClasses.tail forall
+          if (!(context.owner.ancestors forall
                 (bc => member.matchingSymbol(bc, context.owner.thisType) == NoSymbol))) {
                   member setFlag OVERRIDE
                 }
@@ -2253,7 +2253,7 @@ trait Typers { self: Analyzer =>
               assert((mode & PATTERNmode) == 0); // this case cannot arise for patterns
               val lenientTargs = protoTypeArgs(tparams, formals, mt.resultApprox, pt)
               val strictTargs = List.map2(lenientTargs, tparams)((targ, tparam) =>
-                if (targ == WildcardType) tparam.tpe else targ)
+                if (targ == WildcardType) tparam.tpe else targ) //@M TODO: should probably be .tpeHK
               def typedArgToPoly(arg: Tree, formal: Type): Tree = {
                 val lenientPt = formal.instantiateTypeParams(tparams, lenientTargs)
                 val arg1 = typedArg(arg, argMode(fun, mode), POLYmode, lenientPt)
@@ -3945,8 +3945,22 @@ trait Typers { self: Analyzer =>
       typed(tree, EXPRmode | FUNmode | POLYmode | TAPPmode, WildcardType)
 
     /** Types a pattern with prototype <code>pt</code> */
-    def typedPattern(tree: Tree, pt: Type): Tree =
+    def typedPattern(tree: Tree, pt: Type): Tree = {
+      // The commented out code stems from investigation into whether
+      //   "abc" match { case Seq('a', 'b', 'c') => true }
+      // can be ruled out statically.  At present this is a runtime
+      // error both because there is an implicit from String to Seq
+      // (even though such implicits are not used by the matcher) and
+      // because the typer is fine with concluding that "abc" might
+      // be of type "String with Seq[T]" and thus eligible for a call
+      // to unapplySeq.
+      //
+      // val savedImplicitsEnabled = context.implicitsEnabled
+      // context.implicitsEnabled = false
+      // try
       typed(tree, PATTERNmode, pt)
+      // finally context.implicitsEnabled = savedImplicitsEnabled
+    }
 
     /** Types a (fully parameterized) type tree */
     def typedType(tree: Tree, mode: Int): Tree =

@@ -44,7 +44,7 @@ abstract class Stream[+A] extends LinearSeq[A]
 self =>
   override def companion: GenericCompanion[Stream] = Stream
 
-  import scala.collection.{Traversable, Iterable, Seq, Vector}
+  import scala.collection.{Traversable, Iterable, Seq, IndexedSeq}
 
   /** is this stream empty? */
   def isEmpty: Boolean
@@ -78,10 +78,6 @@ self =>
     while (!these.isEmpty) these = these.tail
     this
   }
-
-  /** Does this stream have more than one elements defined?
-   */
-  private def hasMoreThanOneElements = false
 
   /** Prints elements of this stream one by one, separated by commas */
   def print() { print(", ") }
@@ -408,17 +404,14 @@ object Stream extends SeqFactory[Stream] {
    *        Stream as its From type parameter must yield a stream as its result parameter.
    *        If that assumption is broken, cast errors might result.
    */
-  class StreamCanBuildFrom[A] extends GenericCanBuildFrom[A] {
-    def apply() = newBuilder[A]
-  }
-
+  class StreamCanBuildFrom[A] extends GenericCanBuildFrom[A]
 
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Stream[A]] = new StreamCanBuildFrom[A]
 
   /** Creates a new builder for a stream */
   def newBuilder[A]: Builder[A, Stream[A]] = new StreamBuilder[A]
 
-  import scala.collection.{Iterable, Seq, Vector}
+  import scala.collection.{Iterable, Seq, IndexedSeq}
 
   /** A builder for streams
    *  @note: This builder is lazy only in the sense that it does not go downs the spine

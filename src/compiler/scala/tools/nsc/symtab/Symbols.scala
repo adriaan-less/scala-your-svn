@@ -521,6 +521,10 @@ trait Symbols {
     /** Does this symbol denote the primary constructor of its enclosing class? */
     final def isPrimaryConstructor =
       isConstructor && owner.primaryConstructor == this
+      
+    /** Does this symbol denote an auxiliary constructor of its enclosing class? */
+    final def isAuxiliaryConstructor =
+      isConstructor && !isPrimaryConstructor
 
     /** Is this symbol a synthetic apply or unapply method in a companion object of a case class? */
     final def isCaseApplyOrUnapply = 
@@ -721,7 +725,10 @@ trait Symbols {
     private[Symbols] var infos: TypeHistory = null
 
     /** Get type. The type of a symbol is:
-     *  for a type symbol, the type corresponding to the symbol itself
+     *  for a type symbol, the type corresponding to the symbol itself, 
+     *    @M you should use tpeHK for a type symbol with type parameters if
+     *       the kind of the type need not be *, as tpe introduces dummy arguments
+     *       to generate a type of kind *
      *  for a term symbol, its usual type
      */
     def tpe: Type = info
@@ -879,6 +886,13 @@ trait Symbols {
     def typeConstructor: Type =
       throw new Error("typeConstructor inapplicable for " + this)
 
+    /** @M -- tpe vs tpeHK:
+     * Symbol::tpe creates a TypeRef that has dummy type arguments to get a type of kind *
+     * Symbol::tpeHK creates a TypeRef without type arguments, but with type params --> higher-kinded if non-empty list of tpars
+     * calling tpe may hide errors or introduce spurious ones 
+     *   (e.g., when deriving a type from the symbol of a type argument that must be higher-kinded)
+     * as far as I can tell, it only makes sense to call tpe in conjunction with a substitution that replaces the generated dummy type arguments by their actual types 
+     */
     def tpeHK = if (isType) typeConstructor else tpe // @M! used in memberType
 
     /** The type parameters of this symbol, without ensuring type completion.
@@ -1162,8 +1176,12 @@ trait Symbols {
      */
     def mixinClasses: List[Symbol] = {
       val sc = superClass
-      info.baseClasses.tail.takeWhile(sc ne)
+      ancestors takeWhile (sc ne)
     }
+    
+    /** All directly or indirectly inherited classes.
+     */
+    def ancestors: List[Symbol] = info.baseClasses drop 1
 
     /** The package containing this symbol, or NoSymbol if there
      *  is not one. */
@@ -1190,8 +1208,7 @@ trait Symbols {
       (this.rawInfo ne NoType) && {
         val res = 
           !this.owner.isPackageClass || 
-          (this.sourceFile eq null) ||
-          (that.sourceFile eq null) ||
+          ((this.sourceFile eq null) && (that.sourceFile eq null)) ||
           (this.sourceFile eq that.sourceFile) ||
           (this.sourceFile == that.sourceFile)
 
@@ -1298,18 +1315,15 @@ trait Symbols {
       if (isClassConstructor) NoSymbol else matchingSymbol(ofclazz, ofclazz.thisType)
 
     final def allOverriddenSymbols: List[Symbol] =
-      if (owner.isClass && !owner.info.baseClasses.isEmpty)
-        for { bc <- owner.info.baseClasses.tail
-              val s = overriddenSymbol(bc)
-              if s != NoSymbol } yield s
-      else List()
+      if (!owner.isClass) Nil
+      else owner.ancestors map overriddenSymbol filter (_ != NoSymbol)
 
     /** The virtual classes overridden by this virtual class (excluding `clazz' itself)
      *  Classes appear in linearization order (with superclasses before subclasses)
      */
     final def overriddenVirtuals: List[Symbol] = 
       if (isVirtualTrait && hasFlag(OVERRIDE))
-        this.owner.info.baseClasses.tail 
+        this.owner.ancestors 
           .map(_.info.decl(name)) 
           .filter(_.isVirtualTrait)
           .reverse
@@ -1673,7 +1687,7 @@ trait Symbols {
       if (phase.flatClasses && !hasFlag(METHOD) &&
           rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass)
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
           flatname = newTermName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname
@@ -1838,7 +1852,7 @@ trait Symbols {
         newTypeName(rawname+"$trait") // (part of DEVIRTUALIZE)
       } else if (phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass)
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
           flatname = newTypeName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname
