@@ -83,8 +83,14 @@ self =>
           pollForWork()
           if (typerRun == currentTyperRun)
             return
-            
-          integrateNew()
+          
+          // @Martin
+          // Guard against NPEs in integrateNew if context.unit == null here.
+          // But why are we doing this at all? If it was non-null previously
+          // integrateNew will already have been called. If it was null previously
+          // it will still be null now?
+          if (context.unit != null)          
+            integrateNew()
           throw new FreshRunReq
         } catch {
           case ex : ValidateError => // Ignore, this will have been reported elsewhere
@@ -199,7 +205,8 @@ self =>
         case ex => 
           outOfDate = false
           compileRunner = newRunnerThread
-          ex match { 
+          ex match {
+            case _ : FreshRunReq =>   // This shouldn't be reported
             case _ : ValidateError => // This will have been reported elsewhere
             case _ => ex.printStackTrace(); inform("Fatal Error: "+ex)
           }
@@ -265,16 +272,17 @@ self =>
   // ----------------- Implementations of client commmands -----------------------
   
   def respond[T](result: Response[T])(op: => T): Unit =
-    while(true)
-      try {
-        result set Left(op)
-        return
-      } catch {
-        case ex : ControlException =>
-        case ex =>
-          result set Right(ex)
-          throw ex
-      }
+    try {
+      result set Left(op)
+      return
+    } catch {
+      case ex : FreshRunReq =>
+        scheduler.postWorkItem(() => respond(result)(op))
+        throw ex
+      case ex =>
+        result set Right(ex)
+        throw ex
+    }
 
   /** Make sure a set of compilation units is loaded and parsed */
   def reloadSources(sources: List[SourceFile]) {
@@ -384,7 +392,7 @@ self =>
     println("typeMembers at "+tree+" "+tree.tpe)
     val context = doLocateContext(pos)
     val superAccess = tree.isInstanceOf[Super]
-    val scope = newScope
+    val scope = new Scope
     val members = new LinkedHashMap[Symbol, TypeMember]
     def addTypeMember(sym: Symbol, pre: Type, inherited: Boolean, viaView: Symbol) {
       val symtpe = pre.memberType(sym)

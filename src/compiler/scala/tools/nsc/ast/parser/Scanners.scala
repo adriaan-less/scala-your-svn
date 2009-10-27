@@ -103,10 +103,11 @@ trait Scanners {
     /** buffer for the documentation comment
      */
     var docBuffer: StringBuilder = null
+    var docOffset: Position = null
 
     /** Return current docBuffer and set docBuffer to null */
     def flushDoc = {
-      val ret = if (docBuffer != null) docBuffer.toString else null
+      val ret = if (docBuffer != null) (docBuffer.toString, docOffset) else null
       docBuffer = null
       ret
     }
@@ -116,6 +117,10 @@ trait Scanners {
     protected def putDocChar(c: Char) {
       if (docBuffer ne null) docBuffer.append(c)
     }
+      
+    protected def foundComment(value: String, start: Int, end: Int) = ()
+
+    protected def foundDocComment(value: String, start: Int, end: Int) = ()
 
     private class TokenData0 extends TokenData
 
@@ -301,13 +306,7 @@ trait Scanners {
           base = 10
           getNumber()
         case '`' => 
-          nextChar()
-          if (getStringLit('`')) { 
-            finishNamed(); 
-            if (name.length == 0) syntaxError("empty quoted identifier")
-            token = BACKQUOTED_IDENT 
-          }
-          else syntaxError("unclosed quoted identifier")
+          getBackquotedIdent()
         case '\"' => 
           nextChar()
           if (ch == '\"') {
@@ -393,39 +392,55 @@ trait Scanners {
     }
 
     private def skipComment(): Boolean = {
-      if (ch == '/') {
-        do {
-          nextChar()
-        } while ((ch != CR) && (ch != LF) && (ch != SU))
-        true
-      } else if (ch == '*') {
-        docBuffer = null
-        var openComments = 1
-        nextChar()
-        if (ch == '*' && buildDocs)
-          docBuffer = new StringBuilder("/**")
-        while (openComments > 0) {
+
+      if (ch == '/' || ch == '*') {
+    	  
+        val comment = new StringBuilder("//")
+        def appendToComment() = comment.append(ch)
+
+        if (ch == '/') {
           do {
+        	appendToComment()
+            nextChar()
+          } while ((ch != CR) && (ch != LF) && (ch != SU))
+        } else {
+          docBuffer = null
+          var openComments = 1
+          nextChar()
+          appendToComment()
+          var buildingDocComment = false
+          if (ch == '*' && buildDocs) {
+            buildingDocComment = true
+            docBuffer = new StringBuilder("/**")
+          }
+          while (openComments > 0) {
             do {
-              if (ch == '/') {
-                nextChar(); putDocChar(ch)
-                if (ch == '*') {
-                  nextChar(); putDocChar(ch)
-                  openComments += 1
+              do {
+                if (ch == '/') {
+                  nextChar(); putDocChar(ch); appendToComment()
+                  if (ch == '*') {
+                    nextChar(); putDocChar(ch); appendToComment()
+                    openComments += 1
+                  }
                 }
+                if (ch != '*' && ch != SU) {
+                  nextChar(); putDocChar(ch); appendToComment()
+                }
+              } while (ch != '*' && ch != SU)
+              while (ch == '*') {
+                nextChar(); putDocChar(ch); appendToComment()
               }
-              if (ch != '*' && ch != SU) {
-                nextChar(); putDocChar(ch)
-              }
-            } while (ch != '*' && ch != SU)
-            while (ch == '*') {
-              nextChar(); putDocChar(ch)
-            }
-          } while (ch != '/' && ch != SU)
-          if (ch == '/') nextChar()
-          else incompleteInputError("unclosed comment")
-          openComments -= 1
+            } while (ch != '/' && ch != SU)
+            if (ch == '/') nextChar()
+            else incompleteInputError("unclosed comment")
+            openComments -= 1
+          }
+          
+          if (buildingDocComment)
+            foundDocComment(comment.toString, offset, charOffset - 2)
         }
+        
+        foundComment(comment.toString, offset, charOffset - 2)
         true
       } else {
         false
@@ -453,6 +468,16 @@ trait Scanners {
     }
 
 // Identifiers ---------------------------------------------------------------
+
+    private def getBackquotedIdent(): Unit = {
+      nextChar()
+      if (getStringLit('`')) { 
+        finishNamed(); 
+        if (name.length == 0) syntaxError("empty quoted identifier")
+        token = BACKQUOTED_IDENT 
+      }
+      else syntaxError("unclosed quoted identifier")
+    }
 
     private def getIdentRest(): Unit = (ch: @switch) match {
       case 'A' | 'B' | 'C' | 'D' | 'E' |
@@ -533,6 +558,10 @@ trait Scanners {
           nextChar()
           if (ch == '\"') {
             nextChar()
+            while (ch == '\"') {
+              putChar('\"')
+              nextChar()
+            }
             token = STRINGLIT
             setStrVal()
           } else {
@@ -702,6 +731,7 @@ trait Scanners {
     /** Read a number into strVal and set base
     */
     protected def getNumber() {
+      def isDigit(c: Char) = java.lang.Character isDigit c
       val base1 = if (base < 10) 10 else base 
         // read 8,9's even if format is octal, produce a malformed number error afterwards.
       while (digit2int(ch, base1) >= 0) {
@@ -709,48 +739,59 @@ trait Scanners {
         nextChar()
       }
       token = INTLIT
-      if (base <= 10 && ch == '.') {
-        val lookahead = lookaheadReader
-        lookahead.nextChar()
-        def restOfNumber() = {
-          putChar(ch)
-          nextChar()
-          getFraction()
-        }
-        
-        lookahead.ch match {
-          case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' =>
-            return restOfNumber()
-          
-          /** These letters may be part of a literal, or a method invocation on an Int */
-          case 'd' | 'D' | 'f' | 'F' =>
-            lookahead.nextChar()
-            if (!isIdentifierPart(lookahead.ch))
-              return restOfNumber()
-
-          /** A little more special handling for e.g. 5e7 */
-          case 'e' | 'E' =>
-            lookahead.nextChar()
-            val ch = lookahead.ch
-            if (!isIdentifierPart(ch) || (ch >= '0' && ch <= '9') || ch == '+' || ch == '-')
-              return restOfNumber()
-            
-          case _ =>
-            if (!isIdentifierStart(lookahead.ch))
-              return restOfNumber()
-        }
-      }
-      if (base <= 10 && 
-          (ch == 'e' || ch == 'E' ||
-           ch == 'f' || ch == 'F' ||
-           ch == 'd' || ch == 'D')) {
-        return getFraction()
-      }
-      setStrVal()
-      if (ch == 'l' || ch == 'L') {
+      
+      /** When we know for certain it's a number after using a touch of lookahead */
+      def restOfNumber() = {
+        putChar(ch)
         nextChar()
-        token = LONGLIT
-      } else checkNoLetter()
+        getFraction()
+      }
+      def restOfUncertainToken() = {
+        def isEfd = ch match { case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' => true ; case _ => false }
+        def isL   = ch match { case 'l' | 'L' => true ; case _ => false }
+        
+        if (base <= 10 && isEfd)
+          getFraction()
+        else {
+          setStrVal()
+          if (isL) {
+            nextChar()
+            token = LONGLIT
+          }
+          else checkNoLetter()
+        }
+      }
+      
+      if (base > 10 || ch != '.')
+        restOfUncertainToken()
+      else {
+        val lookahead = lookaheadReader
+        val isDefinitelyNumber = 
+          (lookahead.getc(): @switch) match {
+            /** Another digit is a giveaway. */
+            case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'  =>
+              true
+            
+            /** Backquoted idents like 22.`foo`. */
+            case '`' =>
+              return setStrVal()  /** Note the early return **/
+
+            /** These letters may be part of a literal, or a method invocation on an Int */
+            case 'd' | 'D' | 'f' | 'F' =>
+              !isIdentifierPart(lookahead.getc())
+          
+            /** A little more special handling for e.g. 5e7 */
+            case 'e' | 'E' =>
+              val ch = lookahead.getc()
+              !isIdentifierPart(ch) || (isDigit(ch) || ch == '+' || ch == '-')
+            
+            case x  =>
+              !isIdentifierStart(x)
+          }
+        
+        if (isDefinitelyNumber) restOfNumber()
+        else restOfUncertainToken()
+      }
     }
 
     /** Parse character literal if current character is followed by \',
@@ -1039,6 +1080,14 @@ trait Scanners {
           false
         }
       }
+    }
+    
+    override def foundComment(value: String, start: Int, end: Int) {
+    	unit.comments += unit.Comment(value, new RangePosition(unit.source, start, start, end))
+    }
+
+    override def foundDocComment(value: String, start: Int, end: Int) {
+      docOffset = new RangePosition(unit.source, start, start, end)
     }
   }
 

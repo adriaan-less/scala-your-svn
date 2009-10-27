@@ -14,7 +14,7 @@ package scala
 import scala.collection.SetLike
 import scala.collection.mutable.{Builder, AddingBuilder, Map, HashMap}
 import scala.collection.immutable.{Set, BitSet}
-import scala.collection.generic.BuilderFactory
+import scala.collection.generic.CanBuildFrom
 
 /** <p>
  *    Defines a finite set of values specific to the enumeration. Typically
@@ -155,13 +155,13 @@ abstract class Enumeration(initial: Int, names: String*) {
   /** The type of the enumerated values. */
   @serializable
   @SerialVersionUID(7091335633555234129L)
-  abstract class Value extends Ordered[Value] {
+  abstract class Value extends Ordered[Enumeration#Value] {
     /** the id and bit location of this enumeration value */
     def id: Int
-    override def compare(that: Value): Int = this.id - that.id
+    override def compare(that: Enumeration#Value): Int = this.id - that.id
     override def equals(other: Any): Boolean = 
       other match {
-        case that: Value => compare(that) == 0
+        case that: Enumeration#Value => compare(that) == 0
         case _ => false
       } 
     override def hashCode: Int = id.hashCode
@@ -233,7 +233,11 @@ abstract class Enumeration(initial: Int, names: String*) {
     /** A builder object for value sets */
     def newBuilder: Builder[Value, ValueSet] = new AddingBuilder(empty)
     /** The implicit builder for value sets */
-    implicit def builderFactory: BuilderFactory[Value, ValueSet, ValueSet] = new BuilderFactory[Value, ValueSet, ValueSet] { def apply(from: ValueSet) = newBuilder }
+    implicit def canBuildFrom: CanBuildFrom[ValueSet, Value, ValueSet] = 
+      new CanBuildFrom[ValueSet, Value, ValueSet] { 
+        def apply(from: ValueSet) = newBuilder 
+        def apply() = newBuilder 
+      }
   }
   
   /** The name of this enumeration. */

@@ -614,13 +614,13 @@ class Interpreter(val settings: Settings, out: PrintWriter)
 
   private class ImportHandler(imp: Import) extends MemberHandler(imp) {
     /** Whether this import includes a wildcard import */
-    override val importsWildcard = imp.selectors.map(_._1) contains USCOREkw
+    override val importsWildcard = imp.selectors.map(_.name) contains USCOREkw
 
     /** The individual names imported by this statement */
     override val importedNames: Seq[Name] = for {
-      (_, sel) <- imp.selectors
-      if (sel != null && sel != USCOREkw)
-      name <- List(sel.toTypeName, sel.toTermName)
+      sel <- imp.selectors
+      if (sel.rename != null && sel.rename != USCOREkw)
+      name <- List(sel.rename.toTypeName, sel.rename.toTermName)
     }
     yield name
 
@@ -808,11 +808,10 @@ class Interpreter(val settings: Settings, out: PrintWriter)
       
   // very simple right now, will get more interesting
   def dumpTrees(xs: List[String]): String = {
-    val treestrs = 
-      List.flatten(
-        for (x <- xs ; name <- nameOfIdent(x) ; req <- requestForName(name))
-        yield req.trees
-      )
+    val treestrs = (
+      for (x <- xs ; name <- nameOfIdent(x) ; req <- requestForName(name))
+      yield req.trees
+    ).flatten
 
     if (treestrs.isEmpty) "No trees found."
     else treestrs.map(t => t.toString + " (" + t.getClass.getSimpleName + ")\n").mkString

@@ -6,12 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
+// $Id: SeqLike.scala 18895 2009-10-02 17:57:16Z odersky $
 
 
 package scala.collection
 import generic._
 import mutable.{ListBuffer, HashMap, GenericArray}
+import annotation.experimental
 
 // import immutable.{List, Nil, ::}
 import generic._
@@ -133,7 +134,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  is O(length min len) instead of O(length). The method should be overwritten
    *  if computing length is cheap.
    */
-  def lengthCompare(len: Int): Int = {
+  def lengthCompare(len: Int): Int = { //TR: should use iterator?
     var i = 0
     breakable {
       for (_ <- this) {
@@ -157,7 +158,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  @param  p the predicate
    *  @param  from  the start index
    */
-  def segmentLength(p: A => Boolean, from: Int): Int = {
+  def segmentLength(p: A => Boolean, from: Int): Int = { //TR: should use iterator?
     var result = 0
     var i = 0
     breakable {
@@ -190,7 +191,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  @param  p the predicate
    *  @param  from  the start index
    */
-  def indexWhere(p: A => Boolean, from: Int): Int = {
+  def indexWhere(p: A => Boolean, from: Int): Int = { //TR: should use iterator?
     var result = -1
     var i = from
     breakable {
@@ -207,7 +208,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   def findIndexOf(p: A => Boolean): Int = indexWhere(p)
 
   /** Returns the index of the first occurence of the specified
-   *  object in this iterable object.
+   *  object in this sequence.
    *
    *  @note may not terminate for infinite-sized collections.
    *  @param  elem  element to search for.
@@ -218,7 +219,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   def indexOf[B >: A](elem: B): Int = indexOf(elem, 0)
 
   /** Returns the index of the first occurence of the specified
-   *  object in this iterable object,  starting from a start index, or
+   *  object in this sequence, starting from a start index, or
    *  -1, if none exists.
    *
    *  @note may not terminate for infinite-sized collections.
@@ -390,7 +391,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  @return     a sequence containing the elements of this
    *              sequence and those of the given sequence <code>that</code>.
    */
-  def union[B >: A, That](that: Seq[B])(implicit bf: BuilderFactory[B, That, Repr]): That = 
+  def union[B >: A, That](that: Seq[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = 
     this ++ that
 
   /** <p>
@@ -460,7 +461,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    */
   def removeDuplicates: Repr = {
     val b = newBuilder
-    var seen = Set[A]()
+    var seen = Set[A]() //TR: should use mutable.HashSet?
     for (x <- this) {
       if (!(seen contains x)) {
         b += x
@@ -474,7 +475,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  except that `replaced` elements starting from `from` are replaced
    *  by `patch`.
    */
-  def patch[B >: A, That](from: Int, patch: Seq[B], replaced: Int)(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def patch[B >: A, That](from: Int, patch: Seq[B], replaced: Int)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     val (prefix, rest) = this.splitAt(from)
     b ++= toCollection(prefix)
@@ -483,10 +484,42 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     b.result
   }
 
+  /** Returns a copy of this sequence with the element at position `index` replaced by `elem`.
+   */
+  def updated[B >: A, That](index: Int, elem: B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+    val b = bf(repr)
+    val (prefix, rest) = this.splitAt(index)
+    b ++= toCollection(prefix)
+    b += elem
+    b ++= toCollection(rest).view.tail
+    b.result
+  }
+
+  /** Returns a new sequence consisting of `elem` followed by the elements of this sequence.
+   */
+  def +:[B >: A, That](elem: B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+    val b = bf(repr)
+    b += elem
+    b ++= thisCollection
+    b.result
+  }
+
+  /** Returns a new sequence consisting of the elements of this sequence followed by `elem`.
+   */
+  def :+[B >: A, That](elem: B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+    val b = bf(repr)
+    b ++= thisCollection
+    b += elem
+    b.result
+  }
+
+
+
+
   /** Returns a new sequence of given length containing the elements of this sequence followed by zero
    *  or more occurrences of given elements. 
    */
-  def padTo[B >: A, That](len: Int, elem: B)(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def padTo[B >: A, That](len: Int, elem: B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     b.sizeHint(length max len)
     var diff = len - length
@@ -498,7 +531,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     b.result
   }
 
-  /** Sort the iterable according to the comparison function
+  /** Sort the sequence according to the comparison function
    *  <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>,
    *  which should be true iff <code>e1</code> is smaller than
    *  <code>e2</code>.
@@ -506,14 +539,16 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  same order in the sorted sequence as in the original.
    *  
    *  @param lt the comparison function
-   *  @return   an iterable sorted according to the comparison function
+   *  @return   a sequence sorted according to the comparison function
    *            <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>.
    *  @ex <pre>
    *    List("Steve", "Tom", "John", "Bob")
    *      .sortWith((e1, e2) => (e1 compareTo e2) &lt; 0) =
    *    List("Bob", "John", "Steve", "Tom")</pre>
    */
-  def sortWith(lt: (A, A) => Boolean): Repr = {
+  def sortWith(lt: (A, A) => Boolean): Repr = sortWith(Ordering fromLessThan lt)
+
+  def sortWith[B >: A](ord: Ordering[B]): Repr = {
     val arr = new GenericArray[A](this.length)
     var i = 0
     for (x <- this) {
@@ -521,11 +556,27 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
       i += 1
     }
     java.util.Arrays.sort(
-      arr.array, (Ordering fromLessThan lt).asInstanceOf[Ordering[Object]])
+      arr.array, ord.asInstanceOf[Ordering[Object]])
     val b = newBuilder
     for (x <- arr) b += x
     b.result
   }
+  
+  /** Sort the sequence according to the Ordering which results from transforming
+   *  the implicitly given Ordering[B] to an Ordering[A].  For example:
+   *
+   *  <code>
+   *    val words = "The quick brown fox jumped over the lazy dog".split(' ')
+   *    // this works because scala.Ordering will implicitly provide an Ordering[Tuple2[Int, Char]]
+   *    words.sortBy(x => (x.length, x.head))
+   *    res0: Array[String] = Array(The, dog, fox, the, lazy, over, brown, quick, jumped)
+   *  </code>
+   *
+   *  @param    f   the transformation function A => B
+   *  @param    ord the Ordering[B]
+   *  @return       the sorted representation
+   */  
+  def sortBy[B](f: A => B)(implicit ord: Ordering[B]): Repr = sortWith(ord on f)
 
   /**
    *  Overridden for efficiency.

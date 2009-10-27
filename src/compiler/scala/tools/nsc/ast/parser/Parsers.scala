@@ -273,10 +273,7 @@ self =>
     def incompleteInputError(msg: String): Unit
     def deprecationWarning(offset: Int, msg: String): Unit
     private def syntaxError(pos: Position, msg: String, skipIt: Boolean) {
-      pos.offset match {
-        case None => syntaxError(msg,skipIt)
-        case Some(offset) => syntaxError(offset, msg, skipIt)
-      }
+      syntaxError(pos pointOrElse in.offset, msg, skipIt)
     }
     def syntaxError(offset: Int, msg: String): Unit
     def syntaxError(msg: String, skipIt: Boolean) {
@@ -420,8 +417,17 @@ self =>
     /** Join the comment associated with a definition
     */
     def joinComment(trees: => List[Tree]): List[Tree] = {
-      val buf = in.flushDoc
-      if ((buf ne null) && buf.length > 0) trees map (t => DocDef(buf, t) setPos t.pos) // !!! take true comment position
+      val doc = in.flushDoc
+      if ((doc ne null) && doc._1.length > 0) {
+        val ts = trees
+        val main = ts.find(_.pos.isOpaqueRange)
+        ts map {
+          t =>
+            val dd = DocDef(doc._1, t)
+            val pos = doc._2.withEnd(t.pos.endOrPoint)
+            dd setPos (if (t eq main) pos else pos.makeTransparent) 
+        }
+      }
       else trees
     }
 
@@ -540,7 +546,11 @@ self =>
         val opinfo = opstack.head
         opstack = opstack.tail
         val opPos = r2p(opinfo.offset, opinfo.offset, opinfo.offset+opinfo.operator.length)
-        top = atPos(opinfo.operand.pos.startOrPoint, opinfo.offset) {
+        val lPos = opinfo.operand.pos
+        val start = if (lPos.isDefined) lPos.startOrPoint else  opPos.startOrPoint
+        val rPos = top.pos
+        val end = if (rPos.isDefined) rPos.endOrPoint else opPos.endOrPoint
+        top = atPos(start, opinfo.offset, end) {
           makeBinop(isExpr, opinfo.operand, opinfo.operator, top, opPos)
         }
       }
@@ -1889,11 +1899,13 @@ self =>
         } else {
           t = id
         }
+        t setPos t.pos.makeTransparent
       }
       def loop(): Tree =
         if (in.token == USCORE) {
+          val uscoreOffset = in.offset
           in.nextToken()
-          Import(t, List((nme.WILDCARD, null)))
+          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, null, -1)))
         } else if (in.token == LBRACE) {
           Import(t, importSelectors())
         } else {
@@ -1903,10 +1915,11 @@ self =>
             t = atPos(start, if (name == nme.ERROR) in.offset else nameOffset) {
               Select(t, name)
             }
+            t setPos t.pos.makeTransparent
             in.nextToken()
             loop()
           } else {
-            Import(t, List((name, name)))
+            Import(t, List(ImportSelector(name, nameOffset, name, nameOffset)))
           }
         }
       atPos(start) { loop() }
@@ -1914,8 +1927,8 @@ self =>
       
     /** ImportSelectors ::= `{' {ImportSelector `,'} (ImportSelector | `_') `}'
      */
-    def importSelectors(): List[(Name, Name)] = {
-      val names = new ListBuffer[(Name, Name)]
+    def importSelectors(): List[ImportSelector] = {
+      val names = new ListBuffer[ImportSelector]
       accept(LBRACE)
       var isLast = importSelector(names)
       while (!isLast && in.token == COMMA) {
@@ -1928,19 +1941,31 @@ self =>
 
     /** ImportSelector ::= Id [`=>' Id | `=>' `_']
      */
-    def importSelector(names: ListBuffer[(Name, Name)]): Boolean =
+    def importSelector(names: ListBuffer[ImportSelector]): Boolean =
       if (in.token == USCORE) {
-        in.nextToken(); names += ((nme.WILDCARD, null)); true
+        val uscoreOffset = in.offset
+        in.nextToken(); names += ImportSelector(nme.WILDCARD, uscoreOffset, null, -1); true
       } else {
+        val nameOffset = in.offset
         val name = ident()
-        names += ((
-          name,
+        
+        val (name1, name1Offset) =
           if (in.token == ARROW) {
             in.nextToken()
-            if (in.token == USCORE) { in.nextToken(); nme.WILDCARD } else ident()
+            if (in.token == USCORE) {
+              val uscoreOffset = in.offset
+              in.nextToken();
+              (nme.WILDCARD, uscoreOffset)
+            } else {
+              val renameOffset = in.offset
+              val rename = ident() 
+              (rename, renameOffset)
+            }
           } else {
-            name
-          }))
+            (name, nameOffset)
+          }
+        
+        names += ImportSelector(name, nameOffset, name1, name1Offset)
         false
       }
     
