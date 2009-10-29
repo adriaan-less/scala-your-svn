@@ -103,7 +103,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         if (settings.debug.value) {
           val other = bcs.head.info.nonPrivateDecl(member.name);
           log("rebindsuper " + bcs.head + " " + other + " " + other.tpe +
-              " " + other.isDeferred)
+              " " + other.isDeferred +" sym direct= "+ member.overridingSymbol(bcs.head))
         }
         sym = member.overridingSymbol(bcs.head).suchThat(sym => !sym.hasFlag(DEFERRED | BRIDGE))
         bcs = bcs.tail

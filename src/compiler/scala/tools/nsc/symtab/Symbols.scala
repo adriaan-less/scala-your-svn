@@ -1299,7 +1299,11 @@ trait Symbols {
      */
     final def matchingSymbol(ofclazz: Symbol, site: Type): Symbol =
       ofclazz.info.nonPrivateDecl(name).filter(sym =>
-        !sym.isTerm || (site.memberType(this) matches site.memberType(sym)))
+        !sym.isTerm || ({
+          if(this.rawname.toString.contains("update")) 
+            println("matchingSym: "+(site, site.memberType(this) matches site.memberType(sym), site.memberType(this), site.memberType(sym)))
+          site.memberType(this) matches site.memberType(sym)
+          }))
 
     /** The non-private member of `site' whose type and name match the type of this symbol
      */
