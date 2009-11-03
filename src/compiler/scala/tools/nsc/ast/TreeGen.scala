@@ -240,6 +240,20 @@ abstract class TreeGen
   }
 
   // var m$: T = null; or, if class member: local var m$: T = _;
+  /*!!!
+  def mkModuleValDef(accessor: Symbol) = {
+    val mval = accessor.owner.newValue(accessor.pos.focus, nme.moduleVarName(accessor.name))
+      .setInfo(accessor.tpe.finalResultType)
+      .setFlag(LAZY);
+    if (mval.owner.isClass) {
+      mval setFlag (PRIVATE | LOCAL | SYNTHETIC)
+      mval.owner.info.decls.enter(mval)
+    } 
+    ValDef(mval, New(TypeTree(mval.tpe), List(List())))
+  }
+  */
+  
+  // var m$: T = null; or, if class member: local var m$: T = _;
   def mkModuleVarDef(accessor: Symbol) = {
     val mvar = accessor.owner.newVariable(accessor.pos.focus, nme.moduleVarName(accessor.name))
       .setInfo(accessor.tpe.finalResultType)
@@ -271,7 +285,6 @@ abstract class TreeGen
     DefDef(accessor setFlag lateDEFERRED, EmptyTree)
 
   def mkRuntimeCall(meth: Name, args: List[Tree]): Tree = {
-    assert(meth.toString != "boxArray") // !!! can be removed once arrays are in.
     Apply(Select(mkAttributedRef(ScalaRunTimeModule), meth), args)
   }
 
@@ -302,6 +315,19 @@ abstract class TreeGen
   def mkForwarder(target: Tree, vparamss: List[List[Symbol]]) =
     (target /: vparamss)((fn, vparams) => Apply(fn, vparams map paramToArg))
     
+  /** Applies a wrapArray call to an array, making it a WrappedArray
+   */
+  def mkWrapArray(tree: Tree, elemtp: Type) = {
+    val predef = mkAttributedRef(PredefModule)
+    val meth = 
+      if ((elemtp <:< AnyRefClass.tpe) && !isPhantomClass(elemtp.typeSymbol) || 
+          isValueClass(elemtp.typeSymbol))
+        Select(predef, "wrapArray")
+      else
+        TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
+    Apply(meth, List(tree))
+  }
+
   /** Used in situations where you need to access value of an expression several times
    */
   def evalOnce(expr: Tree, owner: Symbol, unit: CompilationUnit)(within: (() => Tree) => Tree): Tree = {

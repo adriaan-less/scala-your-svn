@@ -8,7 +8,7 @@ package scala.tools.nsc
 package typechecker
 
 import scala.collection.mutable.HashMap
-import scala.tools.nsc.util.{ Position, NoPosition }
+import scala.tools.nsc.util.Position
 import symtab.Flags
 import symtab.Flags._
 
@@ -359,9 +359,6 @@ trait Namers { self: Analyzer =>
             tree.symbol = enterModuleSymbol(tree)
             tree.symbol.moduleClass.setInfo(namerOf(tree.symbol).moduleClassTypeCompleter((tree)))
             finish
-            if (tree.symbol.name == nme.PACKAGEkw) {
-              loaders.openPackageModule(tree.symbol)
-            }
             
           case vd @ ValDef(mods, name, tp, rhs) =>
             if ((!context.owner.isClass ||
@@ -392,7 +389,7 @@ trait Namers { self: Analyzer =>
                 if (mods.isDeferred) {
                   getter setPos tree.pos // unfocus getter position, because there won't be a separate value
                 } else {
-                  var vsym =
+                  val vsym =
                     if (!context.owner.isClass) {
                       assert(mods.isLazy)   // if not a field, it has to be a lazy val
                       owner.newValue(tree.pos, name + "$lzy" ).setFlag(mods.flags | MUTABLE)
@@ -919,7 +916,7 @@ trait Namers { self: Analyzer =>
         } else typer.typedType(tpt).tpe
         // #2382: return type of default getters are always @uncheckedVariance
         if (meth.hasFlag(DEFAULTPARAM))
-          rt.withAnnotation(AnnotationInfo(definitions.uncheckedVarianceClass.tpe, List(), List(), NoPosition))
+          rt.withAnnotation(AnnotationInfo(definitions.uncheckedVarianceClass.tpe, List(), List()))
         else rt
       })
     }
@@ -1135,6 +1132,10 @@ trait Namers { self: Analyzer =>
               val clazz = sym.moduleClass
               clazz.setInfo(newNamer(context.makeNewScope(tree, clazz)).templateSig(impl))
               //clazz.typeOfThis = singleType(sym.owner.thisType, sym);
+              tree.symbol.setInfo(clazz.tpe) // initialize module to avoid cycles
+              if (tree.symbol.name == nme.PACKAGEkw) {
+                loaders.openPackageModule(tree.symbol)
+              }
               clazz.tpe
 
             case DefDef(mods, _, tparams, vparamss, tpt, rhs) =>
