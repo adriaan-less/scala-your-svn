@@ -473,12 +473,14 @@ trait Contexts { self: Analyzer =>
         case List() => List()
         case List(ImportSelector(nme.WILDCARD, _, _, _)) => collectImplicits(pre.implicitMembers, pre)
         case ImportSelector(from, _, to, _) :: sels1 => 
-          var impls = collect(sels1) filter (info => info.name != from)
+          val rest = collect(sels1) filter (info => info.name != from)
           if (to != nme.WILDCARD) {
-            val sym = imp.importedSymbol(to)
-            if (sym.hasFlag(IMPLICIT)) impls = new ImplicitInfo(to, pre, sym) :: impls
-          }
-          impls
+            // was:
+            // val sym = imp.importedSymbol(to)
+            // if (sym.hasFlag(IMPLICIT)) impls = new ImplicitInfo(to, pre, sym) :: impls
+            // now, due to #2591: one name may map to several symbols
+            collectImplicits(imp.allImportedSymbols filter (_.name == to), pre) ++ rest
+          } else rest
       }
       if (settings.debug.value)
         log("collect implicit imports " + imp + "=" + collect(imp.tree.selectors))//debug
