@@ -125,6 +125,9 @@ trait Definitions {
       def SeqFactory = getMember(ScalaRunTimeModule, nme.Seq)
       def checkDefinedMethod = getMember(ScalaRunTimeModule, "checkDefined")
       def isArrayMethod = getMember(ScalaRunTimeModule, "isArray")
+      def arrayApplyMethod = getMember(ScalaRunTimeModule, "array_apply")
+      def arrayUpdateMethod = getMember(ScalaRunTimeModule, "array_update")
+      def arrayLengthMethod = getMember(ScalaRunTimeModule, "array_length")
     
     // classes with special meanings
     lazy val NotNullClass         = getClass("scala.NotNull")
@@ -185,6 +188,7 @@ trait Definitions {
     lazy val ArrayClass   = getClass("scala.Array")
       def Array_apply   = getMember(ArrayClass, nme.apply)
       def Array_update  = getMember(ArrayClass, nme.update)
+      def Array_length  = getMember(ArrayClass, nme.length)
     lazy val ArrayModule  = getModule("scala.Array")
       def ArrayModule_apply = getMember(ArrayModule, nme.apply)
     
@@ -556,12 +560,10 @@ trait Definitions {
       val mclass = module.moduleClass
       mclass.setInfo(ClassInfoType(List(), new Scope, mclass))
       module.setInfo(mclass.tpe)
-
-      val box = newMethod(mclass, nme.box, List(clazz.typeConstructor),
-                          ObjectClass.typeConstructor)
+      
+      val box = newMethod(mclass, nme.box, List(clazz.typeConstructor), boxedClass(clazz).tpe)
       boxMethod(clazz) = box
-      val unbox = newMethod(mclass, nme.unbox, List(ObjectClass.typeConstructor),
-                            clazz.typeConstructor)
+      val unbox = newMethod(mclass, nme.unbox, List(ObjectClass.typeConstructor), clazz.typeConstructor)
       unboxMethod(clazz) = unbox
 
       clazz
@@ -623,11 +625,12 @@ trait Definitions {
 
         // def +(s: String): String
         newMethod(clazz, nme.ADD, List(stringtype), stringtype)
-
-        val restype = clazz match {
-          case LongClass | FloatClass | DoubleClass => clazz.typeConstructor
-          case _                                    => inttype
-        }
+        
+        def isLongFloatOrDouble = clazz match {
+          case LongClass | FloatClass | DoubleClass => true
+          case _                                    => false
+        }        
+        val restype = if (isLongFloatOrDouble) clazz.typeConstructor else inttype
 
         // shift operations
         if (isCardinal)

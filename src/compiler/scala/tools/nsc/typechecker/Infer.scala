@@ -583,15 +583,24 @@ trait Infer {
         tvars map (tvar => WildcardType)
     }
 
-    /** Retract any Nothing arguments which appear covariantly in result type,
-     *  and treat them as uninstantiated parameters instead.
-     *  Map T* entries to Seq[T].
+    /** Retract arguments that were inferred to Nothing because inference failed. Correct types for repeated params.
+     *
+     * We detect Nothing-due-to-failure by only retracting a parameter if either:
+     *  - it occurs in an invariant/contravariant position in `restpe`
+     *  - `restpe == WildcardType`
+     *
+     * Retracted parameters are collected in `uninstantiated`.
+     *
+     * Rewrite for repeated param types:  Map T* entries to Seq[T].
      */
-    def adjustTypeArgs(tparams: List[Symbol], targs: List[Type], restpe: Type, uninstantiated: ListBuffer[Symbol]): List[Type] =
+    def adjustTypeArgs(tparams: List[Symbol], targs: List[Type], restpe: Type, uninstantiated: ListBuffer[Symbol]): List[Type] = {
+      @inline def notCovariantIn(tparam: Symbol, restpe: Type) =
+        (varianceInType(restpe)(tparam) & COVARIANT) == 0  // tparam occurred non-covariantly (in invariant or contravariant position)
+
       List.map2(tparams, targs) {(tparam, targ) =>
-        if (targ.typeSymbol == NothingClass && (restpe == WildcardType || (varianceInType(restpe)(tparam) & COVARIANT) == 0)) {
+        if (targ.typeSymbol == NothingClass && (restpe == WildcardType || notCovariantIn(tparam, restpe))) {
           uninstantiated += tparam
-          tparam.tpeHK  //@M tparam.tpe was wrong: we only want the type constructor, 
+          tparam.tpeHK  //@M tparam.tpe was wrong: we only want the type constructor,
             // not the type constructor applied to dummy arguments
             // see ticket 474 for an example that crashes if we use .tpe instead of .tpeHK)
         } else if (targ.typeSymbol == RepeatedParamClass) {
@@ -602,7 +611,8 @@ trait Infer {
           targ.widen
         }
       }
-
+    }
+    
     /** Return inferred type arguments, given type parameters, formal parameters,
     *  argument types, result type and expected result type.
     *  If this is not possible, throw a <code>NoInstance</code> exception.
@@ -841,6 +851,8 @@ trait Infer {
           false
       }
 
+    /** Todo: Try to make isApplicable always safe (i.e. not cause TypeErrors).
+     */
     private[typechecker] def isApplicableSafe(undetparams: List[Symbol], ftpe: Type,
                                               argtpes0: List[Type], pt: Type): Boolean = {
       val reportAmbiguousErrors = context.reportAmbiguousErrors
@@ -849,7 +861,12 @@ trait Infer {
         isApplicable(undetparams, ftpe, argtpes0, pt)
       } catch {
         case ex: TypeError =>
-          false
+          try {
+            isApplicable(undetparams, ftpe, argtpes0, WildcardType)
+          } catch {
+            case ex: TypeError =>
+              false
+          }
       } finally {
         context.reportAmbiguousErrors = reportAmbiguousErrors
       }
@@ -1379,7 +1396,7 @@ trait Infer {
             check(pre, bound)
           case TypeRef(pre, sym, args) => 
             if (sym.isAbstractType) 
-              patternWarning(tp, "abstract type ")
+              if (!isLocalBinding(sym)) patternWarning(tp, "abstract type ")
             else if (sym.isAliasType)
               check(tp.normalize, bound)
             else if (sym == NothingClass || sym == NullClass || sym == AnyValClass) 
@@ -1624,7 +1641,7 @@ trait Infer {
             log("infer method alt "+ tree.symbol +" with alternatives "+
                 (alts map pre.memberType) +", argtpes = "+ argtpes +", pt = "+ pt)
 
-          val allApplicable = alts filter (alt =>
+          var allApplicable = alts filter (alt =>
             isApplicable(undetparams, followApply(pre.memberType(alt)), argtpes, pt))
 
           // if there are multiple, drop those that use a default
