@@ -899,19 +899,19 @@ trait Symbols {
 
       def cook(sym: Symbol) {
         require(sym hasFlag JAVA)
-
-        object rawToExistentialInJava extends TypeMap {
-          def apply(tp: Type): Type = tp match {
-            // any symbol that occurs in a java sig, not just java symbols
-            // see http://lampsvn.epfl.ch/trac/scala/ticket/2454#comment:14
-            case TypeRef(pre, sym, List()) if !sym.typeParams.isEmpty =>
-              val eparams = typeParamsToExistentials(sym, sym.typeParams)
-              existentialAbstraction(eparams, TypeRef(pre, sym, eparams map (_.tpe)))
-            case _ =>
-              mapOver(tp)
-          }
-        }
-        val tpe1 = rawToExistentialInJava(sym.tpe)
+        // @M: I think this is more desirable, but Martin prefers to leave raw-types as-is as much as possible
+        // object rawToExistentialInJava extends TypeMap {
+        //   def apply(tp: Type): Type = tp match {
+        //     // any symbol that occurs in a java sig, not just java symbols
+        //     // see http://lampsvn.epfl.ch/trac/scala/ticket/2454#comment:14
+        //     case TypeRef(pre, sym, List()) if !sym.typeParams.isEmpty =>
+        //       val eparams = typeParamsToExistentials(sym, sym.typeParams)
+        //       existentialAbstraction(eparams, TypeRef(pre, sym, eparams map (_.tpe)))
+        //     case _ =>
+        //       mapOver(tp)
+        //   }
+        // }
+        val tpe1 = rawToExistential(sym.tpe)
         // println("cooking: "+ sym +": "+ sym.tpe +" to "+ tpe1)
         if (tpe1 ne sym.tpe) {
           sym.setInfo(tpe1)
