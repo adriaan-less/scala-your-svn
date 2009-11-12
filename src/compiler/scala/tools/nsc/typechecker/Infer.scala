@@ -884,7 +884,8 @@ trait Infer {
       case OverloadedType(pre, alts) =>
         alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
       case et: ExistentialType =>
-        et.withTypeVars(isAsSpecific(_, ftpe2)) 
+        isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
+        //et.withTypeVars(isAsSpecific(_, ftpe2)) 
       case mt: ImplicitMethodType =>
         isAsSpecific(ftpe1.resultType, ftpe2)
       case MethodType(params @ (x :: xs), _) =>
