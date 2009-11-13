@@ -29,7 +29,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
   extends Buffer[A] 
      with GenericTraversableTemplate[A, ArrayBuffer]
      with BufferLike[A, ArrayBuffer[A]]
-     with VectorLike[A, ArrayBuffer[A]]
+     with IndexedSeqLike[A, ArrayBuffer[A]]
      with Builder[A, ArrayBuffer[A]] 
      with ResizableArray[A] {
 
@@ -69,7 +69,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @return      the updated buffer.
    */
   override def ++=(iter: Traversable[A]): this.type = iter match {
-    case v: Vector[_] =>
+    case v: IndexedSeq[_] =>
       val n = v.length
       ensureSize(size0 + n)
       v.copyToArray(array.asInstanceOf[scala.Array[Any]], size0, n)
@@ -86,7 +86,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param elem  the element to append.
    *  @return      the updated buffer. 
    */
-  def +:(elem: A): this.type = {
+  def +=:(elem: A): this.type = {
     ensureSize(size0 + 1)
     copy(0, 1, size0)
     array(0) = elem.asInstanceOf[AnyRef]
@@ -101,7 +101,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param iter  the iterable object.
    *  @return      the updated buffer.
    */
-  override def ++:(iter: Traversable[A]): this.type = { insertAll(0, iter); this }
+  override def ++=:(iter: Traversable[A]): this.type = { insertAll(0, iter); this }
   
   /** Inserts new elements at the index <code>n</code>. Opposed to method
    *  <code>update</code>, this method will not replace an element with a
@@ -127,7 +127,6 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *
    *  @param n  the index which refers to the first element to delete.
    *  @param count   the number of elemenets to delete
-   *  @return   the updated array buffer.
    *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
    */
   override def remove(n: Int, count: Int) {
@@ -167,9 +166,8 @@ class ArrayBuffer[A](override protected val initialSize: Int)
  *  @version 2.8
  *  @since   2.8
  */
-object ArrayBuffer extends SequenceFactory[ArrayBuffer] {
-  implicit def builderFactory[A]: BuilderFactory[A, ArrayBuffer[A], Coll] =
-    new VirtualBuilderFactory[A]
+object ArrayBuffer extends SeqFactory[ArrayBuffer] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ArrayBuffer[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, ArrayBuffer[A]] = new ArrayBuffer[A]
 }
 

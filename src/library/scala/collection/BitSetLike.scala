@@ -13,6 +13,7 @@ package scala.collection
 
 import BitSetLike._
 import generic._
+import mutable.StringBuilder
 
 /** common base class for mutable and immutable bit sets
  *
@@ -129,6 +130,8 @@ trait BitSetLike[+This <: BitSetLike[This] with Set[Int]] extends SetLike[Int, T
       }
     sb append end
   }
+
+  override def stringPrefix = "BitSet"                                                                                      
 }
 
 object BitSetLike {

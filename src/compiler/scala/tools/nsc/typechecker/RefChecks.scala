@@ -59,6 +59,15 @@ abstract class RefChecks extends InfoTransform {
       PolyType(List(), tp)
     } else tp
 
+  val toJavaRepeatedParam = new TypeMap {
+    def apply(tp: Type) = tp match {
+      case TypeRef(pre, RepeatedParamClass, args) =>
+        typeRef(pre, JavaRepeatedParamClass, args)
+      case _ =>
+        mapOver(tp)
+    }
+  }
+
   class RefCheckTransformer(unit: CompilationUnit) extends Transformer { 
 
     var localTyper: analyzer.Typer = typer;
@@ -90,6 +99,61 @@ abstract class RefChecks extends InfoTransform {
     }
 
 // Override checking ------------------------------------------------------------
+
+    def hasRepeatedParam(tp: Type): Boolean = tp match {
+      case MethodType(formals, restpe) =>
+        formals.nonEmpty && formals.last.tpe.typeSymbol == RepeatedParamClass ||
+        hasRepeatedParam(restpe)
+      case PolyType(_, restpe) =>
+        hasRepeatedParam(restpe)
+      case _ =>
+        false
+    }
+
+    /** Add bridges for vararg methods that extend Java vararg methods
+     */
+    def addVarargBridges(clazz: Symbol): List[Tree] = {
+      val self = clazz.thisType
+
+      val bridges = new ListBuffer[Tree]
+
+      def varargBridge(member: Symbol, bridgetpe: Type): Tree = {
+        val bridge = member.cloneSymbolImpl(clazz)
+          .setPos(clazz.pos).setFlag(member.flags | VBRIDGE)
+        bridge.setInfo(bridgetpe.cloneInfo(bridge))
+        clazz.info.decls enter bridge
+        val List(params) = bridge.paramss
+        val TypeRef(_, JavaRepeatedParamClass, List(elemtp)) = params.last.tpe
+        val (initargs, List(lastarg0)) = (params map Ident) splitAt (params.length - 1)
+        val lastarg = gen.wildcardStar(gen.mkWrapArray(lastarg0, elemtp))
+        val body = Apply(Select(This(clazz), member), initargs ::: List(lastarg))
+        localTyper.typed {
+          /*util.trace("generating varargs bridge")*/(DefDef(bridge, body))
+        }
+      }
+
+      // For all concrete non-private members that have a (Scala) repeated parameter:
+      //   compute the corresponding method type `jtpe` with a Java repeated parameter
+      //   if a method with type `jtpe` exists and that method is not a varargs bridge
+      //   then create a varargs bridge of type `jtpe` that forwards to the
+      //   member method with the Scala vararg type.
+      for (member <- clazz.info.nonPrivateMembers) {
+        if (!(member hasFlag DEFERRED) && hasRepeatedParam(member.info)) {
+          val jtpe = toJavaRepeatedParam(self.memberType(member))
+          val inherited = clazz.info.nonPrivateMemberAdmitting(member.name, VBRIDGE) filter (
+            sym => (self.memberType(sym) matches jtpe) && !(sym hasFlag VBRIDGE)
+            // this is a bit tortuous: we look for non-private members or bridges
+            // if we find a bridge everything is OK. If we find another member,
+            // we need to create a bridge
+          )
+          if (inherited.exists) {
+            bridges += varargBridge(member, jtpe)
+          }
+        }
+      }
+
+      bridges.toList
+    }
 
     /** 1. Check all members of class `clazz' for overriding conditions.
      *  That is for overriding member M and overridden member O:
@@ -170,7 +234,7 @@ abstract class RefChecks extends InfoTransform {
       }
 
       /** Check that all conditions for overriding <code>other</code> by
-       *  <code>member</code> are met.
+       *  <code>member</code> of class <code>clazz</code> are met. 
        */
       def checkOverride(clazz: Symbol, member: Symbol, other: Symbol) {
 
@@ -207,9 +271,9 @@ abstract class RefChecks extends InfoTransform {
         // return if we already checked this combination elsewhere
         if (member.owner != clazz) {
           if ((member.owner isSubClass other.owner) && (member.isDeferred || !other.isDeferred)) {
-                //Console.println(infoString(member) + " shadows1 " + infoString(other) " in " + clazz);//DEBUG
-                return; 
-              }
+            //Console.println(infoString(member) + " shadows1 " + infoString(other) " in " + clazz);//DEBUG
+            return; 
+          }
           if (clazz.info.parents exists (parent =>
             (parent.typeSymbol isSubClass other.owner) && (parent.typeSymbol isSubClass member.owner) &&
             (member.isDeferred || !other.isDeferred))) {
@@ -222,6 +286,11 @@ abstract class RefChecks extends InfoTransform {
               return;
             }
         }
+
+        /** Is the intersection between given two lists of overridden symbols empty?
+         */
+        def intersectionIsEmpty(syms1: List[Symbol], syms2: List[Symbol]) =
+          !(syms1 exists (syms2 contains))
 
         if (member hasFlag PRIVATE) { // (1.1)
           overrideError("has weaker access privileges; it should not be private")
@@ -246,6 +315,12 @@ abstract class RefChecks extends InfoTransform {
         } else if ((member hasFlag (OVERRIDE | ABSOVERRIDE)) && 
                    (other hasFlag ACCESSOR) && other.accessed.isVariable && !other.accessed.hasFlag(LAZY)) {
           overrideError("cannot override a mutable variable")
+        } else if ((member hasFlag (OVERRIDE | ABSOVERRIDE)) && 
+                   !(member.owner isSubClass other.owner) && 
+                   !member.isDeferred && !other.isDeferred && 
+                   intersectionIsEmpty(member.allOverriddenSymbols, other.allOverriddenSymbols)) {
+          overrideError("cannot override a concrete member without a third member that's overridden by both "+
+                        "(this rule is designed to prevent ``accidental overrides'')")
         } else if (other.isStable && !member.isStable) { // (1.4)
           overrideError("needs to be a stable, immutable value")
         } else if (member.isValue && (member hasFlag LAZY) &&
@@ -295,6 +370,8 @@ abstract class RefChecks extends InfoTransform {
                   kindErrors.toList.mkString("\n", ", ", "")) 
             }
           } else if (other.isTerm) {
+            other.cookJavaRawInfo() // #2454
+
             if (!overridesType(self.memberInfo(member), self.memberInfo(other))) { // 8
               overrideTypeError()
               explainTypes(self.memberInfo(member), self.memberInfo(other))
@@ -325,14 +402,15 @@ abstract class RefChecks extends InfoTransform {
         // Bridge symbols qualify.
         // Used as a fall back if no overriding symbol of a Java abstract method can be found
         def javaErasedOverridingSym(sym: Symbol): Symbol = 
-          clazz.tpe.findMember(sym.name, PRIVATE, 0, false)(NoSymbol).filter(other =>
+          clazz.tpe.nonPrivateMemberAdmitting(sym.name, BRIDGE).filter(other =>
             !other.isDeferred &&
             (other hasFlag JAVA) && {
               val tp1 = erasure.erasure(clazz.thisType.memberType(sym))
               val tp2 = erasure.erasure(clazz.thisType.memberType(other))
               atPhase(currentRun.erasurePhase.next)(tp1 matches tp2)
             })
-        for (member <- clazz.tpe.nonPrivateMembers)
+
+        for (member <- clazz.tpe.nonPrivateMembersAdmitting(VBRIDGE))
           if (member.isDeferred && !(clazz hasFlag ABSTRACT) &&
               !isAbstractTypeWithoutFBound(member) &&
               !((member hasFlag JAVA) && javaErasedOverridingSym(member) != NoSymbol)) {
@@ -346,6 +424,7 @@ abstract class RefChecks extends InfoTransform {
                 " and overrides incomplete superclass member " + infoString(other)
                else ""))
           }
+
         // 3. Check that concrete classes do not have deferred definitions
         // that are not implemented in a subclass.
         // Note that this is not the same as (2); In a situation like
@@ -371,11 +450,20 @@ abstract class RefChecks extends InfoTransform {
         if (!(clazz hasFlag ABSTRACT)) checkNoAbstractDecls(clazz)
       }
 
+      /** Does there exists a symbol declared in class `inclazz` with name `name` and
+       *  whose type seen as a member of `class.thisType` matches `tpe`?
+       */
+      def hasMatchingSym(inclazz: Symbol, name: Name, tpe: Type): Boolean =
+        inclazz.info.nonPrivateDecl(name).filter(sym =>
+          !sym.isTerm || (tpe matches clazz.thisType.memberType(sym))) != NoSymbol
+
       // 4. Check that every defined member with an `override' modifier overrides some other member.
       for (member <- clazz.info.decls.toList)
         if ((member hasFlag (OVERRIDE | ABSOVERRIDE)) &&
-            (clazz.info.baseClasses.tail forall {
-               bc => member.matchingSymbol(bc, clazz.thisType) == NoSymbol
+            !(clazz.ancestors exists { bc => 
+               hasMatchingSym(bc, member.name, member.tpe) ||
+               hasRepeatedParam(member.tpe) && 
+               hasMatchingSym(bc, member.name, toJavaRepeatedParam(member.tpe))
             })) {
           // for (bc <- clazz.info.baseClasses.tail) Console.println("" + bc + " has " + bc.info.decl(member.name) + ":" + bc.info.decl(member.name).tpe);//DEBUG
           unit.error(member.pos, member.toString() + " overrides nothing");
@@ -576,7 +664,7 @@ abstract class RefChecks extends InfoTransform {
 // Forward reference checking ---------------------------------------------------
 
     class LevelInfo(val outer: LevelInfo) {
-      val scope: Scope = if (outer eq null) newScope else newScope(outer.scope)
+      val scope: Scope = if (outer eq null) new Scope else new Scope(outer.scope)
       var maxindex: Int = Math.MIN_INT
       var refpos: Position = _
       var refsym: Symbol = _
@@ -601,7 +689,7 @@ abstract class RefChecks extends InfoTransform {
           case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) =>
             assert(stat.symbol != NoSymbol, stat);//debug
             if (stat.symbol.isLocal) {
-              currentLevel.scope.enter(newScopeEntry(stat.symbol, currentLevel.scope));
+              currentLevel.scope.enter(stat.symbol)
               symIndex(stat.symbol) = index;
             }
           case _ =>
@@ -714,7 +802,7 @@ abstract class RefChecks extends InfoTransform {
         val cdef = ClassDef(mods | MODULE, name, List(), impl)
           .setPos(tree.pos) 
           .setSymbol(sym.moduleClass) 
-          .setType(NoType);
+          .setType(NoType)
         if (sym.isStatic) {
           if (!sym.allOverriddenSymbols.isEmpty) {
             val factory = sym.owner.newMethod(sym.pos, sym.name)
@@ -849,7 +937,7 @@ abstract class RefChecks extends InfoTransform {
             unit.deprecationWarning(
               tree.pos,
               symbol.toString + " overrides concrete, non-deprecated symbol(s):" +
-              concrOvers.map(_.fullNameString).mkString("    ", ", ", ""))
+              concrOvers.map(_.name.decode).mkString("    ", ", ", ""))
         }
       }
 
@@ -912,11 +1000,14 @@ abstract class RefChecks extends InfoTransform {
         case ValDef(_, _, _, _) =>
           checkDeprecatedOvers()
 
-        case Template(_, _, _) =>
+        case Template(parents, self, body) =>
           localTyper = localTyper.atOwner(tree, currentOwner)
           validateBaseTypes(currentOwner)
           checkDefaultsInOverloaded(currentOwner)
+          val bridges = addVarargBridges(currentOwner)
           checkAllOverrides(currentOwner)
+          if (bridges.nonEmpty) 
+            result = treeCopy.Template(tree, parents, self, body ::: bridges)
 
         case TypeTree() => 
           val existentialParams = new ListBuffer[Symbol]

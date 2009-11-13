@@ -98,14 +98,14 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
       var sym: Symbol = NoSymbol
       if (settings.debug.value)
         log("starting rebindsuper " + base + " " + member + ":" + member.tpe +
-            " " + mixinClass + " " + base.info.baseClasses)
+            " " + mixinClass + " " + base.info.baseClasses + "/" + bcs)
       while (!bcs.isEmpty && sym == NoSymbol) {
         if (settings.debug.value) {
           val other = bcs.head.info.nonPrivateDecl(member.name);
           log("rebindsuper " + bcs.head + " " + other + " " + other.tpe +
               " " + other.isDeferred)
         }
-        sym = member.overridingSymbol(bcs.head).suchThat(sym => !sym.hasFlag(DEFERRED | BRIDGE))
+        sym = member.matchingSymbol(bcs.head, base.thisType).suchThat(sym => !sym.hasFlag(DEFERRED | BRIDGE))
         bcs = bcs.tail
       }
       assert(sym != NoSymbol, member)
@@ -237,7 +237,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             val imember = member.overriddenSymbol(iface)
             //Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
             if (imember.overridingSymbol(clazz) == NoSymbol &&
-                clazz.info.findMember(member.name, 0, lateDEFERRED, false)(NoSymbol).alternatives.contains(imember)) {
+                clazz.info.findMember(member.name, 0, lateDEFERRED, false).alternatives.contains(imember)) {
                   val member1 = addMember(
                     clazz,
                     member.cloneSymbol(clazz) setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
@@ -278,13 +278,16 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
                     // member is a value of type unit. No field needed
                     ;
                   case _ =>
+                    // atPhase: the private field is moved to the implementation class by erasure,
+                    // so it can no longer be found in the member's owner (the trait)
+                    val accessed = atPhase(currentRun.picklerPhase)(member.accessed)
                     // otherwise mixin a field as well
                     addMember(clazz,
                               clazz.newValue(member.pos, nme.getterToLocal(member.name))
                               setFlag (LOCAL | PRIVATE | member.getFlag(MUTABLE | LAZY))
                               setFlag (if (!member.hasFlag(STABLE)) MUTABLE else 0)
                               setInfo member.tpe.resultType
-                              setAnnotations member.annotations)
+                              setAnnotations accessed.annotations)
                 }
             }
           } else if (member hasFlag SUPERACCESSOR) { // mixin super accessors
@@ -342,12 +345,12 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
           sourceModule setInfo sym.tpe
           assert(clazz.sourceModule != NoSymbol)//debug
           parents1 = List()
-          decls1 = newScope(decls.toList filter isImplementedStatically)
+          decls1 = new Scope(decls.toList filter isImplementedStatically)
         } else if (!parents.isEmpty) {
           parents1 = parents.head :: (parents.tail map toInterface)
         }
       }
-      //decls1 = atPhase(phase.next)(newScope(decls1.toList))//debug
+      //decls1 = atPhase(phase.next)(new Scope(decls1.toList))//debug
       if ((parents1 eq parents) && (decls1 eq decls)) tp
       else ClassInfoType(parents1, decls1, clazz)
 
@@ -421,7 +424,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
 
     /** The rootContext used for typing */
     private val rootContext =
-      erasure.NoContext.make(EmptyTree, RootClass, newScope)
+      erasure.NoContext.make(EmptyTree, RootClass, new Scope)
 
     /** The typer */
     private var localTyper: erasure.Typer = _

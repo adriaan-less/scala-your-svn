@@ -93,7 +93,7 @@ trait ContextTrees { self: Global =>
         else if (contexts(hi).pos properlyIncludes cpos) // fast path w/o search
           addContext(contexts(hi).children, context, cpos)
         else if (cpos precedes contexts(0).pos)
-          new ContextTree(cpos, context) +: contexts
+          new ContextTree(cpos, context) +=: contexts
         else {
           def insertAt(idx: Int): Boolean = {
             val oldpos = contexts(idx).pos
@@ -119,6 +119,8 @@ trait ContextTrees { self: Global =>
                 loop(lo, mid)
               else if (midpos precedes cpos) 
                 loop(mid, hi)
+              else
+                addContext(contexts(mid).children, context, cpos)
             } else if (!insertAt(lo) && !insertAt(hi)) {
               val lopos = contexts(lo).pos
               val hipos = contexts(hi).pos

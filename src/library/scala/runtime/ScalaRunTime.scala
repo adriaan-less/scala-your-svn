@@ -12,8 +12,9 @@
 package scala.runtime
 
 import scala.reflect.ClassManifest
-import scala.collection.Sequence
+import scala.collection.Seq
 import scala.collection.mutable._
+import scala.collection.immutable.{List, Stream, Nil, ::}
 
 /* The object <code>ScalaRunTime</code> provides ...
  */
@@ -22,8 +23,8 @@ object ScalaRunTime {
   def isArray(x: AnyRef): Boolean = // !!! remove once newarrays
     x != null && (x.getClass.isArray || x.isInstanceOf[BoxedArray[_]])
 
-  def isArray(x: AnyRef, atLevel: Int): Boolean = 
-    x != null && isArrayClass(x.getClass, atLevel)
+  def isArray(x: Any, atLevel: Int): Boolean = 
+    x != null && isArrayClass(x.asInstanceOf[AnyRef].getClass, atLevel)
 
   private def isArrayClass(clazz: Class[_], atLevel: Int): Boolean =
     clazz.isArray && (atLevel == 1 || isArrayClass(clazz.getComponentType, atLevel - 1))
@@ -55,7 +56,7 @@ object ScalaRunTime {
     dest
   }
 
-  def toArray[T](xs: scala.collection.Sequence[T]) = {
+  def toArray[T](xs: scala.collection.Seq[T]) = {
     val arr = new Array[AnyRef](xs.length)
     var i = 0
     for (x <- xs) arr(i) = x.asInstanceOf[AnyRef]
@@ -104,6 +105,9 @@ object ScalaRunTime {
   def _toString(x: Product): String =
     caseFields(x).mkString(x.productPrefix + "(", ",", ")")
 
+  def _hashCodeJenkins(x: Product): Int =
+    scala.util.JenkinsHash.hashSeq(x.productPrefix.toSeq ++ x.productIterator.toSeq)
+  
   def _hashCode(x: Product): Int = {
     var code = x.productPrefix.hashCode()
     val arr =  x.productArity
@@ -115,6 +119,13 @@ object ScalaRunTime {
     }
     code
   }
+
+  /** Fast path equality method for inlining; used when -optimise is set.
+   */
+  @inline def inlinedEquals(x: Object, y: Object): Boolean = 
+    if (x eq null) y eq null
+    else if (x.isInstanceOf[Number] || x.isInstanceOf[Character]) BoxesRunTime.equals(x, y)
+    else x.equals(y)
 
   def _equals(x: Product, y: Any): Boolean = y match {
     case y1: Product if x.productArity == y1.productArity =>
@@ -191,7 +202,7 @@ object ScalaRunTime {
   def stringOf(arg : Any): String = arg match {
     case null => "null"
     case arg: AnyRef if isArray(arg) => 
-      val d: collection.Vector[Any] = WrappedArray.make(arg).deep
+      val d: collection.IndexedSeq[Any] = WrappedArray.make(arg).deep
       d.toString
     case arg: WrappedArray[_] => arg.deep.toString
     case arg => arg.toString

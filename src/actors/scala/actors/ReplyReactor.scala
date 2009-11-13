@@ -19,7 +19,7 @@ package scala.actors
  *
  *  @author Philipp Haller
  */
-trait ReplyReactor extends Reactor {
+trait ReplyReactor extends Reactor with ReplyableReactor {
 
   /* A list of the current senders. The head of the list is
    * the sender of the message that was received last.
@@ -59,6 +59,38 @@ trait ReplyReactor extends Reactor {
       continuation(item._1)
     else
       scheduleActor(continuation, item._1)
+  }
+
+  // assume continuation != null
+  private[actors] override def searchMailbox(startMbox: MessageQueue,
+                                             handlesMessage: Any => Boolean,
+                                             resumeOnSameThread: Boolean) {
+    var tmpMbox = startMbox
+    var done = false
+    while (!done) {
+      val qel = tmpMbox.extractFirst((msg: Any, replyTo: OutputChannel[Any]) => {
+        senders = List(replyTo)
+        handlesMessage(msg)
+      })
+      if (tmpMbox ne mailbox)
+        tmpMbox.foreach((m, s) => mailbox.append(m, s))
+      if (null eq qel) {
+        synchronized {
+          // in mean time new stuff might have arrived
+          if (!sendBuffer.isEmpty) {
+            tmpMbox = new MessageQueue("Temp")
+            drainSendBuffer(tmpMbox)
+            // keep going
+          } else {
+            waitingFor = handlesMessage
+            done = true
+          }
+        }
+      } else {
+        resumeReceiver((qel.msg, qel.session), resumeOnSameThread)
+        done = true
+      }
+    }
   }
 
 }

@@ -30,7 +30,7 @@ object Queue {
 @SerialVersionUID(-7622936493364270175L)
 class Queue[+A] protected(
   protected val  in: List[A],
-  protected val out: List[A]) extends Sequence[A]
+  protected val out: List[A]) extends Seq[A]
 {
   /** Returns the <code>n</code>-th element of this queue. 
    *  The first element is at position 0.
@@ -40,17 +40,13 @@ class Queue[+A] protected(
    *  @throws Predef.NoSuchElementException if the queue is too short.
    */
   def apply(n: Int): A = {
-    @tailrec
-    def walk(i: Int, inlist: List[A], outlist: List[A]): A =
-      (i == 0, inlist.isEmpty, outlist.isEmpty) match {
-        case (_, true, true)       => throw new NoSuchElementException("index out of range")
-        case (true, _, false)      => outlist.head
-        case (true, _, true)       => inlist.last
-        case (false, _, false)     => walk(i - 1, inlist, outlist.tail)
-        case (false, false, true)  => walk(i - 1, Nil, inlist.reverse.tail)
-      }
-    
-    walk(n, in, out)
+    val len = out.length
+    if (n < len) out.apply(n)
+    else {
+      val m = n - len
+      if (m < in.length) in.reverse.apply(m)
+      else throw new NoSuchElementException("index out of range")
+    }
   }
 
   /** Returns the elements in the list as an iterator

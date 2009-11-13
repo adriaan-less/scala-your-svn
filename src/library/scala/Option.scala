@@ -11,9 +11,6 @@
 
 package scala
 
-import Predef._
-import annotation.experimental
-
 object Option
 {
   /** An implicit conversion that converts an option to an iterable value
@@ -26,21 +23,7 @@ object Option
    *  @param  x the value
    *  @return   Some(value) if value != null, None if value == null
    */
-  @experimental
   def apply[A](x: A): Option[A] = if (x == null) None else Some(x)
-  
-  // For methods which return -1 on failure
-  // def fromReturnValue(value: Int): Option[Int] = if (value < 0) None else Some(value)
-  
-  class NullableOption[A >: Null <: AnyRef](x: Option[A]) {
-    /** The option's value if it is nonempty, or <code>null</code> if it is empty.
-     *  The use of null of course is discouraged, but code written to use Options
-     *  often must interface with code which expects and returns nulls.
-     */
-    @experimental 
-    def orNull: A = if (x.isEmpty) null else x.get
-  }
-  implicit def option2NullableOption[A >: Null <: AnyRef](xo: Option[A]): NullableOption[A] = new NullableOption(xo)
 }
 
 /** This class represents optional values. Instances of <code>Option</code>
@@ -67,12 +50,6 @@ sealed abstract class Option[+A] extends Product {
    */
   def get: A
 
-  @deprecated("use <code>getOrElse</code> instead")
-  def get[B >: A](default: B): B = this match {
-    case None => default
-    case Some(x) => x
-  }
-
   /** If the option is nonempty return its value,
    *  otherwise return the result of evaluating a default expression.
    *
@@ -80,6 +57,12 @@ sealed abstract class Option[+A] extends Product {
    */
   def getOrElse[B >: A](default: => B): B = 
     if (isEmpty) default else this.get
+  
+  /** The option's value if it is nonempty, or <code>null</code> if it is empty.
+   *  The use of null of course is discouraged, but code written to use Options
+   *  often must interface with code which expects and returns nulls.
+   */  
+  def orNull[A1 >: A](implicit ev: Null <:< A1): A1 = this getOrElse null
 
   /** If the option is nonempty, return a function applied to its value,
    *  wrapped in a Some i.e. <code>Some(f(this.get))</code>.
@@ -127,8 +110,7 @@ sealed abstract class Option[+A] extends Product {
    *
    *  @param  pf   the partial function.
    */
-  @experimental
-  def filterMap[B](pf: PartialFunction[Any, B]): Option[B] =
+  def partialMap[B](pf: PartialFunction[Any, B]): Option[B] =
     if (!isEmpty && pf.isDefinedAt(this.get)) Some(pf(this.get)) else None  
 
   /** If the option is nonempty return it,

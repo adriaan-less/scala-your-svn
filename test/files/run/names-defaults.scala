@@ -13,8 +13,10 @@ object Test extends Application {
 
   // mixing named and positional
   test1(get(4), b = get("@"))
+  test1(a = get(10), get("flu"))
   test2(get(8), v = get(9))(get("%"), l = get(5))
   test3(12, 13)("'", d = 16)
+  test3(a = 1, "swine")(c = "bird", d = 10L)
 
 
   // anonymous functions
@@ -183,7 +185,7 @@ object Test extends Application {
   println(argName) // should be 4
   test5 { argName = 5 }
   println(argName) // should be 5
-  val a = test1(a = 10, b = "2") // local values a and b exist, but not ambiuous since they're val's
+  val a: Unit = test1(a = 10, b = "2") // local values a and b exist, but not ambiuous since they're val's
 
 
   // dependent types and copy method
@@ -262,6 +264,9 @@ object Test extends Application {
 
   // #2390
   case class A2390[T](x: Int) { def copy(a: Int)(b: Int = 0) = 0 }
+
+  // #2489
+  class A2489 { def foo { def bar(a: Int = 1) = a; bar(); val u = 0 } }
 
   // DEFINITIONS
   def test1(a: Int, b: String) = println(a +": "+ b)

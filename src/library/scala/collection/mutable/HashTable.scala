@@ -45,13 +45,28 @@ trait HashTable[A] {
 
   /** The initial threshold
    */
-  protected def initialThreshold: Int = newThreshold(initialSize)
-
+  protected def initialThreshold: Int = newThreshold(initialCapacity)
+  
   /** The actual hash table.
    */
-  protected var table: Array[HashEntry[A, Entry]] = 
-    if (initialSize == 0) null else new Array(initialSize)
-
+  protected var table: Array[HashEntry[A, Entry]] = new Array(initialCapacity)
+  
+  private def initialCapacity = if (initialSize == 0) 1 else powerOfTwo(initialSize)
+  
+  /**
+   * Returns a power of two >= `target`.
+   */
+  private def powerOfTwo(target: Int): Int = {
+    /* See http://bits.stephan-brumme.com/roundUpToNextPowerOfTwo.html */
+    var c = target - 1;
+    c |= c >>>  1;
+    c |= c >>>  2;
+    c |= c >>>  4;
+    c |= c >>>  8;
+    c |= c >>> 16;
+    c + 1;
+  }
+  
   /** The number of mappings contained in this hash table.
    */
   protected var tableSize: Int = 0
@@ -59,10 +74,6 @@ trait HashTable[A] {
   /** The next size value at which to resize (capacity * load factor).
    */
   protected var threshold: Int = initialThreshold
-
-  /** Returns the size of this hash table.
-   */
-  def size = tableSize
 
   /** Find entry with given key in table, null if not found
    */
@@ -139,7 +150,7 @@ trait HashTable[A] {
 
   /** Remove all entries from table
    */
-  def clear() {
+  protected def clearTable() {
     var i = table.length - 1
     while (i >= 0) { table(i) = null; i = i - 1 }
     tableSize = 0

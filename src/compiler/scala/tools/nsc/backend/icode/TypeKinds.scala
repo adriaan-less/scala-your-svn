@@ -135,6 +135,7 @@ trait TypeKinds { self: ICodes =>
       case (BYTE, INT) | (INT, BYTE) => INT
       case (SHORT, INT) | (INT, SHORT) => INT
       case (CHAR, INT) | (INT, CHAR) => INT
+      case (BOOL, INT) | (INT, BOOL) => INT
       case _ => throw new CheckerError("Incompatible types: " + a + " with " + b)
     }
   }
@@ -236,7 +237,7 @@ trait TypeKinds { self: ICodes =>
   //   override def maxType(other: TypeKind): TypeKind = other match {
   //     case STRING => STRING;
   //     case _   =>
-  //       abort("Uncomparbale type kinds: STRING with " + other);
+  //       abort("Uncomparable type kinds: STRING with " + other);
   //   }
   // }
 
@@ -262,7 +263,7 @@ trait TypeKinds { self: ICodes =>
         case REFERENCE(_) | ARRAY(_) =>
           REFERENCE(AnyRefClass)
         case _ =>
-          abort("Uncomparbale type kinds: REFERENCE with " + other)
+          abort("Uncomparable type kinds: REFERENCE with " + other)
       }
 
     /** Checks subtyping relationship. */
@@ -333,7 +334,7 @@ trait TypeKinds { self: ICodes =>
           if (elem == elem2) ARRAY(elem)
           else REFERENCE(AnyRefClass)
         case _ =>
-          abort("Uncomparbale type kinds: ARRAY with " + other)
+          abort("Uncomparable type kinds: ARRAY with " + other)
       }
 
     /** Array subtyping is covariant, as in Java. Necessary for checking 
@@ -369,7 +370,7 @@ trait TypeKinds { self: ICodes =>
         case REFERENCE(_) | ARRAY(_) | BOXED(_) =>
           REFERENCE(AnyRefClass)
         case _ =>
-          abort("Uncomparbale type kinds: ARRAY with " + other)
+          abort("Uncomparable type kinds: ARRAY with " + other)
       }
 
     /** Checks subtyping relationship. */
@@ -408,7 +409,7 @@ trait TypeKinds { self: ICodes =>
         case REFERENCE(_) =>
           REFERENCE(AnyRefClass)
         case _ =>
-          abort("Uncomparbale type kinds: ConcatClass with " + other)
+          abort("Uncomparable type kinds: ConcatClass with " + other)
       }
 
     /** Checks subtyping relationship. */

@@ -40,6 +40,8 @@ trait BufferProxy[A] extends Buffer[A] with Proxy {
    *  @param elem  the element to append.
    *  @return      the updated buffer.
    */
+  @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
+              "Use `clone() ++=' if you intend to create a new collection.")
   override def +(elem: A): Buffer[A] = self.+(elem)
 
   /** Append a single element to this buffer.
@@ -57,6 +59,8 @@ trait BufferProxy[A] extends Buffer[A] with Proxy {
    *  @param iter  the iterable object.
    *  @return      the updated buffer.
    */
+  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
+              "Use `clone() ++=` if you intend to create a new collection.")
   def ++(iter: scala.collection.Iterable[A]): Buffer[A] = self.++(iter)
 
   /** Appends a number of elements provided by an iterable object
@@ -84,15 +88,10 @@ trait BufferProxy[A] extends Buffer[A] with Proxy {
    *
    *  @param elem  the element to append.
    */
-  def +:(elem: A): Buffer[A] = self.+:(elem)
+  def +=:(elem: A): Buffer[A] = self.+=:(elem)
 
-  /** Prepends a number of elements provided by an iterable object
-   *  via its <code>iterator</code> method. The identity of the
-   *  buffer is returned.
-   *
-   *  @param iter  the iterable object.
-   */
-  def ++:(iter: scala.collection.Iterable[A]): Buffer[A] = self.++:(iter)
+  override def ++=:(iter: scala.collection.Traversable[A]): Buffer[A] = self.++=:(iter)
+  override def ++=:(iter: scala.collection.Iterator[A]): Buffer[A] = self.++=:(iter)
 
   /** Prepend an element to this list.
    *

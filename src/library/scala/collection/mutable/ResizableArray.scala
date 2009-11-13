@@ -22,9 +22,9 @@ import generic._
  *  @version 2.8
  *  @since   1
  */
-trait ResizableArray[A] extends Vector[A] 
+trait ResizableArray[A] extends IndexedSeq[A] 
                            with GenericTraversableTemplate[A, ResizableArray]
-                           with VectorLike[A, ResizableArray[A]] { 
+                           with IndexedSeqLike[A, ResizableArray[A]] { 
 
   override def companion: GenericCompanion[ResizableArray] = ResizableArray
 
@@ -34,7 +34,7 @@ trait ResizableArray[A] extends Vector[A]
   protected var size0: Int = 0
 
   //##########################################################################
-  // implement/override methods of Vector[A]
+  // implement/override methods of IndexedSeq[A]
 
   /** Returns the length of this resizable array.
    */
@@ -50,23 +50,6 @@ trait ResizableArray[A] extends Vector[A]
     array(idx) = elem.asInstanceOf[AnyRef]
   }
 
-  /** Fills the given array <code>xs</code> with the elements of
-   *  this sequence starting at position <code>start</code>.
-   *
-   *  @param  xs the array to fill.
-   *  @param  start starting index.
-   */
-  override def copyToArray[B >: A](xs: Array[B], start: Int) {
-    Array.copy(array, 0, xs, start, size0)
-  }
-
-  /** Copy all elements to a buffer 
-   *  @param   The buffer to which elements are copied
-  override def copyToBuffer[B >: A](dest: Buffer[B]) {
-    dest ++= (array: Sequence[AnyRef]).asInstanceOf[Sequence[B]]
-  }
-   */
-
   override def foreach[U](f: A =>  U) {
     var i = 0
     while (i < size) {
@@ -74,6 +57,20 @@ trait ResizableArray[A] extends Vector[A]
       i += 1
     }
   }
+
+  /** Fills the given array <code>xs</code> with at most `len` elements of
+   *  this traversable starting at position `start`.
+   *  Copying will stop once either the end of the current traversable is reached or
+   *  `len` elements have been copied or the end of the array is reached.
+   *
+   *  @param  xs the array to fill.
+   *  @param  start starting index.
+   *  @param  len number of elements to copy
+   */
+   override def copyToArray[B >: A](xs: Array[B], start: Int, len: Int) {
+     val len1 = len min (xs.length - start) min length
+     Array.copy(array, 0, xs, start, len1)
+   }
 
   //##########################################################################
 
@@ -114,7 +111,7 @@ trait ResizableArray[A] extends Vector[A]
   }
 }
 
-object ResizableArray extends SequenceFactory[ResizableArray] {
-  implicit def builderFactory[A]: BuilderFactory[A, ResizableArray[A], Coll] = new VirtualBuilderFactory[A]
+object ResizableArray extends SeqFactory[ResizableArray] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ResizableArray[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, ResizableArray[A]] = new ArrayBuffer[A]
 }

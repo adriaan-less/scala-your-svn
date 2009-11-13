@@ -11,8 +11,9 @@
 
 package scala.collection
 
-import mutable.{Buffer, ArrayBuffer, ListBuffer}
-import annotation.{ tailrec, experimental }
+import mutable.{Buffer, ArrayBuffer, ListBuffer, StringBuilder}
+import immutable.{List, Stream}
+import annotation.{ tailrec }
 // import immutable.{List, Nil, ::, Stream}
 
 /** The <code>Iterator</code> object provides various functions for
@@ -172,7 +173,7 @@ object Iterator {
 
   /**
    *  @param xs the array of elements
-   *  @see also: Vector.iterator and slice
+   *  @see also: IndexedSeq.iterator and slice
    */
   @deprecated("use `xs.iterator' instead")
   def fromArray[a](xs: Array[a]): Iterator[a] =
@@ -182,18 +183,11 @@ object Iterator {
    *  @param xs     the array of elements
    *  @param start  the start index
    *  @param length  the length
-   *  @see also: Vector.iterator and slice
+   *  @see also: IndexedSeq.iterator and slice
    */
   @deprecated("use `xs.slice(start, start + length).iterator' instead")
   def fromArray[a](xs: Array[a], start: Int, length: Int): Iterator[a] =
     xs.slice(start, start + length).iterator
-
-  /**
-   *  @param str the given string
-   *  @return    the iterator on <code>str</code>
-   */
-  @deprecated("replaced by <code>str.iterator</code>")
-  def fromString(str: String): Iterator[Char] = str.iterator
 
   /**
    *  @param n the product arity
@@ -368,6 +362,11 @@ trait Iterator[+A] { self =>
     }
   }
   
+  /** !!! Temporary, awaiting more general implementation.
+   *  ... better wait longer, this fails once flatMap gets in the mix.
+   */
+  // def withFilter(p: A => Boolean) = this.toStream withFilter p
+  
   /** Returns an iterator over all the elements of this iterator which
    *  do not satisfy the predicate <code>p</code>.
    *
@@ -384,8 +383,7 @@ trait Iterator[+A] { self =>
   *  @param pf the partial function which filters and maps the iterator.
   *  @return the new iterator.
   */
-  @experimental
-  def filterMap[B](pf: PartialFunction[Any, B]): Iterator[B] = {
+  def partialMap[B](pf: PartialFunction[Any, B]): Iterator[B] = {
     val self = buffered
     new Iterator[B] {
       private def skip() = while (self.hasNext && !pf.isDefinedAt(self.head)) self.next()
@@ -752,7 +750,7 @@ trait Iterator[+A] { self =>
    *  understand) this method takes the way one might expect, leaving
    *  the original iterator with 'size' fewer elements.
    */
-  private def takeDestructively(size: Int): Sequence[A] = {
+  private def takeDestructively(size: Int): Seq[A] = {
     val buf = new ArrayBuffer[A]
     var i = 0
     while (self.hasNext && i < size) {
@@ -763,12 +761,12 @@ trait Iterator[+A] { self =>
   }
   
   /** A flexible iterator for transforming an <code>Iterator[A]</code> into an
-   *  Iterator[Sequence[A]], with configurable sequence size, step, and
+   *  Iterator[Seq[A]], with configurable sequence size, step, and
    *  strategy for dealing with elements which don't fit evenly.
    * 
    *  Typical uses can be achieved via methods `grouped' and `sliding'.
    */
-  class GroupedIterator[B >: A](self: Iterator[A], size: Int, step: Int) extends Iterator[Sequence[B]] {
+  class GroupedIterator[B >: A](self: Iterator[A], size: Int, step: Int) extends Iterator[Seq[B]] {
     require(size >= 1 && step >= 1)
 
     private[this] var buffer: ArrayBuffer[B] = ArrayBuffer()  // the buffer    
@@ -1008,7 +1006,7 @@ trait Iterator[+A] { self =>
    *
    *  @return  A sequence which enumerates all elements of this iterator.
    */ 
-  def toSequence: Sequence[A] = {
+  def toSeq: Seq[A] = {
     val buffer = new ArrayBuffer[A]
     this copyToBuffer buffer
     buffer 
@@ -1096,8 +1094,8 @@ trait Iterator[+A] { self =>
    *
    * @return  a sequence which enumerates all elements of this iterator.
    */
-  @deprecated("use toSequence instead")
-  def collect: Sequence[A] = toSequence
+  @deprecated("use toSeq instead")
+  def collect: Seq[A] = toSeq
 
   /** Returns a counted iterator from this iterator.
    */

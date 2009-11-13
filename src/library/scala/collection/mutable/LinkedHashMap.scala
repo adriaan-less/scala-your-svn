@@ -13,7 +13,6 @@ package scala.collection
 package mutable
 
 import generic._
-import Predef._
 
 /** This class implements mutable maps using a hashtable.
  *
@@ -23,7 +22,7 @@ import Predef._
  *  @since   2.7
  */
 object LinkedHashMap extends MutableMapFactory[LinkedHashMap] {
-  implicit def builderFactory[A, B]: BuilderFactory[(A, B), LinkedHashMap[A, B], Coll] = new MapBuilderFactory[A, B]
+  implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), LinkedHashMap[A, B]] = new MapCanBuildFrom[A, B]
   def empty[A, B] = new LinkedHashMap[A, B]
 }
 
@@ -36,7 +35,7 @@ class LinkedHashMap[A, B] extends Map[A, B]
                              with HashTable[A] {
 
   override def empty = LinkedHashMap.empty[A, B]
-  override def size = super[HashTable].size
+  override def size = tableSize
 
   type Entry = LinkedEntry[A, B]
 
@@ -113,7 +112,7 @@ class LinkedHashMap[A, B] extends Map[A, B]
   }
 
   override def clear() {
-    super[HashTable].clear()
+    clearTable()
     firstEntry = null
   }
 }

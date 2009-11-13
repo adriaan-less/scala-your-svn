@@ -36,6 +36,12 @@ trait Symbols {
   /** Used to keep track of the recursion depth on locked symbols */
   private var recursionTable = Map.empty[Symbol, Int]
 
+  private var nextexid = 0
+  private def freshExistentialName() = {
+    nextexid += 1
+    "_"+nextexid
+  }
+
 /*                                 
   type Position;
   def NoPos : Position;
@@ -70,7 +76,7 @@ trait Symbols {
     def setPos(pos: Position): this.type = { this.rawpos = pos; this }
  
     def namePos(source: BatchSourceFile) = {
-      val pos: Int = this.pos.offset.getOrElse(-1)
+      val pos: Int = this.pos.pointOrElse(-1)
       val buf = source.content
       if (pos == -1) -1
       else if (isTypeParameter) pos - name.length
@@ -256,7 +262,20 @@ trait Symbols {
         newValueParameter(owner.pos.focus, freshName()).setFlag(SYNTHETIC).setInfo(tp)
       argtypess map (_.map(param))
     }
-    
+
+    /** Make an existential variable.
+     *  @param name    suffix to be appended to the freshly generated name
+     *                 It's ususally "", except for type variables abstracting
+     *                 over values, where it is ".type".
+     *  @param owner   The owner of the variable
+     *  @param bounds  The variable's bounds
+     */
+    final def newExistential(pos: Position, name: Name): Symbol = 
+      newAbstractType(pos, name.toTypeName).setFlag(EXISTENTIAL)
+
+    final def freshExistential(suffix: String): Symbol = 
+      newExistential(pos, freshExistentialName()+suffix)
+
     /** Synthetic value parameters when parameter symbols are not available.
      *  Calling this method multiple times will re-use the same parameter names.
      */
@@ -270,9 +289,9 @@ trait Symbols {
       newSyntheticValueParams(List(argtype)).head
     
     /** Type skolems are type parameters ``seen from the inside''
-     *  Given a class C[T]
-     *  Then the class has a TypeParameter with name `T' in its typeParams list
-     *  While type checking the class, there's a local copy of `T' which is a TypeSkolem
+     *  Assuming a polymorphic method m[T], its type is a PolyType which has a TypeParameter
+     *  with name `T' in its typeParams list. While type checking the parameters, result type and
+     *  body of the method, there's a local copy of `T' which is a TypeSkolem.
      */
     final def newTypeSkolem: Symbol =
       new TypeSkolem(owner, pos, name, this)
@@ -409,6 +428,7 @@ trait Symbols {
 
     final def isRefinementClass = isClass && name == nme.REFINE_CLASS_NAME.toTypeName; // no lifting for refinement classes
     final def isModuleClass = isClass && hasFlag(MODULE)
+    final def isClassOfModule = isModuleClass || isClass && nme.isLocalName(name)
     final def isPackageClass = isClass && hasFlag(PACKAGE)
     final def isPackageObject = isModule && name == nme.PACKAGEkw && owner.isPackageClass
     final def isPackageObjectClass = isModuleClass && name.toTermName == nme.PACKAGEkw && owner.isPackageClass
@@ -507,6 +527,10 @@ trait Symbols {
     /** Does this symbol denote the primary constructor of its enclosing class? */
     final def isPrimaryConstructor =
       isConstructor && owner.primaryConstructor == this
+      
+    /** Does this symbol denote an auxiliary constructor of its enclosing class? */
+    final def isAuxiliaryConstructor =
+      isConstructor && !isPrimaryConstructor
 
     /** Is this symbol a synthetic apply or unapply method in a companion object of a case class? */
     final def isCaseApplyOrUnapply = 
@@ -580,6 +604,12 @@ trait Symbols {
     final def isLocalClass: Boolean =
       isClass && (isAnonymousClass || isRefinementClass || isLocal ||
                   !owner.isPackageClass && owner.isLocalClass)
+    
+    /** Is this class or type defined as a structural refinement type?
+     */
+    final def isStructuralRefinement: Boolean =
+      (isClass || isType || isModule) && info.normalize/*.underlying*/.isStructuralRefinement
+    
 
     /** Is this symbol a member of class `clazz'
      */
@@ -707,7 +737,10 @@ trait Symbols {
     private[Symbols] var infos: TypeHistory = null
 
     /** Get type. The type of a symbol is:
-     *  for a type symbol, the type corresponding to the symbol itself
+     *  for a type symbol, the type corresponding to the symbol itself, 
+     *    @M you should use tpeHK for a type symbol with type parameters if
+     *       the kind of the type need not be *, as tpe introduces dummy arguments
+     *       to generate a type of kind *
      *  for a term symbol, its usual type
      */
     def tpe: Type = info
@@ -857,6 +890,48 @@ trait Symbols {
       infos ne null
     }
 
+    /** Modify term symbol's type so that a raw type C is converted to an existential C[_]
+     *
+     * This is done in checkAccessible and overriding checks in refchecks
+     * We can't do this on class loading because it would result in infinite cycles.
+     */
+    private var triedCooking: Boolean = false
+    final def cookJavaRawInfo() {
+      require(isTerm)
+      // println("cookJavaRawInfo: "+(rawname, triedCooking))
+
+      if(triedCooking) return else triedCooking = true // only try once...
+
+      def cook(sym: Symbol) {
+        require(sym hasFlag JAVA)
+        // @M: I think this is more desirable, but Martin prefers to leave raw-types as-is as much as possible
+        // object rawToExistentialInJava extends TypeMap {
+        //   def apply(tp: Type): Type = tp match {
+        //     // any symbol that occurs in a java sig, not just java symbols
+        //     // see http://lampsvn.epfl.ch/trac/scala/ticket/2454#comment:14
+        //     case TypeRef(pre, sym, List()) if !sym.typeParams.isEmpty =>
+        //       val eparams = typeParamsToExistentials(sym, sym.typeParams)
+        //       existentialAbstraction(eparams, TypeRef(pre, sym, eparams map (_.tpe)))
+        //     case _ =>
+        //       mapOver(tp)
+        //   }
+        // }
+        val tpe1 = rawToExistential(sym.tpe)
+        // println("cooking: "+ sym +": "+ sym.tpe +" to "+ tpe1)
+        if (tpe1 ne sym.tpe) {
+          sym.setInfo(tpe1)
+        }
+      }
+
+      if (hasFlag(JAVA))
+        cook(this)
+      else if (hasFlag(OVERLOADED))
+        for (sym2 <- alternatives)
+          if (sym2 hasFlag JAVA)
+            cook(sym2)
+    }
+
+
     /** The type constructor of a symbol is:
      *  For a type symbol, the type corresponding to the symbol itself,
      *  excluding parameters.
@@ -865,6 +940,13 @@ trait Symbols {
     def typeConstructor: Type =
       throw new Error("typeConstructor inapplicable for " + this)
 
+    /** @M -- tpe vs tpeHK:
+     * Symbol::tpe creates a TypeRef that has dummy type arguments to get a type of kind *
+     * Symbol::tpeHK creates a TypeRef without type arguments, but with type params --> higher-kinded if non-empty list of tpars
+     * calling tpe may hide errors or introduce spurious ones 
+     *   (e.g., when deriving a type from the symbol of a type argument that must be higher-kinded)
+     * as far as I can tell, it only makes sense to call tpe in conjunction with a substitution that replaces the generated dummy type arguments by their actual types 
+     */
     def tpeHK = if (isType) typeConstructor else tpe // @M! used in memberType
 
     /** The type parameters of this symbol, without ensuring type completion.
@@ -1064,10 +1146,38 @@ trait Symbols {
      */
     def thisType: Type = NoPrefix
 
-    /** Return every accessor of a primary constructor parameter in this case class
+    /** Return every accessor of a primary constructor parameter in this case class.
+     *  The scope declarations may be out of order because fields with less than private
+     *  access are first given a regular getter, then a new renamed getter which comes
+     *  later in the declaration list.  For this reason we have to pinpoint the
+     *  right accessors by starting with the original fields (which will be in the right
+     *  order) and looking for getters with applicable names.  The getters may have the
+     *  standard name "foo" or may have been renamed to "foo$\d+" in SyntheticMethods.
+     *  See ticket #1373.
      */
-    final def caseFieldAccessors: List[Symbol] =
-      info.decls.toList filter (sym => !(sym hasFlag PRIVATE) && sym.hasFlag(CASEACCESSOR))
+    final def caseFieldAccessors: List[Symbol] = {
+      val allWithFlag = info.decls.toList filter (_ hasFlag CASEACCESSOR)
+      val (accessors, fields) = allWithFlag partition (_.isMethod)
+      
+      def findAccessor(field: Symbol): Symbol = {
+        // There is another renaming the field may have undergone, for instance as in
+        // ticket #2175: case class Property[T](private var t: T), t becomes Property$$t.
+        // So we use the original name everywhere.
+        val getterName    = nme.getterName(field.originalName)
+        
+        // Note this is done in two passes intentionally, to ensure we pick up the original
+        // getter if present before looking for the renamed getter.
+        def origGetter    = accessors find (_.originalName == getterName)
+        def renamedGetter = accessors find (_.originalName startsWith (getterName + "$"))
+        val accessorName  = origGetter orElse renamedGetter
+        
+        accessorName getOrElse {
+          throw new Error("Could not find case accessor for %s in %s".format(field, this))
+        }
+      }
+      
+      fields map findAccessor
+    }
 
     final def constrParamAccessors: List[Symbol] =
       info.decls.toList filter (sym => !sym.isMethod && sym.hasFlag(PARAMACCESSOR))
@@ -1103,7 +1213,7 @@ trait Symbols {
     def defaultGetter_=(getter: Symbol): Unit =
       throw new Error("defaultGetter cannot be set for " + this)
     
-    /** For a lazy value, it's lazy accessor. NoSymbol for all others */
+    /** For a lazy value, its lazy accessor. NoSymbol for all others */
     def lazyAccessor: Symbol = NoSymbol
 
     /** For an outer accessor: The class from which the outer originates.
@@ -1120,8 +1230,12 @@ trait Symbols {
      */
     def mixinClasses: List[Symbol] = {
       val sc = superClass
-      info.baseClasses.tail.takeWhile(sc ne)
+      ancestors takeWhile (sc ne)
     }
+    
+    /** All directly or indirectly inherited classes.
+     */
+    def ancestors: List[Symbol] = info.baseClasses drop 1
 
     /** The package containing this symbol, or NoSymbol if there
      *  is not one. */
@@ -1169,7 +1283,7 @@ trait Symbols {
      */
     final def linkedClassOfModule: Symbol = {
       if (this != NoSymbol)
-        owner.rawInfo.decl(name.toTypeName).suchThat(_ isCoDefinedWith this)
+        flatOwnerInfo.decl(name.toTypeName).suchThat(_ isCoDefinedWith this)
       else NoSymbol
     }
 
@@ -1178,7 +1292,7 @@ trait Symbols {
      */
     final def linkedModuleOfClass: Symbol =
       if (this.isClass && !this.isAnonymousClass && !this.isRefinementClass) {
-        owner.rawInfo.decl(name.toTermName).suchThat(
+        flatOwnerInfo.decl(name.toTermName).suchThat(
           sym => (sym hasFlag MODULE) && (sym isCoDefinedWith this))
       } else NoSymbol
 
@@ -1187,7 +1301,7 @@ trait Symbols {
      */
     final def linkedSym: Symbol =
       if (isTerm) linkedClassOfModule
-      else if (isClass) owner.rawInfo.decl(name.toTermName).suchThat(_ isCoDefinedWith this)
+      else if (isClass) flatOwnerInfo.decl(name.toTermName).suchThat(_ isCoDefinedWith this)
       else NoSymbol
 
     /** For a module class its linked class, for a plain class
@@ -1201,6 +1315,23 @@ trait Symbols {
      */
     final def linkedClassOfClass: Symbol =
       if (isModuleClass) linkedClassOfModule else linkedModuleOfClass.moduleClass
+      
+    /**
+     * Returns the rawInfo of the owner. If the current phase has flat classes, it first
+     * applies all pending type maps to this symbol.
+     *
+     * Asssume this is the ModuleSymbol for B in the follwing definition:
+     *   package p { class A { object B { val x = 1 } } }
+     *
+     * The owner after flatten is "package p" (see "def owner"). The flatten type map enters
+     * symbol B in the decls of p. So to find a linked symbol ("object B" or "class B")
+     * we need to apply flatten to B first. Fixes #2470.
+     */
+    private final def flatOwnerInfo: Type = {
+      if (phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass)
+        info
+      owner.rawInfo
+    }
 
     /** If this symbol is an implementation class, its interface, otherwise the symbol itself
      *  The method follows two strategies to determine the interface.
@@ -1247,27 +1378,28 @@ trait Symbols {
       site.nonPrivateMember(name).filter(sym =>
         !sym.isTerm || (site.memberType(this) matches site.memberType(sym)))
 
-    /** The symbol overridden by this symbol in given class `ofclazz' */
+    /** The symbol overridden by this symbol in given class `ofclazz'.
+     *  @pre 'ofclazz' is a base class of this symbol's owner.
+     */
     final def overriddenSymbol(ofclazz: Symbol): Symbol =
       if (isClassConstructor) NoSymbol else matchingSymbol(ofclazz, owner.thisType)
 
-    /** The symbol overriding this symbol in given subclass `ofclazz' */
+    /** The symbol overriding this symbol in given subclass `ofclazz'
+     *  @pre: `ofclazz' is a subclass of this symbol's owner
+     */
     final def overridingSymbol(ofclazz: Symbol): Symbol =
       if (isClassConstructor) NoSymbol else matchingSymbol(ofclazz, ofclazz.thisType)
 
     final def allOverriddenSymbols: List[Symbol] =
-      if (owner.isClass && !owner.info.baseClasses.isEmpty)
-        for { bc <- owner.info.baseClasses.tail
-              val s = overriddenSymbol(bc)
-              if s != NoSymbol } yield s
-      else List()
+      if (!owner.isClass) Nil
+      else owner.ancestors map overriddenSymbol filter (_ != NoSymbol)
 
     /** The virtual classes overridden by this virtual class (excluding `clazz' itself)
      *  Classes appear in linearization order (with superclasses before subclasses)
      */
     final def overriddenVirtuals: List[Symbol] = 
       if (isVirtualTrait && hasFlag(OVERRIDE))
-        this.owner.info.baseClasses.tail 
+        this.owner.ancestors 
           .map(_.info.decl(name)) 
           .filter(_.isVirtualTrait)
           .reverse
@@ -1457,7 +1589,8 @@ trait Symbols {
 
     /** If settings.uniqid is set, the symbol's id, else "" */
     final def idString: String =
-      if (settings.uniqid.value) "#"+id else ""
+      if (settings.uniqid.value) "#"+id // +" in "+owner.name+"#"+owner.id // DEBUG
+      else ""
 
     /** String representation, including symbol's kind
      *  e.g., "class Foo", "method Bar".
@@ -1465,14 +1598,20 @@ trait Symbols {
     override def toString(): String =
       if (isValueParameter && owner.isSetter)
         "parameter of setter "+owner.nameString
-      else if (isPackageObjectClass)
-        "package object "+nameString
+      else if (isPackageObject || isPackageObjectClass)
+        "package object "+owner.nameString
       else 
         compose(List(kindString, 
                      if (isClassConstructor) owner.simpleName.decode+idString else nameString))
 
+    /** If owner is a package object, its owner, else the normal owner.
+     */
+    def ownerSkipPackageObject = 
+      if (owner.isPackageObjectClass) owner.owner else owner
+
     /** String representation of location. */
-    def locationString: String =
+    def locationString: String = {
+      val owner = ownerSkipPackageObject
       if (owner.isClass &&
           ((!owner.isAnonymousClass && 
             !owner.isRefinementClass && 
@@ -1480,6 +1619,7 @@ trait Symbols {
             !owner.isRoot &&
             !owner.isEmptyPackageClass) || settings.debug.value))
         " in " + owner else ""
+    }
 
     /** String representation of symbol's definition following its name */
     final def infoString(tp: Type): String = {
@@ -1565,15 +1705,17 @@ trait Symbols {
       clone
     }
 
+    private val validAliasFlags = SUPERACCESSOR | PARAMACCESSOR | MIXEDIN | SPECIALIZED
+    
     override def alias: Symbol =
-      if (hasFlag(SUPERACCESSOR | PARAMACCESSOR | MIXEDIN | SPECIALIZED)) initialize.referenced
+      if (hasFlag(validAliasFlags)) initialize.referenced
       else NoSymbol
 
     def setAlias(alias: Symbol): TermSymbol = {
       assert(alias != NoSymbol, this)
       assert(!(alias hasFlag OVERLOADED), alias)
 
-      assert(hasFlag(SUPERACCESSOR | PARAMACCESSOR | MIXEDIN | SPECIALIZED), this)
+      assert(hasFlag(validAliasFlags), this)
       referenced = alias
       this
     }
@@ -1622,7 +1764,7 @@ trait Symbols {
       if (phase.flatClasses && !hasFlag(METHOD) &&
           rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass)
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
           flatname = newTermName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname
@@ -1719,7 +1861,19 @@ trait Symbols {
     if (util.Statistics.enabled) typeSymbolCount = typeSymbolCount + 1
   }
 
-  /** A class for type parameters viewed from inside their scopes */
+  /** A class for type parameters viewed from inside their scopes
+   *
+   *  @param origin  Can be either a tree, or a symbol, or null.
+   *  If skolem got created from newTypeSkolem (called in Namers), origin denotes
+   *  the type parameter from which the skolem was created. If it got created from
+   *  skolemizeExistential, origin is either null or a Tree. If it is a Tree, it indicates
+   *  where the skolem was introduced (this is important for knowing when to pack it
+   *  again into ab Existential). origin is `null' only in skolemizeExistentials called
+   *  from <:< or isAsSpecific, because here its value does not matter.
+   *  I elieve the following invariant holds:
+   * 
+   *     origin.isInstanceOf[Symbol] == !hasFlag(EXISTENTIAL)
+   */
   class TypeSkolem(initOwner: Symbol, initPos: Position,
                    initName: Name, origin: AnyRef)
   extends TypeSymbol(initOwner, initPos, initName) {
@@ -1728,11 +1882,16 @@ trait Symbols {
     val level = skolemizationLevel
 
     override def isSkolem = true
+
+    /** If typeskolem comes from a type parameter, that parameter, otherwise skolem itself */
     override def deSkolemize = origin match {
       case s: Symbol => s
       case _ => this
     }
+
+    /** If type skolem comes from an existential, the tree where it was created */
     override def unpackLocation = origin
+
     override def typeParams = info.typeParams //@M! (not deSkolemize.typeParams!!), also can't leave superclass definition: use info, not rawInfo
 
     override def cloneSymbolImpl(owner: Symbol): Symbol =
@@ -1756,7 +1915,6 @@ trait Symbols {
       if (owner.isPackageClass) source else super.sourceFile
     override def sourceFile_=(f: AbstractFile) {
       //System.err.println("set source file of " + this + ": " + f);
-      attachSource(this, f)
       source = f
     }
     override def isFromClassFile = {
@@ -1787,7 +1945,7 @@ trait Symbols {
         newTypeName(rawname+"$trait") // (part of DEVIRTUALIZE)
       } else if (phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass)
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
           flatname = newTypeName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname
@@ -1822,7 +1980,6 @@ trait Symbols {
     }
 
     override def cloneSymbolImpl(owner: Symbol): Symbol = {
-      assert(!isModuleClass)
       val clone = new ClassSymbol(owner, pos, name)
       if (thisSym != this) {
         clone.typeOfThis = typeOfThis
@@ -1899,7 +2056,9 @@ trait Symbols {
 
   /** An exception for cyclic references of symbol definitions */
   case class CyclicReference(sym: Symbol, info: Type)
-  extends TypeError("illegal cyclic reference involving " + sym)
+  extends TypeError("illegal cyclic reference involving " + sym) {
+    // printStackTrace() // debug
+  }
 
   /** A class for type histories */
   private sealed case class TypeHistory(var validFrom: Period, info: Type, prev: TypeHistory) {

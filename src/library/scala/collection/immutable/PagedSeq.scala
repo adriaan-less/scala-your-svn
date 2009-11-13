@@ -116,7 +116,7 @@ class PagedSeq[T: ClassManifest] protected(
   first1: Page[T],
   start: Int,
   end: Int)
-extends scala.collection.Vector[T]
+extends scala.collection.IndexedSeq[T]
 {
   /**  A paged sequence is constructed from a method that produces more characters when asked.
    *  The producer method is analogous to the read method in java.io.Reader.
@@ -182,7 +182,7 @@ extends scala.collection.Vector[T]
   /** the subsequence from index `start' up to the  
    *  length of the current sequence.
    */
-  override def slice(start: Int) = slice(start, UndeterminedEnd)
+  def slice(start: Int): PagedSeq[T] = slice(start, UndeterminedEnd)
 
   /** Convert sequence to string */
   override def toString = {

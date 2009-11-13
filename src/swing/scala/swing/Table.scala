@@ -11,12 +11,11 @@
 
 package scala.swing
 
+import event._
 import javax.swing._
 import javax.swing.table._
 import javax.swing.event._
-import java.awt.{Dimension, Color}
-import event._
-import scala.collection.mutable.{Set, Vector}
+import scala.collection.mutable.{Set, IndexedSeq}
 
 object Table {
   object AutoResizeMode extends Enumeration {
@@ -122,7 +121,7 @@ class Table extends Component with Scrollable.Wrapper {
   }
   import Table._
     
-  // TODO: use Vector[_ <: Vector[Any]], see ticket #2005
+  // TODO: use IndexedSeq[_ <: IndexedSeq[Any]], see ticket #2005
   def this(rowData: Array[Array[Any]], columnNames: Seq[_]) = {
     this()
     peer.setModel(new AbstractTableModel {
@@ -199,7 +198,7 @@ class Table extends Component with Scrollable.Wrapper {
     }
 
     def cells: Set[(Int, Int)] = 
-      new SelectionSet[(Int, Int)]((for(r <- selection.rows; c <- selection.columns) yield (r,c)).toSequence) { outer =>
+      new SelectionSet[(Int, Int)]((for(r <- selection.rows; c <- selection.columns) yield (r,c)).toSeq) { outer =>
         def -=(n: (Int, Int)) = { 
           peer.removeRowSelectionInterval(n._1,n._1)
           peer.removeColumnSelectionInterval(n._2,n._2)

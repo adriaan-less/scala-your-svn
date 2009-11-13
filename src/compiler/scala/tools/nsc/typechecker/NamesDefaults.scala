@@ -114,7 +114,7 @@ trait NamesDefaults { self: Analyzer =>
      */
     def baseFunBlock(baseFun: Tree): Tree = {
       val isConstr = baseFun.symbol.isConstructor
-      val blockTyper = newTyper(context.makeNewScope(tree, context.owner)(BlockScopeKind(context.depth)))
+      val blockTyper = newTyper(context.makeNewScope(tree, context.owner))
 
       // baseFun1: extract the function from a potential TypeApply
       // funTargs: type arguments on baseFun, used to reconstruct TypeApply in blockWith(Out)Qualifier
@@ -235,7 +235,7 @@ trait NamesDefaults { self: Analyzer =>
         val (sym, byName) = symP
         // resetAttrs required for #2290. given a block { val x = 1; x }, when wrapping into a function
         // () => { val x = 1; x }, the owner of symbol x must change (to the apply method of the function).
-        val body = if (byName) blockTyper.typed(Function(List(), resetAttrs(arg)))
+        val body = if (byName) blockTyper.typed(Function(List(), resetLocalAttrs(arg)))
                    else arg
         atPos(body.pos)(ValDef(sym, body).setType(NoType))
       })
@@ -388,7 +388,10 @@ trait NamesDefaults { self: Analyzer =>
           }
           val res = typer.silent(_.typed(arg, subst(paramtpe))) match {
             case _: TypeError =>
-              positionalAllowed = false
+              // if the named argument is on the original parameter
+              // position, positional after named is allowed.
+              if (index != pos)
+                positionalAllowed = false
               argPos(index) = pos
               rhs
             case t: Tree =>

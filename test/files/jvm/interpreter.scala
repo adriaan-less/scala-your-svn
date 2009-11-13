@@ -92,6 +92,15 @@ val x20 = 1
 
 val two = one + x5
 
+// handling generic wildcard arrays (#2386)
+// It's put here because type feedback is an important part of it.
+val xs: Array[_] = Array(1, 2)
+xs.size
+xs.head
+xs filter (_ == 2)
+xs map (_ => "abc")
+xs map (x => x)
+xs map (x => (x, x))
 
 // interior syntax errors should *not* go into multi-line input mode.
 // both of the following should abort immediately:
@@ -166,10 +175,13 @@ def f(e: Exp) = e match {{  // non-exhaustive warning here
     val output = new PrintWriter(
       new Skip1Writer(new OutputStreamWriter(Console.out)))
     val repl = new InterpreterLoop(input, output)
-    repl.main(new Settings)
+    val settings = new Settings
+    // when running that compiler, give it a scala-library to the classpath
+    settings.classpath.value = System.getProperty("java.class.path")
+    repl.main(settings)
     println()
 
-    val interp = new Interpreter(new Settings)
+    val interp = new Interpreter(settings)
     interp.interpret("def plusOne(x: Int) = x + 1")
     interp.interpret("plusOne(5)")
     interp.reset()

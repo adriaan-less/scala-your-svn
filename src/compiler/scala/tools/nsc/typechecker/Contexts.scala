@@ -46,7 +46,9 @@ trait Contexts { self: Analyzer =>
       if (!unit.isJava) {
         assert(ScalaPackage ne null, "Scala package is null")
         imps += ScalaPackage
-        if (!(treeInfo.isPredefUnit(unit.body) || treeInfo.containsLeadingPredefImport(List(unit.body))))
+        if (!(treeInfo.isUnitInScala(unit.body, nme.Predef) ||
+              treeInfo.isUnitInScala(unit.body, nme.ScalaObject) ||
+              treeInfo.containsLeadingPredefImport(List(unit.body))))
           imps += PredefModule
       }
     }
@@ -63,7 +65,7 @@ trait Contexts { self: Analyzer =>
       assert(pkg ne null)
       val qual = gen.mkAttributedStableRef(pkg)
       sc = sc.makeNewImport(
-        Import(qual, List((nme.WILDCARD, null)))
+        Import(qual, List(ImportSelector(nme.WILDCARD, -1, null, -1)))
         .setSymbol(NoSymbol.newImport(NoPosition).setFlag(SYNTHETIC).setInfo(ImportType(qual)))
         .setType(NoType))
       sc.depth += 1
@@ -109,6 +111,7 @@ trait Contexts { self: Analyzer =>
     var inConstructorSuffix = false         // are we in a secondary constructor
                                             // after the this constructor call?
     var returnsSeen = false                 // for method context: were returns encountered?
+    var inSelfSuperCall = false             // is this a context for a constructor self or super call?
     var reportAmbiguousErrors = false
     var reportGeneralErrors = false
     var diagnostic: List[String] = Nil      // these messages are printed when issuing an error
@@ -240,8 +243,8 @@ trait Contexts { self: Analyzer =>
       make(unit, tree, owner, scope, imports)
     }
 
-    def makeNewScope(tree: Tree, owner: Symbol)(implicit kind : ScopeKind): Context =
-      make(tree, owner, scopeFor(scope, tree, kind))
+    def makeNewScope(tree: Tree, owner: Symbol): Context =
+      make(tree, owner, new Scope(scope))
     // IDE stuff: distinguish between scopes created for typing and scopes created for naming. 
 
     def make(tree: Tree, owner: Symbol): Context =
@@ -268,7 +271,8 @@ trait Contexts { self: Analyzer =>
       //todo: find out why we need next line
       while (baseContext.tree.isInstanceOf[Template])
         baseContext = baseContext.outer
-      val argContext = baseContext.makeNewScope(tree, owner)(Constructor0ScopeKind)
+      val argContext = baseContext.makeNewScope(tree, owner)
+      argContext.inSelfSuperCall = true
       argContext.reportGeneralErrors = this.reportGeneralErrors
       argContext.reportAmbiguousErrors = this.reportAmbiguousErrors
       def enterElems(c: Context) {
@@ -422,7 +426,7 @@ trait Contexts { self: Analyzer =>
           pre =:= sym.owner.thisType)
          ||
          (sym hasFlag PROTECTED) &&
-         (superAccess ||
+         (superAccess || sym.isConstructor ||
           (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) && 
            (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))))
         // note: phase.erasedTypes disables last test, because after addinterfaces
@@ -465,14 +469,15 @@ trait Contexts { self: Analyzer =>
 
     private def collectImplicitImports(imp: ImportInfo): List[ImplicitInfo] = {
       val pre = imp.qual.tpe
-      def collect(sels: List[(Name, Name)]): List[ImplicitInfo] = sels match {
+      def collect(sels: List[ImportSelector]): List[ImplicitInfo] = sels match {
         case List() => List()
-        case List((nme.WILDCARD, _)) => collectImplicits(pre.implicitMembers, pre)
-        case (from, to) :: sels1 => 
+        case List(ImportSelector(nme.WILDCARD, _, _, _)) => collectImplicits(pre.implicitMembers, pre)
+        case ImportSelector(from, _, to, _) :: sels1 => 
           var impls = collect(sels1) filter (info => info.name != from)
           if (to != nme.WILDCARD) {
-            val sym = imp.importedSymbol(to)
-            if (sym.hasFlag(IMPLICIT)) impls = new ImplicitInfo(to, pre, sym) :: impls
+            for (sym <- imp.importedSymbol(to).alternatives)
+              if (sym.hasFlag(IMPLICIT) && isAccessible(sym, pre, false)) 
+                impls = new ImplicitInfo(to, pre, sym) :: impls
           }
           impls
       }
@@ -485,14 +490,14 @@ trait Contexts { self: Analyzer =>
       val nextOuter = 
         if (owner.isConstructor) {
           if (outer.tree.isInstanceOf[Template]) outer.outer.outer
-          else outer.outer
+          else outer.outer.outer
         } else outer
         // can we can do something smarter to bring back the implicit cache?
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()
         val newImplicits: List[ImplicitInfo] =
-          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass) {
+          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !inSelfSuperCall) {
             if (!owner.isInitialized) return nextOuter.implicitss
             if (settings.debug.value)
               log("collect member implicits " + owner + ", implicit members = " +
@@ -550,7 +555,7 @@ trait Contexts { self: Analyzer =>
 
     /** Is name imported explicitly, not via wildcard? */
     def isExplicitImport(name: Name): Boolean =
-      tree.selectors exists (_._2 == name.toTermName)
+      tree.selectors exists (_.rename == name.toTermName)
 
     /** The symbol with name <code>name</code> imported from import clause
      *  <code>tree</code>.
@@ -560,15 +565,15 @@ trait Contexts { self: Analyzer =>
       var renamed = false
       var selectors = tree.selectors
       while (selectors != Nil && result == NoSymbol) {
-        if (selectors.head._1 != nme.WILDCARD)
-          notifyImport(name, qual.tpe, selectors.head._1, selectors.head._2)
+        if (selectors.head.name != nme.WILDCARD)
+          notifyImport(name, qual.tpe, selectors.head.name, selectors.head.rename)
 
-        if (selectors.head._2 == name.toTermName)
+        if (selectors.head.rename == name.toTermName)
           result = qual.tpe.member(
-            if (name.isTypeName) selectors.head._1.toTypeName else selectors.head._1)
-        else if (selectors.head._1 == name.toTermName)
+            if (name.isTypeName) selectors.head.name.toTypeName else selectors.head.name)
+        else if (selectors.head.name == name.toTermName)
           renamed = true
-        else if (selectors.head._1 == nme.WILDCARD && !renamed)
+        else if (selectors.head.name == nme.WILDCARD && !renamed)
           result = qual.tpe.member(name)
         selectors = selectors.tail
       }
@@ -578,10 +583,10 @@ trait Contexts { self: Analyzer =>
     def allImportedSymbols: List[Symbol] = 
       qual.tpe.members flatMap (transformImport(tree.selectors, _))
 
-    private def transformImport(selectors: List[(Name, Name)], sym: Symbol): List[Symbol] = selectors match {
+    private def transformImport(selectors: List[ImportSelector], sym: Symbol): List[Symbol] = selectors match {
       case List() => List()
-      case List((nme.WILDCARD, _)) => List(sym)
-      case (from, to) :: _ if (from == sym.name) => 
+      case List(ImportSelector(nme.WILDCARD, _, _, _)) => List(sym)
+      case ImportSelector(from, _, to, _) :: _ if (from == sym.name) => 
         if (to == nme.WILDCARD) List()
         else { val sym1 = sym.cloneSymbol; sym1.name = to; List(sym1) }
       case _ :: rest => transformImport(rest, sym)

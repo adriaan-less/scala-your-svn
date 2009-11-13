@@ -12,7 +12,7 @@
 package scala.collection
 
 import generic._
-import mutable.Buffer
+import mutable.{Buffer, StringBuilder}
 
 // Methods could be printed by  cat TraversableLike.scala | egrep '^  (override )?def'
 
@@ -32,10 +32,10 @@ trait TraversableProxyLike[+A, +This <: TraversableLike[A, This] with Traversabl
   override def nonEmpty: Boolean = self.nonEmpty
   override def size: Int = self.size
   override def hasDefiniteSize = self.hasDefiniteSize
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, This]): That = self.++(that)(bf)
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: BuilderFactory[B, That, This]): That = self.++(that)(bf)
-  override def map[B, That](f: A => B)(implicit bf: BuilderFactory[B, That, This]): That = self.map(f)(bf)
-  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: BuilderFactory[B, That, This]): That = self.flatMap(f)(bf)
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[This, B, That]): That = self.++(that)(bf)
+  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[This, B, That]): That = self.++(that)(bf)
+  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[This, B, That]): That = self.map(f)(bf)
+  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[This, B, That]): That = self.flatMap(f)(bf)
   override def filter(p: A => Boolean): This = self.filter(p)
   override def filterNot(p: A => Boolean): This = self.filterNot(p)
   override def remove(p: A => Boolean): This = self.filterNot(p)
@@ -72,7 +72,7 @@ trait TraversableProxyLike[+A, +This <: TraversableLike[A, This] with Traversabl
   override def toArray[B >: A: ClassManifest]: Array[B] = self.toArray
   override def toList: List[A] = self.toList
   override def toIterable: Iterable[A] = self.toIterable
-  override def toSequence: Sequence[A] = self.toSequence
+  override def toSeq: Seq[A] = self.toSeq
   override def toStream: Stream[A] = self.toStream
   override def toSet[B >: A]: immutable.Set[B] = self.toSet  
   override def mkString(start: String, sep: String, end: String): String = self.mkString(start, sep, end)

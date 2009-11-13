@@ -13,6 +13,7 @@ package scala.collection
 package mutable
 
 import generic._
+import immutable.{List, Nil, ::}
 
 /** A Buffer implementation back up by a list. It provides constant time
  *  prepend and append. Most other operations are linear.
@@ -28,7 +29,7 @@ final class ListBuffer[A]
          with GenericTraversableTemplate[A, ListBuffer]
          with BufferLike[A, ListBuffer[A]]
          with Builder[A, List[A]] 
-         with SequenceForwarder[A] 
+         with SeqForwarder[A] 
 { 
   override def companion: GenericCompanion[ListBuffer] = ListBuffer
 
@@ -39,13 +40,17 @@ final class ListBuffer[A]
   private var exported: Boolean = false
   private var len = 0
 
-  protected def underlying: immutable.Sequence[A] = start
+  protected def underlying: immutable.Seq[A] = start
  
   /** The current length of the buffer
    */
   override def length = len
   
   // Implementations of abstract methods in Buffer
+
+  override def apply(n: Int): A =
+    if (n < 0 || n >= len) throw new IndexOutOfBoundsException(n.toString())
+    else super.apply(n)
 
   /** Replaces element at index <code>n</code> with the new element
    *  <code>newelem</code>. Takes time linear in the buffer size. (except the
@@ -62,7 +67,6 @@ final class ListBuffer[A]
         val newElem = new :: (x, start.tail);
         if (last0 eq start) { 
           last0 = newElem
-          len += 1
         }	
         start = newElem
       } else {
@@ -75,7 +79,6 @@ final class ListBuffer[A]
         val newElem = new :: (x, cursor.tail.tail)
         if (last0 eq cursor.tail) {
           last0 = newElem
-          len += 1
         }	
         cursor.asInstanceOf[::[A]].tl = newElem
       }
@@ -116,7 +119,7 @@ final class ListBuffer[A]
    *  @param x  the element to prepend.
    *  @return   this buffer.
    */
-  def +: (x: A): this.type = {
+  def +=: (x: A): this.type = {
     if (exported) copy()
     val newElem = new :: (x, start)
     if (start.isEmpty) last0 = newElem
@@ -231,7 +234,7 @@ final class ListBuffer[A]
    *  @pre       an element exists at position <code>n</code>
    *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
    */
-  def remove(n: Int): A = try {
+  def remove(n: Int): A = {
     if (n < 0 || n >= len) throw new IndexOutOfBoundsException(n.toString())
     if (exported) copy()
     var old = start.head
@@ -330,9 +333,7 @@ final class ListBuffer[A]
  *  @author  Martin Odersky
  *  @version 2.8
  */
-object ListBuffer extends SequenceFactory[ListBuffer] {
-  implicit def builderFactory[A]: BuilderFactory[A, ListBuffer[A], Coll] =
-    new VirtualBuilderFactory[A]
-  def newBuilder[A]: Builder[A, ListBuffer[A]] =
-    new AddingBuilder(new ListBuffer[A])
+object ListBuffer extends SeqFactory[ListBuffer] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ListBuffer[A]] = new GenericCanBuildFrom[A]
+  def newBuilder[A]: Builder[A, ListBuffer[A]] = new AddingBuilder(new ListBuffer[A])
 }

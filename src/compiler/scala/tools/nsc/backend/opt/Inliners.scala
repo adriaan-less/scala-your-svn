@@ -47,10 +47,10 @@ abstract class Inliners extends SubComponent {
   class Inliner {
 
     val fresh = new HashMap[String, Int]
-    
+
     /* fresh name counter */
     var count = 0
-    
+
     def freshName(s: String) = fresh.get(s) match {
       case Some(count) =>
         fresh(s) = count + 1
@@ -70,12 +70,8 @@ abstract class Inliners extends SubComponent {
                block:  BasicBlock,
                instr:  Instruction,
                callee: IMethod) {
-       log("Inlining " + callee + " in " + caller + " at pos: " + 
-           (try {
-             instr.pos.offset.get             
-           } catch {
-             case _ => "<nopos>"
-           }));
+       def posToStr(pos: util.Position) = if (pos.isDefined) pos.point.toString else "<nopos>"
+       log("Inlining " + callee + " in " + caller + " at pos: " + posToStr(instr.pos))
 
        val targetPos = instr.pos
        val a = new analysis.MethodTFA(callee)
@@ -86,7 +82,7 @@ abstract class Inliners extends SubComponent {
        /* Map 'original' blocks to the ones inlined in the caller. */
        val inlinedBlock: Map[BasicBlock, BasicBlock] = new HashMap
        
-       val varsInScope: Set[Local] = new HashSet[Local] ++ block.varsInScope.iterator
+       val varsInScope: Set[Local] = HashSet() ++= block.varsInScope
 
        val instrBefore = block.toList.takeWhile {
          case i @ SCOPE_ENTER(l) => varsInScope += l
@@ -199,7 +195,7 @@ abstract class Inliners extends SubComponent {
            case CALL_METHOD(meth, Static(true)) if (meth.isClassConstructor) =>
              CALL_METHOD(meth, Static(true))
              
-           case _ => i
+           case _ => i.clone
          }
          // check any pending NEW's
          if (pending isDefinedAt i) {
@@ -390,7 +386,8 @@ abstract class Inliners extends SubComponent {
       if (settings.debug.value) log("shouldLoad: " + receiver + "." + method)
       ((method.isFinal && isMonadMethod(method) && isHigherOrderMethod(method))
         || (receiver.enclosingPackage == definitions.ScalaRunTimeModule.enclosingPackage)
-        || (receiver == definitions.PredefModule.moduleClass))
+        || (receiver == definitions.PredefModule.moduleClass)
+        || (method.hasAnnotation(ScalaInlineAttr)))
     }
     
     /** Cache whether a method calls private members. */

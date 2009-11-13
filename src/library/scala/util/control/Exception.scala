@@ -1,5 +1,7 @@
 package scala.util.control
 
+import collection.immutable.List
+
 /** Classes representing the components of exception handling.
  *  Each class is independently composable.  Some common uses:
  *  
@@ -201,7 +203,7 @@ object Exception
   }
   
   /** Private **/
-  private def wouldMatch(x: Throwable, classes: collection.Sequence[Class[_]]): Boolean = 
+  private def wouldMatch(x: Throwable, classes: collection.Seq[Class[_]]): Boolean = 
     classes exists (_ isAssignableFrom x.getClass)
   
   private def pfFromExceptions(exceptions: Class[_]*) = 

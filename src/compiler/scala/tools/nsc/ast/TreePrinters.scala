@@ -195,9 +195,9 @@ abstract class TreePrinters {
 
         case Import(expr, selectors) =>
           // Is this selector remapping a name (i.e, {name1 => name2})
-          def isNotRemap(s: (Name, Name)) : Boolean = (s._1 == nme.WILDCARD || s._1 == s._2)
-          def selectorToString(s: (Name, Name)): String = 
-              if (isNotRemap(s)) s._1.toString else s._1.toString + "=>" + s._2.toString
+          def isNotRemap(s: ImportSelector) : Boolean = (s.name == nme.WILDCARD || s.name == s.rename)
+          def selectorToString(s: ImportSelector): String = 
+              if (isNotRemap(s)) s.name.toString else s.name.toString + "=>" + s.rename.toString
 
           print("import "); print(expr)
           print(".")
@@ -255,9 +255,6 @@ abstract class TreePrinters {
           print(pat); printOpt(" if ", guard)
           print(" => "); print(body)
 
-        case Sequence(trees) =>
-          printRow(trees, "[", ", ", "]")
-
         case Alternative(trees) =>
           printRow(trees, "(", "| ", ")")
 
@@ -275,6 +272,7 @@ abstract class TreePrinters {
 
         case Function(vparams, body) =>
           print("("); printValueParams(vparams); print(" => "); print(body); print(")")
+          if (settings.uniqid.value && tree.symbol != null) print("#"+tree.symbol.id)
 
         case Assign(lhs, rhs) =>
           print(lhs); print(" = "); print(rhs)

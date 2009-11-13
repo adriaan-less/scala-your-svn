@@ -13,8 +13,8 @@ package scala.collection
 import generic._
 
 import scala.reflect.ClassManifest
-import mutable.{Builder, Buffer, ArrayBuffer, ListBuffer}
-import annotation.experimental
+import mutable.{Builder, StringBuilder, Buffer, ArrayBuffer, ListBuffer}
+import immutable.{List, Stream, Nil, ::}
 
 /** <p>
  *    A template trait for traversable collections.
@@ -62,7 +62,7 @@ import annotation.experimental
  *  @version 2.8
  *  @since   2.8
  */
-trait TraversableLike[+A, +Repr] { 
+trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr] { 
 self =>
 
   import Traversable.breaks._
@@ -126,7 +126,7 @@ self =>
    * 
    *  @param that   The traversable to append
    */
-  def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     b ++= thisCollection
     b ++= that
@@ -138,7 +138,7 @@ self =>
    * 
    *  @param that  The iterator to append
    */
-  def ++[B >: A, That](that: Iterator[B])(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     b ++= thisCollection
     b ++= that
@@ -151,7 +151,7 @@ self =>
    *
    *  @param f function to apply to each element.
    */
-  def map[B, That](f: A => B)(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     for (x <- this) b += f(x)
     b.result
@@ -162,7 +162,7 @@ self =>
    *
    *  @param f the function to apply on each element.
    */
-  def flatMap[B, That](f: A => Traversable[B])(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     for (x <- this) b ++= f(x)
     b.result
@@ -194,8 +194,7 @@ self =>
   *  @param pf the partial function which filters and maps the traversable.
   *  @return the new traversable.
   */
-  @experimental
-  def filterMap[B, That](pf: PartialFunction[Any, B])(implicit bf: BuilderFactory[B, That, Repr]): That = {
+  def partialMap[B, That](pf: PartialFunction[Any, B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     for (x <- this) if (pf.isDefinedAt(x)) b += pf(x)
     b.result
@@ -718,20 +717,19 @@ self =>
   /** Returns a sequence with all elements in this traversable object.
    *  @note Will not terminate for infinite-sized collections.
    */	
-  def toSequence: Sequence[A] = toList
+  def toSeq: Seq[A] = toList
  
-  /** Returns a vector with all elements in this traversable object.
+  /** Returns a IndexedSeq with all elements in this traversable object.
    *  @note Will not terminate for infinite-sized collections.
    */	
-  def toVector[B >: A]: mutable.Vector[B] = (new ArrayBuffer[B] ++= thisCollection)
+  def toIndexedSeq[B >: A]: mutable.IndexedSeq[B] = (new ArrayBuffer[B] ++= thisCollection)
  
   /** Returns a stream with all elements in this traversable object.
    */
   def toStream: Stream[A] = toList.toStream
   
-  /** Returns a set with all unique elements in this traversable object.
+  /** Returns an immutable set with all unique elements in this traversable object.
    */
-  @experimental
   def toSet[B >: A]: immutable.Set[B] = immutable.Set() ++ thisCollection
 
   /** Returns a string representation of this traversable object. The resulting string
@@ -826,4 +824,30 @@ self =>
    *  @note view(from, to)  is equivalent to view.slice(from, to)
    */
   def view(from: Int, until: Int): TraversableView[A, Repr] = view.slice(from, until)
+
+  class WithFilter(p: A => Boolean) {
+    
+    def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+      val b = bf(repr)
+      for (x <- self) 
+        if (p(x)) b += f(x)
+      b.result
+    }
+
+    def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+      val b = bf(repr)
+      for (x <- self) 
+        if (p(x)) b ++= f(x)
+      b.result
+    }
+
+    def foreach[U](f: A => U): Unit = 
+      for (x <- self) 
+        if (p(x)) f(x)
+
+    def withFilter(q: A => Boolean): WithFilter = 
+      new WithFilter(x => p(x) && q(x))
+  }
+
+  def withFilter(p: A => Boolean): WithFilter = new WithFilter(p)
 }

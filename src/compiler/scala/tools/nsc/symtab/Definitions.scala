@@ -53,7 +53,7 @@ trait Definitions {
     
     // top types
     lazy val AnyClass     = newClass(ScalaPackageClass, nme.Any, Nil) setFlag (ABSTRACT)
-    lazy val AnyValClass  = newClass(ScalaPackageClass, nme.AnyVal, anyparam) setFlag (FINAL | SEALED)
+    lazy val AnyValClass  = newClass(ScalaPackageClass, nme.AnyVal, anyparam) setFlag (ABSTRACT | SEALED)
     lazy val AnyRefClass  = newAlias(ScalaPackageClass, nme.AnyRef, ObjectClass.typeConstructor)
     lazy val ObjectClass  = getClass(sn.Object)
 
@@ -65,14 +65,14 @@ trait Definitions {
     
     // the scala value classes
     lazy val UnitClass    = newClass(ScalaPackageClass, nme.Unit, anyvalparam).setFlag(ABSTRACT | FINAL)
-    lazy val ByteClass    = newValueClass(nme.Byte, 'B')
-    lazy val ShortClass   = newValueClass(nme.Short, 'S')
-    lazy val CharClass    = newValueClass(nme.Char, 'C')
-    lazy val IntClass     = newValueClass(nme.Int, 'I')
-    lazy val LongClass    = newValueClass(nme.Long, 'L')
-    lazy val FloatClass   = newValueClass(nme.Float, 'F')
-    lazy val DoubleClass  = newValueClass(nme.Double, 'D')    
-    lazy val BooleanClass = newValueClass(nme.Boolean, 'Z')
+    lazy val ByteClass    = newValueClass(nme.Byte, 'B', 1)
+    lazy val ShortClass   = newValueClass(nme.Short, 'S', 2)
+    lazy val CharClass    = newValueClass(nme.Char, 'C', 2)
+    lazy val IntClass     = newValueClass(nme.Int, 'I', 3)
+    lazy val LongClass    = newValueClass(nme.Long, 'L', 4)
+    lazy val FloatClass   = newValueClass(nme.Float, 'F', 5)
+    lazy val DoubleClass  = newValueClass(nme.Double, 'D', 6)    
+    lazy val BooleanClass = newValueClass(nme.Boolean, 'Z', -1)
       def Boolean_and = getMember(BooleanClass, nme.ZAND)
       def Boolean_or  = getMember(BooleanClass, nme.ZOR)
     
@@ -96,7 +96,6 @@ trait Definitions {
     lazy val UncheckedClass             = getClass("scala.unchecked")
     lazy val TailrecClass               = getClass("scala.annotation.tailrec")
     lazy val SwitchClass                = getClass("scala.annotation.switch")
-    lazy val ExperimentalClass          = getClass("scala.annotation.experimental")
     lazy val ElidableMethodClass        = getClass("scala.annotation.elidable")
     lazy val FieldClass                 = getClass("scala.annotation.target.field")
     lazy val GetterClass                = getClass("scala.annotation.target.getter")
@@ -126,6 +125,9 @@ trait Definitions {
       def SeqFactory = getMember(ScalaRunTimeModule, nme.Seq)
       def checkDefinedMethod = getMember(ScalaRunTimeModule, "checkDefined")
       def isArrayMethod = getMember(ScalaRunTimeModule, "isArray")
+      def arrayApplyMethod = getMember(ScalaRunTimeModule, "array_apply")
+      def arrayUpdateMethod = getMember(ScalaRunTimeModule, "array_update")
+      def arrayLengthMethod = getMember(ScalaRunTimeModule, "array_length")
     
     // classes with special meanings
     lazy val NotNullClass         = getClass("scala.NotNull")
@@ -156,7 +158,7 @@ trait Definitions {
     )
     lazy val EqualsPatternClass = {
       val clazz = newClass(ScalaPackageClass, nme.EQUALS_PATTERN_NAME, Nil) 
-      clazz setInfo PolyType(List(newTypeParam(clazz, 0)), ClassInfoType(anyparam, newClassScope(clazz), clazz))
+      clazz setInfo PolyType(List(newTypeParam(clazz, 0)), ClassInfoType(anyparam, new Scope, clazz))
 
       clazz
     }    
@@ -168,11 +170,11 @@ trait Definitions {
       def Iterable_next     = getMember(IterableClass, nme.next)
       def Iterable_hasNext  = getMember(IterableClass, nme.hasNext)
     
-    lazy val SeqClass   = getClass2("scala.Seq", "scala.collection.Sequence")
-    lazy val SeqModule  = getModule2("scala.Seq", "scala.collection.Sequence")
+    lazy val SeqClass   = getClass2("scala.Seq", "scala.collection.Seq")
+    lazy val SeqModule  = getModule2("scala.Seq", "scala.collection.Seq")
       def Seq_length = getMember(SeqClass, nme.length)
     lazy val RandomAccessSeqMutableClass = getMember(
-      getModule2("scala.RandomAccessSeq", "scala.collection.Vector"), nme.Mutable)
+      getModule2("scala.RandomAccessSeq", "scala.collection.IndexedSeq"), nme.Mutable)
       
     lazy val ListModule   = getModule2("scala.List", "scala.collection.immutable.List")
       def List_apply = getMember(ListModule, nme.apply)
@@ -186,6 +188,7 @@ trait Definitions {
     lazy val ArrayClass   = getClass("scala.Array")
       def Array_apply   = getMember(ArrayClass, nme.apply)
       def Array_update  = getMember(ArrayClass, nme.update)
+      def Array_length  = getMember(ArrayClass, nme.length)
     lazy val ArrayModule  = getModule("scala.Array")
       def ArrayModule_apply = getMember(ArrayModule, nme.apply)
     
@@ -460,7 +463,7 @@ trait Definitions {
 
     private def newClass(owner: Symbol, name: Name, parents: List[Type]): Symbol = {
       val clazz = owner.newClass(NoPosition, name.toTypeName)
-      clazz.setInfo(ClassInfoType(parents, newClassScope(clazz), clazz))
+      clazz.setInfo(ClassInfoType(parents, new Scope, clazz))
       owner.info.decls.enter(clazz) 
       clazz
     }
@@ -478,7 +481,7 @@ trait Definitions {
       clazz.setInfo(
         PolyType(
           List(tparam),
-          ClassInfoType(List(AnyRefClass.tpe, p), newClassScope(clazz), clazz)))
+          ClassInfoType(List(AnyRefClass.tpe, p), new Scope, clazz)))
     }
 
     private def newAlias(owner: Symbol, name: Name, alias: Type): Symbol = {
@@ -539,8 +542,9 @@ trait Definitions {
 
     val refClass = new HashMap[Symbol, Symbol]
     val abbrvTag = new HashMap[Symbol, Char]
+    val numericWidth = new HashMap[Symbol, Int]
 
-    private def newValueClass(name: Name, tag: Char): Symbol = {
+    private def newValueClass(name: Name, tag: Char, width: Int): Symbol = {
       val boxedName = sn.Boxed(name)
 
       val clazz = newClass(ScalaPackageClass, name, anyvalparam) setFlag (ABSTRACT | FINAL)
@@ -549,18 +553,17 @@ trait Definitions {
       boxedArrayClass(clazz) = getClass("scala.runtime.Boxed" + name + "Array")
       refClass(clazz) = getClass("scala.runtime." + name + "Ref")
       abbrvTag(clazz) = tag
+      if (width > 0) numericWidth(clazz) = width
 
       val module = ScalaPackageClass.newModule(NoPosition, name)
       ScalaPackageClass.info.decls.enter(module)
       val mclass = module.moduleClass
-      mclass.setInfo(ClassInfoType(List(), newClassScope(mclass), mclass))
+      mclass.setInfo(ClassInfoType(List(), new Scope, mclass))
       module.setInfo(mclass.tpe)
-
-      val box = newMethod(mclass, nme.box, List(clazz.typeConstructor),
-                          ObjectClass.typeConstructor)
+      
+      val box = newMethod(mclass, nme.box, List(clazz.typeConstructor), boxedClass(clazz).tpe)
       boxMethod(clazz) = box
-      val unbox = newMethod(mclass, nme.unbox, List(ObjectClass.typeConstructor),
-                            clazz.typeConstructor)
+      val unbox = newMethod(mclass, nme.unbox, List(ObjectClass.typeConstructor), clazz.typeConstructor)
       unboxMethod(clazz) = unbox
 
       clazz
@@ -622,11 +625,12 @@ trait Definitions {
 
         // def +(s: String): String
         newMethod(clazz, nme.ADD, List(stringtype), stringtype)
-
-        val restype = clazz match {
-          case LongClass | FloatClass | DoubleClass => clazz.typeConstructor
-          case _                                    => inttype
-        }
+        
+        def isLongFloatOrDouble = clazz match {
+          case LongClass | FloatClass | DoubleClass => true
+          case _                                    => false
+        }        
+        val restype = if (isLongFloatOrDouble) clazz.typeConstructor else inttype
 
         // shift operations
         if (isCardinal)
@@ -693,7 +697,13 @@ trait Definitions {
 
     /** Is symbol a numeric value class? */
     def isNumericValueClass(sym: Symbol): Boolean =
-      (sym ne BooleanClass) && (boxedClass contains sym)
+      numericWidth contains sym
+
+    /** Is symbol a numeric value class? */
+    def isNumericValueType(tp: Type): Boolean = tp match {
+      case TypeRef(_, sym, _) => isNumericValueClass(sym)
+      case _ => false
+    }
 
     def signature(tp: Type): String = {
       def erasure(tp: Type): Type = tp match {
@@ -720,7 +730,7 @@ trait Definitions {
       if (isInitialized) return
       isInitialized = true
 
-      EmptyPackageClass.setInfo(ClassInfoType(List(), newClassScope(EmptyPackageClass), EmptyPackageClass))
+      EmptyPackageClass.setInfo(ClassInfoType(List(), new Scope, EmptyPackageClass))
       EmptyPackage.setInfo(EmptyPackageClass.tpe)
       RootClass.info.decls.enter(EmptyPackage)
       RootClass.info.decls.enter(RootPackage)

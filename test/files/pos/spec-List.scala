@@ -23,13 +23,13 @@ import annotation.tailrec
  *  @author  Martin Odersky and others
  *  @version 2.8
  */
-sealed abstract class List[@specialized +A] extends LinearSequence[A] 
+sealed abstract class List[@specialized +A] extends LinearSeq[A] 
                                   with Product 
                                   with GenericTraversableTemplate[A, List]
-                                  with LinearSequenceLike[A, List[A]] {
+                                  with LinearSeqLike[A, List[A]] {
   override def companion: GenericCompanion[List] = List
 
-  import scala.collection.{Iterable, Traversable, Sequence, Vector}
+  import scala.collection.{Iterable, Traversable, Seq}
 
   /** Returns true if the list does not contain any elements.
    *  @return <code>true</code>, iff the list is empty.
@@ -144,7 +144,7 @@ sealed abstract class List[@specialized +A] extends LinearSequence[A]
   /** Create a new list which contains all elements of this list
    *  followed by all elements of Traversable `that'
    */
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, List[A]]): That = {
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
     val b = bf(this)
     if (b.isInstanceOf[ListBuffer[_]]) (this ::: that.toList).asInstanceOf[That]
     else super.++(that)
@@ -153,7 +153,7 @@ sealed abstract class List[@specialized +A] extends LinearSequence[A]
   /** Create a new list which contains all elements of this list
    *  followed by all elements of Iterator `that'
    */
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: BuilderFactory[B, That, List[A]]): That =
+  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[List[A], B, That]): That =
     this ++ that.toList
 
   /** Overrides the method in Iterable for efficiency.
@@ -446,7 +446,7 @@ case object Nil extends List[Nothing] {
     throw new NoSuchElementException("tail of empty list")
   // Removal of equals method here might lead to an infinite recusion similar to IntMap.equals.
   override def equals(that: Any) = that match {
-    case that1: Sequence[_] => that1.isEmpty
+    case that1: Seq[_] => that1.isEmpty
     case _ => false
   }
 }
@@ -492,11 +492,14 @@ final case class ::[@specialized B](private var hd: B, private[scala] var tl: Li
  *  @author  Martin Odersky
  *  @version 2.8
  */
-object List extends SequenceFactory[List] {
+object List extends SeqFactory[List] {
   
-  import collection.{Iterable, Sequence, Vector}
+  import collection.{Iterable, Seq}
 
-  implicit def builderFactory[A]: BuilderFactory[A, List[A], Coll] = new VirtualBuilderFactory[A]
+  implicit def builderFactory[A]: CanBuildFrom[Coll, A, List[A]] = 
+    new GenericCanBuildFrom[A] {
+      override def apply() = newBuilder[A]
+    }
   def newBuilder[A]: Builder[A, List[A]] = new ListBuffer[A]
 
   override def empty[A]: List[A] = Nil

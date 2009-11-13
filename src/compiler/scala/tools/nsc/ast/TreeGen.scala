@@ -29,6 +29,8 @@ abstract class TreeGen
   def scalaScalaObjectConstr      = scalaDot(nme.ScalaObject.toTypeName)
   def productConstr               = scalaDot(nme.Product.toTypeName)
   
+  private def isRootOrEmptyPackageClass(s: Symbol) = s.isRoot || s.isEmptyPackageClass
+  
   def scalaFunctionConstr(argtpes: List[Tree], restpe: Tree): Tree = 
     AppliedTypeTree(
       scalaDot(newTypeName("Function"+argtpes.length)),
@@ -51,7 +53,7 @@ abstract class TreeGen
     case NoPrefix =>
       EmptyTree
     case ThisType(clazz) =>
-      if (clazz.isRoot || clazz.isEmptyPackageClass) EmptyTree
+      if (isRootOrEmptyPackageClass(clazz)) EmptyTree
       else mkAttributedThis(clazz)
     case SingleType(pre, sym) =>
       val qual = mkAttributedStableRef(pre, sym)
@@ -103,9 +105,9 @@ abstract class TreeGen
   def mkAttributedRef(pre: Type, sym: Symbol): Tree = {
     val qual = mkAttributedQualifier(pre)
     qual match {
-      case EmptyTree                                                              => mkAttributedIdent(sym)
-      case This(clazz) if (qual.symbol.isRoot || qual.symbol.isEmptyPackageClass) => mkAttributedIdent(sym)
-      case _                                                                      => mkAttributedSelect(qual, sym)
+      case EmptyTree                                              => mkAttributedIdent(sym)
+      case This(clazz) if isRootOrEmptyPackageClass(qual.symbol)  => mkAttributedIdent(sym)
+      case _                                                      => mkAttributedSelect(qual, sym)
     }
   }
 
@@ -129,7 +131,7 @@ abstract class TreeGen
   }
 
   /** Cast `tree' to type `pt' */
-  def mkAttributedCastUntyped(tree: Tree, pt: Type): Tree = {
+  def mkCast(tree: Tree, pt: Type): Tree = {
     if (settings.debug.value) log("casting " + tree + ":" + tree.tpe + " to " + pt)
     assert(!tree.tpe.isInstanceOf[MethodType], tree)
     assert(!pt.typeSymbol.isPackageClass)
@@ -151,30 +153,25 @@ abstract class TreeGen
   def mkAttributedIdent(sym: Symbol): Tree =
     Ident(sym.name) setSymbol sym setType sym.tpe
 
-  /** XXX this method needs a close analysis to identify its essential logical
-   *  units - this attempt at modularization verges on the arbitrary.
-   */
   def mkAttributedSelect(qual: Tree, sym: Symbol): Tree = {
     def tpe = qual.tpe
-    def isUnqualified(s: Symbol) =
-      s != null && (List(nme.ROOT, nme.EMPTY_PACKAGE_NAME) contains s.name.toTermName)
-    def isInPkgObject(s: Symbol) =
-      tpe != null && s.owner.isPackageObjectClass && s.owner.owner == tpe.typeSymbol
-    def getQualifier() =
-      if (!isInPkgObject(sym)) qual
-      else {
-        val pkgobj = sym.owner.sourceModule
-        Select(qual, nme.PACKAGEkw) setSymbol pkgobj setType singleType(tpe, pkgobj)
-      } 
-
-    if (isUnqualified(qual.symbol)) mkAttributedIdent(sym)
+    
+    def isUnqualified(n: Name)        = n match { case nme.ROOT | nme.EMPTY_PACKAGE_NAME => true ; case _ => false }
+    def hasUnqualifiedName(s: Symbol) = s != null && isUnqualified(s.name.toTermName)
+    def isInPkgObject(s: Symbol)      = s != null && s.owner.isPackageObjectClass && s.owner.owner == tpe.typeSymbol
+    
+    if (hasUnqualifiedName(qual.symbol))
+      mkAttributedIdent(sym)
     else {
-      val newQualifier = getQualifier()
-      def verifyType(tree: Tree) =
-        if (newQualifier.tpe == null) tree
-        else tree setType (tpe memberType sym)
+      val pkgQualifier            =
+        if (!isInPkgObject(sym)) qual else {
+          val obj = sym.owner.sourceModule
+          Select(qual, nme.PACKAGEkw) setSymbol obj setType singleType(tpe, obj)
+        }
+      val tree = Select(pkgQualifier, sym)
       
-      verifyType( Select(newQualifier, sym.name) setSymbol sym )
+      if (pkgQualifier.tpe == null) tree
+      else tree setType (tpe memberType sym)
     }
   }
   
@@ -243,6 +240,20 @@ abstract class TreeGen
   }
 
   // var m$: T = null; or, if class member: local var m$: T = _;
+  /*!!!
+  def mkModuleValDef(accessor: Symbol) = {
+    val mval = accessor.owner.newValue(accessor.pos.focus, nme.moduleVarName(accessor.name))
+      .setInfo(accessor.tpe.finalResultType)
+      .setFlag(LAZY);
+    if (mval.owner.isClass) {
+      mval setFlag (PRIVATE | LOCAL | SYNTHETIC)
+      mval.owner.info.decls.enter(mval)
+    } 
+    ValDef(mval, New(TypeTree(mval.tpe), List(List())))
+  }
+  */
+  
+  // var m$: T = null; or, if class member: local var m$: T = _;
   def mkModuleVarDef(accessor: Symbol) = {
     val mvar = accessor.owner.newVariable(accessor.pos.focus, nme.moduleVarName(accessor.name))
       .setInfo(accessor.tpe.finalResultType)
@@ -274,7 +285,6 @@ abstract class TreeGen
     DefDef(accessor setFlag lateDEFERRED, EmptyTree)
 
   def mkRuntimeCall(meth: Name, args: List[Tree]): Tree = {
-    assert(meth.toString != "boxArray") // !!! can be removed once arrays are in.
     Apply(Select(mkAttributedRef(ScalaRunTimeModule), meth), args)
   }
 
@@ -305,6 +315,19 @@ abstract class TreeGen
   def mkForwarder(target: Tree, vparamss: List[List[Symbol]]) =
     (target /: vparamss)((fn, vparams) => Apply(fn, vparams map paramToArg))
     
+  /** Applies a wrapArray call to an array, making it a WrappedArray
+   */
+  def mkWrapArray(tree: Tree, elemtp: Type) = {
+    val predef = mkAttributedRef(PredefModule)
+    val meth = 
+      if ((elemtp <:< AnyRefClass.tpe) && !isPhantomClass(elemtp.typeSymbol) || 
+          isValueClass(elemtp.typeSymbol))
+        Select(predef, "wrapArray")
+      else
+        TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
+    Apply(meth, List(tree))
+  }
+
   /** Used in situations where you need to access value of an expression several times
    */
   def evalOnce(expr: Tree, owner: Symbol, unit: CompilationUnit)(within: (() => Tree) => Tree): Tree = {

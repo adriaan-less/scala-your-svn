@@ -23,8 +23,8 @@ class HashMap[A, B] extends Map[A, B]
                        with HashTable[A] {
 
   override def empty: HashMap[A, B] = HashMap.empty[A, B]
-  override def clear() = super.clear()
-  override def size: Int = super[HashTable].size
+  override def clear() = clearTable()
+  override def size: Int = tableSize
 
   type Entry = DefaultEntry[A, B]
                          
@@ -67,6 +67,6 @@ class HashMap[A, B] extends Map[A, B]
  *  @version 2.8
  */
 object HashMap extends MutableMapFactory[HashMap] {
-  implicit def builderFactory[A, B]: BuilderFactory[(A, B), HashMap[A, B], Coll] = new MapBuilderFactory[A, B]
+  implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), HashMap[A, B]] = new MapCanBuildFrom[A, B]
   def empty[A, B]: HashMap[A, B] = new HashMap[A, B]
 }

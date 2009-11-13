@@ -13,7 +13,8 @@ package scala.util.automata
 
 import scala.collection.{immutable, mutable, Map}
 import scala.util.regexp.WordExp
-
+import collection.immutable.{List, Nil}
+import collection.{Seq, Iterator}
 
 /** This class turns a regexp into a NondetWordAutom using the
  *  celebrated position automata construction (also called Berry-Sethi or
@@ -139,7 +140,7 @@ abstract class WordBerrySethi extends BaseBerrySethi {
     this.pos = 0
 
     // determine "Sethi-length" of the regexp
-    //activeBinders = new Vector()
+    //activeBinders = new IndexedSeq()
     var it = subexpr.iterator
     while (it.hasNext) 
       traverse(it.next)

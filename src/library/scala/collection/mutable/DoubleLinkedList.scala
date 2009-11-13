@@ -23,7 +23,7 @@ import generic._
  *  @since   1
  */
 @serializable @SerialVersionUID(419155950203746706L)
-class DoubleLinkedList[A](_elem: A, _next: DoubleLinkedList[A]) extends LinearSequence[A]
+class DoubleLinkedList[A](_elem: A, _next: DoubleLinkedList[A]) extends LinearSeq[A]
                                                                    with GenericTraversableTemplate[A, DoubleLinkedList]
                                                                    with DoubleLinkedListLike[A, DoubleLinkedList[A]] {
   elem = _elem
@@ -31,9 +31,8 @@ class DoubleLinkedList[A](_elem: A, _next: DoubleLinkedList[A]) extends LinearSe
   override def companion: GenericCompanion[DoubleLinkedList] = DoubleLinkedList
 }
 
-object DoubleLinkedList extends SequenceFactory[DoubleLinkedList] {
-  implicit def builderFactory[A]: BuilderFactory[A, DoubleLinkedList[A], Coll] = //new BuilderFactory[A, DoubleLinkedList[A], Coll] { def apply(from: Coll) = from.traversableBuilder[A] }
-    new VirtualBuilderFactory[A]
+object DoubleLinkedList extends SeqFactory[DoubleLinkedList] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, DoubleLinkedList[A]] = new GenericCanBuildFrom[A] //new CanBuildFrom[Coll, A, DoubleLinkedList[A]] { : Coll) = from.traversableBuilder[A] }
   def newBuilder[A]: Builder[A, DoubleLinkedList[A]] =
     new Builder[A, DoubleLinkedList[A]] {
       var current: DoubleLinkedList[A] = _

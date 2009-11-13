@@ -18,7 +18,7 @@ import annotation.unchecked.uncheckedVariance
 /**
  * @since 2.8
  */
-trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] { 
+trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBuilder[A, CC[A] @uncheckedVariance] { 
 
   def foreach[U](f: A => U): Unit
   def head: A
@@ -52,7 +52,7 @@ trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] {
   }
 
   def transpose[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): CC[CC[B] @uncheckedVariance] = {
-    val bs: Vector[Builder[B, CC[B]]] = asTraversable(head).map(_ => genericBuilder[B]).toVector 
+    val bs: IndexedSeq[Builder[B, CC[B]]] = asTraversable(head).map(_ => genericBuilder[B]).toIndexedSeq 
     for (xs <- this) {
       var i = 0
       for (x <- asTraversable(xs)) {

@@ -81,6 +81,13 @@ trait AnnotationInfos {
     // Classfile annot: args empty. Scala annot: assocs empty.
     assert(args.isEmpty || assocs.isEmpty)
 
+    private var rawpos: Position = NoPosition
+    def pos = rawpos
+    def setPos(pos: Position): this.type = {
+      rawpos = pos
+      this
+    }
+
     override def toString: String = atp +
       (if (!args.isEmpty) args.mkString("(", ", ", ")") else "") +
       (if (!assocs.isEmpty) (assocs map { case (x, y) => x+" = "+y } mkString ("(", ", ", ")")) else "")
@@ -95,7 +102,7 @@ trait AnnotationInfos {
     /** Change all ident's with Symbol "from" to instead use symbol "to" */
     def substIdentSyms(from: Symbol, to: Symbol) = {
       val subs = new TreeSymSubstituter(List(from), List(to))
-      AnnotationInfo(atp, args.map(subs(_)), assocs)
+      AnnotationInfo(atp, args.map(subs(_)), assocs).setPos(pos)
     }
   }
 

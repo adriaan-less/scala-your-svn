@@ -26,13 +26,13 @@ import annotation.tailrec
  *  @version 2.8
  *  @since   2.8
  */
-sealed abstract class List[+A] extends LinearSequence[A] 
+sealed abstract class List[+A] extends LinearSeq[A] 
                                   with Product 
                                   with GenericTraversableTemplate[A, List]
-                                  with LinearSequenceLike[A, List[A]] {
+                                  with LinearSeqLike[A, List[A]] {
   override def companion: GenericCompanion[List] = List
 
-  import scala.collection.{Iterable, Traversable, Sequence, Vector}
+  import scala.collection.{Iterable, Traversable, Seq, IndexedSeq}
 
   /** Returns true if the list does not contain any elements.
    *  @return <code>true</code>, iff the list is empty.
@@ -97,22 +97,6 @@ sealed abstract class List[+A] extends LinearSequence[A]
     these
   }
 
-  /** Apply a function to all the elements of the list, and return the
-   *  reversed list of results. This is equivalent to a call to <code>map</code>
-   *  followed by a call to <code>reverse</code>, but more efficient.
-   *  !!! should we deprecate this? Why have reverseMap, but not filterMap or reverseFilter, say?
-   *  @param f the function to apply to each elements.
-   *  @return  the reversed list of results.
-   */
-  def reverseMap[B](f: A => B): List[B] = {
-    @tailrec
-    def loop(l: List[A], res: List[B]): List[B] = l match {
-      case Nil => res
-      case head :: tail => loop(tail, f(head) :: res)
-    }
-    loop(this, Nil)
-  }
-
   /** Like xs map f, but returns <code>xs</code> unchanged if function
    *  <code>f</code> maps all elements to themselves (wrt ==).
    *  @note Unlike `map`, `mapConserve` is not tail-recursive.
@@ -147,7 +131,7 @@ sealed abstract class List[+A] extends LinearSequence[A]
   /** Create a new list which contains all elements of this list
    *  followed by all elements of Traversable `that'
    */
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: BuilderFactory[B, That, List[A]]): That = {
+  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
     val b = bf(this)
     if (b.isInstanceOf[ListBuffer[_]]) (this ::: that.toList).asInstanceOf[That]
     else super.++(that)
@@ -156,7 +140,7 @@ sealed abstract class List[+A] extends LinearSequence[A]
   /** Create a new list which contains all elements of this list
    *  followed by all elements of Iterator `that'
    */
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: BuilderFactory[B, That, List[A]]): That =
+  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[List[A], B, That]): That =
     this ++ that.toList
 
   /** Overrides the method in Iterable for efficiency.
@@ -355,15 +339,15 @@ sealed abstract class List[+A] extends LinearSequence[A]
 
   /** <p>
    *    Sort the list according to the comparison function
-   *    <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>,
-   *    which should be true iff <code>e1</code> is smaller than
-   *    <code>e2</code>.
+   *    <code>lt(e1: a, e2: a) =&gt; Boolean</code>,
+   *    which should be true iff <code>e1</code> precedes     
+   *    <code>e2</code> in the desired ordering.
    *  !!! todo: move sorting to IterableLike
    *  </p>
    *
    *  @param lt the comparison function
    *  @return   a list sorted according to the comparison function
-   *            <code>&lt;(e1: a, e2: a) =&gt; Boolean</code>.
+   *            <code>lt(e1: a, e2: a) =&gt; Boolean</code>.
    *  @ex <pre>
    *    List("Steve", "Tom", "John", "Bob")
    *      .sort((e1, e2) => (e1 compareTo e2) &lt; 0) =
@@ -450,7 +434,7 @@ case object Nil extends List[Nothing] {
     throw new NoSuchElementException("tail of empty list")
   // Removal of equals method here might lead to an infinite recusion similar to IntMap.equals.
   override def equals(that: Any) = that match {
-    case that1: Sequence[_] => that1.isEmpty
+    case that1: Seq[_] => that1.isEmpty
     case _ => false
   }
 }
@@ -498,11 +482,11 @@ final case class ::[B](private var hd: B, private[scala] var tl: List[B]) extend
  *  @version 2.8
  *  @since   2.8
  */
-object List extends SequenceFactory[List] {
+object List extends SeqFactory[List] {
   
-  import scala.collection.{Iterable, Sequence, Vector}
+  import scala.collection.{Iterable, Seq, IndexedSeq}
 
-  implicit def builderFactory[A]: BuilderFactory[A, List[A], Coll] = new VirtualBuilderFactory[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, List[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, List[A]] = new ListBuffer[A]
 
   override def empty[A]: List[A] = Nil
@@ -670,26 +654,6 @@ object List extends SequenceFactory[List] {
       res = arr(i) :: res
     }
     res
-  }
-
-  /** Parses a string which contains substrings separated by a
-   *  separator character and returns a list of all substrings.
-   *
-   *  @param str       the string to parse
-   *  @param separator the separator character
-   *  @return          the list of substrings
-   */
-  @deprecated("use `str.split(separator).toList' instead")
-  def fromString(str: String, separator: Char): List[String] = {
-    var words: List[String] = Nil
-    var pos = str.length()
-    while (pos > 0) {
-      val pos1 = str.lastIndexOf(separator, pos - 1)
-      if (pos1 + 1 < pos)
-        words = str.substring(pos1 + 1, pos) :: words
-      pos = pos1
-    }
-    words
   }
 
   /** Returns the given string as a list of characters.

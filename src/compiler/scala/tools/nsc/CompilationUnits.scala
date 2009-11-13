@@ -8,7 +8,7 @@ package scala.tools.nsc
 
 import scala.tools.nsc.util.{FreshNameCreator,OffsetPosition,Position,NoPosition,SourceFile}
 import scala.tools.nsc.io.AbstractFile
-import scala.collection.mutable.{HashSet, HashMap, ListBuffer}
+import scala.collection.mutable.{LinkedHashSet, HashSet, HashMap, ListBuffer}
 
 trait CompilationUnits { self: Global =>
 
@@ -22,6 +22,14 @@ trait CompilationUnits { self: Global =>
 
     /** the content of the compilation unit in tree form */
     var body: Tree = EmptyTree
+    
+    /** representation for a source code comment, includes 
+     * '//' or '/*' '*/' in the value and the position
+     */
+    case class Comment(text: String, pos: Position)
+        
+    /** all comments found in this compilation unit */
+    val comments = new ListBuffer[Comment]
 
     /** Note: depends now contains toplevel classes.
      *  To get their sourcefiles, you need to dereference with .sourcefile
@@ -39,9 +47,6 @@ trait CompilationUnits { self: Global =>
     /** things to check at end of compilation unit */
     val toCheck = new ListBuffer[() => Unit]
 
-    /** used to track changes in a signature */
-    var pickleHash : Long = 0
-
     def position(pos: Int) = source.position(pos)
 
     /** The position of a targeted type check
@@ -54,7 +59,7 @@ trait CompilationUnits { self: Global =>
     /** The icode representation of classes in this compilation unit.
      *  It is empty up to phase 'icode'.
      */
-    val icode: HashSet[icodes.IClass] = new HashSet
+    val icode: LinkedHashSet[icodes.IClass] = new LinkedHashSet
 
     def error(pos: Position, msg: String) =
       reporter.error(pos, msg)
@@ -73,6 +78,9 @@ trait CompilationUnits { self: Global =>
     def incompleteInputError(pos: Position, msg:String) =
       reporter.incompleteInputError(pos, msg) 
 
+    def comment(pos: Position, msg: String) =
+      reporter.comment(pos, msg)
+      
     /** Is this about a .java source file? */
     lazy val isJava = source.file.name.endsWith(".java")
     

@@ -13,6 +13,8 @@ package scala.collection
 package mutable
 
 import generic._
+import collection.immutable.{List, Nil}
+import collection.Iterator
 
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
@@ -23,7 +25,7 @@ import generic._
  *  @since   1
  */
 @serializable @cloneable
-class Stack[A] private (var elems: List[A]) extends scala.collection.Sequence[A] with Cloneable[Stack[A]] {
+class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with Cloneable[Stack[A]] {
 
   def this() = this(Nil)
 

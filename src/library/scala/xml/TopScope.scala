@@ -10,7 +10,8 @@
 
 package scala.xml
 
-import Predef._
+import collection.mutable.StringBuilder
+
 
 /** top level namespace scope. only contains the predefined binding
  *  for the &quot;xml&quot; prefix which is bound to 
