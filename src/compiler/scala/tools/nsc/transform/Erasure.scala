@@ -123,6 +123,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass) erasedTypeRef(ObjectClass)
           else if (sym == UnitClass) erasedTypeRef(BoxedUnitClass)
           else if (sym.isClass) 
+            // if(sym.owner.isClass), sym's an inner class: rebind pre to type that directly defines this inner class
+            // #2585 was caused by NeedsSigCollector and javaSig not taking this path of erasure into account
             typeRef(apply(if (sym.owner.isClass) sym.owner.tpe else pre), sym, List())
           else apply(sym.info)
         case PolyType(tparams, restpe) =>
@@ -157,6 +159,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
 
   private object NeedsSigCollector extends TypeCollector(false) {
     def traverse(tp: Type) { 
+      // println("needs sig? "+ tp)
       if (!result) { 
         tp match {
           case st: SubType =>
@@ -164,6 +167,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           case TypeRef(pre, sym, args) =>
             if (sym == ArrayClass) args foreach traverse
             else if (sym.isTypeParameterOrSkolem || sym.isExistential || !args.isEmpty) result = true
+            else if (sym.isClass && sym.owner.isClass) traverse(sym.owner.tpe) // follow structure in erasure #2585
             else if (!sym.owner.isPackageClass) traverse(pre)
           case PolyType(_, _) | ExistentialType(_, _) =>
             result = true
@@ -171,11 +175,12 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             if (!parents.isEmpty) traverse(parents.head)
           case ClassInfoType(parents, _, _) =>
             parents foreach traverse
-	  case AnnotatedType(_, atp, _) =>
-	    traverse(atp)
+      	  case AnnotatedType(_, atp, _) =>
+      	    traverse(atp)
           case _ =>
             mapOver(tp)
         }
+        // println("needs sig("+tp+")="+ result)
       }
     }
   }
@@ -243,8 +248,13 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             tagOfClass(sym).toString
           else if (sym.isClass)
             { 
-              if (needsJavaSig(pre)) {
-                val s = jsig(pre) 
+              val preRebound =  // #2585
+                if (sym.owner.isClass) 
+                  sym.owner.tpe.asSeenFrom(pre, sym.owner)  // pre.memberType(sym.owner) does not work
+                else pre
+
+              if (needsJavaSig(preRebound)) {
+                val s = jsig(preRebound)
                 if (s.charAt(0) == 'L') s.substring(0, s.length - 1) + classSigSuffix
                 else classSig
               } else classSig
@@ -285,7 +295,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     }
     if (needsJavaSig(info)) {
       try {
-        //println("Java sig of "+sym+" is "+jsig2(true, List(), sym.info))//DEBUG
+        // println("Java sig of "+ sym +" : "+ sym.info +" is "+ jsig2(true, List(), sym.info))//DEBUG
         Some(jsig2(true, List(), info))
       } catch {
         case ex: UnknownSig => None

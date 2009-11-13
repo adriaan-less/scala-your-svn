@@ -1,5 +1,5 @@
 public class Test {
-  void test() {
+  public static void main(String[] args) {
     final X x = new X();
     final OuterImpl o = new OuterImpl(x);
     
