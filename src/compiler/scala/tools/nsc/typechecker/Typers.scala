@@ -829,15 +829,15 @@ trait Typers { self: Analyzer =>
           case Block(_, tree1) => tree1.symbol
           case _ => tree.symbol
         }
-        if (!meth.isConstructor && 
-            //isCompatible(tparamsToWildcards(mt, context.undetparams), pt) &&
-            isFunctionType(pt))/* &&
-            (pt <:< functionType(mt.paramTypes map (t => WildcardType), WildcardType)))*/ { // (4.2)
+        if (!meth.isConstructor && isFunctionType(pt)) { // (4.2)
           if (settings.debug.value) log("eta-expanding "+tree+":"+tree.tpe+" to "+pt)
           checkParamsConvertible(tree.pos, tree.tpe)
           val tree1 = etaExpand(context.unit, tree)
           //println("eta "+tree+" ---> "+tree1+":"+tree1.tpe)
-          typed(tree1, mode, pt)
+          if((mode & POLYmode) != 0 && meth.typeParams.nonEmpty){ // #2624
+            typed(tree1, mode, WildcardType)
+            instantiate(tree1, mode, pt)
+          } else typed(tree1, mode, pt)
         } else if (!meth.isConstructor && mt.params.isEmpty) { // (4.3)
           adapt(typed(Apply(tree, List()) setPos tree.pos), mode, pt, original)
         } else if (context.implicitsEnabled) {
