@@ -865,41 +865,48 @@ trait Infer {
      *  @param ftpe2 ...
      *  @return      ...
      */
-    def isAsSpecific(ftpe1: Type, ftpe2: Type): Boolean = ftpe1 match {
-      case OverloadedType(pre, alts) =>
-        alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
-      case et: ExistentialType =>
-        isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
-        //et.withTypeVars(isAsSpecific(_, ftpe2)) 
-      case mt: ImplicitMethodType =>
-        isAsSpecific(ftpe1.resultType, ftpe2)
-      case MethodType(params @ (x :: xs), _) =>
-        var argtpes = params map (_.tpe)
-        if (isVarArgs(argtpes) && isVarArgs(ftpe2.paramTypes))
-          argtpes = argtpes map (argtpe => 
-            if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
-        isApplicable(List(), ftpe2, argtpes, WildcardType)
-      case PolyType(tparams, mt: ImplicitMethodType) =>
-        isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
-      case PolyType(_, MethodType(params @ (x :: xs), _)) =>
-        isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
-      case ErrorType =>
-        true
-      case _ =>
-        ftpe2 match {
-          case OverloadedType(pre, alts) =>
-            alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
-          case et: ExistentialType =>
-            et.withTypeVars(isAsSpecific(ftpe1, _))
-          case mt: ImplicitMethodType =>
-            isAsSpecific(ftpe1, mt.resultType)
-          case PolyType(tparams, mt: ImplicitMethodType) =>
-            isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
-          case MethodType(_, _) | PolyType(_, MethodType(_, _)) =>
-            true
-          case _ =>
-            isAsSpecificValueType(ftpe1, ftpe2, List(), List())
-        }
+    def isAsSpecific(ftpe1: Type, ftpe2: Type): Boolean = {
+      // println("isAsSpecific: "+(ftpe1, ftpe2))
+      
+      val res = ftpe1 match {
+        case OverloadedType(pre, alts) =>
+          alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
+        case et: ExistentialType =>
+          isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
+          //et.withTypeVars(isAsSpecific(_, ftpe2)) 
+        case mt: ImplicitMethodType =>
+          isAsSpecific(ftpe1.resultType, ftpe2)
+        case MethodType(params @ (x :: xs), _) =>
+          var argtpes = params map (_.tpe)
+          if (isVarArgs(argtpes) && isVarArgs(ftpe2.paramTypes))
+            argtpes = argtpes map (argtpe => 
+              if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
+          isApplicable(List(), ftpe2, argtpes, WildcardType)
+        case PolyType(tparams, mt: ImplicitMethodType) =>
+          isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
+        case PolyType(_, MethodType(params @ (x :: xs), _)) =>
+          isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
+        case ErrorType =>
+          true
+        case _ =>
+          ftpe2 match {
+            case OverloadedType(pre, alts) =>
+              alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
+            case et: ExistentialType =>
+              et.withTypeVars(isAsSpecific(ftpe1, _))
+            case mt: ImplicitMethodType =>
+              isAsSpecific(ftpe1, mt.resultType)
+            case PolyType(tparams, mt: ImplicitMethodType) =>
+              isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
+            case MethodType(_, _) | PolyType(_, MethodType(_, _)) =>
+              true
+            case _ =>
+              isAsSpecificValueType(ftpe1, ftpe2, List(), List())
+          }
+      }
+
+      // println("isAsSpecific:"+ res +" of "+(ftpe1, ftpe2))
+      res
     }
 
 /*
@@ -933,8 +940,7 @@ trait Infer {
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
         val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
                             (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
-        //println("is more specific? "+sym1+sym1.locationString+"/"+sym2+sym2.locationString+":"+
-        //        specificCount+"/"+subClassCount)
+        // println("is more specific? "+sym1+sym1.locationString+" : "+ftpe1+"/"+sym2+sym2.locationString+" : "+ftpe2+" =>"+ specificCount +"/"+ subClassCount)
         specificCount + subClassCount > 0
       }
     }
