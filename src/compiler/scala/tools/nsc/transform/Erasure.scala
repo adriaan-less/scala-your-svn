@@ -79,8 +79,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
   // must rewrite to p'.I, where p' refers to the class that directly defines the nested class I
   // see also #2585 marker in javaSig: there, type arguments must be included (use pre.baseType(cls.owner))
   // requires cls.isClass
-  @inline private def rebindInnerClass(pre: Type, cls: Symbol, thisPrefix: Option[Type] = None): Type =
-    if(cls.isNestedClass) cls.owner.tpe else pre
+  @inline private def rebindInnerClass(pre: Type, cls: Symbol): Type =
+    if(cls.owner.isClass) cls.owner.tpe else pre // why not cls.isNestedClass?
 
   /** <p>
    *    The erasure <code>|T|</code> of a type <code>T</code>. This is:
@@ -130,7 +130,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass) erasedTypeRef(ObjectClass)
           else if (sym == UnitClass) erasedTypeRef(BoxedUnitClass)
           else if (sym.isClass) typeRef(apply(rebindInnerClass(pre, sym)), sym, List())  // #2585
-          else apply(sym.info)
+          else apply(sym.info) // alias type or abstract type
         case PolyType(tparams, restpe) =>
           apply(restpe)
         case ExistentialType(tparams, restpe) =>
