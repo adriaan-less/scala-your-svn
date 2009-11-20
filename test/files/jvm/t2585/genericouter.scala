@@ -1,4 +1,4 @@
-//case class S(n:Int)
+case class S(n:Int)
 
 trait TraversableLike[+A, +Repr] {
   class WithFilter(p: A => Boolean)

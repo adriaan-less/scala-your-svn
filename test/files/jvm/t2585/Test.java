@@ -1,4 +1,4 @@
-//class J { S s ; }
+class J { S s ; }
 
 public class Test {
   public static void main(String[] args) {
