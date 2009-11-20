@@ -115,7 +115,7 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    */
   def ensureCapacity(n: Int) {
     if (n > array.length) {
-      var newsize = array.length * 2
+      var newsize = (array.length * 2) max 1
       while (n > newsize)
         newsize = newsize * 2
       val newar = new Array[Char](newsize)
