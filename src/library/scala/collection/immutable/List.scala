@@ -175,6 +175,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
    *  @return the list without its <code>n</code> first elements.
    */
   override def drop(n: Int): List[A] = {
+    require(n >= 0)
     var these = this
     var count = n
     while (!these.isEmpty && count > 0) {
