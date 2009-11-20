@@ -88,10 +88,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
       thisPrefix match {
         case Some(thisPre) =>
           val pre1 = 
-            if(pre.typeSymbol isNonBottomSubClass(cls.owner))
+            if(pre.typeSymbol isNonBottomSubClass cls.owner)
               pre
             else {
-              assert(thisPre.typeSymbol isNonBottomSubClass(cls.owner))
+              // it's not necessarily the case that (thisPre.typeSymbol isNonBottomSubClass cls.owner)
               // when compiling scala.collection.immutable.HashMap, 
               // cls = class WithFilter
               // pre = package collection  // --> WHY??
