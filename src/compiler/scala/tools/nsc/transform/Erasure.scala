@@ -76,38 +76,11 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
   }
 
   // @M #2585 when generating a java generic signature that includes a selection of an inner class p.I,  (p = `pre`, I = `cls`)
-  // must rewrite to p'.I, where p' refers to the class that directly defines the nested class I, including any type arguments
-  // the instantiation of the type arguments is derived from p if it is a subclass of p'
-  // if (the symbol of) p was not a subclass of (the symbol of) p', it might not contribute any information about the type args,
-  // so we fall back to the this-type of the class in which p.I occurred (`thisPrefix`)
-  // TODO: is it possible for such as p (not a subclass of p') to contribute type info? 
-  //       should we perform 2 asSeenFrom's? (from both p and the this-type `thisPrefix`)
+  // must rewrite to p'.I, where p' refers to the class that directly defines the nested class I
+  // see also #2585 marker in javaSig: there, type arguments must be included (use pre.baseType(cls.owner))
   // requires cls.isClass
-  private def rebindInnerClass(pre: Type, cls: Symbol, thisPrefix: Option[Type] = None): Type =
+  @inline private def rebindInnerClass(pre: Type, cls: Symbol, thisPrefix: Option[Type] = None): Type =
     if(cls.isNestedClass) cls.owner.tpe else pre
-    
-    // if(cls.isNestedClass) // TODO what if (direct) owner is not a class? use enclClass?
-    //   thisPrefix match {
-    //     case Some(thisPre) =>
-    //       val pre1 = 
-    //         if(pre.typeSymbol isNonBottomSubClass cls.owner)
-    //           pre
-    //         else {
-    //           // it's not necessarily the case that (thisPre.typeSymbol isNonBottomSubClass cls.owner)
-    //           // when compiling scala.collection.immutable.HashMap, 
-    //           // cls = class WithFilter
-    //           // pre = package collection  // --> WHY??
-    //           // res should be: scala.collection.TraversableLike[(A, B),scala.collection.immutable.HashMap[A,B]]
-    //           thisPre
-    //         }
-    // 
-    //       // val res = 
-    //       cls.owner.tpe.asSeenFrom(pre1, cls.owner) 
-    //       // println("RBIC(thisPre, cls, pre, pre1, cls.owner, newPre)="+(thisPre, cls, pre, pre1, cls.owner, res))
-    //       // res
-    //     case _ => cls.owner.thisType
-    //   }
-    // else pre
 
   /** <p>
    *    The erasure <code>|T|</code> of a type <code>T</code>. This is:
