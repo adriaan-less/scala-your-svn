@@ -1,0 +1,4 @@
+tcpoly_typeapp.scala:5: error: type arguments [Test.this.SubWrong,Test.this.Super] do not conform to type t's type parameter bounds [m[x] <: Bound[x],Bound[x]]
+ val x: t[SubWrong, Super]
+        ^
+one error found
