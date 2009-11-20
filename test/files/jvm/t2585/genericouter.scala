@@ -18,7 +18,7 @@ class OuterImpl(x: X) extends Outer[X](x) {
 }
 
 class X {
-  def getI : OuterImpl#Inner = {
+  def getI : Outer[X]#Inner = {
     val oImpl = new OuterImpl(this)
     new oImpl.Inner
   }

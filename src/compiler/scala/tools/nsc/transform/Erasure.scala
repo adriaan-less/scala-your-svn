@@ -84,28 +84,30 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
   //       should we perform 2 asSeenFrom's? (from both p and the this-type `thisPrefix`)
   // requires cls.isClass
   private def rebindInnerClass(pre: Type, cls: Symbol, thisPrefix: Option[Type] = None): Type =
-    if(cls.isNestedClass) // TODO what if (direct) owner is not a class? use enclClass?
-      thisPrefix match {
-        case Some(thisPre) =>
-          val pre1 = 
-            if(pre.typeSymbol isNonBottomSubClass cls.owner)
-              pre
-            else {
-              // it's not necessarily the case that (thisPre.typeSymbol isNonBottomSubClass cls.owner)
-              // when compiling scala.collection.immutable.HashMap, 
-              // cls = class WithFilter
-              // pre = package collection  // --> WHY??
-              // res should be: scala.collection.TraversableLike[(A, B),scala.collection.immutable.HashMap[A,B]]
-              thisPre
-            }
-
-          // val res = 
-          cls.owner.tpe.asSeenFrom(pre1, cls.owner) 
-          // println("RBIC(thisPre, cls, pre, pre1, cls.owner, newPre)="+(thisPre, cls, pre, pre1, cls.owner, res))
-          // res
-        case _ => cls.owner.thisType
-      }
-    else pre
+    if(cls.isNestedClass) cls.owner.tpe else pre
+    
+    // if(cls.isNestedClass) // TODO what if (direct) owner is not a class? use enclClass?
+    //   thisPrefix match {
+    //     case Some(thisPre) =>
+    //       val pre1 = 
+    //         if(pre.typeSymbol isNonBottomSubClass cls.owner)
+    //           pre
+    //         else {
+    //           // it's not necessarily the case that (thisPre.typeSymbol isNonBottomSubClass cls.owner)
+    //           // when compiling scala.collection.immutable.HashMap, 
+    //           // cls = class WithFilter
+    //           // pre = package collection  // --> WHY??
+    //           // res should be: scala.collection.TraversableLike[(A, B),scala.collection.immutable.HashMap[A,B]]
+    //           thisPre
+    //         }
+    // 
+    //       // val res = 
+    //       cls.owner.tpe.asSeenFrom(pre1, cls.owner) 
+    //       // println("RBIC(thisPre, cls, pre, pre1, cls.owner, newPre)="+(thisPre, cls, pre, pre1, cls.owner, res))
+    //       // res
+    //     case _ => cls.owner.thisType
+    //   }
+    // else pre
 
   /** <p>
    *    The erasure <code>|T|</code> of a type <code>T</code>. This is:
@@ -276,7 +278,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           else if (sym.isClass)
             { 
               // #2585
-              val preRebound = rebindInnerClass(pre, sym, Some(member.enclClass.thisType))
+              val preRebound = pre.baseType(sym.owner) //rebindInnerClass(pre, sym, Some(member.enclClass.thisType))
               if (needsJavaSig(preRebound)) {
                 val s = jsig(preRebound)
                 if (s.charAt(0) == 'L') s.substring(0, s.length - 1) + classSigSuffix
