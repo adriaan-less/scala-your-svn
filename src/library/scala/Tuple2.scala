@@ -49,14 +49,14 @@ case class Tuple2[+T1, +T2](_1:T1, _2:T2) extends Product2[T1, T2]  {
 		  
   class Zipped[+Repr1, +El1, +Repr2, +El2](coll1: TraversableLike[El1, Repr1], coll2: IterableLike[El2, Repr2]) { // coll2: IterableLike for filter
     def map[B, To](f: (El1, El2) => B)(implicit cbf: CanBuildFrom[Repr1, B, To]): To = {
-     val b = cbf(coll1.repr)
-     val elems2 = coll2.iterator
-   
-     for(el1 <- coll1)
+      val b = cbf(coll1.repr)
+      val elems2 = coll2.iterator
+
+      for(el1 <- coll1)
        if(elems2.hasNext)
          b += f(el1, elems2.next)
-   
-     b.result
+
+      b.result
     }
   
     def flatMap[B, To](f: (El1, El2) => Traversable[B])(implicit cbf: CanBuildFrom[Repr1, B, To]): To = {
