@@ -78,13 +78,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
   // @M #2585 -- this is a bit of a hack (esp. the thisPrefix bit -- Martin: how can I improve this?)
   // requires cls.isClass
   private def rebindInnerClass(pre: Type, cls: Symbol, thisPrefix: Option[Type] = None): Type =
-    if(cls.owner.isClass) // TODO what if (direct) owner is not a class? use enclClass?
+    if(cls.isNestedClass) // TODO what if (direct) owner is not a class? use enclClass?
       thisPrefix match {
-        case Some(thisPre) =>
-          val pre1 = if(pre.typeSymbol.isEmptyPackageClass) thisPre // XXX the empty prefix implies it was `this`
-                     else pre
-          // println("JSTR: "+(pre, thisPre, cls.owner.tpe, pre1, cls.owner.tpe.asSeenFrom(pre1, cls.owner)))
-          cls.owner.tpe.asSeenFrom(pre1, cls.owner) // does not work: memberPre memberType cls.owner
+        case Some(thisPre) => // println("JSTR(cls, pre, newPre)="+(cls, pre, res))
+          cls.owner.tpe.asSeenFrom(pre, cls.owner).asSeenFrom(thisPre, cls.owner) // need both: see #2585, #1235, #1642
         case _ => cls.owner.thisType
       }
     else pre
