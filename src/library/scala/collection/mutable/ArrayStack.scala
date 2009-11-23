@@ -28,6 +28,15 @@ private object Utils {
   }
 }
 
+object ArrayStack {
+  val Empty: ArrayStack[Nothing] = new ArrayStack()
+  def apply[A: ClassManifest](elems: A*): ArrayStack[A]= {
+    val els: Array[AnyRef] = elems.reverse.map{_.asInstanceOf[AnyRef]}(breakOut)
+    new ArrayStack[A](els, els.length)
+  }
+}
+
+
 /**
  * Simple stack class backed by an array. Should be significantly faster
  * than the standard mutable stack. 
@@ -37,12 +46,22 @@ private object Utils {
  */
 @cloneable @serializable @SerialVersionUID(8565219180626620510L)
 class ArrayStack[T] private(private var table : Array[AnyRef],
-                            private var index : Int) extends scala.collection.Seq[T] with Cloneable[ArrayStack[T]] {
+                            private var index : Int) extends Seq[T] with Cloneable[ArrayStack[T]] {
   def this() = this(new Array[AnyRef](1), 0)
 
   /** Retrieve n'th element from stack, where top of stack has index 0 */
   def apply(n: Int): T =
     table(index - 1 - n).asInstanceOf[T]
+    
+  /** Replace element at index <code>n</code> with the new element
+   *  <code>newelem</code>.
+   *
+   *  @param n       the index of the element to replace.
+   *  @param newelem the new element.
+   *  @throws   IndexOutOfBoundsException if the index is not valid
+   */
+  def update(n: Int, newelem: T) =
+    table(index - 1 - n) = newelem.asInstanceOf[AnyRef]
 
   /** The number of elements in the stack */
   def length = index

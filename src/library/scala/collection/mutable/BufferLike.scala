@@ -41,7 +41,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
 // Abstract methods from IndexedSeq:
 
   /** Return element at index `n`
-   *  @throws   IndexOutofBoundsException if the index is not valid
+   *  @throws   IndexOutOfBoundsException if the index is not valid
    */
   def apply(n: Int): A
 
@@ -50,7 +50,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *
    *  @param n       the index of the element to replace.
    *  @param newelem the new element.
-   *  @throws   IndexOutofBoundsException if the index is not valid
+   *  @throws   IndexOutOfBoundsException if the index is not valid
    */
   def update(n: Int, newelem: A)
 
@@ -86,7 +86,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *
    *  @param n     the index where a new element will be inserted.
    *  @param iter    the iterable object providing all elements to insert.
-   *  @throws   IndexOutofBoundsException if the index is not valid
+   *  @throws   IndexOutOfBoundsException if the index is not valid
    */
   def insertAll(n: Int, iter: Traversable[A])
 
@@ -102,7 +102,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *
    *  @param n  the index which refers to the element to delete.
    *  @param count  the number of elements to delete
-   *  @throws   IndexOutofBoundsException if the index is not valid
+   *  @throws   IndexOutOfBoundsException if the index is not valid
    */
   def remove(n: Int, count: Int) {
     for (i <- 0 until count) remove(n)

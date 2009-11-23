@@ -62,12 +62,12 @@ class MutableList[A] extends LinearSeq[A]
   override def length: Int = len
 
   /** Returns the <code>n</code>th element of this list.
-   *  @throws IndexOutofBoundsException if index does not exist.
+   *  @throws IndexOutOfBoundsException if index does not exist.
    */
   override def apply(n: Int): A = first0.apply(n)
 
   /** Updates the <code>n</code>th element of this list to a new value.
-   *  @throws IndexOutofBoundsException if index does not exist.
+   *  @throws IndexOutOfBoundsException if index does not exist.
    */
   def update(n: Int, x: A): Unit = first0.update(n, x)
 

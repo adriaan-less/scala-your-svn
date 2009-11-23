@@ -46,7 +46,7 @@ class RichString(val self: String) extends Proxy with IndexedSeq[Char] with Inde
   override protected[this] def newBuilder = RichString.newBuilder
 
   /** Return element at index `n`
-   *  @throws   IndexOutofBoundsException if the index is not valid
+   *  @throws   IndexOutOfBoundsException if the index is not valid
    */
   def apply(n: Int): Char = self charAt n
 

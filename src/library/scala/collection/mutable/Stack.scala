@@ -16,6 +16,11 @@ import generic._
 import collection.immutable.{List, Nil}
 import collection.Iterator
 
+object Stack {
+  val Empty: Stack[Nothing] = new Stack(Nil)
+  def apply[A](elems: A*): Stack[A] = new Stack(elems.toList)
+}
+
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
  *
@@ -25,7 +30,7 @@ import collection.Iterator
  *  @since   1
  */
 @serializable @cloneable
-class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with Cloneable[Stack[A]] {
+class Stack[A] private (var elems: List[A]) extends Seq[A] with Cloneable[Stack[A]] {
 
   def this() = this(Nil)
 
@@ -41,6 +46,17 @@ class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with
   /** Retrieve n'th element from stack, where top of stack has index 0 */
   override def apply(index: Int) = elems(index)
 
+  /** Replace element at index <code>n</code> with the new element
+   *  <code>newelem</code>.
+   *
+   *  @param n       the index of the element to replace.
+   *  @param newelem the new element.
+   *  @throws   IndexOutOfBoundsException if the index is not valid
+   */
+  def update(n: Int, newelem: A) = 
+    if(n < 0 || n >= length) throw new IndexOutOfBoundsException(n.toString) // XXX length check is pretty slow
+    else elems = elems.take(n) ++ (newelem :: elems.drop(n+1))
+    
   /** Push an element on the stack.
    *
    *  @param   elem       the element to push on the stack.
