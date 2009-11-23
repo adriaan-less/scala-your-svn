@@ -1564,6 +1564,8 @@ A type's typeSymbol should never be inspected directly.
         parentsPeriod = currentPeriod
         if (!isValidForBaseClasses(period)) {
           parentsCache = thisInfo.parents map transform
+        } else if (parentsCache == null) { // seems this can happen if things are currupted enough, see #2641
+          parentsCache = List(AnyClass.tpe)
         }
       }
       parentsCache
@@ -3285,8 +3287,10 @@ A type's typeSymbol should never be inspected directly.
   class SubstWildcardMap(from: List[Symbol]) extends TypeMap { 
     def apply(tp: Type): Type = try {
       tp match {
-        case TypeRef(_, sym, _) if (from contains sym) => WildcardType
-        case _ => mapOver(tp)
+        case TypeRef(_, sym, _) if (from contains sym) => 
+          BoundedWildcardType(sym.info.bounds)
+        case _ => 
+          mapOver(tp)
       }
     } catch {
       case ex: MalformedType =>
@@ -4027,7 +4031,7 @@ A type's typeSymbol should never be inspected directly.
 
     /** First try, on the right:
      *   - unwrap Annotated types, BoundedWildcardTypes,
-     *   - bind TypeVars on the right, if lhs is not Annotated nor BoundedWildcard
+     *   - bind TypeVars  on the right, if lhs is not Annotated nor BoundedWildcard
      *   - handle common cases for first-kind TypeRefs on both sides as a fast path.
      */
     def firstTry = tp2 match {
@@ -4477,9 +4481,9 @@ A type's typeSymbol should never be inspected directly.
     (DoubleClass.tpe /: ts) ((t1, t2) => if (isNumericSubType(t1, t2)) t1 else t2)
 
   def isWeakSubType(tp1: Type, tp2: Type) = 
-    tp1 match {
+    tp1.deconst.normalize match {
       case TypeRef(_, sym1, _) if isNumericValueClass(sym1) =>
-        tp2 match {
+        tp2.deconst.normalize match {
           case TypeRef(_, sym2, _) if isNumericValueClass(sym2) =>
             sym1 == sym2 || numericWidth(sym1) < numericWidth(sym2)
           case tv2 @ TypeVar(_, _) =>
@@ -4488,7 +4492,7 @@ A type's typeSymbol should never be inspected directly.
             isSubType(tp1, tp2)
         }
       case tv1 @ TypeVar(_, _) =>
-        tp2 match {
+        tp2.deconst.normalize match {
           case TypeRef(_, sym2, _) if isNumericValueClass(sym2) =>
             tv1.registerBound(tp2, isLowerBound = false, numBound = true)
           case _ =>
