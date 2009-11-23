@@ -2148,7 +2148,7 @@ trait Typers { self: Analyzer =>
         val pre = fun.symbol.tpe.prefix
 
         var sym = fun.symbol filter { alt =>
-          isApplicableSafe(context.undetparams, followApply(pre.memberType(alt)), argtypes, pt)
+          isApplicableSafe(context.undetparams, followApply(pre.memberType(alt)), argtypes, WildcardType)
         }
         if (sym hasFlag OVERLOADED) {
           val sym1 = sym filter (alt => {
