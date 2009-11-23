@@ -26,7 +26,7 @@ trait Infer {
   var normP = 0
   var normO = 0
 
-  private final val inferInfo = false //@MDEBUG
+  private final val inferInfo = true //@MDEBUG
 
 /* -- Type parameter inference utility functions --------------------------- */
 
@@ -513,9 +513,12 @@ trait Infer {
           solvedTypes(tvars, tparams, tparams map varianceInType(varianceType), 
                       false, lubDepth(List(restpe, pt)))
         } catch {
-          case ex: NoInstance => null
+          case ex: NoInstance => ex.printStackTrace; null
         }
-      } else null
+      } else {
+        println("not compat:"+((restpe.instantiateTypeParams(tparams, tvars), pt)))
+        null
+      }
     }
 
     /** Return inferred proto-type arguments of function, given
@@ -694,6 +697,7 @@ trait Infer {
       case OverloadedType(pre, alts) =>
         alts exists (alt => hasExactlyNumParams(pre.memberType(alt), n))
       case _ =>
+        println("hasExactlyNumParams"+(tp, n, formalTypes(tp.paramTypes, n)))
         formalTypes(tp.paramTypes, n).length == n
     }
     /**
@@ -754,8 +758,8 @@ trait Infer {
      *  @return            ...
      */
     private def isApplicable(undetparams: List[Symbol], ftpe: Type,
-                             argtpes0: List[Type], pt: Type): Boolean =
-      ftpe match {
+                             argtpes0: List[Type], pt: Type): Boolean = {
+      val res = ftpe match {
         case OverloadedType(pre, alts) =>
           alts exists (alt => isApplicable(undetparams, pre.memberType(alt), argtpes0, pt))
         case ExistentialType(tparams, qtpe) =>
@@ -836,6 +840,10 @@ trait Infer {
         case _ =>
           false
       }
+    
+      println("isApp"+(res, undetparams, ftpe, argtpes0, pt))
+      res
+    }
 
     /** Todo: Try to make isApplicable always safe (i.e. not cause TypeErrors).
      */
@@ -847,6 +855,8 @@ trait Infer {
         isApplicable(undetparams, ftpe, argtpes0, pt)
       } catch {
         case ex: TypeError =>
+          println("isAppSafe: "); ex.printStackTrace
+         
           try {
             isApplicable(undetparams, ftpe, argtpes0, WildcardType)
           } catch {
@@ -866,41 +876,45 @@ trait Infer {
      *  @param ftpe2 ...
      *  @return      ...
      */
-    def isAsSpecific(ftpe1: Type, ftpe2: Type): Boolean = ftpe1 match {
-      case OverloadedType(pre, alts) =>
-        alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
-      case et: ExistentialType =>
-        isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
-        //et.withTypeVars(isAsSpecific(_, ftpe2)) 
-      case mt: ImplicitMethodType =>
-        isAsSpecific(ftpe1.resultType, ftpe2)
-      case MethodType(params @ (x :: xs), _) =>
-        var argtpes = params map (_.tpe)
-        if (isVarArgs(argtpes) && isVarArgs(ftpe2.paramTypes))
-          argtpes = argtpes map (argtpe => 
-            if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
-        isApplicable(List(), ftpe2, argtpes, WildcardType)
-      case PolyType(tparams, mt: ImplicitMethodType) =>
-        isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
-      case PolyType(_, MethodType(params @ (x :: xs), _)) =>
-        isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
-      case ErrorType =>
-        true
-      case _ =>
-        ftpe2 match {
-          case OverloadedType(pre, alts) =>
-            alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
-          case et: ExistentialType =>
-            et.withTypeVars(isAsSpecific(ftpe1, _))
-          case mt: ImplicitMethodType =>
-            isAsSpecific(ftpe1, mt.resultType)
-          case PolyType(tparams, mt: ImplicitMethodType) =>
-            isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
-          case MethodType(_, _) | PolyType(_, MethodType(_, _)) =>
-            true
-          case _ =>
-            isAsSpecificValueType(ftpe1, ftpe2, List(), List())
-        }
+    def isAsSpecific(ftpe1: Type, ftpe2: Type): Boolean = {
+      val res = ftpe1 match {
+        case OverloadedType(pre, alts) =>
+          alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
+        case et: ExistentialType =>
+          isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
+          //et.withTypeVars(isAsSpecific(_, ftpe2)) 
+        case mt: ImplicitMethodType =>
+          isAsSpecific(ftpe1.resultType, ftpe2)
+        case MethodType(params @ (x :: xs), _) =>
+          var argtpes = params map (_.tpe)
+          if (isVarArgs(argtpes) && isVarArgs(ftpe2.paramTypes))
+            argtpes = argtpes map (argtpe => 
+              if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
+          isApplicable(List(), ftpe2, argtpes, WildcardType)
+        case PolyType(tparams, mt: ImplicitMethodType) =>
+          isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
+        case PolyType(_, MethodType(params @ (x :: xs), _)) =>
+          isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
+        case ErrorType =>
+          true
+        case _ =>
+          ftpe2 match {
+            case OverloadedType(pre, alts) =>
+              alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
+            case et: ExistentialType =>
+              et.withTypeVars(isAsSpecific(ftpe1, _))
+            case mt: ImplicitMethodType =>
+              isAsSpecific(ftpe1, mt.resultType)
+            case PolyType(tparams, mt: ImplicitMethodType) =>
+              isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
+            case MethodType(_, _) | PolyType(_, MethodType(_, _)) =>
+              true
+            case _ =>
+              isAsSpecificValueType(ftpe1, ftpe2, List(), List())
+          }
+      }
+      println("isAsSpecific"+(ftpe1, ftpe2, res))
+      res
     }
 
 /*
@@ -1625,15 +1639,21 @@ trait Infer {
       case OverloadedType(pre, alts) =>
         val pt = if (pt0.typeSymbol == UnitClass) WildcardType else pt0
         tryTwice {
-          if (settings.debug.value)
-            log("infer method alt "+ tree.symbol +" with alternatives "+
-                (alts map pre.memberType) +", argtpes = "+ argtpes +", pt = "+ pt)
+          // if (settings.debug.value)
+          println("infer method alt "+ tree.symbol +" with alternatives "+
+                (alts map pre.memberType) +", argtpes = "+ argtpes +", pt = "+ pt +", undetparams= "+undetparams)
 
-          var allApplicable = alts filter (alt =>
-            isApplicable(undetparams, followApply(pre.memberType(alt)), argtpes, pt))
+          var allApplicable = alts filter {alt =>
+            val res = isApplicable(undetparams, followApply(pre.memberType(alt)), argtpes, pt)
+            println("isApplicable: "+ (res, pre.memberType(alt), followApply(pre.memberType(alt))))
+            res
+          }
+
 
           if (varArgsOnly)
             allApplicable = allApplicable filter (alt => isVarArgs(alt.tpe.paramTypes))
+
+          println("allApplicable: "+ allApplicable)
 
           // if there are multiple, drop those that use a default
           // (keep those that use vararg / tupling conversion)
@@ -1646,11 +1666,13 @@ trait Infer {
                   alts map (_.tpe)
                 case t => List(t)
               }
-              mtypes.exists(t => t.paramTypes.length < argtpes.length || // tupling (*)
+              val res = mtypes.exists(t => t.paramTypes.length < argtpes.length || // tupling (*)
                                  hasExactlyNumParams(t, argtpes.length)) // same nb or vararg
               // (*) more arguments than parameters, but still applicable: tuplig conversion works.
               //     todo: should not return "false" when paramTypes = (Unit) no argument is given
               //     (tupling would work)
+              println("app? "+(alt, mtypes, res))
+              res
             })
 
           def improves(sym1: Symbol, sym2: Symbol) =
@@ -1662,7 +1684,7 @@ trait Infer {
             if (improves(alt, best)) alt else best)
           val competing = applicable.dropWhile(alt => best == alt || improves(best, alt))
           if (best == NoSymbol) {
-            if (pt == WildcardType) {
+            if (pt == WildcardType) { // XXX should this be pt0 === WildcardType ?
               errorTree(tree, applyErrorMsg(tree, " cannot be applied to ", argtpes, pt))
             } else {
               inferMethodAlternative(tree, undetparams, argtpes, WildcardType)
