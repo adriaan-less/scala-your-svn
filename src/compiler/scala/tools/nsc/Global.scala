@@ -230,7 +230,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
         val depFilePath = Path(x)
         if (depFilePath.exists) {
           /** The directory where file lookup should start */
-          val rootPath = Path("")
+          val rootPath = depFilePath.parent
           def toFile(path: String) = AbstractFile.getFile(rootPath resolve Path(path))
           dependencyAnalysis.loadFrom(AbstractFile.getFile(depFilePath), toFile)
         }
@@ -374,11 +374,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     val runsAfter = List[String]("uncurry")
     val runsRightAfter = None
   } with TailCalls
- 
- //  object checkDefined extends {
- //    val global: Global.this.type = Global.this
- //  } with CheckDefined
- 
+
   // phaseName = "explicitouter"
   object explicitOuter extends {
     val global: Global.this.type = Global.this
@@ -833,7 +829,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
               dependencyAnalysis.dependenciesFile = AbstractFile.getFile(depFilePath.createFile())
         
             /** The directory where file lookup should start */
-            val rootPath = Path("").normalize
+            val rootPath = depFilePath.parent.normalize
             def fromFile(file: AbstractFile): String =
               rootPath.relativize(Path(file.file).normalize).path
           

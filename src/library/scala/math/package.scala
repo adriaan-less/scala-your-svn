@@ -14,57 +14,6 @@ package scala
  */
 
 package object math {
-  /** The smallest possible value for <a href="Byte.html" target="_self">scala.Byte</a>. */
-  val MIN_BYTE   = java.lang.Byte.MIN_VALUE
-  /** The greatest possible value for <a href="Byte.html" target="_self">scala.Byte</a>. */
-  val MAX_BYTE   = java.lang.Byte.MAX_VALUE
-
-  /** The smallest possible value for <a href="Short.html" target="_self">scala.Short</a>. */
-  val MIN_SHORT  = java.lang.Short.MIN_VALUE
-  /** The greatest possible value for <a href="Short.html" target="_self">scala.Short</a>. */
-  val MAX_SHORT  = java.lang.Short.MAX_VALUE
-
-  /** The smallest possible value for <a href="Char.html" target="_self">scala.Char</a>. */
-  val MIN_CHAR   = java.lang.Character.MIN_VALUE
-  /** The greatest possible value for <a href="Char.html" target="_self">scala.Char</a>. */
-  val MAX_CHAR   = java.lang.Character.MAX_VALUE
-
-  /** The smallest possible value for <a href="Int.html" target="_self">scala.Int</a>. */
-  val MIN_INT    = java.lang.Integer.MIN_VALUE
-  /** The greatest possible value for <a href="Int.html" target="_self">scala.Int</a>. */
-  val MAX_INT    = java.lang.Integer.MAX_VALUE
-
-  /** The smallest possible value for <a href="Long.html" target="_self">scala.Long</a>. */
-  val MIN_LONG   = java.lang.Long.MIN_VALUE
-  /** The greatest possible value for <a href="Long.html" target="_self">scala.Long</a>. */
-  val MAX_LONG   = java.lang.Long.MAX_VALUE
-
-  /** The smallest possible value for <a href="Float.html" target="_self">scala.Float</a>. */
-  val MIN_FLOAT  = -java.lang.Float.MAX_VALUE
-  /** The smallest difference between two values of <a href="Float.html" target="_self">scala.Float</a>. */
-  val EPS_FLOAT  = java.lang.Float.MIN_VALUE
-  /** The greatest possible value for <a href="Float.html" target="_self">scala.Float</a>. */
-  val MAX_FLOAT  = java.lang.Float.MAX_VALUE
-  /** A value of type <a href="Float.html" target="_self">scala.Float</a> that represents no number. */
-  val NaN_FLOAT  = java.lang.Float.NaN
-  /** Negative infinity of type <a href="Float.html" target="_self">scala.Float</a>. */
-  val NEG_INF_FLOAT = java.lang.Float.NEGATIVE_INFINITY
-  /** Positive infinity of type <a href="Float.html" target="_self">scala.Float</a>. */
-  val POS_INF_FLOAT = java.lang.Float.POSITIVE_INFINITY
-
-  /** The smallest possible value for <a href="Double.html" target="_self">scala.Double</a>. */
-  val MIN_DOUBLE = -java.lang.Double.MAX_VALUE
-  /** The smallest difference between two values of <a href="Double.html" target="_self">scala.Double</a>. */
-  val EPS_DOUBLE = java.lang.Double.MIN_VALUE
-  /** The greatest possible value for <a href="Double.html" target="_self">scala.Double</a>. */
-  val MAX_DOUBLE = java.lang.Double.MAX_VALUE
-  /** A value of type <a href="Double.html" target="_self">scala.Double</a> that represents no number. */
-  val NaN_DOUBLE = java.lang.Double.NaN
-  /** Negative infinity of type <a href="Double.html" target="_self">scala.Double</a>. */
-  val NEG_INF_DOUBLE = java.lang.Double.NEGATIVE_INFINITY
-  /** Positive infinity of type <a href="Double.html" target="_self">scala.Double</a>. */
-  val POS_INF_DOUBLE = java.lang.Double.POSITIVE_INFINITY
-
   /** The <code>double</code> value that is closer than any other to
    *  <code>e</code>, the base of the natural logarithms.
    */
@@ -171,29 +120,37 @@ package object math {
   def min(x: Float, y: Float): Float  = java.lang.Math.min(x, y)
   def min(x: Double, y: Double): Double = java.lang.Math.min(x, y)
 
-  def signum(x: Double): Double = x match { case 0 => 0
-                                            case y if y < 0 => -1.0
-                                            case y if y > 0 => 1.0 }
-  def signum(x: Float): Float = x match { case 0f => 0f
-                                          case y if y < 0f => -1.0f
-                                          case y if y > 0f => 1.0f }
-  def signum(x: Long): Long = x match { case 0l => 0l
-                                        case y if y < 0l => -1l
-                                        case y if y > 0l => 1l }
-  def signum(x: Int): Int = x match { case 0 => 0
-                                      case y if y < 0 => -1
-                                      case y if y > 0 => 1}
+  def signum(x: Double): Double =
+    if (x == 0d) 0d
+    else if (x < 0) -1.0
+    else if (x > 0) 1.0
+    else x    // NaN
 
-  // from Java 1.5
-  // def log10(x: Double): Double = java.lang.Math.log10(x)
-  // def cbrt(x: Double): Double = java.lang.Math.cbrt(x)
-  // 
-  // def ulp(x: Double): Double = java.lang.Math.ulp(x)
-  // def ulp(x: Float): Float = java.lang.Math.ulp(x)
-  // def sinh(x: Double): Double = java.lang.Math.sinh(x)
-  // def cosh(x: Double): Double = java.lang.Math.cosh(x)
-  // def tanh(x: Double):Double = java.lang.Math.tanh(x)
-  // def hypot(x: Double, y: Double): Double = java.lang.Math.hypot(x, y)
-  // def expm1(x: Double): Double = java.lang.Math.expm1(x)
-  // def log1p(x: Double): Double = java.lang.Math.log1p(x)
+  def signum(x: Float): Float = 
+    if (x == 0f) 0f
+    else if (x < 0) -1.0f
+    else if (x > 0) 1.0f
+    else x    // NaN
+
+  def signum(x: Long): Long = 
+    if (x == 0l) 0l
+    else if (x < 0) -1l
+    else 1l
+
+  def signum(x: Int): Int = 
+    if (x == 0) 0
+    else if (x < 0) -1
+    else 1
+
+  def log10(x: Double): Double = java.lang.Math.log10(x)
+  def cbrt(x: Double): Double = java.lang.Math.cbrt(x)
+  
+  def ulp(x: Double): Double = java.lang.Math.ulp(x)
+  def ulp(x: Float): Float = java.lang.Math.ulp(x)
+  def sinh(x: Double): Double = java.lang.Math.sinh(x)
+  def cosh(x: Double): Double = java.lang.Math.cosh(x)
+  def tanh(x: Double):Double = java.lang.Math.tanh(x)
+  def hypot(x: Double, y: Double): Double = java.lang.Math.hypot(x, y)
+  def expm1(x: Double): Double = java.lang.Math.expm1(x)
+  def log1p(x: Double): Double = java.lang.Math.log1p(x)
 }

@@ -94,6 +94,11 @@ trait Definitions {
     lazy val BooleanClass = newValueClass(nme.Boolean, 'Z', -1)
       def Boolean_and = getMember(BooleanClass, nme.ZAND)
       def Boolean_or  = getMember(BooleanClass, nme.ZOR)
+
+    def ScalaValueClasses = List(
+      UnitClass, ByteClass, ShortClass, IntClass, LongClass,
+      CharClass, FloatClass, DoubleClass, BooleanClass
+    )
     
     // exceptions and other throwables
     lazy val ThrowableClass                 = getClass(sn.Throwable)
@@ -125,6 +130,7 @@ trait Definitions {
     // fundamental reference classes
     lazy val ScalaObjectClass     = getClass("scala.ScalaObject")
     lazy val PartialFunctionClass = getClass("scala.PartialFunction")
+    lazy val SymbolClass          = getClass("scala.Symbol")
     lazy val StringClass          = getClass(sn.String)
     lazy val ClassClass           = getClass(sn.Class)
       def Class_getMethod = getMember(ClassClass, nme.getMethod_)
@@ -141,9 +147,8 @@ trait Definitions {
       def Predef_conforms = getMember(PredefModule, nme.conforms)
     lazy val ConsoleModule: Symbol = getModule("scala.Console")
     lazy val ScalaRunTimeModule: Symbol = getModule("scala.runtime.ScalaRunTime")
+    lazy val SymbolModule: Symbol = getModule("scala.Symbol") 
       def SeqFactory = getMember(ScalaRunTimeModule, nme.Seq)
-      def checkDefinedMethod = getMember(ScalaRunTimeModule, "checkDefined")
-      def isArrayMethod = getMember(ScalaRunTimeModule, "isArray")
       def arrayApplyMethod = getMember(ScalaRunTimeModule, "array_apply")
       def arrayUpdateMethod = getMember(ScalaRunTimeModule, "array_update")
       def arrayLengthMethod = getMember(ScalaRunTimeModule, "array_length")
@@ -246,6 +251,8 @@ trait Definitions {
 
     def optionType(tp: Type)    = typeRef(OptionClass.typeConstructor.prefix, OptionClass, List(tp))
     def someType(tp: Type)      = typeRef(SomeClass.typeConstructor.prefix, SomeClass, List(tp))
+    def symbolType              = typeRef(SymbolClass.typeConstructor.prefix, SymbolClass, List()) 
+    def longType                = typeRef(LongClass.typeConstructor.prefix, LongClass, List()) 
     
     // Product, Tuple, Function
     private def mkArityArray(name: String, arity: Int, countFrom: Int = 1) = {
@@ -391,9 +398,6 @@ trait Definitions {
     // boxed classes
     lazy val ObjectRefClass         = getClass("scala.runtime.ObjectRef")
     lazy val BoxesRunTimeClass      = getModule("scala.runtime.BoxesRunTime")
-    lazy val BoxedArrayClass        = getClass("scala.runtime.BoxedArray")
-    lazy val BoxedAnyArrayClass     = getClass("scala.runtime.BoxedAnyArray")
-    lazy val BoxedObjectArrayClass  = getClass("scala.runtime.BoxedObjectArray")
     lazy val BoxedNumberClass       = getClass(sn.BoxedNumber)
     lazy val BoxedCharacterClass    = getClass(sn.BoxedCharacter)
     lazy val BoxedBooleanClass      = getClass(sn.BoxedBoolean)
@@ -403,6 +407,18 @@ trait Definitions {
     lazy val BoxedLongClass         = getClass("java.lang.Long")
     lazy val BoxedFloatClass        = getClass("java.lang.Float")
     lazy val BoxedDoubleClass       = getClass("java.lang.Double")
+    
+    /** The various ways a boxed primitive might materialize at runtime. */
+    def isMaybeBoxed(sym: Symbol) =
+      if (forMSIL)
+        sym isNonBottomSubClass BoxedNumberClass
+      else {
+        (sym == ObjectClass) ||
+        (sym == SerializableClass) ||
+        (sym == ComparableClass) ||
+        (sym isNonBottomSubClass BoxedNumberClass) ||
+        (sym isNonBottomSubClass BoxedCharacterClass)   
+      }
     
     lazy val BoxedUnitClass         = getClass("scala.runtime.BoxedUnit")
     lazy val BoxedUnitModule        = getModule("scala.runtime.BoxedUnit")
@@ -549,7 +565,6 @@ trait Definitions {
     val boxedModule = new HashMap[Symbol, Symbol]
     val unboxMethod = new HashMap[Symbol, Symbol] // Type -> Method
     val boxMethod = new HashMap[Symbol, Symbol] // Type -> Method
-    val boxedArrayClass = new HashMap[Symbol, Symbol]
 
     def isUnbox(m: Symbol) = (m.name == nme.unbox) && cond(m.tpe) { 
       case MethodType(_, restpe) => cond(unboxMethod get restpe.typeSymbol) {
@@ -574,7 +589,6 @@ trait Definitions {
       val clazz = newClass(ScalaPackageClass, name, anyvalparam) setFlag (ABSTRACT | FINAL)
       boxedClass(clazz) = getClass(boxedName)
       boxedModule(clazz) = getModule(boxedName)
-      boxedArrayClass(clazz) = getClass("scala.runtime.Boxed" + name + "Array")
       refClass(clazz) = getClass("scala.runtime." + name + "Ref")
       abbrvTag(clazz) = tag
       if (width > 0) numericWidth(clazz) = width

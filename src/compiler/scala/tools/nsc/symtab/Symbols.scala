@@ -563,14 +563,14 @@ trait Symbols {
     final def isStaticOwner: Boolean =
       isPackageClass || isModuleClass && isStatic
 
-    /** Is this symbol final?*/
+    /** Is this symbol final? */
     final def isFinal: Boolean = (
       hasFlag(FINAL) ||
       isTerm && (
         hasFlag(PRIVATE) || isLocal || owner.isClass && owner.hasFlag(FINAL | MODULE))
     )
 
-    /** Is this symbol a sealed class?*/
+    /** Is this symbol a sealed class? */
     final def isSealed: Boolean =
       isClass && (hasFlag(SEALED) || isValueClass(this))
 
@@ -1166,9 +1166,10 @@ trait Symbols {
         def renamedGetter = accessors find (_.originalName startsWith (getterName + "$"))
         val accessorName  = origGetter orElse renamedGetter
         
-        accessorName getOrElse {
-          throw new Error("Could not find case accessor for %s in %s".format(field, this))
-        }
+        // This fails more gracefully rather than throw an Error as it used to because
+        // as seen in #2625, we can reach this point with an already erroneous tree.
+        accessorName getOrElse NoSymbol
+        // throw new Error("Could not find case accessor for %s in %s".format(field, this))
       }
       
       fields map findAccessor
