@@ -1507,6 +1507,7 @@ trait Types {
     private var baseTypeSeqPeriod = NoPeriod
 
     override def isStable: Boolean = {
+      sym == NothingClass ||
       sym == SingletonClass ||
       sym.isAliasType && normalize.isStable ||
       sym.isAbstractType && (bounds.hi.typeSymbol isSubClass SingletonClass)
@@ -2521,16 +2522,19 @@ A type's typeSymbol should never be inspected directly.
     else {
       var occurCount = emptySymCount ++ (tparams map (_ -> 0))
       val tpe = deAlias(tpe0)
-      for (t <- tpe) {
-        t match {
-          case TypeRef(_, sym, _) =>
-            occurCount get sym match {
-              case Some(count) => occurCount += (sym -> (count + 1))
-              case None =>
-            }
-          case _ =>
+      def countOccs(tp: Type) =
+        for (t <- tp) {
+          t match {
+            case TypeRef(_, sym, _) =>
+              occurCount get sym match {
+                case Some(count) => occurCount += (sym -> (count + 1))
+                case None =>
+              }
+            case _ =>
+          }
         }
-      }
+      countOccs(tpe)
+      for (tparam <- tparams) countOccs(tparam.info)
           
       val extrapolate = new TypeMap {
         variance = 1
@@ -4318,15 +4322,21 @@ A type's typeSymbol should never be inspected directly.
             if (bound.typeSymbol != AnyClass)
               tvar addHiBound bound.instantiateTypeParams(tparams, tvars)
             for (tparam2 <- tparams)
-              if (tparam2.info.bounds.lo =:= tparam.tpe) // declaration tp2 :> tparam implies ?tparam <: tp2
-                tvar addHiBound tparam2.tpe.instantiateTypeParams(tparams, tvars)
+              tparam2.info.bounds.lo.dealias match {
+                case TypeRef(_, `tparam`, _) =>
+                  tvar addHiBound tparam2.tpe.instantiateTypeParams(tparams, tvars)
+                case _ =>
+              }
           } else {
             if (bound.typeSymbol != NothingClass && bound.typeSymbol != tparam) {
               tvar addLoBound bound.instantiateTypeParams(tparams, tvars)
             }
             for (tparam2 <- tparams)
-              if (tparam2.info.bounds.hi =:= tparam.tpe)
-                tvar addLoBound tparam2.tpe.instantiateTypeParams(tparams, tvars)
+              tparam2.info.bounds.hi.dealias match {
+                case TypeRef(_, `tparam`, _) => 
+                  tvar addLoBound tparam2.tpe.instantiateTypeParams(tparams, tvars)
+                case _ =>
+              }
           }
         }
         tvar.constr.inst = NoType // necessary because hibounds/lobounds may contain tvar
@@ -4342,6 +4352,7 @@ A type's typeSymbol should never be inspected directly.
       }
     }    
     
+    // println("solving "+tvars+"/"+tparams+"/"+(tparams map (_.info)))
     for ((tvar, (tparam, variance)) <- config)
       solveOne(tvar, tparam, variance)
 
