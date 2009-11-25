@@ -928,16 +928,16 @@ trait Infer {
       // ftpe1 / ftpe2 are OverloadedTypes (possibly with one single alternative) if they
       // denote the type of an "apply" member method (see "followApply")
       ftpe1.isError || {
-        val specificCount = (if (isAsSpecific(ftpe1, ftpe2)) 1 else 0) - 
-                            (if (isAsSpecific(ftpe2, ftpe1) &&
-                                 // todo: move to isAsSepecific test
-                                 (!ftpe2.isInstanceOf[OverloadedType] || ftpe1.isInstanceOf[OverloadedType]) &&
-                                 (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
-        val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
-                            (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
-        //println("is more specific? "+sym1+sym1.locationString+"/"+sym2+sym2.locationString+":"+
-        //        specificCount+"/"+subClassCount)
-        specificCount + subClassCount > 0
+        @inline implicit def bool2int(x: Boolean): Int = if(x) 1 else 0
+        @inline def specific12: Int =  isAsSpecific(ftpe1, ftpe2)
+        @inline def specific21: Int = (isAsSpecific(ftpe2, ftpe1) && // todo: move to isAsSpecific test:
+             (!ftpe2.isInstanceOf[OverloadedType] || ftpe1.isInstanceOf[OverloadedType]) &&
+             (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2)))
+        @inline def inSubClass12: Int = isInProperSubClassOrObject(sym1, sym2)
+        @inline def inSubClass21: Int = isInProperSubClassOrObject(sym2, sym1)
+
+        // println("is more specific? "+sym1+sym1.locationString+"/"+sym2+sym2.locationString+" breakdown(specific12, inSubClass12, inSubClass21, specific21)="+(specific12, inSubClass12, inSubClass21, specific21))
+        specific12 + inSubClass12 > inSubClass21 + specific21
       }
     }
 /*

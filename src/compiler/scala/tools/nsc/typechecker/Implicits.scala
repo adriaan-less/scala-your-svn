@@ -582,6 +582,10 @@ self: Analyzer =>
       /** A candidate for best applicable info wrt `improves` */
       val best = (NoImplicitInfo /: applicable.keysIterator) (
         (best, alt) => if (improves(alt, best)) alt else best)
+
+      // if (settings.XlogImplicits.value)
+      //   println("picked "+ (best, applicable.get(best)) +" from applicable implicits:\n"+ applicable.mkString("\n") +"***********************\n")
+
       if (best == NoImplicitInfo) SearchFailure
       else {
         /** The list of all applicable infos which are not improved upon by `best`. */
