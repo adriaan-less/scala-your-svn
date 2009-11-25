@@ -143,8 +143,7 @@ trait Definitions {
           appliedType(ClassClass.tpe, List(classType))
         else ClassClass.tpe
       def Predef_error    = getMember(PredefModule, nme.error)
-      def Predef_identity = getMember(PredefModule, nme.identity)
-      def Predef_conforms = getMember(PredefModule, nme.conforms)
+      // def Predef_identity = getMember(PredefModule, nme.identity)
     lazy val ConsoleModule: Symbol = getModule("scala.Console")
     lazy val ScalaRunTimeModule: Symbol = getModule("scala.runtime.ScalaRunTime")
     lazy val SymbolModule: Symbol = getModule("scala.Symbol") 
@@ -185,8 +184,11 @@ trait Definitions {
       clazz setInfo PolyType(List(newTypeParam(clazz, 0)), ClassInfoType(anyparam, new Scope, clazz))
 
       clazz
-    }    
-      
+    }
+
+    lazy val LowestPrioClass: Symbol = getClass("scala.LowestPriorityImplicits")
+      def Predef_conforms = getMember(LowestPrioClass, nme.conforms)
+
     // collections classes
     lazy val IteratorClass        = getClass2("scala.Iterator", "scala.collection.Iterator")
     lazy val TraversableClass     = getClass("scala.collection.Traversable")

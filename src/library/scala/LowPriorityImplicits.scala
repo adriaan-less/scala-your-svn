@@ -15,6 +15,18 @@ import collection.mutable._
 import collection.immutable.WrappedString
 import collection.generic.CanBuildFrom
 
+class LowestPriorityImplicits { // should not contain other implicit values of type `? => ?`
+  // used, for example, in the encoding of generalized constraints
+  // we need a new type constructor `<:<` and evidence `conforms`, as 
+  // reusing `Function2` and `identity` leads to ambiguities (any2stringadd is inferred)
+  // to constrain any abstract type T that's in scope in a method's argument list (not just the method's own type parameters)
+  // simply add an implicit argument of type `T <:< U`, where U is the required upper bound (for lower-bounds, use: `U <:< T`)
+  // in part contributed by Jason Zaugg
+  // has to be last resort
+  sealed abstract class <:<[-From, +To] extends (From => To)
+  implicit def conforms[A]: A <:< A = new (A <:< A) {def apply(x: A) = x} // not in the <:< companion object because it is also intended to subsume identity (which is no longer implicit)
+  // rename to `conforms`
+}
 /** The `LowPriorityImplicits` class provides implicit values that
  *  are valid in all Scala compilation units without explicit qualification,
  *  but that are partially overridden by higher-priority conversions in object
@@ -23,7 +35,7 @@ import collection.generic.CanBuildFrom
  *  @author  Martin Odersky
  *  @since 2.8
  */
-class LowPriorityImplicits {
+class LowPriorityImplicits extends LowestPriorityImplicits {
 
   implicit def genericWrapArray[T](xs: Array[T]): WrappedArray[T] = 
     WrappedArray.make(xs)
@@ -59,6 +71,4 @@ class LowPriorityImplicits {
   def wrapArray(xs: Array[Short]): WrappedArray[Short] = new WrappedArray.ofShort(xs)
   def wrapArray(xs: Array[Boolean]): WrappedArray[Boolean] = new WrappedArray.ofBoolean(xs)
   def wrapArray(xs: Array[Unit]): WrappedArray[Unit] = new WrappedArray.ofUnit(xs)
-
-
 }
