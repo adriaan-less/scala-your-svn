@@ -171,7 +171,7 @@ self =>
     b.result
   }
 
-  def flatten[B](implicit asTraversable: A => Traversable[B], bf: CanBuildFrom[Repr, B, That]): That =
+  def flatten[B, That](implicit asTraversable: A => Traversable[B], bf: CanBuildFrom[Repr, B, That]): That =
     flatMap(asTraversable)
 
   /** Returns all the elements of this traversable that satisfy the
