@@ -374,19 +374,6 @@ self =>
     result
   }
 
-  override def flatten[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): Stream[B] = {
-    def flatten1(t: Traversable[B]): Stream[B] =
-      if (!t.isEmpty)
-        new Stream.Cons(t.head, flatten1(t.tail))
-      else
-        tail.flatten
-
-    if (isEmpty)
-      Stream.empty
-    else
-      flatten1(asTraversable(head))
-  }
-
   /** Defines the prefix of this object's <code>toString</code> representation as ``Stream''.
    */
   override def stringPrefix = "Stream"

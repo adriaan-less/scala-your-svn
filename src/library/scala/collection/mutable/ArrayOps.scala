@@ -27,12 +27,13 @@ abstract class ArrayOps[T] extends ArrayLike[T, Array[T]] {
   /** Flattens a two-dimensional array by concatenating all its rows
    *  into a single array
    */
-  def flatten[U](implicit asArray: T => /*<:<!!!*/ Array[U]): Array[U] = {
-    val b = rowBuilder[U]
-    for (xs <- this)
-      b ++= asArray(xs)
-    b.result
-  }
+  // should be subsumed by flatten in TraversableLike
+  // def flatten[U](implicit asArray: T => /*<:<!!!*/ Array[U]): Array[U] = {
+  //   val b = rowBuilder[U]
+  //   for (xs <- this)
+  //     b ++= asArray(xs)
+  //   b.result
+  // }
 
   /** Transposes a two dimensional array
    */
