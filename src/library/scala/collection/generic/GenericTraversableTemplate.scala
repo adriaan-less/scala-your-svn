@@ -44,13 +44,6 @@ trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBui
     (b1.result, b2.result)
   }
 
-  def flatten[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): CC[B] = {
-    val b = genericBuilder[B]
-    for (xs <- this)
-      b ++= asTraversable(xs)
-    b.result
-  }
-
   def transpose[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): CC[CC[B] @uncheckedVariance] = {
     val bs: IndexedSeq[Builder[B, CC[B]]] = asTraversable(head).map(_ => genericBuilder[B]).toIndexedSeq 
     for (xs <- this) {

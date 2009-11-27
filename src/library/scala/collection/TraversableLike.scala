@@ -171,6 +171,9 @@ self =>
     b.result
   }
 
+  def flatten[B](implicit asTraversable: A => Traversable[B], bf: CanBuildFrom[Repr, B, That]): That =
+    flatMap(asTraversable)
+
   /** Returns all the elements of this traversable that satisfy the
    *  predicate <code>p</code>. The order of the elements is preserved.
    *  @param p the predicate used to filter the traversable.
