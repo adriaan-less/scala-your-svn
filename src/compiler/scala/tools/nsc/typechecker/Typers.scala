@@ -2360,13 +2360,14 @@ trait Typers { self: Analyzer =>
               assert((mode & PATTERNmode) == 0); // this case cannot arise for patterns
               val lenientTargs = protoTypeArgs(tparams, formals, mt.resultApprox, pt)
               val strictTargs = (lenientTargs, tparams).zipped map ((targ, tparam) =>
-                if (targ == WildcardType) tparam.tpe else targ) //@M TODO: should probably be .tpeHK
+                if (targ == WildcardType) tparam.tpe else targ) //@M tparam.tpe is ok, since we're expecting type of kind *
+              println("doTypedApply/poly(tparams, targsLenient, strict): "+(tparams, lenientTargs, strictTargs))
               def typedArgToPoly(arg: Tree, formal: Type): Tree = {
                 val lenientPt = formal.instantiateTypeParams(tparams, lenientTargs)
-                // println("typedArgToPoly(arg, formal): "+(arg, formal))
+                println("typedArgToPoly(arg, formal, pt): "+(arg, formal, lenientPt))
                 val arg1 = typedArg(arg, argMode(fun, mode), POLYmode, lenientPt)
                 val argtparams = context.extractUndetparams()
-                // println("typedArgToPoly(arg1, argtparams): "+(arg1, argtparams))
+                println("typedArgToPoly(arg1, argtparams): "+(arg1, argtparams))
                 if (!argtparams.isEmpty) {
                   val strictPt = formal.instantiateTypeParams(tparams, strictTargs)
                   inferArgumentInstance(arg1, argtparams, strictPt, lenientPt)
