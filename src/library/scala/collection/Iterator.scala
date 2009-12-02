@@ -14,7 +14,6 @@ package scala.collection
 import mutable.{Buffer, ArrayBuffer, ListBuffer, StringBuilder}
 import immutable.{List, Stream}
 import annotation.{ tailrec }
-// import immutable.{List, Nil, ::, Stream}
 
 /** The <code>Iterator</code> object provides various functions for
  *  creating specialized iterators.
@@ -352,28 +351,68 @@ trait Iterator[+A] { self =>
    *  @param p the predicate used to filter the iterator.
    *  @return  the elements of this iterator satisfying <code>p</code>.
    */
-  def filter(p: A => Boolean): Iterator[A] = {
-    val self = buffered
-    new Iterator[A] {
-			var computedHasNext = false
-      private def skip() = {
-				while (self.hasNext && !p(self.head)) self.next()
-				computedHasNext = self.hasNext
-			}
-      def hasNext = { if (!computedHasNext) skip(); computedHasNext }
-      def next() = { 
-				if (!computedHasNext) 
-					skip()
-				computedHasNext = false
-				self.next()
-    	}
-		}
+  def filter(p: A => Boolean): Iterator[A] = new Iterator[A] {
+    private var hd: A = _
+    private var hdDefined: Boolean = false
+    
+    def hasNext: Boolean = hdDefined || {
+      do {
+        if (!self.hasNext) return false
+        hd = self.next()
+      } while (!p(hd))
+      hdDefined = true
+      true
+    }
+    
+    def next() = if (hasNext) { hdDefined = false; hd } else empty.next()
   }
+
+  def withFilter(p: A => Boolean): WithFilter = new WithFilter(p)
   
-  /** !!! Temporary, awaiting more general implementation.
-   *  ... better wait longer, this fails once flatMap gets in the mix.
-   */
-  // def withFilter(p: A => Boolean) = this.toStream withFilter p
+  final class WithFilter private[Iterator] (p: A => Boolean) {
+	
+    def map[B](f: A => B): Iterator[B] = new Iterator[B] {
+      private var hd: A = _
+      private var hdDefined: Boolean = false
+      
+      def hasNext: Boolean = hdDefined || {
+        do {
+          if (!self.hasNext) return false
+          hd = self.next()
+        } while (!p(hd))
+        hdDefined = true
+        true
+      }
+      
+      def next() = if (hasNext) { hdDefined = false; f(hd) } else empty.next()
+    }
+
+    def flatMap[B](f: A => Iterator[B]): Iterator[B] = new Iterator[B] {
+      private var cur: Iterator[B] = empty
+      
+      @tailrec
+      def hasNext: Boolean = cur.hasNext || {
+        var x = null.asInstanceOf[A]
+        do {
+          if (!self.hasNext) return false
+          x = self.next()
+        } while (!p(x))
+        cur = f(x)
+        hasNext
+      }
+
+      def next(): B = (if (hasNext) cur else empty).next() 
+    }
+
+    def foreach[U](f: A => U) {
+      while (self.hasNext) {
+        val x = self.next()
+        if (p(x)) f(x)
+      }
+    }
+
+    def withFilter(q: A => Boolean): WithFilter = new WithFilter(x => p(x) && q(x))
+  }  
   
   /** Returns an iterator over all the elements of this iterator which
    *  do not satisfy the predicate <code>p</code>.
@@ -407,23 +446,18 @@ trait Iterator[+A] { self =>
    *  @param p the predicate used to filter the iterator.
    *  @return  the longest prefix of this iterator satisfying <code>p</code>.
    */
-  def takeWhile(p: A => Boolean): Iterator[A] = {
-    val self = buffered
-    new Iterator[A] {
-			var computedHasNext = false
-	
-      def hasNext = { 
-				val result = computedHasNext || (self.hasNext && p(self.head))
-				computedHasNext = result
-				result
-			}
-			
-      def next() = {
-				val result = (if (computedHasNext || hasNext) self else empty).next()
-				computedHasNext = false
-				result
-			}
+  def takeWhile(p: A => Boolean): Iterator[A] = new Iterator[A] {
+    private var hd: A = _
+    private var hdDefined: Boolean = false
+    private var tail: Iterator[A] = self
+  
+    def hasNext = hdDefined || tail.hasNext && {
+      hd = tail.next()
+      if (p(hd)) hdDefined = true 
+      else tail = Iterator.empty
+      hdDefined
     }
+    def next() = if (hasNext) { hdDefined = false; hd } else empty.next()
   }
 
   /** Partitions this iterator in two iterators according to a predicate.
@@ -1029,6 +1063,20 @@ trait Iterator[+A] { self =>
     val buffer = new ArrayBuffer[A]
     this copyToBuffer buffer
     buffer 
+  }
+  
+  /** Checks if the other iterator contains the same elements as this one.
+   *
+   *  @note will not terminate for infinite-sized iterators.
+   *  @param that  the other iterator
+   *  @return true, iff both iterators contain the same elements in the same order.
+   */
+  def sameElements(that: Iterator[_]): Boolean = {    
+    while (hasNext && that.hasNext)
+      if (next != that.next)
+        return false
+    
+    !hasNext && !that.hasNext
   }
   
   /** Returns a string representation of the elements in this iterator. The resulting string
