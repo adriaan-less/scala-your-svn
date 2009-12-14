@@ -64,6 +64,9 @@ self: Analyzer =>
 
   def resetImplicits() { implicitsCache.clear() }
 
+  // hack: detect recursion through f-bounded abstract types while creating manifests
+  private val creatingManifestFor = new collection.mutable.HashSet[Symbol]
+
   /** If type `pt` an instance of Manifest or OptManifest, or an abstract type lower-bounded
    *  by such an instance?
    */
@@ -770,10 +773,13 @@ self: Analyzer =>
                 EmptyTree // todo: change to existential parameter manifest
               else if (sym.isTypeParameterOrSkolem)
                 EmptyTree  // a manifest should have been found by normal searchImplicit
-              else
+              else if (!creatingManifestFor.contains(sym)) {
+                creatingManifestFor += sym
                 manifestFactoryCall(
                   "abstractType", tp,
                   findSubManifest(pre) :: Literal(sym.name.toString) :: findManifest(tp1.bounds.hi) :: (args map findSubManifest): _*)
+              }
+              else EmptyTree
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
             }
