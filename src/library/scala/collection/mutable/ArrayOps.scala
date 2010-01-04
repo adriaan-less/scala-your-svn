@@ -24,13 +24,28 @@ abstract class ArrayOps[T] extends ArrayLike[T, Array[T]] {
       ClassManifest.fromClass(
         repr.getClass.getComponentType.getComponentType.asInstanceOf[Predef.Class[U]]))
 
+  private def builderFromNestedColl[U]: Builder[U, Array[U]] = 
+    if(repr.getClass.getComponentType.isArray)
+      Array.newBuilder(
+        ClassManifest.fromClass(
+          repr.getClass.getComponentType.getComponentType.asInstanceOf[Predef.Class[U]]))
+    else newBuilder[U]
+
   /** Flattens a two-dimensional array by concatenating all its rows
    *  into a single array
    */
-  def flatten[U](implicit asArray: T => /*<:<!!!*/ Array[U]): Array[U] = {
-    val b = rowBuilder[U]
+  def flatten[U, To](implicit asTrav: T => Traversable[U]): Array[U] = {
+    val minSize = foldl(0){(acc, el) => el match {
+      case is: IndexedSeq[_] => l + is.length // only compute length if it can be done in O(1)
+      case _ => l // approximate (compute lower bound for size)
+    }}
+    
+    val b = rowBuilder[U] // reflect class object from native array representation, 
+    // if T = Array[U] uses ArrayBuilder
+    // fallback: generic builder
+    b.sizeHint(minSize) // no effect if builder already has capacity minSize
     for (xs <- this)
-      b ++= asArray(xs)
+      b ++= asTrav(xs)
     b.result
   }
 
