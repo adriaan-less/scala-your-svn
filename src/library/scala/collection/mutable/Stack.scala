@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,6 +13,8 @@ package scala.collection
 package mutable
 
 import generic._
+import collection.immutable.{List, Nil}
+import collection.Iterator
 
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
@@ -60,7 +62,6 @@ class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with
    *
    *  @param   elems      the iterator object.
    *  @return the stack with the new elements on top.
-   *  @deprecated
    */
   def pushAll(elems: Iterator[A]): this.type = { for (elem <- elems) { push(elem); () }; this }
   

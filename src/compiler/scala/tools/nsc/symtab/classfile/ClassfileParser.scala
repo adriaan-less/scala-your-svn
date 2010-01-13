@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -8,7 +8,7 @@ package scala.tools.nsc
 package symtab
 package classfile
 
-import java.io.IOException
+import java.io.{ File, IOException }
 import java.lang.Integer.toHexString
 
 import scala.collection.immutable.{Map, ListMap}
@@ -41,6 +41,9 @@ abstract class ClassfileParser {
   protected var busy: Option[Symbol] = None // lock to detect recursive reads
   private var   externalName: Name = _      // JVM name of the current class
   protected var classTParams = Map[Name,Symbol]()
+  protected var srcfile0 : Option[AbstractFile] = None
+  
+  def srcfile = srcfile0
 
   private object metaParser extends MetaParser {
     val global: ClassfileParser.this.global.type = ClassfileParser.this.global
@@ -408,6 +411,25 @@ abstract class ClassfileParser {
     var nameIdx = in.nextChar
     externalName = pool.getClassName(nameIdx)
     val c = if (externalName.toString.indexOf('$') < 0) pool.getClassSymbol(nameIdx) else clazz
+
+    /** Parse parents for Java classes. For Scala, return AnyRef, since the real type will be unpickled.
+     *  Updates the read pointer of 'in'. */
+    def parseParents: List[Type] = {
+      if (isScala) {
+        in.nextChar              // skip superclass
+        val ifaces = in.nextChar
+        in.bp += ifaces * 2     // .. and iface count interfaces
+        List(definitions.AnyRefClass.tpe) // dummy superclass, will be replaced by pickled information
+      } else {
+        val superType = if (isAnnotation) { in.nextChar; definitions.AnnotationClass.tpe }
+                        else pool.getSuperClass(in.nextChar).tpe
+        val ifaceCount = in.nextChar
+        var ifaces = for (i <- List.range(0, ifaceCount)) yield pool.getSuperClass(in.nextChar).tpe
+        if (isAnnotation) ifaces = definitions.ClassfileAnnotationClass.tpe :: ifaces
+        superType :: ifaces
+      }
+    }
+    
     if (c != clazz && externalName.toString.indexOf("$") < 0) {
       if ((clazz eq NoSymbol) && (c ne NoSymbol)) clazz = c
       else throw new IOException("class file '" + in.file + "' contains wrong " + c)
@@ -415,16 +437,10 @@ abstract class ClassfileParser {
     
     addEnclosingTParams(clazz)
     parseInnerClasses() // also sets the isScala / isScalaRaw / hasMeta flags, see r15956
-    val superType = if (isAnnotation) { in.nextChar; definitions.AnnotationClass.tpe }
-                    else pool.getSuperClass(in.nextChar).tpe
-    val ifaceCount = in.nextChar
-    var ifaces = for (i <- List.range(0, ifaceCount)) yield pool.getSuperClass(in.nextChar).tpe
-    if (isAnnotation) ifaces = definitions.ClassfileAnnotationClass.tpe :: ifaces
-    val parents = superType :: ifaces
-    // get the class file parser to reuse scopes. 
+    // get the class file parser to reuse scopes.
     instanceDefs = new Scope
     staticDefs = new Scope
-    val classInfo = ClassInfoType(parents, instanceDefs, clazz)
+    val classInfo = ClassInfoType(parseParents, instanceDefs, clazz)
     val staticInfo = ClassInfoType(List(), staticDefs, statics)
 
     if (!isScala && !isScalaRaw) {
@@ -759,7 +775,8 @@ abstract class ClassfileParser {
           sym.setFlag(BRIDGE)
           in.skip(attrLen)
         case nme.DeprecatedATTR =>
-          sym.setFlag(DEPRECATED)
+          val arg = Literal(Constant("see corresponding Javadoc for more information."))
+          sym.addAnnotation(AnnotationInfo(definitions.DeprecatedAttr.tpe, List(arg), List()))
           in.skip(attrLen)
         case nme.ConstantValueATTR =>
           val c = pool.getConstant(in.nextChar)
@@ -778,7 +795,7 @@ abstract class ClassfileParser {
           this.hasMeta = true
          // Attribute on methods of java annotation classes when that method has a default
         case nme.AnnotationDefaultATTR =>
-          sym.addAnnotation(AnnotationInfo(definitions.AnnotationDefaultAttr.tpe, List(), List(), NoPosition))
+          sym.addAnnotation(AnnotationInfo(definitions.AnnotationDefaultAttr.tpe, List(), List()))
           in.skip(attrLen)
         // Java annotatinos on classes / methods / fields with RetentionPolicy.RUNTIME
         case nme.RuntimeAnnotationATTR =>
@@ -795,6 +812,17 @@ abstract class ClassfileParser {
 
         // TODO 2: also parse RuntimeInvisibleAnnotation / RuntimeInvisibleParamAnnotation,
         // i.e. java annotations with RetentionPolicy.CLASS?
+
+        case nme.ExceptionsATTR if (!isScala) =>
+          parseExceptions(attrLen)
+          
+        case nme.SourceFileATTR =>
+          val srcfileLeaf = pool.getName(in.nextChar).toString.trim
+          val srcpath = sym.enclosingPackage match {
+            case NoSymbol => srcfileLeaf
+            case pkg => pkg.fullNameString(File.separatorChar)+File.separator+srcfileLeaf
+          }
+          srcfile0 = settings.outputDirs.srcFilesFor(in.file, srcpath).find(_.exists)
         case _ =>
           in.skip(attrLen)
       }
@@ -848,7 +876,7 @@ abstract class ClassfileParser {
         }
       }
       if (hasError) None
-      else Some(AnnotationInfo(attrType, List(), nvpairs.toList, NoPosition))
+      else Some(AnnotationInfo(attrType, List(), nvpairs.toList))
     } catch {
       case f: FatalError => throw f // don't eat fatal errors, they mean a class was not found
       case ex: Throwable =>
@@ -856,6 +884,20 @@ abstract class ClassfileParser {
           global.inform("dropping annotation on " + sym +
                         ", an error occured during parsing (e.g. annotation  class not found)")
         None // ignore malformed annotations ==> t1135
+    }
+
+    /**
+     * Parse the "Exceptions" attribute which denotes the exceptions
+     * thrown by a method.
+     */
+    def parseExceptions(len: Int) {
+      val nClasses = in.nextChar
+      for (n <- 0 until nClasses) {
+        val cls = pool.getClassSymbol(in.nextChar.toInt)
+        sym.addAnnotation(AnnotationInfo(definitions.ThrowsClass.tpe,
+                                         Literal(Constant(cls.tpe)) :: Nil,
+                                         Nil))
+      }
     }
 
     /** Parse a sequence of annotations and attach them to the
@@ -890,7 +932,7 @@ abstract class ClassfileParser {
 
       val innerClass = getOwner(jflags).newClass(NoPosition, name.toTypeName).setInfo(completer).setFlag(sflags)
       val innerModule = getOwner(jflags).newModule(NoPosition, name).setInfo(completer).setFlag(sflags)
-      innerClass.moduleClass.setInfo(global.loaders.moduleClassLoader)
+      innerModule.moduleClass.setInfo(global.loaders.moduleClassLoader)
 
       getScope(jflags).enter(innerClass)
       getScope(jflags).enter(innerModule)

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  *
  * @author  Paul Phillips
  */
@@ -18,23 +18,12 @@ trait TreeDSL {
   import global._
   import definitions._
   import gen.{ scalaDot }
+  import PartialFunction._
   
   object CODE {    
     // Add a null check to a Tree => Tree function
     def nullSafe[T](f: Tree => Tree, ifNull: Tree): Tree => Tree =
       tree => IF (tree MEMBER_== NULL) THEN ifNull ELSE f(tree)
-
-    // XXX these two are in scala.PartialFunction now, just have to
-    // settle on the final names.
-
-    // Create a conditional based on a partial function - for values not defined
-    // on the partial, it is false.
-    def cond[T](x: T)(f: PartialFunction[T, Boolean]) = (f isDefinedAt x) && f(x)
-    
-    // Like cond, but transforms the value T => Some(U) if the pf is defined,
-    // or returns None if it is not.
-    def condOpt[T,U](x: T)(f: PartialFunction[T, U]): Option[U] =
-      if (f isDefinedAt x) Some(f(x)) else None
     
     // Applies a function to a value and then returns the value.
     def returning[T](f: T => Unit)(x: T): T = { f(x) ; x }
@@ -209,6 +198,10 @@ trait TreeDSL {
     def AND(guards: Tree*) =
       if (guards.isEmpty) EmptyTree
       else guards reduceLeft gen.mkAnd
+      
+    def OR(guards: Tree*) =
+      if (guards.isEmpty) EmptyTree
+      else guards reduceLeft gen.mkOr      
     
     def IF(tree: Tree)    = new IfStart(tree, EmptyTree)
     def TRY(tree: Tree)   = new TryStart(tree, Nil, EmptyTree)

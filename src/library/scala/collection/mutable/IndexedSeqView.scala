@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,8 +13,6 @@ package scala.collection
 package mutable
 
 import generic._
-import Math.MAX_INT
-
 import TraversableView.NoBuilder
 
 /** A non-strict view of a mutable IndexedSeq.
@@ -31,9 +29,7 @@ self =>
 
   def update(idx: Int, elem: A)
 
-  trait Transformed[B] extends IndexedSeqView[B, Coll] with super.Transformed[B] {
-    def update(idx: Int, elem: B)
-  }
+  trait Transformed[B] extends views.MutableIndexedSeq[B, Coll] with IndexedSeqView[B, Coll] with super.Transformed[B]
 
   trait Sliced extends Transformed[A] with super.Sliced {
     override def update(idx: Int, elem: A) = 
@@ -79,7 +75,7 @@ self =>
 
   override def filter(p: A => Boolean): IndexedSeqView[A, Coll] = newFiltered(p)
   override def init: IndexedSeqView[A, Coll]  = newSliced(0, size - 1).asInstanceOf[IndexedSeqView[A, Coll]]
-  override def drop(n: Int): IndexedSeqView[A, Coll] = newSliced(n max 0, MAX_INT).asInstanceOf[IndexedSeqView[A, Coll]]
+  override def drop(n: Int): IndexedSeqView[A, Coll] = newSliced(n max 0, Int.MaxValue).asInstanceOf[IndexedSeqView[A, Coll]]
   override def take(n: Int): IndexedSeqView[A, Coll] = newSliced(0, n).asInstanceOf[IndexedSeqView[A, Coll]]
   override def slice(from: Int, until: Int): IndexedSeqView[A, Coll] = newSliced(from max 0, until).asInstanceOf[IndexedSeqView[A, Coll]]
   override def dropWhile(p: A => Boolean): IndexedSeqView[A, Coll] = newDroppedWhile(p).asInstanceOf[IndexedSeqView[A, Coll]]

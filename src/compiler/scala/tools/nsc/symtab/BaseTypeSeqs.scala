@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 package scala.tools.nsc
@@ -8,7 +8,8 @@ package symtab
 // todo implement in terms of BitSet
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable.Map
-import Math.max
+import math.max
+import util.Statistics._
 
 /** A base type sequence (BaseTypeSeq) is an ordered sequence spanning all the base types
  *  of a type. It characterized by the following two laws:
@@ -31,6 +32,9 @@ trait BaseTypeSeqs {
 
   class BaseTypeSeq(parents: List[Type], elems: Array[Type]) {
   self =>
+
+    incCounter(baseTypeSeqCount)                       
+    incCounter(baseTypeSeqLenTotal, elems.length)
 
     /** The number of types in the sequence */
     def length: Int = elems.length
@@ -137,7 +141,7 @@ trait BaseTypeSeqs {
 
     protected def maxDepthOfElems = {
       var d = 0
-      for (i <- 0 until length) d = Math.max(d, maxDpth(elems(i)))
+      for (i <- 0 until length) d = max(d, maxDpth(elems(i)))
       d
     }
 

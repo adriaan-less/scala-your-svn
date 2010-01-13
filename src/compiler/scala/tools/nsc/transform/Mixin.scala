@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
 // $Id$
@@ -98,14 +98,14 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
       var sym: Symbol = NoSymbol
       if (settings.debug.value)
         log("starting rebindsuper " + base + " " + member + ":" + member.tpe +
-            " " + mixinClass + " " + base.info.baseClasses)
+            " " + mixinClass + " " + base.info.baseClasses + "/" + bcs)
       while (!bcs.isEmpty && sym == NoSymbol) {
         if (settings.debug.value) {
           val other = bcs.head.info.nonPrivateDecl(member.name);
           log("rebindsuper " + bcs.head + " " + other + " " + other.tpe +
               " " + other.isDeferred)
         }
-        sym = member.overridingSymbol(bcs.head).suchThat(sym => !sym.hasFlag(DEFERRED | BRIDGE))
+        sym = member.matchingSymbol(bcs.head, base.thisType).suchThat(sym => !sym.hasFlag(DEFERRED | BRIDGE))
         bcs = bcs.tail
       }
       assert(sym != NoSymbol, member)
@@ -237,7 +237,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             val imember = member.overriddenSymbol(iface)
             //Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
             if (imember.overridingSymbol(clazz) == NoSymbol &&
-                clazz.info.findMember(member.name, 0, lateDEFERRED, false)(NoSymbol).alternatives.contains(imember)) {
+                clazz.info.findMember(member.name, 0, lateDEFERRED, false).alternatives.contains(imember)) {
                   val member1 = addMember(
                     clazz,
                     member.cloneSymbol(clazz) setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
@@ -278,13 +278,16 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
                     // member is a value of type unit. No field needed
                     ;
                   case _ =>
+                    // atPhase: the private field is moved to the implementation class by erasure,
+                    // so it can no longer be found in the member's owner (the trait)
+                    val accessed = atPhase(currentRun.picklerPhase)(member.accessed)
                     // otherwise mixin a field as well
                     addMember(clazz,
                               clazz.newValue(member.pos, nme.getterToLocal(member.name))
                               setFlag (LOCAL | PRIVATE | member.getFlag(MUTABLE | LAZY))
                               setFlag (if (!member.hasFlag(STABLE)) MUTABLE else 0)
                               setInfo member.tpe.resultType
-                              setAnnotations member.annotations)
+                              setAnnotations accessed.annotations)
                 }
             }
           } else if (member hasFlag SUPERACCESSOR) { // mixin super accessors
@@ -611,7 +614,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
                        .setInfo(IntClass.tpe)
                        .setFlag(PROTECTED)
           atPhase(currentRun.typerPhase) {
-            sym addAnnotation AnnotationInfo(VolatileAttr.tpe, Nil, Nil, NoPosition)
+            sym addAnnotation AnnotationInfo(VolatileAttr.tpe, Nil, Nil)
           }
           clazz.info.decls.enter(sym)
           addDef(clazz.pos, VAL(sym) === ZERO)
@@ -646,9 +649,9 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
        *  The result will be a tree of the form
        *  {
        *    if ((bitmap$n & MASK) == 0) {
-       *       synhronized(this) {
+       *       synchronized(this) {
        *         if ((bitmap$n & MASK) == 0) {
-       *           synhronized(this) {
+       *           synchronized(this) {
        *             init // l$ = <rhs>
        *           }
        *           bitmap$n = bimap$n | MASK
@@ -668,7 +671,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         val bitmapSym = bitmapFor(clazz, offset)
         val mask      = LIT(1 << (offset % FLAGS_PER_WORD))
         def cond      = mkTest(clazz, mask, bitmapSym, true)
-        val nulls     = (lazyValNullables(lzyVal).toList.sort(_.id < _.id) map nullify)
+        val nulls     = (lazyValNullables(lzyVal).toList sortBy (_.id) map nullify)
         def syncBody  = init ::: List(mkSetFlag(clazz, offset), UNIT)
 
         log("nulling fields inside " + lzyVal + ": " + nulls)

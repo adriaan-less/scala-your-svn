@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -58,7 +58,7 @@ object AbstractFile
    * @return     ...
    */
   def getURL(url: URL): AbstractFile =
-    Option(url) filterMap { case url: URL if isJarOrZip(url.getPath) => ZipArchive fromURL url } orNull
+    Option(url) partialMap { case url: URL if isJarOrZip(url.getPath) => ZipArchive fromURL url } orNull
 }
 
 /**

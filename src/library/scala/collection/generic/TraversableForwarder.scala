@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -12,7 +12,8 @@
 package scala.collection.generic
 import scala.collection._
 
-import mutable.Buffer
+import mutable.{Buffer, StringBuilder}
+import immutable.{List, Stream}
 // import immutable.{List, Nil, ::, Stream}
 
 /** <p>

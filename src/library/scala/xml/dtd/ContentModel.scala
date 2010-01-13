@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -12,9 +12,11 @@
 package scala.xml
 package dtd
 
-import scala.util.regexp.WordExp
-import scala.util.automata.{DetWordAutom, SubsetConstruction, WordBerrySethi}
-import scala.collection.mutable.HashSet
+import util.regexp.WordExp
+import util.automata.{DetWordAutom, SubsetConstruction, WordBerrySethi}
+import collection.mutable.{HashSet, StringBuilder}
+import collection.immutable.{List, Nil}
+import collection.Seq
 import Utility.sbToString
 import PartialFunction._
 
@@ -48,12 +50,10 @@ object ContentModel extends WordExp {
   def buildString(r: RegExp): String = sbToString(buildString(r, _))
 
   /* precond: rs.length >= 1 */
-  private def buildString(rs: Seq[RegExp], sb: StringBuilder, sep: Char) {    
-    val it = rs.iterator
-    val fst = it.next
-    buildString(fst, sb)
-    for (z <- it) {
-      sb.append(sep)
+  private def buildString(rs: Seq[RegExp], sb: StringBuilder, sep: Char) {
+    buildString(rs.head, sb)
+    for (z <- rs.tail) {
+      sb append sep
       buildString(z, sb)
     }
     sb
@@ -119,7 +119,7 @@ case class MIXED(r: ContentModel.RegExp) extends DFAContentModel {
   }
 }
 
-case class  ELEMENTS(r: ContentModel.RegExp) extends DFAContentModel {
+case class ELEMENTS(r: ContentModel.RegExp) extends DFAContentModel {
   override def buildString(sb: StringBuilder): StringBuilder =  
     ContentModel.buildString(r, sb)
 }

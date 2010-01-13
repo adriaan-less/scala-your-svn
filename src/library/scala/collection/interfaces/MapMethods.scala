@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -32,7 +32,7 @@ with SubtractableMethods[A, This]
   def isDefinedAt(key: A): Boolean
   def keySet: Set[A]
   def keysIterator: Iterator[A]
-  def valueIterable: Iterable[B]
+  def valuesIterable: Iterable[B]
   def valuesIterator: Iterator[B]
   def default(key: A): B
   def filterKeys(p: A => Boolean): DefaultMap[A, B]

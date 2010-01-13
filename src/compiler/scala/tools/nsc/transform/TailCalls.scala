@@ -1,5 +1,5 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Iulian Dragos
  */
 // $Id$
@@ -158,7 +158,7 @@ abstract class TailCalls extends Transform
           val newCtx = mkContext(ctx)
           newCtx.currentMethod = tree.symbol
           newCtx.makeLabel()
-          val currentClassParam = tree.symbol.newSyntheticValueParam(currentClass.tpe)
+          val currentClassParam = tree.symbol.newSyntheticValueParam(currentClass.typeOfThis)
           newCtx.label.setInfo(MethodType(currentClassParam :: tree.symbol.tpe.params, tree.symbol.tpe.finalResultType))
           newCtx.tailPos = true
 
@@ -193,7 +193,7 @@ abstract class TailCalls extends Transform
                 isTransformed = true
                 val newThis = newCtx.currentMethod
                   . newValue (tree.pos, nme.THIS)
-                  . setInfo (currentClass.tpe)
+                  . setInfo (currentClass.typeOfThis)
                   . setFlag (Flags.SYNTHETIC)
                 
                 typed(atPos(tree.pos)(Block(
@@ -344,12 +344,7 @@ abstract class TailCalls extends Transform
       typed(t)
     }
 
-    private def isSameTypes(ts1: List[Symbol], ts2: List[Symbol]): Boolean = {
-      def isSameType(t1: Symbol, t2: Symbol) = {
-        t1 == t2
-      }
-      List.forall2(ts1, ts2)(isSameType)
-    }
+    private def isSameTypes(ts1: List[Symbol], ts2: List[Symbol]) = ts1 sameElements ts2
 
     /** Returns <code>true</code> if the fun tree refers to the same method as
      *  the one saved in <code>ctx</code>.

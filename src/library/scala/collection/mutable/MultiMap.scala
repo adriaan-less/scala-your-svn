@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -40,7 +40,9 @@ trait MultiMap[A, B] extends Map[A, Set[B]] {
   def removeBinding(key: A, value: B): this.type = {
     get(key) match {
       case None =>
-        case Some(set) => set -= value
+        case Some(set) =>
+          set -= value
+          if (set.isEmpty) this -= key
     }
     this
   }

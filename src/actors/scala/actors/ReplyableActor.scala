@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -62,7 +62,7 @@ private[actors] trait ReplyableActor extends ReplyableReactor {
    * <code>f</code>. This also allows to recover a more
    * precise type for the reply value.
    */
-  override def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] = {
+  override def !![A](msg: Any, f: Any =>? A): Future[A] = {
     val ftch = new Channel[A](Actor.self(thiz.scheduler))
     thiz.send(msg, new OutputChannel[Any] {
       def !(msg: Any) =
@@ -108,7 +108,7 @@ private[actors] trait ReplyableActor extends ReplyableReactor {
         Futures.fromInputChannel(someChan)
       }
       // should never be invoked; return dummy value
-      override def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] = {
+      override def !![A](msg: Any, f: Any =>? A): Future[A] = {
         val someChan = new Channel[A](Actor.self(thiz.scheduler))
         Futures.fromInputChannel(someChan)
       }
@@ -117,17 +117,17 @@ private[actors] trait ReplyableActor extends ReplyableReactor {
     thiz.send(msg, linkedChannel)
     new Future[Any](ftch) {
       var exitReason: Option[Any] = None
-      val handleReply: PartialFunction[Any, Unit] = {
+      val handleReply: Any =>? Unit = {
         case Exit(from, reason) =>
           exitReason = Some(reason)
         case any =>
-          value = Some(any)
+          fvalue = Some(any)
       }
 
       def apply(): Any =
         if (isSet) {
-          if (!value.isEmpty)
-            value.get
+          if (!fvalue.isEmpty)
+            fvalue.get
           else if (!exitReason.isEmpty) {
             val reason = exitReason.get
             if (reason.isInstanceOf[Throwable])
@@ -143,9 +143,9 @@ private[actors] trait ReplyableActor extends ReplyableReactor {
  	else
           inputChannel.react(handleReply andThen {(x: Unit) => k(apply())})
 
-      def isSet = (value match {
+      def isSet = (fvalue match {
         case None =>
-          val handleTimeout: PartialFunction[Any, Boolean] = {
+          val handleTimeout: Any =>? Boolean = {
             case TIMEOUT =>
               false
           }

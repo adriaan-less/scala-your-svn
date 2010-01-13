@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -25,6 +25,7 @@ package scala.collection.immutable
  *  @version 2.8
  *  @since   2.5
  */
+@serializable @SerialVersionUID(7618862778670199309L)
 class Range(val start: Int, val end: Int, val step: Int) extends IndexedSeq[Int] {
 
   require(step != 0)
@@ -64,14 +65,17 @@ class Range(val start: Int, val end: Int, val step: Int) extends IndexedSeq[Int]
     start + idx * step
   }
 
+  // take and drop have to be tolerant of large values without overflowing
+  private def locationAfterN(n: Int) = start + step * (0 max n min length)
+  
   final override def take(n: Int): Range = {
-    val limit1 = start + step * (n max 0)
+    val limit1 = locationAfterN(n)
     if (step > 0) Range(start, limit1 min limit, step)
     else Range(start, limit1 max limit, step)
   }
   
   final override def drop(n: Int): Range =
-    copy(start + step * (n max 0), end, step)
+    copy(locationAfterN(n), end, step)
       
   final override def init: Range = 
     take(length - 1)
@@ -101,6 +105,9 @@ class Range(val start: Int, val end: Int, val step: Int) extends IndexedSeq[Int]
 
   final override def reverse: Range = new Range.Inclusive(last, start, -step)
 
+  /** Make range inclusive.
+   * @pre if (step > 0) end != MaxInt else end != MinInt
+   */
   def inclusive = new Range.Inclusive(start, end, step)
 
   def contains(x: Int): Boolean = 
@@ -132,13 +139,28 @@ object Range {
 
   class Inclusive(start: Int, end: Int, step: Int) extends Range(start, end, step) {
     override def isInclusive = true
-    override protected val limit = end + Math.signum(step)
+    override protected val limit = end + math.signum(step)
     override protected def copy(start: Int, end: Int, step: Int): Range = new Inclusive(start, end, step)
   }
 
+  /** Make a range from `start` until `end` (exclusive) with step value 1.
+   */
   def apply(start: Int, end: Int, step: Int): Range = new Range(start, end, step)
+
+  /** Make an range from `start` to `end` inclusive with step value 1.
+   * @pre end != MaxInt
+   */
   def apply(start: Int, end: Int): Range with ByOne = new Range(start, end, 1) with ByOne
+
+  /** Make an inclusive range from start to end with given step value.
+   * @pre step != 0
+   * @pre if (step > 0) end != MaxInt else end != MinInt
+   */
   def inclusive(start: Int, end: Int, step: Int): Range.Inclusive = new Inclusive(start, end, step)
+
+  /** Make an inclusive range from start to end with step value 1.
+   * @pre end != MaxInt
+   */
   def inclusive(start: Int, end: Int): Range.Inclusive with ByOne = new Inclusive(start, end, 1) with ByOne
 
   trait ByOne extends Range {
@@ -154,13 +176,13 @@ object Range {
 
   // BigInt and Long are straightforward generic ranges.
   object BigInt {
-    def apply(start: BigInt, end: BigInt, step: BigInt) = GenericRange(start, end, step)
-    def inclusive(start: BigInt, end: BigInt, step: BigInt) = GenericRange.inclusive(start, end, step)
+    def apply(start: BigInt, end: BigInt, step: BigInt) = NumericRange(start, end, step)
+    def inclusive(start: BigInt, end: BigInt, step: BigInt) = NumericRange.inclusive(start, end, step)
   }
 
   object Long {
-    def apply(start: Long, end: Long, step: Long) = GenericRange(start, end, step)
-    def inclusive(start: Long, end: Long, step: Long) = GenericRange.inclusive(start, end, step)
+    def apply(start: Long, end: Long, step: Long) = NumericRange(start, end, step)
+    def inclusive(start: Long, end: Long, step: Long) = NumericRange.inclusive(start, end, step)
   }
   
   // BigDecimal uses an alternative implementation of Numeric in which
@@ -172,9 +194,9 @@ object Range {
     implicit val bigDecAsIntegral = scala.Numeric.BigDecimalAsIfIntegral
     
     def apply(start: BigDecimal, end: BigDecimal, step: BigDecimal) =
-      GenericRange(start, end, step)
+      NumericRange(start, end, step)
     def inclusive(start: BigDecimal, end: BigDecimal, step: BigDecimal) = 
-      GenericRange.inclusive(start, end, step)
+      NumericRange.inclusive(start, end, step)
   }
 
   // Double works by using a BigDecimal under the hood for precise
@@ -206,7 +228,7 @@ object Range {
   // indefinitely, for performance and because the compiler seems to bootstrap
   // off it and won't do so with our parameterized version without modifications.
   object Int {
-    def apply(start: Int, end: Int, step: Int) = GenericRange(start, end, step)
-    def inclusive(start: Int, end: Int, step: Int) = GenericRange.inclusive(start, end, step)
+    def apply(start: Int, end: Int, step: Int) = NumericRange(start, end, step)
+    def inclusive(start: Int, end: Int, step: Int) = NumericRange.inclusive(start, end, step)
   }
 }

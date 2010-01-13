@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -15,7 +15,7 @@ package immutable
 import generic._
 import mutable.Builder
 
-/** A subtrait of <code>collection.Seq</code> which represents sequences
+/** A subtrait of <code>collection.LinearSeq</code> which represents sequences
  *  that cannot be mutated.
  *
  *  @since 2.8

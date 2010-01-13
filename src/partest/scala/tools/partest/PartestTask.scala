@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala Parallel Testing               **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -145,7 +145,7 @@ class PartestTask extends Task {
       Array()
 
   private def getPosFiles       = getFilesAndDirs(posFiles)
-  private def getNegFiles       = getFiles(negFiles)
+  private def getNegFiles       = getFilesAndDirs(negFiles)
   private def getRunFiles       = getFiles(runFiles)
   private def getJvmFiles       = getFilesAndDirs(jvmFiles)
   private def getResidentFiles  = getFiles(residentFiles)
@@ -234,8 +234,9 @@ class PartestTask extends Task {
       }
     }
       
-    val (allSuccesses, allFailures): (Int, Int) =
-      (testFileSets map runSet).foldLeft((0, 0))((sums, x) => (sums._1 + x._1, sums._2 + x._2))
+    val _results = testFileSets map runSet
+    val allSuccesses = _results map (_._1) sum
+    val allFailures = _results map (_._2) sum
 
     def f = if (errorOnFailed && allFailures > 0) error(_) else log(_: String)
     def s = if (allFailures > 1) "s" else ""

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,7 +13,9 @@ package scala.xml
 package parsing
 
 import java.io.{InputStream, Reader, File, FileDescriptor, FileInputStream}
-import scala.collection.mutable.Stack
+import collection.mutable.{Stack, StringBuilder}
+import collection.immutable.{List, Nil}
+import collection.{Seq, Iterator}
 
 import org.xml.sax.{ Attributes, InputSource }
 import org.xml.sax.helpers.DefaultHandler
@@ -133,7 +135,9 @@ abstract class FactoryAdapter extends DefaultHandler with factory.XMLLoader[Node
 
     hStack push null
     var m: MetaData = Null
-    var scpe: NamespaceBinding = TopScope
+    var scpe: NamespaceBinding = 
+      if (scopeStack.isEmpty) TopScope
+      else scopeStack.top
     
     for (i <- 0 until attributes.getLength()) {
       val qname = attributes getQName i

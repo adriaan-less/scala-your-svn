@@ -1,3 +1,28 @@
+// #1435
+object t1435 {
+  implicit def a(s:String):String = error("")
+  implicit def a(i:Int):String = error("")
+  implicit def b(i:Int):String = error("")
+}
+
+class C1435 {
+  val v:String = {
+    import t1435.a
+    2
+  }
+}
+
+// #1492
+class C1492 {
+
+  class X
+
+  def foo(x: X => X) {}
+
+  foo ( implicit x => implicitly[X] )
+  foo { implicit x => implicitly[X] }
+}
+
 // #1579
 object Test1579 {
   class Column
@@ -36,3 +61,24 @@ object Test2188 {
 
   val x: java.util.List[String] = List("foo")
 }
+
+object TestNumericWidening {
+  val y = 1
+  val x: java.lang.Long = y
+}
+
+// #2709 
+package foo2709 { 
+  class A 
+  class B 
+ 
+  package object bar { 
+    implicit def a2b(a: A): B = new B 
+  } 
+ 
+  package bar { 
+    object test { 
+      new A: B 
+    } 
+  } 
+} 

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -70,7 +70,7 @@ private[actors] trait ReplyableReactor extends Replyable[Any, Any] {
    * <code>f</code>. This also allows to recover a more
    * precise type for the reply value.
    */
-  override def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] = {
+  override def !![A](msg: Any, f: Any =>? A): Future[A] = {
     val myself = Actor.rawSelf(this.scheduler)
     val ftch = new ReactChannel[A](myself)
     val res = new scala.concurrent.SyncVar[A]
@@ -98,20 +98,19 @@ private[actors] trait ReplyableReactor extends Replyable[Any, Any] {
     this.send(msg, out)
 
     new Future[A](ftch) {
-      def apply() =
-        if (isSet) value.get.asInstanceOf[A]
-        else {
-          value = Some(res.get)
-          value.get.asInstanceOf[A]
-        }
+      def apply() = {
+        if (!isSet)
+          fvalue = Some(res.get)
+        
+        fvalueTyped
+      }
       def respond(k: A => Unit): Unit =
-        if (isSet) k(value.get.asInstanceOf[A])
+        if (isSet) k(fvalueTyped)
         else inputChannel.react {
- 	  case any => value = Some(any); k(value.get.asInstanceOf[A])
+          case any => fvalue = Some(any); k(fvalueTyped)
         }
       def isSet =
-        !value.isEmpty
+        !fvalue.isEmpty
     }
   }
-
 }

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,6 +13,10 @@ package scala.xml
 
 import Utility.sbToString
 import annotation.tailrec
+import collection.immutable.List
+import collection.{Seq, Iterator, Iterable}
+import collection.mutable.StringBuilder
+
 
 /**
  * Copyright 2008 Google Inc. All Rights Reserved.

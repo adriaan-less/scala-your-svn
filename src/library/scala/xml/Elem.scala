@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -10,6 +10,8 @@
 
 
 package scala.xml
+
+import collection.Seq
 
 /** This singleton object contains the apply and unapplySeq methods for convenient construction and
  *  deconstruction. It is possible to deconstruct any Node instance (that is not a SpecialNode or

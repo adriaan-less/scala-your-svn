@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -27,6 +27,15 @@ object Debug {
 
   def error(s: String) =
     if (lev > 0) System.err.println("Error: " + s)
+
+  def doInfo(b: => Unit) =
+    if (lev > 2) b
+
+  def doWarning(b: => Unit) =
+    if (lev > 1) b
+
+  def doError(b: => Unit) =
+    if (lev > 0) b
 }
 
 class Debug(tag: String) {

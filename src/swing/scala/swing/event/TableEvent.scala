@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -37,7 +37,7 @@ case class TableUpdated(override val source: Table, range: Range, column: Int)
 /**
  * Any change that caused the table to change it's size
  */ 
-case class TableResized(override val source: Table) extends TableChange(source)
+class TableResized(override val source: Table) extends TableChange(source)
 case class TableRowsAdded(override val source: Table, range: Range) extends TableResized(source)
 case class TableRowsRemoved(override val source: Table, range: Range) extends TableResized(source)
 

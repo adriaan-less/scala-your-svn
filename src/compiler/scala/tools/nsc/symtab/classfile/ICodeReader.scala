@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Iulian Dragos
  */
 // $Id$
@@ -34,8 +34,8 @@ abstract class ICodeReader extends ClassfileParser {
   var method: IMethod = _                  // the current IMethod
 
   val OBJECT: TypeKind = REFERENCE(definitions.ObjectClass)
-  val nothingName = newTermName("scala.runtime.Nothing$")
-  val nullName    = newTermName("scala.runtime.Null$")
+  val nothingName = newTermName(SCALA_NOTHING)
+  val nullName    = newTermName(SCALA_NULL)
   var isScalaModule = false
 
   /** Read back bytecode for the given class symbol. It returns
@@ -234,7 +234,7 @@ abstract class ICodeReader extends ClassfileParser {
       /** Parse 16 bit jump target. */
       def parseJumpTarget = {
         size = size + 2
-        val offset = in.nextChar.asInstanceOf[Short]
+        val offset = in.nextChar.toShort
         val target = pc + offset
         assert(target >= 0 && target < codeLength, "Illegal jump target: " + target)
         target

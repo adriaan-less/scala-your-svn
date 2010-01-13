@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -7,8 +7,10 @@
 package scala.tools.nsc
 package typechecker
 
+import scala.tools.nsc.util.Position
+import symtab.Flags._
+
 import scala.collection.mutable.ListBuffer
-  import symtab.Flags._
 
 /**
  *  @author Lukas Rytz
@@ -132,8 +134,15 @@ trait NamesDefaults { self: Analyzer =>
             case TypeRef(pre, sym, args)
             if (!args.forall(a => context.undetparams contains a.typeSymbol)) =>
               args.map(TypeTree(_))
-            case _ => Nil
+            case _ =>
+              Nil
           }
+          (baseFun, Nil, targsInSource)
+
+        case Select(TypeApply(New(TypeTree()), targs), _) if isConstr =>
+          val targsInSource =
+            if (targs.forall(a => context.undetparams contains a.symbol)) Nil
+            else targs
           (baseFun, Nil, targsInSource)
 
         case _ => (baseFun, Nil, Nil)
@@ -170,28 +179,41 @@ trait NamesDefaults { self: Analyzer =>
         b
       }
 
+      def moduleQual(pos: Position, tree: Symbol => Tree) = {
+        val module = baseFun.symbol.owner.linkedModuleOfClass
+        if (module == NoSymbol) None
+        else Some(atPos(pos.focus)(tree(module)))
+      }
+
       baseFun1 match {
         // constructor calls
 
         case Select(New(TypeTree()), _) if isConstr =>
           blockWithoutQualifier(None)
+        case Select(TypeApply(New(TypeTree()), _), _) if isConstr =>
+          blockWithoutQualifier(None)
 
         case Select(New(Ident(_)), _) if isConstr =>
           blockWithoutQualifier(None)
+        case Select(TypeApply(New(Ident(_)), _), _) if isConstr =>
+          blockWithoutQualifier(None)
 
-        case Select(nev @ New(sel @ Select(qual, typeName)), constr) if isConstr =>
-          // #2057
-          val module = baseFun.symbol.owner.linkedModuleOfClass
-          val defaultQual =
-            if (module == NoSymbol) None
-            else Some(atPos(qual.pos.focus)(gen.mkAttributedSelect(qual.duplicate, module)))
+        case Select(New(Select(qual, _)), _) if isConstr =>
           // in `new q.C()', q is always stable
           assert(treeInfo.isPureExpr(qual), qual)
+          // #2057
+          val defaultQual = moduleQual(qual.pos, mod => gen.mkAttributedSelect(qual.duplicate, mod))
+          blockWithoutQualifier(defaultQual)
+
+        case Select(TypeApply(New(Select(qual, _)), _), _) if isConstr =>
+          assert(treeInfo.isPureExpr(qual), qual)
+          val defaultQual = moduleQual(qual.pos, mod => gen.mkAttributedSelect(qual.duplicate, mod))
           blockWithoutQualifier(defaultQual)
 
         // super constructor calls
         case Select(Super(_, _), _) if isConstr =>
-          blockWithoutQualifier(None)
+          val defaultQual = moduleQual(baseFun.pos, mod => gen.mkAttributedRef(mod))
+          blockWithoutQualifier(defaultQual)
 
         // self constructor calls (in secondary constructors)
         case Select(qual, name) if isConstr =>
@@ -223,7 +245,7 @@ trait NamesDefaults { self: Analyzer =>
      */
     def argValDefs(args: List[Tree], paramTypes: List[Type], blockTyper: Typer): List[ValDef] = {
       val context = blockTyper.context
-      val symPs = List.map2(args, paramTypes)((arg, tpe) => {
+      val symPs = (args, paramTypes).zipped map ((arg, tpe) => {
         val byName = tpe.typeSymbol == ByNameParamClass
         val s = context.owner.newValue(arg.pos, unit.fresh.newName(arg.pos, "x$"))
         val valType = if (byName) functionType(List(), arg.tpe)
@@ -231,11 +253,11 @@ trait NamesDefaults { self: Analyzer =>
         s.setInfo(valType)
         (context.scope.enter(s), byName)
       })
-      List.map2(symPs, args)((symP, arg) => {
+      (symPs, args).zipped map ((symP, arg) => {
         val (sym, byName) = symP
         // resetAttrs required for #2290. given a block { val x = 1; x }, when wrapping into a function
         // () => { val x = 1; x }, the owner of symbol x must change (to the apply method of the function).
-        val body = if (byName) blockTyper.typed(Function(List(), resetAttrs(arg)))
+        val body = if (byName) blockTyper.typed(Function(List(), resetLocalAttrs(arg)))
                    else arg
         atPos(body.pos)(ValDef(sym, body).setType(NoType))
       })
@@ -270,7 +292,7 @@ trait NamesDefaults { self: Analyzer =>
                                        reorderArgsInv(formals, argPos),
                                        blockTyper)
               // refArgs: definition-site order again
-              val refArgs = List.map2(reorderArgs(valDefs, argPos), formals)((vDef, tpe) => {
+              val refArgs = (reorderArgs(valDefs, argPos), formals).zipped map ((vDef, tpe) => {
                 val ref = gen.mkAttributedRef(vDef.symbol)
                 atPos(vDef.pos.focus) {
                   // for by-name parameters, the local value is a nullary function returning the argument
@@ -388,7 +410,10 @@ trait NamesDefaults { self: Analyzer =>
           }
           val res = typer.silent(_.typed(arg, subst(paramtpe))) match {
             case _: TypeError =>
-              positionalAllowed = false
+              // if the named argument is on the original parameter
+              // position, positional after named is allowed.
+              if (index != pos)
+                positionalAllowed = false
               argPos(index) = pos
               rhs
             case t: Tree =>

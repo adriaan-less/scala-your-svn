@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -7,11 +7,12 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.tools.nsc.util._
-import SourceFile.{LF, FF, CR, SU}
+import Chars.{LF, FF, CR, SU}
 import Tokens._
 import scala.annotation.switch
 import scala.collection.mutable.{ListBuffer, ArrayBuffer}
 import scala.xml.Utility.{ isNameStart }
+import util.Chars._
 
 trait Scanners {
   val global : Global
@@ -103,11 +104,11 @@ trait Scanners {
     /** buffer for the documentation comment
      */
     var docBuffer: StringBuilder = null
-    var docOffset: Position = null
+    var docPos: Position = null
 
     /** Return current docBuffer and set docBuffer to null */
-    def flushDoc = {
-      val ret = if (docBuffer != null) (docBuffer.toString, docOffset) else null
+    def flushDoc: DocComment = {
+      val ret = if (docBuffer != null) DocComment(docBuffer.toString, docPos) else null
       docBuffer = null
       ret
     }
@@ -331,7 +332,7 @@ trait Scanners {
           nextChar()
           if (isIdentifierStart(ch))
             charLitOr(getIdentRest)
-          else if (isSpecial(ch))
+          else if (isOperatorPart(ch) && (ch != '\\'))
             charLitOr(getOperatorRest)
           else {
             getLitChar()
@@ -383,6 +384,7 @@ trait Scanners {
             getIdentRest()
           } else if (isSpecial(ch)) {
             putChar(ch)
+            nextChar()
             getOperatorRest()
           } else {
             syntaxError("illegal character")
@@ -395,7 +397,7 @@ trait Scanners {
 
       if (ch == '/' || ch == '*') {
     	  
-        val comment = new StringBuilder("//")
+        val comment = new StringBuilder("/")
         def appendToComment() = comment.append(ch)
 
         if (ch == '/') {
@@ -406,6 +408,7 @@ trait Scanners {
         } else {
           docBuffer = null
           var openComments = 1
+          appendToComment()
           nextChar()
           appendToComment()
           var buildingDocComment = false
@@ -679,7 +682,7 @@ trait Scanners {
         var value: Long = 0
         val divider = if (base == 10) 1 else 2
         val limit: Long =
-          if (token == LONGLIT) Math.MAX_LONG else Math.MAX_INT
+          if (token == LONGLIT) Long.MaxValue else Int.MaxValue
         var i = 0
         val len = strVal.length
         while (i < len) {
@@ -708,7 +711,7 @@ trait Scanners {
     */
     def floatVal(negated: Boolean): Double = {
       val limit: Double = 
-        if (token == DOUBLELIT) Math.MAX_DOUBLE else Math.MAX_FLOAT
+        if (token == DOUBLELIT) Double.MaxValue else Float.MaxValue
       try {
         val value: Double = java.lang.Double.valueOf(strVal).doubleValue()
         if (value > limit)
@@ -880,32 +883,6 @@ trait Scanners {
       nextToken()
     }
   } // end Scanner
-
-  // ------------- character classification --------------------------------
-
-  def isIdentifierStart(c: Char): Boolean =
-    ('A' <= c && c <= 'Z') ||
-    ('a' <= c && c <= 'a') ||
-    (c == '_') || (c == '$') ||
-    Character.isUnicodeIdentifierStart(c)
-  
-  def isIdentifierPart(c: Char) =
-    isIdentifierStart(c) || 
-    ('0' <= c && c <= '9') ||
-    Character.isUnicodeIdentifierPart(c)
-
-  def isSpecial(c: Char) = {
-    val chtp = Character.getType(c)
-    chtp == Character.MATH_SYMBOL.toInt || chtp == Character.OTHER_SYMBOL.toInt
-  }
-
-  def isOperatorPart(c : Char) : Boolean = (c: @switch) match {
-    case '~' | '!' | '@' | '#' | '%' | 
-         '^' | '*' | '+' | '-' | '<' |
-         '>' | '?' | ':' | '=' | '&' | 
-         '|' | '/' | '\\' => true
-    case c => isSpecial(c)
-  }
 
   // ------------- keyword configuration -----------------------------------
   
@@ -1083,11 +1060,14 @@ trait Scanners {
     }
     
     override def foundComment(value: String, start: Int, end: Int) {
-    	unit.comments += unit.Comment(value, new RangePosition(unit.source, start, start, end))
+      val pos = new RangePosition(unit.source, start, start, end)
+    	unit.comments += unit.Comment(value, pos)
+    	unit.comment(pos, value)
     }
 
     override def foundDocComment(value: String, start: Int, end: Int) {
-      docOffset = new RangePosition(unit.source, start, start, end)
+      docPos = new RangePosition(unit.source, start, start, end)
+      unit.comment(docPos, value)
     }
   }
 

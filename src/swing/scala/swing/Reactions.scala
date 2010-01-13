@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -27,7 +27,7 @@ object Reactions {
     }
   }
   
-  type Reaction = PartialFunction[Event, Unit]
+  type Reaction = Event =>? Unit
   
   /**
    * A Reaction implementing this trait is strongly referenced in the reaction list

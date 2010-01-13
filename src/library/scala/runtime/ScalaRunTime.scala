@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -14,14 +14,13 @@ package scala.runtime
 import scala.reflect.ClassManifest
 import scala.collection.Seq
 import scala.collection.mutable._
+import scala.collection.immutable.{ List, Stream, Nil, :: }
+import scala.util.control.ControlException
 
 /* The object <code>ScalaRunTime</code> provides ...
  */
 object ScalaRunTime {
-
-  def isArray(x: AnyRef): Boolean = // !!! remove once newarrays
-    x != null && (x.getClass.isArray || x.isInstanceOf[BoxedArray[_]])
-
+  def isArray(x: AnyRef): Boolean = isArray(x, 1)
   def isArray(x: Any, atLevel: Int): Boolean = 
     x != null && isArrayClass(x.asInstanceOf[AnyRef].getClass, atLevel)
 
@@ -30,18 +29,50 @@ object ScalaRunTime {
 
   def isValueClass(clazz: Class[_]) = clazz.isPrimitive() 
 
-  // todo: remove?
-  def forceBoxedArray[A <: Any](xs: Seq[A]): Array[A] =
-    throw new Error(" not implemented: forceBoxedArray")
-
   /** Retrieve generic array element */
-  def array_apply(xs: AnyRef, idx: Int): Any = java.lang.reflect.Array.get(xs, idx)
+  def array_apply(xs: AnyRef, idx: Int): Any = xs match {
+    case x: Array[AnyRef]  => x(idx).asInstanceOf[Any]
+    case x: Array[Int]     => x(idx).asInstanceOf[Any]
+    case x: Array[Double]  => x(idx).asInstanceOf[Any]
+    case x: Array[Long]    => x(idx).asInstanceOf[Any]
+    case x: Array[Float]   => x(idx).asInstanceOf[Any]
+    case x: Array[Char]    => x(idx).asInstanceOf[Any]
+    case x: Array[Byte]    => x(idx).asInstanceOf[Any]
+    case x: Array[Short]   => x(idx).asInstanceOf[Any]
+    case x: Array[Boolean] => x(idx).asInstanceOf[Any]
+    case x: Array[Unit]    => x(idx).asInstanceOf[Any]
+    case null => throw new NullPointerException
+  }
 
   /** update generic array element */
-  def array_update(xs: AnyRef, idx: Int, value: Any): Unit = java.lang.reflect.Array.set(xs, idx, value)
+  def array_update(xs: AnyRef, idx: Int, value: Any): Unit = xs match {
+    case x: Array[AnyRef]  => x(idx) = value.asInstanceOf[AnyRef]
+    case x: Array[Int]     => x(idx) = value.asInstanceOf[Int]
+    case x: Array[Double]  => x(idx) = value.asInstanceOf[Double]
+    case x: Array[Long]    => x(idx) = value.asInstanceOf[Long]
+    case x: Array[Float]   => x(idx) = value.asInstanceOf[Float]
+    case x: Array[Char]    => x(idx) = value.asInstanceOf[Char]
+    case x: Array[Byte]    => x(idx) = value.asInstanceOf[Byte]
+    case x: Array[Short]   => x(idx) = value.asInstanceOf[Short]
+    case x: Array[Boolean] => x(idx) = value.asInstanceOf[Boolean]
+    case x: Array[Unit]    => x(idx) = value.asInstanceOf[Unit]
+    case null => throw new NullPointerException
+  }    
 
   /** Get generic array length */
-  def array_length(xs: AnyRef): Int = java.lang.reflect.Array.getLength(xs)
+  def array_length(xs: AnyRef): Int = xs match {
+    case x: Array[AnyRef]  => x.length
+    case x: Array[Int]     => x.length
+    case x: Array[Double]  => x.length
+    case x: Array[Long]    => x.length
+    case x: Array[Float]   => x.length
+    case x: Array[Char]    => x.length
+    case x: Array[Byte]    => x.length
+    case x: Array[Short]   => x.length
+    case x: Array[Boolean] => x.length
+    case x: Array[Unit]    => x.length
+    case null => throw new NullPointerException
+  }    
 
   /** Convert a numeric value array to an object array.
    *  Needed to deal with vararg arguments of primtive types that are passed
@@ -58,55 +89,54 @@ object ScalaRunTime {
   def toArray[T](xs: scala.collection.Seq[T]) = {
     val arr = new Array[AnyRef](xs.length)
     var i = 0
-    for (x <- xs) arr(i) = x.asInstanceOf[AnyRef]
+    for (x <- xs) {
+      arr(i) = x.asInstanceOf[AnyRef]
+      i += 1
+    }
     arr
   }
 
   def checkInitialized[T <: AnyRef](x: T): T = 
     if (x == null) throw new UninitializedError else x
 
-  abstract class Try[a] {
-    def Catch[b >: a](handler: PartialFunction[Throwable, b]): b
-    def Finally(handler: Unit): a
+  abstract class Try[+A] {
+    def Catch[B >: A](handler: Throwable =>? B): B
+    def Finally(fin: => Unit): A
   }
 
-  def Try[a](block: => a): Try[a] = new Try[a] with Runnable {
-    var result: a = _
-    var exception: Throwable = ExceptionHandling.tryCatch(this)
+  def Try[A](block: => A): Try[A] = new Try[A] with Runnable {
+    private var result: A = _
+    private var exception: Throwable = 
+      try   { run() ; null }
+      catch { 
+        case e: ControlException  => throw e  // don't catch non-local returns etc
+        case e: Throwable         => e
+      }
 
-    def run(): Unit = result = block
+    def run() { result = block }
 
-    def Catch[b >: a](handler: PartialFunction[Throwable, b]): b =
-      if (exception eq null)
-        result.asInstanceOf[b]
-      // !!! else if (exception is LocalReturn)
-      // !!!   // ...
-      else if (handler isDefinedAt exception)
-        handler(exception)
-      else
-        throw exception
+    def Catch[B >: A](handler: Throwable =>? B): B =
+      if (exception == null) result
+      else if (handler isDefinedAt exception) handler(exception)
+      else throw exception
 
-    def Finally(handler: Unit): a =
-      if (exception eq null)
-        result.asInstanceOf[a]
-      else
-        throw exception
-  }
+    def Finally(fin: => Unit): A = {
+      fin
 
-  def caseFields(x: Product): List[Any] = {
-    val arity = x.productArity
-    def fields(from: Int): List[Any] =
-      if (from == arity) List()
-      else x.productElement(from) :: fields(from + 1)
-    fields(0)
+      if (exception == null) result
+      else throw exception
+    }
   }
 
   def _toString(x: Product): String =
-    caseFields(x).mkString(x.productPrefix + "(", ",", ")")
+    x.productIterator.mkString(x.productPrefix + "(", ",", ")")
 
+  def _hashCodeJenkins(x: Product): Int =
+    scala.util.JenkinsHash.hashSeq(x.productPrefix.toSeq ++ x.productIterator.toSeq)
+  
   def _hashCode(x: Product): Int = {
-    var code = x.productPrefix.hashCode()
     val arr =  x.productArity
+    var code = arr
     var i = 0
     while (i < arr) {
       val elem = x.productElement(i)
@@ -116,63 +146,17 @@ object ScalaRunTime {
     code
   }
 
-  def _equals(x: Product, y: Any): Boolean = y match {
-    case y1: Product if x.productArity == y1.productArity =>
-      val arity = x.productArity
-      var i = 0
-      while (i < arity && x.productElement(i) == y1.productElement(i))
-        i += 1
-      i == arity
-    case _ =>
-      false
-  }
-
-  def _equalsWithVarArgs(x: Product, y: Any): Boolean = y match {
-    case y1: Product if x.productArity == y1.productArity =>
-      val arity = x.productArity
-      var i = 0
-      while (i < arity - 1 && x.productElement(i) == y1.productElement(i))
-        i += 1
-      i == arity - 1 && {
-        x.productElement(i) match {
-          case xs: Seq[_] =>
-            y1.productElement(i) match {
-              case ys: Seq[_] => xs sameElements ys
-            }
-        }
-      }
-    case _ =>
-      false
-  }
-
-  //def checkDefined[T >: Null](x: T): T = 
-  //  if (x == null) throw new UndefinedException else x
-
-  def Seq[a](xs: a*): Seq[a] = null // interpreted specially by new backend.
-
-  def arrayValue[A](x: BoxedArray[A], elemClass: Class[_]): AnyRef =
-    if (x eq null) null else x.unbox(elemClass)
-
-  /** Temporary method to go to new array representation
-   *  !!! can be reomved once bootstrap is complete !!!
+  /** Fast path equality method for inlining; used when -optimise is set.
    */
-  def unboxedArray[A](x: AnyRef): AnyRef = x match {
-    case ba: BoxedArray[_] => ba.value
-    case _ => x
-  }
+  @inline def inlinedEquals(x: Object, y: Object): Boolean = 
+    if (x eq y) true
+    else if (x eq null) false
+    else if (x.isInstanceOf[java.lang.Number] || x.isInstanceOf[java.lang.Character]) BoxesRunTime.equals2(x, y)
+    else x.equals(y)
 
-  def boxArray(value: AnyRef): BoxedArray[_] = value match {
-    case x: Array[AnyRef] => new BoxedObjectArray(x, ClassManifest.classType(x.getClass.getComponentType))
-    case x: Array[Int] => new BoxedIntArray(x)
-    case x: Array[Double] => new BoxedDoubleArray(x)
-    case x: Array[Long] => new BoxedLongArray(x)
-    case x: Array[Float] => new BoxedFloatArray(x)
-    case x: Array[Char] => new BoxedCharArray(x)
-    case x: Array[Byte] => new BoxedByteArray(x)
-    case x: Array[Short] => new BoxedShortArray(x)
-    case x: Array[Boolean] => new BoxedBooleanArray(x)
-    case x: BoxedArray[_] => x
-    case null => null
+  def _equals(x: Product, y: Any): Boolean = y match {
+    case y: Product if x.productArity == y.productArity => x.productIterator sameElements y.productIterator
+    case _                                              => false
   }
 
   /** Given any Scala value, convert it to a String.

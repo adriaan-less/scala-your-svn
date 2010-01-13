@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * Copyright 2007 Google Inc. All Rights Reserved.
  * Author: bqe@google.com (Burak Emir)
  */
@@ -15,7 +15,6 @@ import collection._
 import mutable.ListBuffer
 import immutable.IntMap
 import annotation.elidable
-import Function.tupled
 
 trait ParallelMatching extends ast.TreeDSL
       with MatchSupport
@@ -31,6 +30,7 @@ trait ParallelMatching extends ast.TreeDSL
   import Types._
   import Debug._
   import Flags.{ TRANS_FLAG }
+  import PartialFunction._
 
   /** Transition **/
   def toPats(xs: List[Tree]): List[Pattern] = xs map Pattern.apply  
@@ -51,21 +51,20 @@ trait ParallelMatching extends ast.TreeDSL
       shortCuts += theLabel
       -shortCuts.length
     }
-
-    // XXX transitional.
-    final def requestBody(bx: Int, subst: Bindings): Tree =
-      requestBody(bx, PatternVarGroup.fromBindings(subst.get(), targets(bx).freeVars))
      
     /** first time bx is requested, a LabelDef is returned. next time, a jump.
      *  the function takes care of binding
      */
-    final def requestBody(bx: Int, pvgroup: PatternVarGroup): Tree = {
+    final def requestBody(bx: Int, subst: Bindings): Tree = {
+      // shortcut
+      if (bx < 0)
+        return Apply(ID(shortCuts(-bx-1)), Nil)
+      
+      val pvgroup = PatternVarGroup.fromBindings(subst.get(), targets(bx).freeVars)
       val target = targets(bx)
       
-      // shortcut
-      if (bx < 0) Apply(ID(shortCuts(-bx-1)), Nil)      
       // first time this bx is requested - might be bound elsewhere
-      else if (target.isNotReached) target.createLabelBody(bx, pvgroup)
+      if (target.isNotReached) target.createLabelBody(bx, pvgroup)
       // call label "method" if possible
       else target.getLabelBody(pvgroup)
     }
@@ -150,7 +149,7 @@ trait ParallelMatching extends ast.TreeDSL
       if (!scrut.isSimple) None
       else {
         val (_lits, others) = ps span isSwitchableConst
-        val lits = _lits filterMap { case x: LiteralPattern => x }
+        val lits = _lits partialMap { case x: LiteralPattern => x }
     
         condOpt(others) {
           case Nil                                => new PatternSwitch(scrut, lits, None)
@@ -281,7 +280,9 @@ trait ParallelMatching extends ast.TreeDSL
       
       lazy val pvgroup  = PatternVarGroup.fromBindings(subst.get())
       
-      final def tree(): Tree = squeezedBlock(pvgroup.valDefs, codegen)
+      final def tree(): Tree = 
+        if (guard.isEmpty) success
+        else squeezedBlock(pvgroup.valDefs, codegen)
     }
 
     /** Mixture rule for all literal ints (and chars) i.e. hopefully a switch
@@ -453,17 +454,17 @@ trait ParallelMatching extends ast.TreeDSL
       private lazy val rowsplit = {
         require(scrut.tpe <:< head.tpe)
         
-        List.unzip(
-          for ((c, rows) <- pmatch pzip rest.rows) yield {
-            def canSkip                     = pivot canSkipSubsequences c
-            def passthrough(skip: Boolean)  = if (skip) None else Some(rows insert c)
-          
-            pivot.subsequences(c, scrut.seqType) match {
-              case Some(ps) => (Some(rows insert ps), passthrough(canSkip))
-              case None     => (None, passthrough(false))
-            }
+        val res = for ((c, rows) <- pmatch pzip rest.rows) yield {
+          def canSkip                     = pivot canSkipSubsequences c
+          def passthrough(skip: Boolean)  = if (skip) None else Some(rows insert c)
+        
+          pivot.subsequences(c, scrut.seqType) match {
+            case Some(ps) => (Some(rows insert ps), passthrough(canSkip))
+            case None     => (None, passthrough(false))
           }
-        ) match { case (l1, l2) => (l1.flatten, l2.flatten) }
+        } 
+        
+        res.unzip match { case (l1, l2) => (l1.flatten, l2.flatten) }
       }
 
       lazy val cond     = (pivot precondition pmatch).get   // length check
@@ -476,7 +477,7 @@ trait ParallelMatching extends ast.TreeDSL
     // @todo: equals test for same constant
     class MixEquals(val pmatch: PatternMatch, val rest: Rep) extends RuleApplication {        
       private lazy val labelBody =
-        remake(List.map2(rest.rows.tail, pmatch.tail)(_ insert _)).toTree
+        remake((rest.rows.tail, pmatch.tail).zipped map (_ insert _)).toTree
         
       private lazy val rhs =
         decodedEqualsType(head.tpe) match {
@@ -510,8 +511,11 @@ trait ParallelMatching extends ast.TreeDSL
       case class Yes(bx: Int, moreSpecific: Pattern, subsumed: List[Pattern])
       case class No(bx: Int, remaining: Pattern)
       
-      val (yeses, noes) : (List[Yes], List[No]) = List.unzip(
-        for ((pattern, j) <- pmatch.pzip()) yield {
+      val (yeses, noes) = {
+        val _ys = new ListBuffer[Yes]
+        val _ns = new ListBuffer[No]
+        
+        for ((pattern, j) <- pmatch.pzip()) {
           // scrutinee, head of pattern group
           val (s, p) = (pattern.tpe, head.necessaryType)
           
@@ -528,8 +532,8 @@ trait ParallelMatching extends ast.TreeDSL
           
           def typed(pp: Tree) = passl(ifEquiv(Pattern(pp)))
           def subs()          = passl(ifEquiv(NoPattern), pattern subpatterns pmatch)
-           
-          (pattern match {
+          
+          val (oneY, oneN) = pattern match {
             case Pattern(LIT(null), _) if !(p =:= s)        => (None, passr)      // (1)
             case x if isObjectTest                          => (passl(), None)    // (2)
             case Pattern(Typed(pp, _), _)     if sMatchesP  => (typed(pp), None)  // (4)
@@ -537,9 +541,12 @@ trait ParallelMatching extends ast.TreeDSL
             case x if !x.isDefault && sMatchesP             => (subs(), None)
             case x if  x.isDefault || pMatchesS             => (passl(), passr)
             case _                                          => (None, passr)              
-          }) : (Option[Yes], Option[No])
+          }
+          oneY map (_ys +=)
+          oneN map (_ns +=)
         }
-      ) match { case (x,y) => (x.flatten, y.flatten) }
+        (_ys.toList, _ns.toList)
+      }
       
       val moreSpecific = yeses map (_.moreSpecific)
       val subsumed = yeses map (x => (x.bx, x.subsumed))
@@ -577,7 +584,7 @@ trait ParallelMatching extends ast.TreeDSL
       }
       
       lazy val failure =
-        mkFail(remaining map tupled((p1, p2) => rest rows p1 insert p2))
+        mkFail(remaining map { case (p1, p2) => rest rows p1 insert p2 })
 
       final def tree(): Tree = codegen
     }
@@ -614,7 +621,7 @@ trait ParallelMatching extends ast.TreeDSL
         def isNotAlternative(p: Pattern) = !cond(p.tree) { case _: Alternative => true }
         
         // classify all the top level patterns - alternatives come back unaltered
-        val newPats: List[Pattern] = pats.zipWithIndex map tupled(classifyPat)        
+        val newPats: List[Pattern] = pats.zipWithIndex map classifyPat.tuple
         // see if any alternatives were in there
         val (ps, others) = newPats span isNotAlternative
         // make a new row for each alternative, with it spliced into the original position
@@ -738,12 +745,10 @@ trait ParallelMatching extends ast.TreeDSL
       /** Cut out the column containing the non-default pattern. */
       class Cut(index: Int) {
         /** The first two separate out the 'i'th pattern in each row from the remainder. */        
-        private val (_column, _rows) =
-          List.unzip(rows map (_ extractColumn index))
+        private val (_column, _rows) = rows map (_ extractColumn index) unzip
         
         /** Now the 'i'th tvar is separated out and used as a new Scrutinee. */
-        private val (_pv, _tvars) =
-          tvars extractIndex index
+        private val (_pv, _tvars) = tvars extractIndex index
         
         /** The non-default pattern (others.head) replaces the column head. */
         private val (_ncol, _nrep) =

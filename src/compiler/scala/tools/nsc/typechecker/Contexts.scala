@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -46,7 +46,9 @@ trait Contexts { self: Analyzer =>
       if (!unit.isJava) {
         assert(ScalaPackage ne null, "Scala package is null")
         imps += ScalaPackage
-        if (!(treeInfo.isPredefUnit(unit.body) || treeInfo.containsLeadingPredefImport(List(unit.body))))
+        if (!(treeInfo.isUnitInScala(unit.body, nme.Predef) ||
+              treeInfo.isUnitInScala(unit.body, nme.ScalaObject) ||
+              treeInfo.containsLeadingPredefImport(List(unit.body))))
           imps += PredefModule
       }
     }
@@ -109,6 +111,7 @@ trait Contexts { self: Analyzer =>
     var inConstructorSuffix = false         // are we in a secondary constructor
                                             // after the this constructor call?
     var returnsSeen = false                 // for method context: were returns encountered?
+    var inSelfSuperCall = false             // is this a context for a constructor self or super call?
     var reportAmbiguousErrors = false
     var reportGeneralErrors = false
     var diagnostic: List[String] = Nil      // these messages are printed when issuing an error
@@ -269,6 +272,7 @@ trait Contexts { self: Analyzer =>
       while (baseContext.tree.isInstanceOf[Template])
         baseContext = baseContext.outer
       val argContext = baseContext.makeNewScope(tree, owner)
+      argContext.inSelfSuperCall = true
       argContext.reportGeneralErrors = this.reportGeneralErrors
       argContext.reportAmbiguousErrors = this.reportAmbiguousErrors
       def enterElems(c: Context) {
@@ -418,11 +422,12 @@ trait Contexts { self: Analyzer =>
          ||
          (accessWithin(ab) || accessWithin(ab.linkedClassOfClass)) &&
          (!sym.hasFlag(LOCAL) || 
+          sym.owner.isImplClass || // allow private local accesses to impl classes
           (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner) ||
           pre =:= sym.owner.thisType)
          ||
          (sym hasFlag PROTECTED) &&
-         (superAccess ||
+         (superAccess || sym.isConstructor ||
           (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) && 
            (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))))
         // note: phase.erasedTypes disables last test, because after addinterfaces
@@ -471,44 +476,40 @@ trait Contexts { self: Analyzer =>
         case ImportSelector(from, _, to, _) :: sels1 => 
           var impls = collect(sels1) filter (info => info.name != from)
           if (to != nme.WILDCARD) {
-            val sym = imp.importedSymbol(to)
-            if (sym.hasFlag(IMPLICIT)) impls = new ImplicitInfo(to, pre, sym) :: impls
+            for (sym <- imp.importedSymbol(to).alternatives)
+              if (sym.hasFlag(IMPLICIT) && isAccessible(sym, pre, false)) 
+                impls = new ImplicitInfo(to, pre, sym) :: impls
           }
           impls
       }
-      if (settings.debug.value)
-        log("collect implicit imports " + imp + "=" + collect(imp.tree.selectors))//debug
+      //if (settings.debug.value) log("collect implicit imports " + imp + "=" + collect(imp.tree.selectors))//DEBUG
       collect(imp.tree.selectors)
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      val nextOuter = 
-        if (owner.isConstructor) {
-          if (outer.tree.isInstanceOf[Template]) outer.outer.outer
-          else outer.outer
-        } else outer
+      val nextOuter = if (owner.isConstructor) outer.outer.outer else outer
         // can we can do something smarter to bring back the implicit cache?
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()
         val newImplicits: List[ImplicitInfo] =
-          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass) {
+          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !inSelfSuperCall) {
             if (!owner.isInitialized) return nextOuter.implicitss
-            if (settings.debug.value)
-              log("collect member implicits " + owner + ", implicit members = " +
-                  owner.thisType.implicitMembers)//debug
+            // if (settings.debug.value) log("collect member implicits " + owner + ", implicit members = " + owner.thisType.implicitMembers)//DEBUG
             val savedEnclClass = enclClass
             this.enclClass = this
             val res = collectImplicits(owner.thisType.implicitMembers, owner.thisType)
             this.enclClass = savedEnclClass
             res
           } else if (scope != nextOuter.scope && !owner.isPackageClass) {
-            if (settings.debug.value)
-              log("collect local implicits " + scope.toList)//debug
+            if (settings.debug.value) log("collect local implicits " + scope.toList)//DEBUG
             collectImplicits(scope.toList, NoPrefix)
           } else if (imports != nextOuter.imports) {
             assert(imports.tail == nextOuter.imports)
             collectImplicitImports(imports.head)
+          } else if (owner.isPackageClass) { 
+ 	    // the corresponding package object may contain implicit members. 
+ 	    collectImplicits(owner.tpe.implicitMembers, owner.tpe)
           } else List()
         implicitsCache = if (newImplicits.isEmpty) nextOuter.implicitss
                          else newImplicits :: nextOuter.implicitss

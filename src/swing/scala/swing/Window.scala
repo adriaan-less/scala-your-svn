@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -11,9 +11,9 @@
 
 package scala.swing
 
-import java.awt.{Image, Point, Window => AWTWindow}
-import javax.swing._
+import java.awt.{Window => AWTWindow}
 import event._
+import javax.swing._
 
 /**
  * A window with decoration such as a title, border, and action buttons.
@@ -26,10 +26,7 @@ import event._
 abstract class Window extends UIElement with RootPanel with Publisher { outer =>
   def peer: AWTWindow with InterfaceMixin
   
-  protected trait InterfaceMixin extends javax.swing.RootPaneContainer {
-    def getRootPane: JRootPane
-    //protected def setRootPane(p: JRootPane)
-  }
+  protected trait InterfaceMixin extends javax.swing.RootPaneContainer
   
   /**
    * This method is called when the window is closing, after all other window 
@@ -60,8 +57,8 @@ abstract class Window extends UIElement with RootPanel with Publisher { outer =>
   
   def owner: Window = UIElement.cachedWrapper(peer.getOwner)
   
-  def open() { peer.show() }
-  def close() { peer.hide() }
+  def open() { peer setVisible true }
+  def close() { peer setVisible false }
   
   peer.addWindowListener(new java.awt.event.WindowListener {
     def windowActivated(e: java.awt.event.WindowEvent) { publish(WindowActivated(outer)) }

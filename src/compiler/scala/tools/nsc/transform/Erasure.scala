@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
 // $Id$
@@ -39,7 +39,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     /** Is `tp` an unbounded generic type (i.e. which could be instantiated
      *  with primitive as well as class types)?. 
      */
-    private def genericCore(tp: Type): Type = tp match {
+    private def genericCore(tp: Type): Type = tp.normalize match {
       case TypeRef(_, argsym, _) if (argsym.isAbstractType && !(argsym.owner hasFlag JAVA)) => 
         tp
       case ExistentialType(tparams, restp) => 
@@ -52,7 +52,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
      *  then Some(N, T) where N is the number of Array constructors enclosing `T`,
      *  otherwise None. Existentials on any level are ignored.
      */
-    def unapply(tp: Type): Option[(Int, Type)] = tp match {
+    def unapply(tp: Type): Option[(Int, Type)] = tp.normalize match {
       case TypeRef(_, ArrayClass, List(arg)) =>
         genericCore(arg) match {
           case NoType => 
@@ -75,6 +75,13 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     case _ => 0
   }
 
+  // @M #2585 when generating a java generic signature that includes a selection of an inner class p.I,  (p = `pre`, I = `cls`)
+  // must rewrite to p'.I, where p' refers to the class that directly defines the nested class I
+  // see also #2585 marker in javaSig: there, type arguments must be included (use pre.baseType(cls.owner))
+  // requires cls.isClass
+  @inline private def rebindInnerClass(pre: Type, cls: Symbol): Type =
+    if(cls.owner.isClass) cls.owner.tpe else pre // why not cls.isNestedClass?
+
   /** <p>
    *    The erasure <code>|T|</code> of a type <code>T</code>. This is:
    *  </p>
@@ -90,7 +97,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
    *   - For a typeref scala.Array+[T] where T is not an abstract type, scala.Array+[|T|].
    *   - For a typeref scala.Any or scala.AnyVal, java.lang.Object.
    *   - For a typeref scala.Unit, scala.runtime.BoxedUnit.
-   *   - For a typeref P.C[Ts] where C refers to a class, |P|.C.
+   *   - For a typeref P.C[Ts] where C refers to a class, |P|.C. (Where P is first rebound to the class that directly defines C.)
    *   - For a typeref P.C[Ts] where C refers to an alias type, the erasure of C's alias.
    *   - For a typeref P.C[Ts] where C refers to an abstract type, the
    *     erasure of C's upper bound.
@@ -109,6 +116,22 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
    *  </ul>
    */
   val erasure = new TypeMap {
+
+    // Compute the erasure of the intersection type with given `parents` according to new spec.
+    private def intersectionErasure(parents: List[Type]): Type =
+      if (parents.isEmpty) erasedTypeRef(ObjectClass) 
+      else {
+        // implement new spec for erasure of refined types.
+        val psyms = parents map (_.typeSymbol)
+        def isUnshadowed(psym: Symbol) =
+          !(psyms exists (qsym => (psym ne qsym) && (qsym isNonBottomSubClass psym)))
+        val cs = parents.iterator.filter { p => // isUnshadowed is a bit expensive, so try classes first
+          val psym = p.typeSymbol
+          psym.isClass && !psym.isTrait && isUnshadowed(psym)
+        }
+        apply((if (cs.hasNext) cs else parents.iterator.filter(p => isUnshadowed(p.typeSymbol))).next())
+      }
+
     def apply(tp: Type): Type = {
       tp match {
         case ConstantType(_) =>
@@ -122,9 +145,9 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             else typeRef(apply(pre), sym, args map this)
           else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass) erasedTypeRef(ObjectClass)
           else if (sym == UnitClass) erasedTypeRef(BoxedUnitClass)
-          else if (sym.isClass) 
-            typeRef(apply(if (sym.owner.isClass) sym.owner.tpe else pre), sym, List())
-          else apply(sym.info)
+          else if (sym.isRefinementClass) intersectionErasure(tp.parents) 
+          else if (sym.isClass) typeRef(apply(rebindInnerClass(pre, sym)), sym, List())  // #2585
+          else apply(sym.info) // alias type or abstract type
         case PolyType(tparams, restpe) =>
           apply(restpe)
         case ExistentialType(tparams, restpe) =>
@@ -139,8 +162,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             else
               apply(restpe))
         case RefinedType(parents, decls) =>
-          if (parents.isEmpty) erasedTypeRef(ObjectClass) 
-          else apply(parents.head)
+          intersectionErasure(parents)
         case AnnotatedType(_, atp, _) =>
           apply(atp)
         case ClassInfoType(parents, decls, clazz) =>
@@ -164,6 +186,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           case TypeRef(pre, sym, args) =>
             if (sym == ArrayClass) args foreach traverse
             else if (sym.isTypeParameterOrSkolem || sym.isExistential || !args.isEmpty) result = true
+            else if (sym.isClass) traverse(rebindInnerClass(pre, sym)) // #2585
             else if (!sym.owner.isPackageClass) traverse(pre)
           case PolyType(_, _) | ExistentialType(_, _) =>
             result = true
@@ -242,9 +265,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           else if (isValueClass(sym)) 
             tagOfClass(sym).toString
           else if (sym.isClass)
-            { 
-              if (needsJavaSig(pre)) {
-                val s = jsig(pre) 
+            {
+              val preRebound = pre.baseType(sym.owner) // #2585
+              if (needsJavaSig(preRebound)) {
+                val s = jsig(preRebound)
                 if (s.charAt(0) == 'L') s.substring(0, s.length - 1) + classSigSuffix
                 else classSig
               } else classSig
@@ -277,6 +301,9 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           (parents map jsig).mkString
         case AnnotatedType(_, atp, _) =>
           jsig(atp)
+        case BoundedWildcardType(bounds) =>
+          println("something's wrong: "+sym+":"+sym.tpe+" has a bounded wildcard type")
+          jsig(bounds.hi)
         case _ =>
           val etp = erasure(tp)
           if (etp eq tp) throw new UnknownSig
@@ -417,17 +444,6 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
         })
     }
 
-    /** generate  ScalaRuntime.boxArray(tree)
-     *  !!! todo: optimize this in case the runtime type is known
-     */
-    private def boxArray(tree: Tree): Tree = tree match {
-      case LabelDef(name, params, rhs) =>
-        val rhs1 = boxArray(rhs)
-        treeCopy.LabelDef(tree, name, params, rhs1) setType rhs1.tpe
-      case _ =>
-        typedPos(tree.pos) { gen.mkRuntimeCall(nme.boxArray, List(tree)) }
-    }
-
     /** Unbox <code>tree</code> of boxed type to expected type <code>pt</code>.
      *
      *  @param tree the given tree
@@ -481,7 +497,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
         tree
       else if (isValueClass(tree.tpe.typeSymbol) && !isValueClass(pt.typeSymbol))
         adaptToType(box(tree), pt)
-      else if (tree.tpe.isInstanceOf[MethodType] && tree.tpe.paramTypes.isEmpty) {
+      else if (tree.tpe.isInstanceOf[MethodType] && tree.tpe.params.isEmpty) {
         if (!tree.symbol.isStable) assert(false, "adapt "+tree+":"+tree.tpe+" to "+pt)
         adaptToType(Apply(tree, List()) setPos tree.pos setType tree.tpe.resultType, pt)
       } else if (pt <:< tree.tpe) 
@@ -581,7 +597,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             
             if (isValueClass(tree.symbol.owner) && !isValueClass(qual1.tpe.typeSymbol))
               tree.symbol = NoSymbol
-            else if (qual1.tpe.isInstanceOf[MethodType] && qual1.tpe.paramTypes.isEmpty) {
+            else if (qual1.tpe.isInstanceOf[MethodType] && qual1.tpe.params.isEmpty) {
               assert(qual1.symbol.isStable, qual1.symbol);
               qual1 = Apply(qual1, List()) setPos qual1.pos setType qual1.tpe.resultType
             } else if (!(qual1.isInstanceOf[Super] || (qual1.tpe.typeSymbol isSubClass tree.symbol.owner))) {
@@ -914,7 +930,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
                           List()),
                     isArrayTest(qual1()))
                 }
-              }
+            }
           case TypeApply(fun, args) if (fun.symbol.owner != AnyClass && 
                                         fun.symbol != Object_asInstanceOf &&
                                         fun.symbol != Object_isInstanceOf) =>

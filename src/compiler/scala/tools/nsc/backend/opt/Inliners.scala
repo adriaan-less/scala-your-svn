@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Iulian Dragos
  */
 
@@ -22,6 +22,18 @@ abstract class Inliners extends SubComponent {
   import icodes.opcodes._
 
   val phaseName = "inliner"
+  
+  /** Debug - for timing the inliner. */
+  private def timed[T](s: String, body: => T): T = {
+    val t1 = System.currentTimeMillis()
+    val res = body
+    val t2 = System.currentTimeMillis()
+    val ms = (t2 - t1).toInt
+    if (ms >= 2000)
+      println("%s: %d milliseconds".format(s, ms))
+    
+    res
+  }
 
   /** The maximum size in basic blocks of methods considered for inlining. */
   final val MAX_INLINE_SIZE = 16
@@ -266,12 +278,15 @@ abstract class Inliners extends SubComponent {
        assert(pending.isEmpty, "Pending NEW elements: " + pending)
      }
 
+    /** The current iclass */
+    private var currentIClazz: IClass = _
+
     def analyzeClass(cls: IClass): Unit = if (settings.inline.value) {
       if (settings.debug.value)
       	log("Analyzing " + cls);
-      cls.methods.foreach { m => if (!m.symbol.isConstructor) analyzeMethod(m)
-     }}
-
+      this.currentIClazz = cls
+      cls.methods filterNot (_.symbol.isConstructor) foreach analyzeMethod
+    }
 
     val tfa = new analysis.MethodTFA();
     tfa.stat = settings.Ystatistics.value
@@ -280,8 +295,8 @@ abstract class Inliners extends SubComponent {
     private val inlinedMethods: Map[Symbol, Int] = new HashMap[Symbol, Int] {
     	override def default(k: Symbol) = 0       
     }
-      
-    def analyzeMethod(m: IMethod): Unit = {//try {
+
+    def analyzeMethod(m: IMethod): Unit = {
       var retry = false
       var count = 0
       fresh.clear
@@ -290,16 +305,21 @@ abstract class Inliners extends SubComponent {
       do {
         retry = false;
         if (m.code ne null) {
-          if (settings.debug.value)
-            log("Analyzing " + m + " count " + count + " with " + m.code.blocks.length + " blocks");
+          log("Analyzing " + m + " count " + count + " with " + m.code.blocks.length + " blocks");
           tfa.init(m)
           tfa.run
           for (bb <- linearizer.linearize(m)) {
             var info = tfa.in(bb);
-            for (i <- bb.toList) {
+            for (i <- bb) {
               if (!retry) {
                 i match {
-                  case CALL_METHOD(msym, Dynamic) => 
+                  case CALL_METHOD(msym, Dynamic) =>
+                    def warnNoInline(reason: String) = {
+                      if (msym.hasAnnotation(ScalaInlineAttr) && !m.symbol.hasFlag(Flags.BRIDGE))
+                        currentIClazz.cunit.warning(i.pos,
+                          "Could not inline required method %s because %s.".format(msym.originalName.decode, reason))
+                    }
+
                     val receiver = info.stack.types.drop(msym.info.paramTypes.length).head match {
                       case REFERENCE(s) => s;
                       case _ => NoSymbol;
@@ -308,11 +328,11 @@ abstract class Inliners extends SubComponent {
                     if (receiver != msym.owner && receiver != NoSymbol) { 
                       if (settings.debug.value)
                         log("" + i + " has actual receiver: " + receiver);
-                    }
-                    if (!concreteMethod.isFinal && receiver.isFinal) {
-                      concreteMethod = lookupImpl(concreteMethod, receiver)
-                      if (settings.debug.value)
-                        log("\tlooked up method: " + concreteMethod.fullNameString)
+                      if (!concreteMethod.isFinal && receiver.isFinal) {
+                        concreteMethod = lookupImpl(concreteMethod, receiver)
+                        if (settings.debug.value)
+                          log("\tlooked up method: " + concreteMethod.fullNameString)
+                      }
                     }
 
                     if (shouldLoad(receiver, concreteMethod)) {
@@ -350,12 +370,18 @@ abstract class Inliners extends SubComponent {
                                   + "\n\tinc.code ne null: " + (inc.code ne null) + (if (inc.code ne null)
                                     "\n\tisSafeToInline(m, inc, info.stack): " + isSafeToInline(m, inc, info.stack)
                                     + "\n\tshouldInline heuristics: " + shouldInline(m, inc) else ""));
+                            warnNoInline(
+                              if (inc.code eq null) "bytecode was unavailable"
+                              else if (!isSafeToInline(m, inc, info.stack)) "it is unsafe (target may reference private fields)"
+                              else "a bug (run with -Ylog:inline -Ydebug for more information)")
                           }
                         case None =>
+                          warnNoInline("bytecode was not available")
                           if (settings.debug.value)
                             log("could not find icode\n\treceiver: " + receiver + "\n\tmethod: " + concreteMethod)
                       }
-                    }
+                    } else
+                      warnNoInline(if (icodes.available(receiver)) "it is not final" else "bytecode was not available")
 
                   case _ => ();
                 }
@@ -364,15 +390,7 @@ abstract class Inliners extends SubComponent {
         if (tfa.stat) log(m.symbol.fullNameString + " iterations: " + tfa.iterations + " (size: " + m.code.blocks.length + ")")
       }} while (retry && count < 15)
       m.normalize
-//    } catch {
-//      case e => 
-//        Console.println("############# Caught exception: " + e + " #################");
-//        Console.println("\nMethod: " + m + 
-//                        "\nMethod owner: " + m.symbol.owner);
-//        e.printStackTrace();
-//        m.dump
-//        throw e
-			}
+		}
     
     
     def isMonadMethod(method: Symbol): Boolean = 
@@ -427,7 +445,7 @@ abstract class Inliners extends SubComponent {
           callsNonPublic = b
         case None => 
           breakable {
-            for (b <- callee.code.blocks; i <- b.toList)
+            for (b <- callee.code.blocks; i <- b)
               i match {
                 case CALL_METHOD(m, style) =>
                   if (m.hasFlag(Flags.PRIVATE) || 
@@ -484,7 +502,7 @@ abstract class Inliners extends SubComponent {
           lookupImpl(meth, clazz.tpe.parents(0).typeSymbol)
       }
     }
-    
+
     /** small method size (in blocks) */
     val SMALL_METHOD_SIZE = 1
     

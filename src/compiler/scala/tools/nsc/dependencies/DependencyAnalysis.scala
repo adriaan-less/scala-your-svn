@@ -16,9 +16,14 @@ trait DependencyAnalysis extends SubComponent with Files {
 
   lazy val maxDepth = settings.make.value match {
     case "changed" => 0 
-    case "transitive" => Int.MaxValue
+    case "transitive" | "transitivenocp" => Int.MaxValue
     case "immediate" => 1 
   }
+
+  def shouldCheckClasspath = settings.make.value != "transitivenocp"
+
+  // todo: order insensible checking and, also checking timestamp?
+  def validateClasspath(cp1: String, cp2: String): Boolean = cp1 == cp2
 
   def nameToFile(src: AbstractFile, name : String) = 
     settings.outputDirs.outputDirFor(src)
@@ -64,9 +69,9 @@ trait DependencyAnalysis extends SubComponent with Files {
     dependenciesFile = f
     FileDependencies.readFrom(f, toFile) match {
       case Some(fd) =>      
-        val success = fd.classpath == classpath
+        val success = if (shouldCheckClasspath) validateClasspath(fd.classpath, classpath) else true
         dependencies = if (success) fd else {
-          if(settings.debug.value){
+          if (settings.debug.value) {
             println("Classpath has changed. Nuking dependencies");
           }
           newDeps
@@ -111,11 +116,18 @@ trait DependencyAnalysis extends SubComponent with Files {
         val source: AbstractFile = unit.source.file;
         for (d <- unit.icode){
           val name = d.toString
-          dependencies.emits(source, nameToFile(unit.source.file, name))
           d.symbol match {
-            case _ : ModuleClassSymbol =>
+            case s : ModuleClassSymbol =>
+              val isTopLevelModule =
+                  atPhase (currentRun.picklerPhase.next) {
+                    !s.isImplClass && !s.isNestedClass
+                  }
+              if (isTopLevelModule && (s.linkedModuleOfClass != NoSymbol)) {
+                dependencies.emits(source, nameToFile(unit.source.file, name))
+              }
               dependencies.emits(source, nameToFile(unit.source.file, name + "$"))
             case _ =>
+              dependencies.emits(source, nameToFile(unit.source.file, name))
           }
         }
        
@@ -137,18 +149,52 @@ trait DependencyAnalysis extends SubComponent with Files {
               && (!tree.symbol.isPackage)
               && (!tree.symbol.hasFlag(Flags.JAVA))
               && ((tree.symbol.sourceFile eq null)
-                  || (tree.symbol.sourceFile.path != file.path))) {
-            references += file -> (references(file) + tree.symbol.fullNameString)
+                  || (tree.symbol.sourceFile.path != file.path))
+              && (!tree.symbol.isClassConstructor)) {
+            updateReferences(tree.symbol.fullNameString)
           }
+
           tree match {
-            case cdef: ClassDef if !cdef.symbol.isModuleClass && !cdef.symbol.hasFlag(Flags.PACKAGE) =>
+            case cdef: ClassDef if !cdef.symbol.hasFlag(Flags.PACKAGE) =>
               buf += cdef.symbol
+              atPhase(currentRun.erasurePhase.prev) {
+                for (s <- cdef.symbol.info.decls)
+                  s match {
+                    case ts: TypeSymbol if !ts.isClass =>
+                      checkType(s.tpe)
+                    case _ =>
+                  }
+              }
               super.traverse(tree)
 
-            case _ =>
+            case ddef: DefDef =>
+              atPhase(currentRun.typerPhase.prev) {
+                checkType(ddef.symbol.tpe)
+              }
+              super.traverse(tree)
+
+            case _            =>
               super.traverse(tree)
           }
         }
+        
+        def checkType(tpe: Type): Unit =
+          tpe match {
+            case t: MethodType =>
+              checkType(t.resultType)
+              for (s <- t.params) checkType(s.tpe)
+            
+            case t: TypeRef    =>
+              updateReferences(t.typeSymbol.fullNameString)            
+              for (tp <- t.args) checkType(tp)
+
+            case t             =>
+              updateReferences(t.typeSymbol.fullNameString)
+          }
+        
+        def updateReferences(s: String): Unit =
+          references += file -> (references(file) + s)
+
       }).apply(unit.body)
 
       definitions(unit.source.file) = buf.toList

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * Author: Paul Phillips
  */
 
@@ -7,6 +7,7 @@ package scala.tools.nsc
 package matching
 
 import transform.ExplicitOuter
+import PartialFunction._
 
 /** Traits which are mixed into MatchMatrix, but separated out as
  *  (somewhat) independent components to keep them on the sidelines.

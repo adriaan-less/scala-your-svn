@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -11,11 +11,11 @@
 
 package scala.swing
 
-import java.awt.{Color, Cursor, Font, Dimension, Rectangle}
+import java.awt.Cursor
+import event._
 import scala.collection.mutable.HashMap
 import scala.ref._
 import java.util.WeakHashMap
-import event._
 
 object UIElement {
   private val ClientKey = "scala.swingWrapper"
@@ -32,7 +32,7 @@ object UIElement {
    * it will return that wrapper. Otherwise it returns `null`. This 
    * method never throws an exception.
    */
-  private[swing] def cachedWrapper[C<:UIElement](c: java.awt.Component): C = {
+  private[swing] def cachedWrapper[C>:Null<:UIElement](c: java.awt.Component): C = {
     val w = c match {
       case c: javax.swing.JComponent => c.getClientProperty(ClientKey)
       case _ => wrapperCache.get(c)

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * Copyright 2007 Google Inc. All Rights Reserved.
  * Author: bqe@google.com (Burak Emir)
  */
@@ -13,6 +13,7 @@ import symtab.SymbolTable
 import transform.ExplicitOuter
 import java.io.{ StringWriter, PrintWriter }
 import scala.util.NameTransformer.decode
+import PartialFunction._
 
 /** Translation of pattern matching
  *

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -29,7 +29,7 @@ sealed abstract class List[@specialized +A] extends LinearSeq[A]
                                   with LinearSeqLike[A, List[A]] {
   override def companion: GenericCompanion[List] = List
 
-  import scala.collection.{Iterable, Traversable, Seq, IndexedSeq}
+  import scala.collection.{Iterable, Traversable, Seq}
 
   /** Returns true if the list does not contain any elements.
    *  @return <code>true</code>, iff the list is empty.
@@ -494,7 +494,7 @@ final case class ::[@specialized B](private var hd: B, private[scala] var tl: Li
  */
 object List extends SeqFactory[List] {
   
-  import collection.{Iterable, Seq, IndexedSeq}
+  import collection.{Iterable, Seq}
 
   implicit def builderFactory[A]: CanBuildFrom[Coll, A, List[A]] = 
     new GenericCanBuildFrom[A] {

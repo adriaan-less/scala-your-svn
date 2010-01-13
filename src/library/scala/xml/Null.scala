@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -12,6 +12,9 @@
 package scala.xml
 
 import Utility.{ isNameStart }
+import collection.Iterator
+import collection.immutable.{Nil, List}
+import collection.mutable.StringBuilder
 
 case object Null extends MetaData {
 

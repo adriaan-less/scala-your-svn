@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -69,7 +69,7 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   override def !!(msg: Any): Future[Any] =
     del !! msg
 
-  override def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] =
+  override def !![A](msg: Any, f: Any =>? A): Future[A] =
     del !! (msg, f)
 
   def linkTo(to: AbstractActor): Unit =

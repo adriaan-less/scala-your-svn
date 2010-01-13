@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -74,13 +74,17 @@ abstract class Enumeration(initial: Int, names: String*) {
     string
   }
   
-  /** The mapping from the integer used to identifying values to the actual
+  /** The mapping from the integer used to identify values to the actual
     * values. */
   private val vmap: Map[Int, Value] = new HashMap
 
   /** The cache listing all values of this enumeration. */
   @transient private var vset: ValueSet = null
   @transient private var vsetDefined = false
+
+  /** The mapping from the integer used to identify values to their
+    * names. */
+  private val nmap: Map[Int, String] = new HashMap
 
   /** The values of this enumeration as a set.
    */
@@ -112,16 +116,21 @@ abstract class Enumeration(initial: Int, names: String*) {
 
   /** Returns a Value from this Enumeration whose name matches 
    * the argument <var>s</var>.
-   * You must pass a String* set of names to the constructor,
-   * or initialize each Enumeration with Value(String),
-   * for valueOf to work.
-   * @param s an enumeration name
-   * @return <tt>Some(Value)</tt> if an enumeration's name matches <var>s</var>, 
-   * else <tt>None</tt>
-   * Note the change here is intentional. You should know whether
-   * a name is in an Enumeration beforehand. If not, just use find on values.
+   *
+   * You can pass a String* set of names to the constructor, or
+   * initialize each Enumeration with Value(String). Otherwise, the
+   * names are determined automatically through reflection.
+   *
+   * Note the change here wrt 2.7 is intentional. You should know whether
+   * a name is in an Enumeration beforehand. If not, just use find on
+   * values.
+   *
+   * @param  s an Enumeration name
+   * @return   the Value of this Enumeration if its name matches <var>s</var>
+   * @throws   java.util.NoSuchElementException if no Value with a matching
+   *           name is in this Enumeration
    */
-  def withName(s: String): Value = values.find(_.toString == s).get
+  final def withName(s: String): Value = values.find(_.toString == s).get
 
   /** Creates a fresh value, part of this enumeration. */
   protected final def Value: Value = Value(nextId)      
@@ -151,7 +160,28 @@ abstract class Enumeration(initial: Int, names: String*) {
    * @return     ..
    */
   protected final def Value(i: Int, name: String): Value = new Val(i, name)
-  
+
+  /* Obtains the name for the value with id `i`. If no name is cached
+   * in `nmap`, it populates `nmap` using reflection.
+   */
+  private def nameOf(i: Int): String = nmap.get(i) match {
+    case Some(name) => name
+    case None =>
+      val methods = getClass.getMethods
+      for (m <- methods
+                if classOf[Value].isAssignableFrom(m.getReturnType) &&
+                   !java.lang.reflect.Modifier.isFinal(m.getModifiers)) {
+        val name = m.getName
+        // invoke method to obtain actual `Value` instance
+        val value = m.invoke(this)
+        // invoke `id` method
+        val idMeth = classOf[Val].getMethod("id")
+        val id: Int = idMeth.invoke(value).asInstanceOf[java.lang.Integer].intValue()
+        nmap += (id -> name)
+      }
+      nmap(i)
+  }
+
   /** The type of the enumerated values. */
   @serializable
   @SerialVersionUID(7091335633555234129L)
@@ -204,7 +234,7 @@ abstract class Enumeration(initial: Int, names: String*) {
     if (nextId > topId) topId = nextId
     def id = i
     override def toString() =
-      if (name eq null) Enumeration.this + "(" + i + ")"
+      if (name eq null) Enumeration.this.nameOf(i)
       else name
     private def readResolve(): AnyRef =
       if (vmap ne null) vmap(i)

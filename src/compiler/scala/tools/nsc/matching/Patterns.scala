@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * Author: Paul Phillips
  */
 
@@ -9,6 +9,7 @@ package matching
 import symtab.Flags
 import util.NoPosition
 import scala.util.NameTransformer.decode
+import PartialFunction._
 
 /** Patterns are wrappers for Trees with enhanced semantics.
  *

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -12,6 +12,8 @@ package scala.xml
 package factory
 
 import parsing.{ FactoryAdapter, NoBindingFactoryAdapter }
+import collection.Seq
+import collection.immutable.{List, Nil}
 import org.xml.sax.InputSource
 import java.io.{ InputStream, Reader, StringReader, File, FileDescriptor, FileInputStream }
 import javax.xml.parsers.{ SAXParser, SAXParserFactory }

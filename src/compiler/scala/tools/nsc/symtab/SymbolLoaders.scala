@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -17,6 +17,8 @@ import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.util.{Position, NoPosition, ClassPath, ClassRep, JavaClassPath, MsilClassPath}
 import classfile.ClassfileParser
 import Flags._
+
+import util.Statistics._
 
 /** This class ...
  *
@@ -164,24 +166,37 @@ abstract class SymbolLoaders {
 
       // if there's a $member object, enter its members as well.
       val pkgModule = root.info.decl(nme.PACKAGEkw)
-      if (pkgModule.isModule && !(pkgModule.rawInfo.isInstanceOf[SourcefileLoader] &&
-                                  classpath.name == "scala"))
-        openPackageModule(pkgModule)
+      if (pkgModule.isModule && !pkgModule.rawInfo.isInstanceOf[SourcefileLoader]) {
+        //println("open "+pkgModule)//DEBUG
+        openPackageModule(pkgModule)()
+      }
     }
   }
 
-  def openPackageModule(m: Symbol) = {
-    val owner = m.owner
-    for (member <- m.info.decls.iterator) {
-      // todo: handle overlapping definitions in some way: mark as errors
-      // or treat as abstractions. For now the symbol in the package module takes precedence.
-      for (existing <- owner.info.decl(member.name).alternatives)
-        owner.info.decls.unlink(existing)
+  def openPackageModule(module: Symbol)(packageClass: Symbol = module.owner): Unit = {
+    // unlink existing symbols in the package
+    for (member <- module.info.decls.iterator) {
+      if (!member.hasFlag(PRIVATE) && !member.isConstructor) {
+        // todo: handle overlapping definitions in some way: mark as errors
+        // or treat as abstractions. For now the symbol in the package module takes precedence.
+        for (existing <- packageClass.info.decl(member.name).alternatives)
+          packageClass.info.decls.unlink(existing)
+      }
     }
-    for (member <- m.info.decls.iterator) {
-      owner.info.decls.enter(member)
+    // enter non-private decls the class
+    for (member <- module.info.decls.iterator) {
+      if (!member.hasFlag(PRIVATE) && !member.isConstructor) {
+        packageClass.info.decls.enter(member)
+      }
+    }
+    // enter decls of parent classes
+    for (pt <- module.info.parents; val p = pt.typeSymbol) {
+      if (p != definitions.ObjectClass && p != definitions.ScalaObjectClass) {
+        openPackageModule(p)(packageClass)
+      }
     }
   }
+
 
   class JavaPackageLoader(classpath: ClassPath[AbstractFile]) extends PackageLoader(classpath) {
     protected def needCompile(bin: AbstractFile, src: AbstractFile) =
@@ -223,15 +238,6 @@ abstract class SymbolLoaders {
   }
 
   class ClassfileLoader(val classfile: AbstractFile) extends SymbolLoader {
-
-    /**
-     * @FIXME: iulian,
-     * there should not be a new ClassfileParser for every loaded classfile, this object
-     * should be outside the class ClassfileLoader! This was changed by Sean in r5494.
-     * 
-     * However, when pulling it out, loading "java.lang.Object" breaks with:
-     *   "illegal class file dependency between java.lang.Object and java.lang.Class"
-     */
     private object classfileParser extends ClassfileParser {
       val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
     }
@@ -239,11 +245,18 @@ abstract class SymbolLoaders {
     protected def description = "class file "+ classfile.toString
 
     protected def doComplete(root: Symbol) {
+      val start = startTimer(classReadNanos)
       classfileParser.parse(classfile, root)
+      stopTimer(classReadNanos, start)
     }
+    override protected def sourcefile = classfileParser.srcfile
   }
 
   class MSILTypeLoader(typ: MSILType) extends SymbolLoader {
+    private object typeParser extends clr.TypeParser {
+      val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
+    }
+
     protected def description = "MSILType "+ typ.FullName + ", assembly "+ typ.Assembly.FullName
     protected def doComplete(root: Symbol) { typeParser.parse(typ, root) }
   }
@@ -257,10 +270,6 @@ abstract class SymbolLoaders {
   object moduleClassLoader extends SymbolLoader {
     protected def description = "module class loader"
     protected def doComplete(root: Symbol) { root.sourceModule.initialize }
-  }
-
-  private object typeParser extends clr.TypeParser {
-    val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
   }
 
   object clrTypes extends clr.CLRTypes {

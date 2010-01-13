@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2009 LAMP/EPFL
+ * Copyright 2006-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -29,20 +29,28 @@ import ch.epfl.lamp.compiler.msil.{Type => MSILType, Assembly}
 object ClassPath {
   /** Expand single path entry */
   private def expandS(pattern: String): List[String] = {
-    def nameMatchesStar(name: String) = name.toLowerCase().endsWith(".jar")
+    def isJar(name: String) = name.toLowerCase endsWith ".jar"
 
     /** Get all jars in directory */
-    def lsJars(f: File) = {
+    def lsJars(f: File, filt: String => Boolean = _ => true) = {
       val list = f.listFiles()
       if (list eq null) Nil
-      else list.filter(f => f.isFile() && nameMatchesStar(f.getName())).map(_.getPath()).toList
+      else list.filter(f => f.isFile() && filt(f.getName) && isJar(f.getName())).map(_.getPath()).toList
     }
 
     val suffix = File.separator + "*"
 
+    def basedir(s: String) = 
+      if (s contains File.separator) s.substring(0, s.lastIndexOf(File.separator))
+      else "."
+    
     if (pattern == "*") lsJars(new File("."))
-    else if (pattern endsWith suffix) lsJars(new File(pattern.substring(0, pattern.length - suffix.length)))
-    else pattern :: Nil
+    else if (pattern endsWith suffix) lsJars(new File(pattern dropRight 2))
+    else if (pattern contains '*') {
+      val regexp = ("^%s$" format pattern.replaceAll("""\*""", """.*""")).r
+      lsJars(new File(basedir(pattern)), regexp findFirstIn _ isDefined)
+    }
+    else List(pattern)
   }
 
   /** Split path using platform-dependent path separator */
@@ -82,7 +90,7 @@ object ClassPath {
 }
 
 /**
- * A represents classes which can be loaded with a ClassfileLoader/MSILTypeLoader
+ * Represents classes which can be loaded with a ClassfileLoader/MSILTypeLoader
  * and / or a SourcefileLoader.
  */
 case class ClassRep[T](binary: Option[T], source: Option[AbstractFile]) {
@@ -116,9 +124,9 @@ abstract class ClassPath[T] {
    * The short name of the package (without prefix)
    */
   def name: String
-  def classes: List[ClassRep[T]]
-  def packages: List[ClassPath[T]]
-  def sourcepaths: List[AbstractFile]
+  val classes: List[ClassRep[T]]
+  val packages: List[ClassPath[T]]
+  val sourcepaths: List[AbstractFile]
 
   /**
    * Find a ClassRep given a class name of the form "package.subpackage.ClassName".
@@ -142,7 +150,7 @@ abstract class ClassPath[T] {
 class SourcePath[T](dir: AbstractFile) extends ClassPath[T] {
   def name = dir.name
 
-  def classes = {
+  lazy val classes = {
     val cls = new ListBuffer[ClassRep[T]]
     for (f <- dir.iterator) {
       if (!f.isDirectory && ClassPath.validSourceFile(f.name))
@@ -151,7 +159,7 @@ class SourcePath[T](dir: AbstractFile) extends ClassPath[T] {
     cls.toList
   }
 
-  def packages = {
+  lazy val packages = {
     val pkg = new ListBuffer[SourcePath[T]]
     for (f <- dir.iterator) {
       if (f.isDirectory && ClassPath.validPackage(f.name))
@@ -160,8 +168,8 @@ class SourcePath[T](dir: AbstractFile) extends ClassPath[T] {
     pkg.toList
   }
 
-  def sourcepaths: List[AbstractFile] = List(dir)
-  
+  val sourcepaths: List[AbstractFile] = List(dir)
+
   override def toString() = "sourcepath: "+ dir.toString()
 }
 
@@ -171,7 +179,7 @@ class SourcePath[T](dir: AbstractFile) extends ClassPath[T] {
 class DirectoryClassPath(dir: AbstractFile) extends ClassPath[AbstractFile] {
   def name = dir.name
 
-  def classes = {
+  lazy val classes = {
     val cls = new ListBuffer[ClassRep[AbstractFile]]
     for (f <- dir.iterator) {
       if (!f.isDirectory && ClassPath.validClassFile(f.name))
@@ -180,7 +188,7 @@ class DirectoryClassPath(dir: AbstractFile) extends ClassPath[AbstractFile] {
     cls.toList
   }
 
-  def packages = {
+  lazy val packages = {
     val pkg = new ListBuffer[DirectoryClassPath]
     for (f <- dir.iterator) {
       if (f.isDirectory && ClassPath.validPackage(f.name))
@@ -189,7 +197,7 @@ class DirectoryClassPath(dir: AbstractFile) extends ClassPath[AbstractFile] {
     pkg.toList
   }
 
-  def sourcepaths: List[AbstractFile] = Nil
+  val sourcepaths: List[AbstractFile] = Nil
   
   override def toString() = "directory classpath: "+ dir.toString()
 }
@@ -222,7 +230,7 @@ class AssemblyClassPath(types: Array[MSILType], namespace: String) extends Class
     if (types(m).FullName.startsWith(namespace)) m else types.length
   }
 
-  def classes = {
+  lazy val classes = {
     val cls = new ListBuffer[ClassRep[MSILType]]
     var i = first
     while (i < types.length && types(i).Namespace.startsWith(namespace)) {
@@ -234,7 +242,7 @@ class AssemblyClassPath(types: Array[MSILType], namespace: String) extends Class
     cls.toList
   }
 
-  def packages = {
+  lazy val packages = {
     val nsSet = new MutHashSet[String]
     var i = first
     while (i < types.length && types(i).Namespace.startsWith(namespace)) {
@@ -252,7 +260,7 @@ class AssemblyClassPath(types: Array[MSILType], namespace: String) extends Class
       yield new AssemblyClassPath(types, ns)
   }
 
-  def sourcepaths: List[AbstractFile] = Nil
+  val sourcepaths: List[AbstractFile] = Nil
   
   override def toString() = "assembly classpath "+ namespace
 }
@@ -265,7 +273,7 @@ abstract class MergedClassPath[T] extends ClassPath[T] {
 
   def name = entries.head.name
 
-  def classes: List[ClassRep[T]] = {
+  lazy val classes: List[ClassRep[T]] = {
     val cls = new ListBuffer[ClassRep[T]]
     for (e <- entries; c <- e.classes) {
       val name = c.name
@@ -283,7 +291,7 @@ abstract class MergedClassPath[T] extends ClassPath[T] {
     cls.toList
   }
 
-  def packages: List[ClassPath[T]] = {
+  lazy val packages: List[ClassPath[T]] = {
     val pkg = new ListBuffer[ClassPath[T]]
     for (e <- entries; p <- e.packages) {
       val name = p.name
@@ -297,10 +305,10 @@ abstract class MergedClassPath[T] extends ClassPath[T] {
     pkg.toList
   }
 
-  def sourcepaths: List[AbstractFile] = entries.flatMap(_.sourcepaths)
+  lazy val sourcepaths: List[AbstractFile] = entries.flatMap(_.sourcepaths)
 
   private def addPackage(to: ClassPath[T], pkg: ClassPath[T]) = to match {
-    case cp: MergedClassPath[T] =>
+    case cp: MergedClassPath[_] =>
       newMergedClassPath(cp.entries ::: List(pkg))
     case _ =>
       newMergedClassPath(List(to, pkg))

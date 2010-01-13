@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Stepan Koltsov
  */
 // $Id$
@@ -7,7 +7,7 @@
 package scala.tools.nsc
 package interpreter
 
-import java.io.{BufferedReader, PrintWriter}
+import java.io.{ BufferedReader, PrintWriter }
 
 /** Reads using standard JDK API */
 class SimpleReader(

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -22,7 +22,7 @@ import mutable.{Builder, AddingBuilder}
 object TreeSet extends SortedSetFactory[TreeSet]{
 
   implicit def implicitBuilder[A](implicit ordering: Ordering[A]): Builder[A, TreeSet[A]] = newBuilder[A](ordering)
-  def newBuilder[A](implicit ordering: Ordering[A]): Builder[A, TreeSet[A]] =
+  override def newBuilder[A](implicit ordering: Ordering[A]): Builder[A, TreeSet[A]] =
     new AddingBuilder(empty[A](ordering))
 
   /** The empty set of this type

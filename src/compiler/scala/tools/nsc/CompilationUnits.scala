@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -47,9 +47,6 @@ trait CompilationUnits { self: Global =>
     /** things to check at end of compilation unit */
     val toCheck = new ListBuffer[() => Unit]
 
-    /** used to track changes in a signature */
-    var pickleHash : Long = 0
-
     def position(pos: Int) = source.position(pos)
 
     /** The position of a targeted type check
@@ -81,6 +78,9 @@ trait CompilationUnits { self: Global =>
     def incompleteInputError(pos: Position, msg:String) =
       reporter.incompleteInputError(pos, msg) 
 
+    def comment(pos: Position, msg: String) =
+      reporter.comment(pos, msg)
+      
     /** Is this about a .java source file? */
     lazy val isJava = source.file.name.endsWith(".java")
     

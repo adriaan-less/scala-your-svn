@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -35,7 +35,7 @@ object Container {
       protected def insertAt(n: Int, c: Component) { peer.add(c.peer, n) }
       def +=(c: Component): this.type = { peer.add(c.peer) ; this }
       def length = peer.getComponentCount
-      def apply(n: Int) = UIElement.cachedWrapper(peer.getComponent(n))
+      def apply(n: Int) = UIElement.cachedWrapper[Component](peer.getComponent(n))
     }
   
     peer.addContainerListener(new java.awt.event.ContainerListener {

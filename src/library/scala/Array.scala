@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -12,8 +12,7 @@
 package scala
 
 import scala.collection.generic._
-import scala.collection.Traversable
-import scala.collection.mutable.{IndexedSeq, ArrayBuilder, GenericArray}
+import scala.collection.mutable.{ArrayBuilder, GenericArray}
 import compat.Platform.arraycopy
 import scala.reflect.ClassManifest
 import scala.runtime.ScalaRunTime.{array_apply, array_update}
@@ -43,10 +42,6 @@ class FallbackArrayBuilding {
  *  @version 1.0
  */
 object Array extends FallbackArrayBuilding {
-
-  import runtime.BoxedArray;
-  import scala.runtime.ScalaRunTime.boxArray;
-
   implicit def canBuildFrom[T](implicit m: ClassManifest[T]): CanBuildFrom[Array[_], T, Array[T]] = 
     new CanBuildFrom[Array[_], T, Array[T]] { 
       def apply(from: Array[_]) = ArrayBuilder.make[T]()(m) 

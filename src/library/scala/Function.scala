@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -11,8 +11,6 @@
 
 package scala
 
-import annotation.experimental
-
 /** A module defining utility methods for higher-order functional programming.
  *
  *  @author  Martin Odersky
@@ -20,31 +18,6 @@ import annotation.experimental
  */
 object Function
 {
-  /** Given a starting value, the returned object can be repeatedly
-   *  applied with Function1s and then the result retrieved with apply().
-   *  At each iteration the argument is checked for null before function
-   *  application; if it is ever null, the result will be null.
-   * 
-   *  <pre>
-   *    case class Bop(next: Bop)
-   *    val x = Bop(Bop(Bop(null)))
-   *    ??(x)(_.next)()                         // returns Bop(Bop(null))
-   *    ??(x)(_.next)(_.next)()                 // returns Bop(null)
-   *    ??(x)(_.next)(_.next)(_.next)()         // returns null
-   *    ??(x)(_.next)(_.next)(_.next)(_.next)() // still returns null!
-   *  </pre>
-   *
-   *  @param  x The starting value
-   *  @return   The ?? object, containing apply methods T => U and () => T
-   */
-  @experimental
-  case class ??[T](x: T) {
-    def apply(): T = x
-    def apply[U >: Null](f: T => U): ??[U] =
-      if (x == null) ??[U](null)
-      else ??[U](f(x))
-  }
-
   /** Given a sequence of functions <code>f<sub>1</sub></code>, ...,
    *  <code>f<sub>n</sub></code>, return the function <code>f<sub>1</sub>
    *  andThen ... andThen f<sub>n</sub></code>.
@@ -63,6 +36,7 @@ object Function
    *  @param f  ...
    *  @return   ...
    */
+  @deprecated("Use `f.curry` instead")
   def curried[a1, a2, b](f: (a1, a2) => b): a1 => a2 => b = {
     x1 => x2 => f(x1, x2)
   }
@@ -72,18 +46,21 @@ object Function
    *  @param f  ...
    *  @return   ...
    */
+  @deprecated("Use `f.curry` instead")
   def curried[a1, a2, a3, b](f: (a1, a2, a3) => b): a1 => a2 => a3 => b = {
     x1 => x2 => x3 => f(x1, x2, x3)
   }
 
   /** Currying for functions of arity 4.
    */
+  @deprecated("Use `f.curry` instead")
   def curried[a1, a2, a3, a4, b](f: (a1, a2, a3, a4) => b): a1 => a2 => a3 => a4 => b = {
     x1 => x2 => x3 => x4 => f(x1, x2, x3, x4)
   }
 
   /** Currying for functions of arity 5.
    */
+  @deprecated("Use `f.curry` instead")
   def curried[a1, a2, a3, a4, a5, b](f: (a1, a2, a3, a4, a5) => b): a1 => a2 => a3 => a4 => a5 => b = {
     x1 => x2 => x3 => x4 => x5 => f(x1, x2, x3, x4, x5)
   }
@@ -119,6 +96,7 @@ object Function
    *  @param f  ...
    *  @return   ...
    */
+  @deprecated("Use `f.tuple` instead")
   def tupled[a1, a2, b](f: (a1, a2) => b): Tuple2[a1, a2] => b = {
     case Tuple2(x1, x2) => f(x1, x2)
   }
@@ -126,6 +104,7 @@ object Function
   /** Tupling for functions of arity 3. This transforms a function
    *  of arity 3 into a unary function that takes a triple of arguments.
    */
+  @deprecated("Use `f.tuple` instead") 
   def tupled[a1, a2, a3, b](f: (a1, a2, a3) => b): Tuple3[a1, a2, a3] => b = {
     case Tuple3(x1, x2, x3) => f(x1, x2, x3)
   }
@@ -133,6 +112,7 @@ object Function
   /** Tupling for functions of arity 4. This transforms a function
    *  of arity 4 into a unary function that takes a 4-tuple of arguments.
    */
+  @deprecated("Use `f.tuple` instead") 
   def tupled[a1, a2, a3, a4, b](f: (a1, a2, a3, a4) => b): Tuple4[a1, a2, a3, a4] => b = {
     case Tuple4(x1, x2, x3, x4) => f(x1, x2, x3, x4)
   }
@@ -140,6 +120,7 @@ object Function
   /** Tupling for functions of arity 5. This transforms a function
    *  of arity 5 into a unary function that takes a 5-tuple of arguments.
    */
+  @deprecated("Use `f.tuple` instead") 
   def tupled[a1, a2, a3, a4, a5, b](f: (a1, a2, a3, a4, a5) => b): Tuple5[a1, a2, a3, a4, a5] => b = {
     case Tuple5(x1, x2, x3, x4, x5) => f(x1, x2, x3, x4, x5)
   }

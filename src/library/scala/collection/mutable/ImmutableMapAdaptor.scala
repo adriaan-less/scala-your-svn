@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -48,7 +48,7 @@ extends Map[A, B]
   @deprecated("use `keysIterator' instead")
   override def keys: Iterator[A] = imap.keysIterator
 
-  override def valueIterable: scala.collection.Iterable[B] = imap.valueIterable
+  override def valuesIterable: scala.collection.Iterable[B] = imap.valuesIterable
 
   override def valuesIterator: Iterator[B] = imap.valuesIterator
 

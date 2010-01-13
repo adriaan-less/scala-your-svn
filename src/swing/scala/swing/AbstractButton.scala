@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -11,9 +11,8 @@
 
 package scala.swing
 
-import java.awt.{Dimension, Insets}
-import javax.swing.{AbstractButton => JAbstractButton, Icon}
 import event._
+import javax.swing.{AbstractButton => JAbstractButton, Icon}
 
 /**
  * Base class of all button-like widgets, such as push buttons, 
@@ -42,6 +41,7 @@ abstract class AbstractButton extends Component with Action.Trigger with Publish
   def rolloverSelectedIcon: Icon = peer.getRolloverSelectedIcon
   def rolloverSelectedIcon_=(b: Icon) = peer.setRolloverSelectedIcon(b)
   
+  // TODO: we need an action cache
   private var _action: Action = Action.NoAction
   def action: Action = _action
   def action_=(a: Action) { _action = a; peer.setAction(a.peer) }

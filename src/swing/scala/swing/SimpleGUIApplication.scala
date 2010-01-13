@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -22,7 +22,7 @@ import javax.swing._
  * the EDT (see Swing.onEDT and Swing.onEDTWait). Lazy values are okay for the same reason
  * if they are intialized on the EDT always.
  */
-abstract class SimpleGUIApplication extends GUIApplication {
+@deprecated("Use SimpleSwingApplication instead") abstract class SimpleGUIApplication extends GUIApplication {
   
   /**
    * A GUI application's version of the main method. Called by the default 
@@ -34,7 +34,7 @@ abstract class SimpleGUIApplication extends GUIApplication {
   /**
    * Calls top, packs the frame, and displays it.
    */
-  def main(args: Array[String]) = run { 
+  def main(args: Array[String]) = run {
     val t = top
     t.pack()
     t.visible = true

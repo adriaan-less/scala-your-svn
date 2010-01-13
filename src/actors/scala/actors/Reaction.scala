@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -26,7 +26,7 @@ private[actors] class KillActorException extends Throwable with ControlException
  *  @deprecated("this class is going to be removed in a future release")
  *  @author Philipp Haller
  */
-class Reaction(a: Actor, f: PartialFunction[Any, Unit], msg: Any) extends ActorTask(a, () => {
+class Reaction(a: Actor, f: Any =>? Unit, msg: Any) extends ActorTask(a, () => {
   if (f == null)
     a.act()
   else

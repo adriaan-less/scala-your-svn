@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,6 +13,7 @@ package scala.collection
 package mutable
 
 import generic._
+import immutable.{List, Nil, ::}
 
 /** A Buffer implementation back up by a list. It provides constant time
  *  prepend and append. Most other operations are linear.
@@ -46,6 +47,10 @@ final class ListBuffer[A]
   override def length = len
   
   // Implementations of abstract methods in Buffer
+
+  override def apply(n: Int): A =
+    if (n < 0 || n >= len) throw new IndexOutOfBoundsException(n.toString())
+    else super.apply(n)
 
   /** Replaces element at index <code>n</code> with the new element
    *  <code>newelem</code>. Takes time linear in the buffer size. (except the
@@ -229,7 +234,7 @@ final class ListBuffer[A]
    *  @pre       an element exists at position <code>n</code>
    *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
    */
-  def remove(n: Int): A = try {
+  def remove(n: Int): A = {
     if (n < 0 || n >= len) throw new IndexOutOfBoundsException(n.toString())
     if (exported) copy()
     var old = start.head

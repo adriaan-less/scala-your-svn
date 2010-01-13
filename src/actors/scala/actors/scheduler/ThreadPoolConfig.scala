@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -36,9 +36,31 @@ object ThreadPoolConfig {
     }
   }
 
-  val maxPoolSize = getIntegerProp("actors.maxPoolSize") match {
-    case Some(i) if (i >= corePoolSize) => i
-    case Some(i) if (i < corePoolSize) => corePoolSize
-    case _ => 256
+  val maxPoolSize = {
+    val preMaxSize = getIntegerProp("actors.maxPoolSize") match {
+      case Some(i) => i
+      case _       => 256
+    }
+    if (preMaxSize >= corePoolSize) preMaxSize else corePoolSize
   }
+
+  private[actors] def useForkJoin: Boolean =
+    try {
+      val fjProp = System.getProperty("actors.enableForkJoin")
+      if (fjProp != null)
+        fjProp.equals("true")
+      else {
+        val javaVersion = System.getProperty("java.version")
+        val jvmVendor =   System.getProperty("java.vm.vendor")
+        Debug.info(this+": java.version = "+javaVersion)
+        Debug.info(this+": java.vm.vendor = "+jvmVendor)
+        (javaVersion.indexOf("1.6") != -1 ||
+         javaVersion.indexOf("1.7") != -1) &&
+        // on IBM J9 1.6 do not use ForkJoinPool
+        (jvmVendor.indexOf("Sun") != -1)
+      }
+    } catch {
+      case se: SecurityException => false
+    }
+
 }

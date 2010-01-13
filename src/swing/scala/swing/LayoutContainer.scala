@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -67,8 +67,8 @@ trait LayoutContainer extends Container.Wrapper {
     def get(c: Component) = Swing.toOption(constraintsFor(c))
     override def size = peer.getComponentCount
     def iterator: Iterator[(Component, Constraints)] = 
-      Iterator.range(0,size).map { c => 
-        val comp = UIElement.cachedWrapper[Component](peer.getComponent(c).asInstanceOf[JComponent])
+      peer.getComponents.iterator.map { c => 
+        val comp = UIElement.cachedWrapper[Component](c.asInstanceOf[JComponent])
         (comp, constraintsFor(comp))
       }
   }

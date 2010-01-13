@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -193,15 +193,6 @@ abstract class TreeInfo {
   reserved addEntry nme.false_
   reserved addEntry nme.true_
   reserved addEntry nme.null_
-  reserved addEntry newTypeName("byte")
-  reserved addEntry newTypeName("char")
-  reserved addEntry newTypeName("short")
-  reserved addEntry newTypeName("int")
-  reserved addEntry newTypeName("long")
-  reserved addEntry newTypeName("float")
-  reserved addEntry newTypeName("double")
-  reserved addEntry newTypeName("boolean")
-  reserved addEntry newTypeName("unit")
 
   /** Is name a variable name? */
   def isVariableName(name: Name): Boolean = {
@@ -336,16 +327,16 @@ abstract class TreeInfo {
 
   /** Compilation unit is the predef object
    */
-  def isPredefUnit(tree: Tree): Boolean = tree match {
-    case PackageDef(Ident(nme.scala_), defs) => isPredefObj(defs)
+  def isUnitInScala(tree: Tree, name: Name) = tree match {
+    case PackageDef(Ident(nme.scala_), defs) => isObject(defs, name)
     case _ => false
   }
 
-  private def isPredefObj(trees: List[Tree]): Boolean = trees match {
-    case Import(_, _) :: xs => isPredefObj(xs)
-    case ModuleDef(_, nme.Predef, _) :: Nil => true
-    case DocDef(_, tree1) :: Nil => isPredefObj(List(tree1))
-    case Annotated(_, tree1) :: Nil => isPredefObj(List(tree1))
+  private def isObject(trees: List[Tree], name: Name): Boolean = trees match {
+    case Import(_, _) :: xs => isObject(xs, name)
+    case DocDef(_, tree1) :: Nil => isObject(List(tree1), name)
+    case Annotated(_, tree1) :: Nil => isObject(List(tree1), name)
+    case ModuleDef(_, `name`, _) :: Nil => true
     case _ => false
   }
 

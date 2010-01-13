@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -50,23 +50,6 @@ trait ResizableArray[A] extends IndexedSeq[A]
     array(idx) = elem.asInstanceOf[AnyRef]
   }
 
-  /** Fills the given array <code>xs</code> with the elements of
-   *  this sequence starting at position <code>start</code>.
-   *
-   *  @param  xs the array to fill.
-   *  @param  start starting index.
-   */
-  override def copyToArray[B >: A](xs: Array[B], start: Int) {
-    Array.copy(array, 0, xs, start, size0)
-  }
-
-  /** Copy all elements to a buffer 
-   *  @param   The buffer to which elements are copied
-  override def copyToBuffer[B >: A](dest: Buffer[B]) {
-    dest ++= (array: Seq[AnyRef]).asInstanceOf[Seq[B]]
-  }
-   */
-
   override def foreach[U](f: A =>  U) {
     var i = 0
     while (i < size) {
@@ -74,6 +57,20 @@ trait ResizableArray[A] extends IndexedSeq[A]
       i += 1
     }
   }
+
+  /** Fills the given array <code>xs</code> with at most `len` elements of
+   *  this traversable starting at position `start`.
+   *  Copying will stop once either the end of the current traversable is reached or
+   *  `len` elements have been copied or the end of the array is reached.
+   *
+   *  @param  xs the array to fill.
+   *  @param  start starting index.
+   *  @param  len number of elements to copy
+   */
+   override def copyToArray[B >: A](xs: Array[B], start: Int, len: Int) {
+     val len1 = len min (xs.length - start) min length
+     Array.copy(array, 0, xs, start, len1)
+   }
 
   //##########################################################################
 
@@ -93,9 +90,12 @@ trait ResizableArray[A] extends IndexedSeq[A]
       var newsize = array.length * 2
       while (n > newsize)
         newsize = newsize * 2
+    // println("Internal array before, size " + size0 + ": " + array.toList)
       val newar: Array[AnyRef] = new Array(newsize)
       Array.copy(array, 0, newar, 0, size0)
+    // println("Internal array after,  size " + size0 + ": " + array.toList)
       array = newar
+    // println("New array after,  size      " + size0 + ": " + newar.toList)
     }
   }
 

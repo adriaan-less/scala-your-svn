@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
 // $Id$
@@ -9,7 +9,6 @@ package typechecker
 
 import symtab.Flags
 import symtab.Flags._
-import util.NoPosition
 import scala.collection.mutable.ListBuffer
 
 /** <ul>
@@ -110,8 +109,8 @@ trait SyntheticMethods extends ast.TreeDSL {
       typer typed { DEF(method) === LIT(clazz.name.decode) }
     }
 
-    def forwardingMethod(name: Name): Tree = {
-      val target      = getMember(ScalaRunTimeModule, "_" + name)
+    def forwardingMethod(name: Name, targetName: Name): Tree = {
+      val target      = getMember(ScalaRunTimeModule, targetName)
       val paramtypes  = target.tpe.paramTypes drop 1
       val method      = syntheticMethod(
         name, 0, makeTypeConstructor(paramtypes, target.tpe.resultType)
@@ -123,6 +122,9 @@ trait SyntheticMethods extends ast.TreeDSL {
         }
       }
     }
+    
+    def hashCodeTarget: Name =
+      if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
 
     def equalsSym = syntheticMethod(
       nme.equals_, 0, makeTypeConstructor(List(AnyClass.tpe), BooleanClass.tpe)
@@ -173,14 +175,17 @@ trait SyntheticMethods extends ast.TreeDSL {
       def makeTrees(acc: Symbol, cpt: Type): (Tree, Bind) = {
         val varName             = context.unit.fresh.newName(clazz.pos.focus, acc.name + "$")
         val (eqMethod, binding) =
-          if (isRepeatedParamType(cpt))  (nme.sameElements, Star(WILD()))
-          else                           (nme.EQ          , WILD()      )
-        
-        ((varName DOT eqMethod)(Ident(acc)), varName BIND binding)
+          if (isRepeatedParamType(cpt)) 
+            (TypeApply(varName DOT nme.sameElements, List(TypeTree(cpt.baseType(SeqClass).typeArgs.head))),
+             Star(WILD()))
+          else
+            ((varName DOT nme.EQ): Tree, 
+             WILD())
+        (eqMethod APPLY Ident(acc), varName BIND binding)
       }
       
       // Creates list of parameters and a guard for each
-      val (guards, params) = List.map2(clazz.caseFieldAccessors, constrParamTypes)(makeTrees) unzip
+      val (guards, params) = (clazz.caseFieldAccessors, constrParamTypes).zipped map makeTrees unzip
 
       // Verify with canEqual method before returning true.
       def canEqualCheck() = {
@@ -229,7 +234,7 @@ trait SyntheticMethods extends ast.TreeDSL {
       if (clazz hasFlag Flags.CASE) {
         val isTop = !(clazz.ancestors exists (_ hasFlag Flags.CASE))
         // case classes are implicitly declared serializable
-        clazz addAnnotation AnnotationInfo(SerializableAttr.tpe, Nil, Nil, NoPosition)
+        clazz addAnnotation AnnotationInfo(SerializableAttr.tpe, Nil, Nil)
 
         if (isTop) {
           // If this case class has fields with less than public visibility, their getter at this
@@ -245,8 +250,8 @@ trait SyntheticMethods extends ast.TreeDSL {
         
         // methods for case classes only
         def classMethods = List(
-          Object_hashCode -> (() => forwardingMethod(nme.hashCode_)),
-          Object_toString -> (() => forwardingMethod(nme.toString_)),
+          Object_hashCode -> (() => forwardingMethod(nme.hashCode_, "_" + hashCodeTarget)),
+          Object_toString -> (() => forwardingMethod(nme.toString_, "_" + nme.toString_)),
           Object_equals   -> (() => equalsClassMethod)
         )
         // methods for case objects only

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -57,12 +57,15 @@ trait ReplyReactor extends Reactor with ReplyableReactor {
     // assert continuation != null
     if (onSameThread)
       continuation(item._1)
-    else
+    else {
       scheduleActor(continuation, item._1)
+      // see Reactor.resumeReceiver
+      throw Actor.suspendException
+    }
   }
 
   // assume continuation != null
-  private[actors] override def searchMailbox(startMbox: MessageQueue,
+  private[actors] override def searchMailbox(startMbox: MQueue,
                                              handlesMessage: Any => Boolean,
                                              resumeOnSameThread: Boolean) {
     var tmpMbox = startMbox
@@ -78,12 +81,13 @@ trait ReplyReactor extends Reactor with ReplyableReactor {
         synchronized {
           // in mean time new stuff might have arrived
           if (!sendBuffer.isEmpty) {
-            tmpMbox = new MessageQueue("Temp")
+            tmpMbox = new MQueue("Temp")
             drainSendBuffer(tmpMbox)
             // keep going
           } else {
             waitingFor = handlesMessage
-            done = true
+            // see Reactor.searchMailbox
+            throw Actor.suspendException
           }
         }
       } else {

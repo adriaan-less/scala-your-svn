@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -11,11 +11,10 @@
 
 package scala.swing
 
+import event._
 import javax.swing._
 import javax.swing.table._
 import javax.swing.event._
-import java.awt.{Dimension, Color}
-import event._
 import scala.collection.mutable.{Set, IndexedSeq}
 
 object Table {
@@ -300,7 +299,7 @@ class Table extends Component with Scrollable.Wrapper {
     def tableChanged(e: TableModelEvent) = publish(
       e.getType match {
         case TableModelEvent.UPDATE =>
-          if (e.getFirstRow == 0 && e.getLastRow == Math.MAX_INT && e.getColumn == TableModelEvent.ALL_COLUMNS)
+          if (e.getFirstRow == 0 && e.getLastRow == Int.MaxValue && e.getColumn == TableModelEvent.ALL_COLUMNS)
             TableChanged(Table.this)
           else if (e.getFirstRow == TableModelEvent.HEADER_ROW)
             TableStructureChanged(Table.this)

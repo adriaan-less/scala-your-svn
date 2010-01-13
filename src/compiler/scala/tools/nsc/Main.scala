@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -10,6 +10,8 @@ import java.io.File
 
 import scala.concurrent.SyncVar
 
+import scala.tools.nsc.interactive.{ RefinedBuildManager, SimpleBuildManager }
+import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
 import scala.tools.nsc.util.{ BatchSourceFile, FakePos } //{Position}
 
@@ -38,6 +40,7 @@ object Main extends AnyRef with EvalLoop {
     loop { line =>
       val args = line.split(' ').toList
       val command = new CompilerCommand(args, new Settings(error), error, true)
+      compiler.reporter.reset
       new compiler.Run() compile command.files
     }
   }
@@ -62,8 +65,23 @@ object Main extends AnyRef with EvalLoop {
         case None => reporter.reset // Causes other compiler errors to be ignored
       }
       askShutdown
-    }
-    else {
+    } else if (command.settings.Ybuilderdebug.value != "none") {
+      def fileSet(files : List[String]) = Set.empty ++ (files map AbstractFile.getFile) 
+      
+      val buildManager = if (command.settings.Ybuilderdebug.value == "simple")
+        new SimpleBuildManager(settings)
+      else 
+        new RefinedBuildManager(settings)
+  
+      buildManager.addSourceFiles(fileSet(command.files))
+  
+      // enter resident mode
+      loop { line =>
+        val args = line.split(' ').toList
+        val command = new CompilerCommand(args.toList, settings, error, true)
+        buildManager.update(fileSet(command.files), Set.empty)
+      }
+    } else {
       if (command.settings.target.value == "msil") {
         val libpath = System.getProperty("msil.libpath")
         if (libpath != null)
@@ -97,7 +115,7 @@ object Main extends AnyRef with EvalLoop {
         case ex @ FatalError(msg) =>
           if (true || command.settings.debug.value) // !!!
             ex.printStackTrace();
-        reporter.error(null, "fatal error: " + msg)
+          reporter.error(null, "fatal error: " + msg)
       }
     }
   }

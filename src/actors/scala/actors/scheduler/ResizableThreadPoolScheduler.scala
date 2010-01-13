@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -10,7 +10,8 @@
 
 package scala.actors.scheduler
 
-import scala.actors.threadpool.{ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue}
+import scala.actors.threadpool.{ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue,
+                                ThreadFactory}
 import scala.actors.{Debug, IScheduler}
 import scala.concurrent.ManagedBlocker
 
@@ -48,6 +49,15 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
 
   protected val CHECK_FREQ = 10
 
+  private class DaemonThreadFactory extends ThreadFactory {
+    def newThread(r: Runnable): Thread = {
+      val t = new Thread(r)
+      t.setDaemon(daemon)
+      t
+    }
+  }
+  private val threadFac = new DaemonThreadFactory
+
   private def makeNewPool(): ThreadPoolExecutor = {
     val workQueue = new LinkedBlockingQueue
     new ThreadPoolExecutor(coreSize,
@@ -55,6 +65,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
                            60000L,
                            TimeUnit.MILLISECONDS,
                            workQueue,
+                           threadFac,
                            new ThreadPoolExecutor.CallerRunsPolicy)
   }
 
@@ -111,7 +122,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
             if (coreSize - activeBlocked < numCores && coreSize < maxSize) {
               coreSize = numCores + activeBlocked
               executor.setCorePoolSize(coreSize)
-            } else if (terminate && allTerminated) {
+            } else if (terminate && allActorsTerminated) {
               // if all worker threads idle terminate
               if (executor.getActiveCount() == 0) {
                 Debug.info(this+": initiating shutdown...")

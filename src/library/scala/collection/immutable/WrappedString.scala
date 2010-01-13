@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,7 +13,7 @@ package scala.collection
 package immutable
 
 import generic._
-import mutable.Builder
+import mutable.{Builder, StringBuilder}
 import scala.util.matching.Regex
 
 /**
@@ -26,6 +26,9 @@ class WrappedString(override val self: String) extends IndexedSeq[Char] with Str
 
   /** Creates a string builder buffer as builder for this class */
   override protected[this] def newBuilder = WrappedString.newBuilder
+  
+  override def slice(from: Int, until: Int): WrappedString = 
+    new WrappedString(self.substring(from max 0, until min self.length))
 }
 
 /**
