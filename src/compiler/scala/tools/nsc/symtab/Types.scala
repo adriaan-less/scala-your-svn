@@ -340,6 +340,9 @@ trait Types {
     /** This type, without its type arguments @M */
     def typeConstructor: Type = this
 
+    /** For a proper type, the type itself; for a higher-kinded type, the derived proper type (using existential abstraction) @M */
+    def forceToKindStar: Type = this
+
     /** For a typeref, its arguments. The empty list for all other types */
     def typeArgs: List[Type] = List()
 
@@ -1592,6 +1595,10 @@ A type's typeSymbol should never be inspected directly.
 
     override def typeConstructor = rawTypeRef(pre, sym, List())
 
+    override def forceToKindStar: Type =
+      if (isHigherKinded) ExistentialType(typeParams, typeRef(pre, sym.initialize, dummyArgs))
+      else this
+
     // a reference (in a Scala program) to a type that has type parameters, but where the reference does not include type arguments
     // note that it doesn't matter whether the symbol refers to a java or scala symbol, 
     // it does matter whether it occurs in java or scala code
@@ -1837,7 +1844,8 @@ A type's typeSymbol should never be inspected directly.
    *   Ideally, there would be a NullaryMethodType, but since the only polymorphic values are methods, it's not that problematic.
    *   More pressingly, we should add a TypeFunction type for anonymous type constructors -- for now, PolyType is used in:
    *     - normalize: for eta-expansion of type aliases
-   *     - abstractTypeSig )
+   *     - abstractTypeSig
+   *     - mapOverArgs in the uncurry TypeMap)
    */
   case class PolyType(override val typeParams: List[Symbol], override val resultType: Type)
        extends Type {
@@ -1869,7 +1877,11 @@ A type's typeSymbol should never be inspected directly.
                  PolyType(typeParams, resultType.bounds.hi))
 
     override def isHigherKinded = !typeParams.isEmpty
-    
+    override def typeConstructor = resultType.typeConstructor
+    override def forceToKindStar: Type =
+      if (isHigherKinded) ExistentialType(typeParams, resultType) // TODO:clone?
+      else this
+
     override def safeToString: String =
       (if (typeParams.isEmpty) "=> "
        else (typeParams map (_.defString) mkString ("[", ",", "]")))+resultType

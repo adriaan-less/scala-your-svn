@@ -777,8 +777,8 @@ self: Analyzer =>
 
       def findSubManifest(tp: Type) = findManifest(tp, if (full) FullManifestClass else OptManifestClass)
 
-      def mot(tp0: Type): Tree = {
-        val tp1 = tp0.normalize
+      def mot(tp0: Type): Tree = mot0(tp0.normalize)
+      def mot0(tp1: Type): Tree = { // need to skip normalize when coming from a polytype
         tp1 match {
           case ThisType(_) | SingleType(_, _) =>
             manifestFactoryCall("singleType", tp, gen.mkAttributedQualifier(tp1)) 
@@ -791,14 +791,21 @@ self: Analyzer =>
               findSingletonManifest("Object")
             } else if (sym == ArrayClass && args.length == 1) {
               manifestFactoryCall("arrayType", args.head, findSubManifest(args.head))
-            } else if (sym.isClass) {
-              val suffix = gen.mkClassOf(tp1) :: (args map findSubManifest)
+            } else if (sym.isClass) { // note that tp1 may be a higher-kinded type
+              val suffix = gen.mkClassOf(tp1.forceToKindStar) :: (args map findSubManifest)
+              // classOf[T] where T is not kind-* induces all kinds of headaches, even though it may slip through the cracks
+              // depending on where it gets introduced -- just say no
+              // (remove this call to forceToKindStar and watch t2915 fail because the overload for classType cannot be found, as
+              //  classOf[List] is not well-typed)
+              // similarly, tp below must be of kind * (see reflect.Manifest.classType...)
+              // if we're going to provide more precise manifests for higher-kinded types,
+              // will have to come with a kind-polymorphic classType...
               manifestFactoryCall(
-                "classType", tp, 
+                "classType", tp.forceToKindStar,
                 (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
                  else findSubManifest(pre) :: suffix): _*)
             } else if (sym.isAbstractType) {
-              if (sym.isExistential) 
+              if (sym.isExistential)
                 EmptyTree // todo: change to existential parameter manifest
               else if (sym.isTypeParameterOrSkolem)
                 EmptyTree  // a manifest should have been found by normal searchImplicit
@@ -819,6 +826,14 @@ self: Analyzer =>
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
             }
+          // higher-kinded type (normalize eta-expands to polytypes)
+          case PolyType(tparams, restpe) =>
+            // TODO dedicated manifest for type functions?
+            // val subst = new SubstTypeMap(tparams, tparams map (tpar => erasure.erasure(tpar.info)))
+            // mot(subst(restpe))
+            mot0(restpe.typeConstructor)  // don't normalize, that'll loop.. mot has to normalize and not dealias,
+            // since the latter won't chase type aliases unless they are fully applied (and we need to chase them down to the class
+            //  see the sym.isClass branch above)
           case RefinedType(parents, decls) =>
             // refinement is not generated yet
             if (parents.length == 1) findManifest(parents.head)
