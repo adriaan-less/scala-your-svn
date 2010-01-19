@@ -693,7 +693,7 @@ abstract class RefChecks extends InfoTransform {
       for (stat <- stats) { 
         index = index + 1; 
         stat match {
-          case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) =>
+          case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) => //@M TODO: traverse into pattern matches
             assert(stat.symbol != NoSymbol, stat);//debug
             if (stat.symbol.isLocal) {
               currentLevel.scope.enter(stat.symbol)
