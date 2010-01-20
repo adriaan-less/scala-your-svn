@@ -4175,8 +4175,14 @@ A type's typeSymbol should never be inspected directly.
           }
         }
 
-      case (_, _) => false // @assume !tp1.isHigherKinded || !tp2.isHigherKinded 
-      // --> thus, cannot be subtypes (Any/Nothing has already been checked)
+      case (_, _) =>
+        // @assume !tp1.isHigherKinded || !tp2.isHigherKinded
+        // --> thus, cannot be subtypes (Any/Nothing has already been checked)
+        // last chance: try cooking java types... YUCK
+        @inline def HK2Raw(tp: Type): Type = if(tp.isHigherKinded) rawToExistential(tp) else tp
+        val tp1r = HK2Raw(tp1)
+        val tp2r = HK2Raw(tp2)
+        !(tp1r.isHigherKinded || tp2r.isHigherKinded) && (tp1r <:< tp2r)
     }))
 
   def isSubArgs(tps1: List[Type], tps2: List[Type], tparams: List[Symbol]): Boolean = (
