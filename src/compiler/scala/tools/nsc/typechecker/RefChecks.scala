@@ -693,7 +693,7 @@ abstract class RefChecks extends InfoTransform {
       for (stat <- stats) { 
         index = index + 1; 
         stat match {
-          case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) => //@M TODO: traverse into pattern matches
+          case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) =>
             assert(stat.symbol != NoSymbol, stat);//debug
             if (stat.symbol.isLocal) {
               currentLevel.scope.enter(stat.symbol)
@@ -863,7 +863,7 @@ abstract class RefChecks extends InfoTransform {
           else
             typed(ValDef(vsym, EmptyTree)) :: typed(lazyDef) :: Nil
         } else {
-          if (tree.symbol.isLocal && index <= currentLevel.maxindex && !tree.symbol.hasFlag(LAZY)) {
+          if (tree.symbol.isLocal && index <= currentLevel.maxindex /*&& !tree.symbol.hasFlag(LAZY) -- redundant due to if above*/) {
             if (settings.debug.value) Console.println(currentLevel.refsym);
             unit.error(currentLevel.refpos, "forward reference extends over definition of " + tree.symbol);
           }
@@ -1137,6 +1137,12 @@ abstract class RefChecks extends InfoTransform {
           
         case x @ Select(_, _) =>
           transformSelect(x)
+
+        case UnApply(fun, args) =>
+          transform(fun) // just make sure we enterReference for unapply symbols, note that super.transform(tree) would not transform(fun)
+          //transformTrees(args) // TODO: is this necessary? could there be forward references in the args??
+          // probably not, until we allow parameterised extractors
+          tree
 
         case _ => tree
       }
