@@ -198,6 +198,7 @@ trait Typers { self: Analyzer =>
           s traverse fun
           for (arg <- args) s traverse arg
         }
+        println("applyImplicitArgs:"+(fun, args))
         Apply(fun, args) setPos fun.pos
       case ErrorType =>
         fun
@@ -2388,6 +2389,7 @@ trait Typers { self: Analyzer =>
             if (tparams.isEmpty) { // all type params are defined
               val args1 = typedArgs(args, argMode(fun, mode), paramTypes, formals)
               val restpe = mt.resultType(args1 map (_.tpe)) // instantiate dependent method types
+              println("doTypedApply: "+(restpe, restpe.normalize))
               def ifPatternSkipFormals(tp: Type) = tp match {
                 case MethodType(_, rtp) if ((mode & PATTERNmode) != 0) => rtp
                 case _ => tp
