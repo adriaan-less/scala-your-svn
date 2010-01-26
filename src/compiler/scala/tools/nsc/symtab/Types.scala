@@ -265,7 +265,10 @@ trait Types {
 
     /** Does this depend on an enclosing method parameter? */
     def isDependent: Boolean = IsDependentCollector.collect(this)
- 
+
+    /** True for WildcardType or BoundedWildcardType */
+    def isWildcard = false
+
     /** The term symbol associated with the type
       * Note that the symbol of the normalized type is returned (@see normalize)
       */
@@ -992,12 +995,14 @@ trait Types {
 
   /** An object representing an unknown type */
   case object WildcardType extends Type {
+    override def isWildcard = true
     override def safeToString: String = "?"
     // override def isNullable: Boolean = true
     override def kind = "WildcardType"
   }
 
   case class BoundedWildcardType(override val bounds: TypeBounds) extends Type {
+    override def isWildcard = true
     override def safeToString: String = "?" + bounds
     override def kind = "BoundedWildcardType"
   }
