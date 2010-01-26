@@ -24,4 +24,5 @@ object ZipWith {
 
   type _2 = Succ[Succ[Zero]]
   val zw = ?[ZipWith[_2, Int => String => Boolean]].x // : Stream[Int] => Stream[String] => Stream[Boolean]
+  // val zw = implicitly[ZipWith[Succ[Succ[Zero]], Int => String => Boolean]{type T = Stream[Int] => Stream[String] => Stream[Boolean]}].x
 }
