@@ -4363,7 +4363,7 @@ A type's typeSymbol should never be inspected directly.
      *   - handle typerefs, refined types, notnull and singleton types. 
      */
     def fourthTry = { incCounter(ctr4); trace("fourth")(tp1 match {
-      case tr1 @ TypeRef(_, sym1, _) =>
+      case tr1 @ TypeRef(pre1, sym1, _) =>
         sym1 match {
           case _: ClassSymbol =>
             if (sym1 == NothingClass) 
@@ -4382,7 +4382,8 @@ A type's typeSymbol should never be inspected directly.
               sym1.name == nme.REFINE_CLASS_NAME.toTypeName &&
               isSubType(sym1.info, tp2, depth)
           case _: TypeSymbol =>
-            if (sym1 hasFlag DEFERRED) {
+            if (pre1 eq WildcardType) true // arises when argument-dependent types are approximated (see def depoly in implicits)
+            else if (sym1 hasFlag DEFERRED) {
               val tp1a = tp1.bounds.hi
               isDifferentTypeConstructor(tp1, tp1a) && tp1a <:< tp2
             } else {
