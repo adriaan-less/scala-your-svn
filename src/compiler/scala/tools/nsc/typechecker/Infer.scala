@@ -392,14 +392,11 @@ trait Infer {
 
     def isPlausiblyPopulated(tp1: Type, tp2: Type): Boolean = true
 
-    def isPlausiblyCompatible(tp: Type, pt: Type): Boolean = {
-      val res = tp match {
+    def isPlausiblyCompatible(tp: Type, pt: Type): Boolean = tp match {
       case PolyType(_, restpe) =>
         isPlausiblyCompatible(restpe, pt)
       case mt: ImplicitMethodType =>
-        val res = isPlausiblyCompatible(mt.resultType, pt)
-        println("imt: "+(mt.resultType, pt, res))
-        res
+        isPlausiblyCompatible(mt.resultType, pt)
       case ExistentialType(tparams, qtpe) =>
         isPlausiblyCompatible(qtpe, pt)
       case mt @ MethodType(params, restpe) =>
@@ -431,12 +428,8 @@ trait Infer {
       case _ =>
         isPlausiblySubType(tp, pt)
     }
-    println("isplauscompat:"+(tp, pt, res))
-    res
-  }
-
-    private def isPlausiblySubType(tp1: Type, tp2: Type): Boolean = {
-      val res = tp1 match {
+        
+    private def isPlausiblySubType(tp1: Type, tp2: Type): Boolean = tp1 match {
       case TypeRef(_, sym1, _) =>
         if (sym1.isAliasType) isPlausiblySubType(tp1.dealias, tp2)
         else if (!sym1.isClass) true
@@ -455,10 +448,6 @@ trait Infer {
       case _ =>
         true
     }
-
-    println("isplauscompat:"+(tp1, tp2, res))
-    res
-  }
 
     def isCompatible(tp: Type, pt: Type): Boolean = {
       val tp1 = normalize(tp)

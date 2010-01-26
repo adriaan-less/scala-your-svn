@@ -27,7 +27,7 @@ self: Analyzer =>
   import global._
   import definitions._
 
-  def traceImplicits = true //printTypings
+  def traceImplicits = printTypings
 
   /** Search for an implicit value. See the comment on `result` at the end of class `ImplicitSearch`
    *  for more info how the search is conducted. 
@@ -414,8 +414,7 @@ self: Analyzer =>
 
       incCounter(plausiblyCompatibleImplicits)
 
-
-      if (traceImplicits) println("typed impl for "+wildPt+"? "+info.name+":"+depoly(info.tpe)+"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
+      //if (traceImplicits) println("typed impl for "+wildPt+"? "+info.name+":"+depoly(info.tpe)+"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
 
         incCounter(matchingImplicits)
@@ -588,10 +587,8 @@ self: Analyzer =>
             (isView && isConformsMethod(info.sym)) ||
             //@M this condition prevents no-op conversions, which are a problem (besides efficiency),
             // one example is removeNames in NamesDefaults, which relies on the type checker failing in case of ambiguity between an assignment/named arg
-            !isPlausiblyCompatible(info.tpe, wildPt)) {
-              println("failed:"+(info, info.isCyclicOrErroneous, isLocal , shadowed.contains(info.name), isView, isConformsMethod(info.sym), !isPlausiblyCompatible(info.tpe, wildPt)))
-              SearchFailure
-            } 
+            !isPlausiblyCompatible(info.tpe, wildPt))
+           SearchFailure
         else 
           typedImplicit(info)
       }
