@@ -31,11 +31,6 @@ trait Infer {
   def isVarArgs(params: List[Symbol]) = !params.isEmpty && isRepeatedParamType(params.last.tpe)
   def isVarArgTpes(formals: List[Type]) = !formals.isEmpty && isRepeatedParamType(formals.last)
 
-  def isWildcard(tp: Type) = tp match {
-    case WildcardType | BoundedWildcardType(_) => true
-    case _ => false
-  }
-
   /** The formal parameter types corresponding to <code>formals</code>.
    *  If <code>formals</code> has a repeated last parameter, a list of
    *  (nargs - params.length + 1) copies of its type is returned.
@@ -244,7 +239,7 @@ trait Infer {
 
     def applyErrorMsg(tree: Tree, msg: String, argtpes: List[Type], pt: Type) =
       treeSymTypeMsg(tree) + msg + argtpes.mkString("(", ",", ")") +
-       (if (isWildcard(pt)) "" else " with expected result type " + pt)
+       (if (pt isWildcard) "" else " with expected result type " + pt)
 
     // todo: use also for other error messages
     private def existentialContext(tp: Type) = tp.existentialSkolems match {
@@ -644,7 +639,7 @@ trait Infer {
 
       (tparams, targs).zipped map { (tparam, targ) =>
         if (targ.typeSymbol == NothingClass && 
-            (isWildcard(restpe) || notCovariantIn(tparam, restpe))) {
+            ((restpe isWildcard) || notCovariantIn(tparam, restpe))) {
           uninstantiated += tparam
           tparam.tpeHK  //@M tparam.tpe was wrong: we only want the type constructor,
             // not the type constructor applied to dummy arguments
