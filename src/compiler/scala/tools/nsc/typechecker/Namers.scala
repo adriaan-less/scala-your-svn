@@ -766,7 +766,7 @@ trait Namers { self: Analyzer =>
         def apply(tp: Type) = {
           tp match {
             case SingleType(_, sym) =>
-              if (settings.Xexperimental.value && sym.owner == meth && (vparams contains sym)) {
+              if (settings.YdepMethTpes.value && sym.owner == meth && (vparams contains sym)) {
 /*
                 if (sym hasFlag IMPLICIT) {
                   context.error(sym.pos, "illegal type dependence on implicit parameter")
@@ -815,7 +815,7 @@ trait Namers { self: Analyzer =>
                 context.error(
                   sym.pos, 
                   "illegal dependent method type"+
-                  (if (settings.Xexperimental.value) 
+                  (if (settings.YdepMethTpes.value) 
                      ": parameter appears in the type of another parameter in the same section or an earlier one"
                    else ""))
             case _ =>

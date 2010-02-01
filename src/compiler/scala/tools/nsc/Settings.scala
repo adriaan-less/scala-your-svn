@@ -836,7 +836,8 @@ trait ScalacSettings {
   val make          = ChoiceSetting     ("-make", "Specify recompilation detection strategy", List("all", "changed", "immediate", "transitive", "transitivenocp"), "all") .
                                           withHelpSyntax("-make:<strategy>")
   val nowarnings    = BooleanSetting    ("-nowarn", "Generate no warnings")
-  val XO            = BooleanSetting    ("-optimise", "Generates faster bytecode by applying optimisations to the program").withAbbreviation("-optimize")
+  val XO            = BooleanSetting    ("-optimise", "Generates faster bytecode by applying optimisations to the program").withAbbreviation("-optimize").
+                          withPostSetHook(() => List(Xdce, Xcloselim, inline) foreach (_.value = true))
   val printLate     = BooleanSetting    ("-print", "Print program with all Scala-specific features removed")
   val sourcepath    = StringSetting     ("-sourcepath", "path", "Specify where to find input source files", "")
   val target        = ChoiceSetting     ("-target", "Specify for which target object files should be built", List("jvm-1.5", "msil"), "jvm-1.5")
@@ -857,7 +858,8 @@ trait ScalacSettings {
   val noassertions  = BooleanSetting    ("-Xdisable-assertions", "Generate no assertions and assumptions")
   val elideLevel    = IntSetting        ("-Xelide-level", "Generate calls to @elidable-marked methods only method priority is greater than argument.",
                                                 elidable.ASSERTION, None, elidable.byName.get(_))
-  val Xexperimental = BooleanSetting    ("-Xexperimental", "Enable experimental extensions")
+  val Xexperimental = BooleanSetting    ("-Xexperimental", "Enable experimental extensions") .
+                          withPostSetHook(() => List(YdepMethTpes, YmethodInfer) foreach (_.value = true)) //YvirtClasses, 
   val noForwarders  = BooleanSetting    ("-Xno-forwarders", "Do not generate static forwarders in mirror classes")
   val future        = BooleanSetting    ("-Xfuture", "Turn on future language features")
   val genPhaseGraph = StringSetting     ("-Xgenerate-phase-graph", "file", "Generate the phase graphs (outputs .dot files) to fileX.dot", "")
@@ -885,51 +887,58 @@ trait ScalacSettings {
    * -Y "Private" settings
    */
   val Yhelp         = BooleanSetting    ("-Y", "Print a synopsis of private options")
-  val browse        = PhasesSetting     ("-Ybrowse", "Browse the abstract syntax tree after")
-  val check         = PhasesSetting     ("-Ycheck", "Check the tree at the end of")
-  val Xcloselim     = BooleanSetting    ("-Yclosure-elim", "Perform closure elimination")
   val Xcodebase     = StringSetting     ("-Ycodebase", "codebase", "Specify the URL containing the Scala libraries", "")
-  val Ycompacttrees = BooleanSetting    ("-Ycompact-trees", "Use compact tree printer when displaying trees")
-  val noCompletion  = BooleanSetting    ("-Yno-completion", "Disable tab-completion in the REPL")
-  val Xdce          = BooleanSetting    ("-Ydead-code", "Perform dead code elimination")
-  val debug         = BooleanSetting    ("-Ydebug", "Output debugging messages")
-  val Xdetach       = BooleanSetting    ("-Ydetach", "Perform detaching of remote closures")
-  // val doc           = BooleanSetting    ("-Ydoc", "Generate documentation")
-  val inline        = BooleanSetting    ("-Yinline", "Perform inlining when possible")
-  val Xlinearizer   = ChoiceSetting     ("-Ylinearizer", "Linearizer to use", List("normal", "dfs", "rpo", "dump"), "rpo") .
-                                          withHelpSyntax("-Ylinearizer:<which>")
-  val log           = PhasesSetting     ("-Ylog", "Log operations in")
-  val Ynogenericsig = BooleanSetting    ("-Yno-generic-signatures", "Suppress generation of generic signatures for Java")
-  val noimports     = BooleanSetting    ("-Yno-imports", "Compile without any implicit imports")
-  val nopredefs     = BooleanSetting    ("-Yno-predefs", "Compile without any implicit predefined values")
-  val Yrecursion    = IntSetting        ("-Yrecursion", "Recursion depth used when locking symbols", 0, Some(0, Int.MaxValue), _ => None)
-  val selfInAnnots  = BooleanSetting    ("-Yself-in-annots", "Include a \"self\" identifier inside of annotations")
-  val Xshowtrees    = BooleanSetting    ("-Yshow-trees", "Show detailed trees when used in connection with -print:phase")
-  val skip          = PhasesSetting     ("-Yskip", "Skip")
-  val Xsqueeze      = ChoiceSetting     ("-Ysqueeze", "if on, creates compact code in matching", List("on","off"), "on") .
-                                          withHelpSyntax("-Ysqueeze:<enabled>")
   val Ystatistics   = BooleanSetting    ("-Ystatistics", "Print compiler statistics")
+  val Ycompacttrees = BooleanSetting    ("-Ycompact-trees", "Use compact tree printer when displaying trees")
+  val debug         = BooleanSetting    ("-Ydebug", "Output debugging messages")
+  val Ytyperdebug   = BooleanSetting    ("-Ytyper-debug", "Trace all type assignements")
+  val Ypmatdebug    = BooleanSetting    ("-Ypmat-debug", "Trace all pattern matcher activity.")
+  val Ybuildmanagerdebug = 
+                      BooleanSetting    ("-Ybuild-manager-debug", "Generate debug information for the Refined Build Manager compiler.")
+  val log           = PhasesSetting     ("-Ylog", "Log operations in")
+  val browse        = PhasesSetting     ("-Ybrowse", "Browse the abstract syntax tree after")
+  val Xshowtrees    = BooleanSetting    ("-Yshow-trees", "Show detailed trees when used in connection with -print:phase")
+  val noCompletion  = BooleanSetting    ("-Yno-completion", "Disable tab-completion in the REPL")
+  val check         = PhasesSetting     ("-Ycheck", "Check the tree at the end of")
+  val skip          = PhasesSetting     ("-Yskip", "Skip")
   val stop          = PhasesSetting     ("-Ystop", "Stop after phase")
-  val refinementMethodDispatch =
-                      ChoiceSetting     ("-Ystruct-dispatch", "Selects dispatch method for structural refinement method calls",
-                        List("no-cache", "mono-cache", "poly-cache", "invoke-dynamic"), "poly-cache") .
-                        withHelpSyntax("-Ystruct-dispatch:<method>")
-  val specialize    = BooleanSetting    ("-Yspecialize", "Specialize generic code on types.")
   val Yrangepos     = BooleanSetting    ("-Yrangepos", "Use range positions for syntax trees.")
   val Yidedebug     = BooleanSetting    ("-Yide-debug", "Generate, validate and output trees using the interactive compiler.")
   val Ybuilderdebug = ChoiceSetting     ("-Ybuilder-debug", "Compile using the specified build manager", List("none", "refined", "simple"), "none") .
                         withHelpSyntax("-Ybuilder-debug:<method>")
-  val Ybuildmanagerdebug = 
-                      BooleanSetting    ("-Ybuild-manager-debug", "Generate debug information for the Refined Build Manager compiler.")
-  val Ytyperdebug   = BooleanSetting    ("-Ytyper-debug", "Trace all type assignements")
-  val Ypmatdebug    = BooleanSetting    ("-Ypmat-debug", "Trace all pattern matcher activity.")
-  val Ypmatnaive    = BooleanSetting    ("-Ypmat-naive", "Desugar matches as naively as possible..")
-  val Ytailrec      = BooleanSetting    ("-Ytailrecommend", "Alert methods which would be tail-recursive if private or final.")
+
+  // Code generation
+  val specialize    = BooleanSetting    ("-Yspecialize", "Specialize generic code on types.")
+  val Ynogenericsig = BooleanSetting    ("-Yno-generic-signatures", "Suppress generation of generic signatures for Java")
+  val refinementMethodDispatch =
+                      ChoiceSetting     ("-Ystruct-dispatch", "Selects dispatch method for structural refinement method calls",
+                        List("no-cache", "mono-cache", "poly-cache", "invoke-dynamic"), "poly-cache") .
+                        withHelpSyntax("-Ystruct-dispatch:<method>")
   val Yjenkins      = BooleanSetting    ("-Yjenkins-hashCodes", "Use jenkins hash algorithm for case class generated hashCodes.")
+  val Xsqueeze      = ChoiceSetting     ("-Ysqueeze", "if on, creates compact code in matching", List("on","off"), "on") .
+                                          withHelpSyntax("-Ysqueeze:<enabled>")
+  val Ypmatnaive    = BooleanSetting    ("-Ypmat-naive", "Desugar matches as naively as possible..")
+  val Xcloselim     = BooleanSetting    ("-Yclosure-elim", "Perform closure elimination") // typically set by post set hook for -optimise
+  val Xdce          = BooleanSetting    ("-Ydead-code", "Perform dead code elimination")
+  val inline        = BooleanSetting    ("-Yinline", "Perform inlining when possible")
+
+  // Languages Extensions
+  val YdepMethTpes  = BooleanSetting    ("-Ydependent-method-types", "Allow dependent method types")
+  val YmethodInfer  = BooleanSetting    ("-Yinfer-argument-types", "Infer types for arguments of overriden methods")
+  val YvirtClasses  = false // too embryonic to even expose as a -Y //BooleanSetting    ("-Yvirtual-classes", "Support virtual classes")
+
+  // Language Features
+  val noimports     = BooleanSetting    ("-Yno-imports", "Compile without any implicit imports")
+  val nopredefs     = BooleanSetting    ("-Yno-predefs", "Compile without any implicit predefined values")
+  val Xlinearizer   = ChoiceSetting     ("-Ylinearizer", "Linearizer to use", List("normal", "dfs", "rpo", "dump"), "rpo") withHelpSyntax("-Ylinearizer:<which>")
+  val Yrecursion    = IntSetting        ("-Yrecursion", "Recursion depth used when locking symbols", 0, Some(0, Int.MaxValue), _ => None)
+  val selfInAnnots  = BooleanSetting    ("-Yself-in-annots", "Include a \"self\" identifier inside of annotations") // deprecated?
+  val Xdetach       = BooleanSetting    ("-Ydetach", "Perform detaching of remote closures") // deprecated?
 
   // Warnings
-  val Xwarninit     = BooleanSetting    ("-Xwarninit", "Warn about possible changes in initialization semantics")
   val Xchecknull    = BooleanSetting    ("-Xcheck-null", "Emit warning on selection of nullable reference")
+  val Ytailrec      = BooleanSetting    ("-Ytailrecommend", "Alert methods which would be tail-recursive if private or final.")
+  val Xwarninit     = BooleanSetting    ("-Xwarninit", "Warn about possible changes in initialization semantics")
   val Xwarndeadcode = BooleanSetting    ("-Ywarn-dead-code", "Emit warnings for dead code")
   val YwarnShadow   = BooleanSetting    ("-Ywarn-shadowing", "Emit warnings about possible variable shadowing.")
   val YwarnCatches  = BooleanSetting    ("-Ywarn-catches", "Emit warnings about catch blocks which catch everything.")
@@ -937,6 +946,7 @@ trait ScalacSettings {
                           withPostSetHook(() =>
                             List(YwarnShadow, YwarnCatches, Xwarndeadcode, Xwarninit) foreach (_.value = true)
                           )
+
   /**
    * "fsc-specific" settings.
    */
