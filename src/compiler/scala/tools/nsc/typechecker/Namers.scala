@@ -760,6 +760,7 @@ trait Namers { self: Analyzer =>
         tpt setPos meth.pos.focus
       }
 
+/*
       def convertToDeBruijn(vparams: List[Symbol], level: Int): TypeMap = new TypeMap {
         def debruijnFor(param: Symbol) =
           DeBruijnIndex(level, vparams indexOf param)
@@ -767,12 +768,6 @@ trait Namers { self: Analyzer =>
           tp match {
             case SingleType(_, sym) =>
               if (settings.YdepMethTpes.value && sym.owner == meth && (vparams contains sym)) {
-/*
-                if (sym hasFlag IMPLICIT) {
-                  context.error(sym.pos, "illegal type dependence on implicit parameter")
-                  ErrorType
-                } else 
-*/
                 debruijnFor(sym)
               } else tp
             case MethodType(params, restpe) =>
@@ -806,6 +801,7 @@ trait Namers { self: Analyzer =>
         // for type annotations (which may contain trees)
         override def mapOver(arg: Tree) = Some(treeTrans.transform(arg))
       }
+*/
 
       val checkDependencies: TypeTraverser = new TypeTraverser {
         def traverse(tp: Type) = {
@@ -830,13 +826,14 @@ trait Namers { self: Analyzer =>
        *  @param restpe  the result type (possibly a MethodType)
        */
       def makeMethodType(vparams: List[Symbol], restpe: Type) = {
+        // TODODEPMET: check that we actually don't need to do anything here
         // new dependent method types: probably OK already, since 'enterValueParams' above
         // enters them in scope, and all have a lazy type. so they may depend on other params. but: need to
         // check that params only depend on ones in earlier sections, not the same. (done by checkDependencies,
         // so re-use / adapt that)
         val params = vparams map (vparam =>
           if (meth hasFlag JAVA) vparam.setInfo(objToAny(vparam.tpe)) else vparam)
-        val restpe1 = convertToDeBruijn(vparams, 1)(restpe) // new dependent types: replace symbols in restpe with the ones in vparams
+        val restpe1 = restpe //convertToDeBruijn(vparams, 1)(restpe) // new dependent types: replace symbols in restpe with the ones in vparams
         if (meth hasFlag JAVA) JavaMethodType(params, restpe1)
         else MethodType(params, restpe1)
       }

@@ -166,7 +166,7 @@ object PickleFormat {
   final val ANNOTARGARRAY = 44
 
   final val SUPERtpe = 46
-  final val DEBRUIJNINDEXtpe = 47
+  // final val DEBRUIJNINDEXtpe = 47
   final val EXISTENTIALtpe = 48
 
   final val TREE = 49      // prefix code that means a tree is coming

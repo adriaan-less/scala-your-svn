@@ -352,7 +352,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      */
     def remove(clazz: Symbol): Type = this
 
-    def resultApprox: Type = ApproximateDeBruijnMap(resultType)
+    def resultApprox: Type = ApproximateDependentMap(resultType)
 
     /** For a curried method or poly type its non-method result type, 
      *  the type itself for all other types */
@@ -1030,13 +1030,13 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
       else sym.tpe
   }
 
-  case class DeBruijnIndex(level: Int, paramId: Int) extends Type {
-    override def isTrivial = true
-    override def isStable = true
-    override def safeToString = "<param "+level+"."+paramId+">"
-    override def kind = "DeBruijnIndex"
-    // todo: this should be a subtype, which forwards to underlying
-  }
+  // case class DeBruijnIndex(level: Int, paramId: Int) extends Type {
+  //   override def isTrivial = true
+  //   override def isStable = true
+  //   override def safeToString = "<param "+level+"."+paramId+">"
+  //   override def kind = "DeBruijnIndex"
+  //   // todo: this should be a subtype, which forwards to underlying
+  // }
 
   /** A class for singleton types of the form &lt;prefix&gt;.&lt;sym.name&gt;.type.
    *  Cannot be created directly; one should always use
@@ -1828,7 +1828,7 @@ A type's typeSymbol should never be inspected directly.
     override def boundSyms = params ::: resultType.boundSyms
     
     override def resultType(actuals: List[Type]) = {
-      val map = new InstantiateDeBruijnMap(actuals)
+      val map = new InstantiateDependentMap(actuals)
       val rawResTpe = map.apply(resultType)
 
       if (phase.erasedTypes)
@@ -2755,7 +2755,7 @@ A type's typeSymbol should never be inspected directly.
         if ((tparams1 eq tparams) && (result1 eq result)) tp
         else PolyType(tparams1, result1.substSym(tparams, tparams1))
       case ConstantType(_) => tp
-      case DeBruijnIndex(_, _) => tp
+      // case DeBruijnIndex(_, _) => tp
       case SuperType(thistp, supertp) =>
         val thistp1 = this(thistp)
         val supertp1 = this(supertp)
@@ -3284,6 +3284,7 @@ A type's typeSymbol should never be inspected directly.
     }
   }
 
+/*
   /** Most of the implementation for MethodType.resultType.  The
    *  caller also needs to existentially quantify over the
    *  variables in existentialsNeeded.
@@ -3361,6 +3362,32 @@ A type's typeSymbol should never be inspected directly.
         mapOver(tp)
     }
   }
+*/
+
+  object IsDependentCollector extends TypeCollector(false) {
+    def traverse(tp: Type) {
+      tp match {
+        case TypeRef(pre, sym, args) if sym.isTerm => result = true
+        case _ => if (!result) mapOver(tp)
+      }
+    }
+  }
+
+  object ApproximateDependentMap extends TypeMap {
+    def apply(tp: Type): Type = tp match {
+      case TypeRef(pre, sym, args) if sym.isTerm =>
+        WildcardType
+      case _ =>
+        mapOver(tp)
+    }
+  }
+
+// TODODEPMET
+  class InstantiateDependentMap(actuals: List[Type]) extends TypeMap {
+    def existentialsNeeded: List[Symbol] = List()
+    def apply(tp: Type): Type = tp
+  }
+
 
   object StripAnnotationsMap extends TypeMap {
     def apply(tp: Type): Type = tp match {
@@ -3462,15 +3489,6 @@ A type's typeSymbol should never be inspected directly.
       if (!result) {
         result = tp.isError
         mapOver(tp)
-      }
-    }
-  }
-
-  object IsDependentCollector extends TypeCollector(false) {
-    def traverse(tp: Type) {
-      tp match {
-        case DeBruijnIndex(_, _) => result = true
-        case _ => if (!result) mapOver(tp)
       }
     }
   }
