@@ -168,6 +168,7 @@ trait Typers { self: Analyzer =>
         var positional = true
         val argResultsBuff = new ListBuffer[SearchResult]()
 
+        // DEPMETTODO: subst singleton types that depend on earlier arguments
         // apply the substitutions (undet type param -> type) that were determined
         // by implicit resolution of implicit arguments on the left of this argument
         for(param <- params) {

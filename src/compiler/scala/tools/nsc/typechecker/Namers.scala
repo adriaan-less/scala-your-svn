@@ -803,24 +803,6 @@ trait Namers { self: Analyzer =>
       }
 */
 
-      val checkDependencies: TypeTraverser = new TypeTraverser {
-        def traverse(tp: Type) = {
-          tp match {
-            case SingleType(_, sym) =>
-              if (sym.owner == meth && (vparamSymss exists (_ contains sym)))
-                context.error(
-                  sym.pos, 
-                  "illegal dependent method type"+
-                  (if (settings.YdepMethTpes.value) 
-                     ": parameter appears in the type of another parameter in the same section or an earlier one"
-                   else ""))
-            case _ =>
-              mapOver(tp)
-          }
-          this
-        }
-      }
-
       /** Called for all value parameter lists, right to left 
        *  @param vparams the symbols of one parameter list
        *  @param restpe  the result type (possibly a MethodType)
@@ -833,17 +815,42 @@ trait Namers { self: Analyzer =>
         // so re-use / adapt that)
         val params = vparams map (vparam =>
           if (meth hasFlag JAVA) vparam.setInfo(objToAny(vparam.tpe)) else vparam)
-        val restpe1 = restpe //convertToDeBruijn(vparams, 1)(restpe) // new dependent types: replace symbols in restpe with the ones in vparams
-        if (meth hasFlag JAVA) JavaMethodType(params, restpe1)
-        else MethodType(params, restpe1)
+         // TODODEPMET necessary?? new dependent types: replace symbols in restpe with the ones in vparams
+        if (meth hasFlag JAVA) JavaMethodType(params, restpe)
+        else MethodType(params, restpe)
       }
 
-      def thisMethodType(restpe: Type) = 
+      def thisMethodType(restpe: Type) =  {
+        import scala.collection.mutable.ListBuffer
+        val okParams = ListBuffer[Symbol]()
+        val checkDependencies: TypeTraverser = new TypeTraverser {
+          def traverse(tp: Type) = {
+            tp match {
+              case SingleType(_, sym) =>
+                if (sym.owner == meth && !(okParams contains sym))
+                  context.error(
+                    sym.pos, 
+                    "illegal dependent method type"+
+                    (if (settings.YdepMethTpes.value) 
+                       ": parameter appears in the type of another parameter in the same section or an earlier one"
+                     else ""))
+              case _ =>
+                mapOver(tp)
+            }
+            this
+          }
+        }
+        for(vps <- vparamSymss) {
+          for(p <- vps) checkDependencies(p.info)
+          okParams ++= vps // can only refer to symbols in earlier parameter sections
+        }
+        
         polyType(
-          tparamSyms, // deSkolemized symbols 
-          if (vparamSymss.isEmpty) PolyType(List(), restpe)
+          tparamSyms, // deSkolemized symbols  -- TODO: check that their infos don't refer to method args?
+          if (vparamSymss.isEmpty) PolyType(List(), restpe) // nullary method type
           // vparamss refer (if they do) to skolemized tparams
-          else checkDependencies((vparamSymss :\ restpe) (makeMethodType)))
+          else (vparamSymss :\ restpe) (makeMethodType))
+      }
 
       var resultPt = if (tpt.isEmpty) WildcardType else typer.typedType(tpt).tpe
       val site = meth.owner.thisType

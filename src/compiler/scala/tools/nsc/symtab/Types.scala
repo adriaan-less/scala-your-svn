@@ -261,6 +261,11 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
     /** Is this type a structural refinement type (it 'refines' members that have not been inherited) */
     def isStructuralRefinement: Boolean = false
 
+    /** Does this type depend immediately on an enclosing method parameter? 
+      * i.e., is it a singleton type whose termSymbol refers to an argument of the symbol's owner (which is a method)
+      */
+    def isImmediatelyDependent: Boolean = false
+
     /** Does this depend on an enclosing method parameter? */
     def isDependent: Boolean = IsDependentCollector.collect(this)
  
@@ -1060,6 +1065,11 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
       underlyingCache
     }
 
+    override def isImmediatelyDependent = {
+      if (sym ne NoSymbol) println("immedDep?"+(sym.owner.paramss, (sym.owner.paramss exists (_ contains sym))))
+      else println("immedDep??"+ this)
+      (sym ne NoSymbol) && (sym.owner.paramss exists (_ contains sym))
+    }
     override def isVolatile : Boolean = underlying.isVolatile && (!sym.isStable)
 /*
     override def narrow: Type = {
@@ -1828,7 +1838,7 @@ A type's typeSymbol should never be inspected directly.
     override def boundSyms = params ::: resultType.boundSyms
     
     override def resultType(actuals: List[Type]) = {
-      val map = new InstantiateDependentMap(actuals)
+      val map = new InstantiateDependentMap(params, actuals)
       val rawResTpe = map.apply(resultType)
 
       if (phase.erasedTypes)
@@ -3284,12 +3294,38 @@ A type's typeSymbol should never be inspected directly.
     }
   }
 
+// dependent method types
+  object IsDependentCollector extends TypeCollector(false) {
+    def traverse(tp: Type) {
+      if(tp isImmediatelyDependent) result = true
+      else if (!result) mapOver(tp)
+    }
+  }
+
+  object ApproximateDependentMap extends TypeMap {
+    def apply(tp: Type): Type = 
+      if(tp isImmediatelyDependent) {
+        println("approx: "+(tp))
+        WildcardType
+      }
+      else mapOver(tp)
+  }
+
 /*
   /** Most of the implementation for MethodType.resultType.  The
    *  caller also needs to existentially quantify over the
    *  variables in existentialsNeeded.
    */
   class InstantiateDeBruijnMap(actuals: List[Type]) extends TypeMap {
+    def apply(tp: Type): Type = tp match {
+      case DeBruijnIndex(level, pid) =>
+        if (level == 1) 
+          if (pid < actuals.length) actuals(pid) else tp
+        else DeBruijnIndex(level - 1, pid)
+      case _ =>
+        mapOver(tp)
+    }
+
     override val dropNonConstraintAnnotations = true
 
     private var existSyms = immutable.Map.empty[Int, Symbol]
@@ -3311,16 +3347,7 @@ A type's typeSymbol should never be inspected directly.
         existSyms = existSyms + (actualIdx -> sym)
         sym
       }
-
-    def apply(tp: Type): Type = tp match {
-      case DeBruijnIndex(level, pid) =>
-        if (level == 1) 
-          if (pid < actuals.length) actuals(pid) else tp
-        else DeBruijnIndex(level - 1, pid)
-      case _ =>
-        mapOver(tp)
-    }
-
+    
     override def mapOver(arg: Tree, giveup: ()=>Nothing): Tree = {
       object treeTrans extends TypeMapTransformer {
         override def transform(tree: Tree): Tree =
@@ -3353,39 +3380,18 @@ A type's typeSymbol should never be inspected directly.
       treeTrans.transform(arg)
     }
   }
-
-  object ApproximateDeBruijnMap extends TypeMap {
-    def apply(tp: Type): Type = tp match {
-      case DeBruijnIndex(level, pid) =>
-        WildcardType
-      case _ =>
-        mapOver(tp)
-    }
-  }
 */
 
-  object IsDependentCollector extends TypeCollector(false) {
-    def traverse(tp: Type) {
-      tp match {
-        case TypeRef(pre, sym, args) if sym.isTerm => result = true
-        case _ => if (!result) mapOver(tp)
-      }
-    }
-  }
-
-  object ApproximateDependentMap extends TypeMap {
-    def apply(tp: Type): Type = tp match {
-      case TypeRef(pre, sym, args) if sym.isTerm =>
-        WildcardType
-      case _ =>
-        mapOver(tp)
-    }
-  }
-
 // TODODEPMET
-  class InstantiateDependentMap(actuals: List[Type]) extends TypeMap {
+  class InstantiateDependentMap(params: List[Symbol], actuals: List[Type]) extends TypeMap {
     def existentialsNeeded: List[Symbol] = List()
-    def apply(tp: Type): Type = tp
+
+    def apply(tp: Type): Type = {
+      val res=tp subst (params, actuals) // TODO: should we optimise this? only need to consider singletontypes
+      println("instantiate dependent: "+(params, actuals, tp, res))
+      res
+    }
+    // TODO: existential abstraction for annotations
   }
 
 
