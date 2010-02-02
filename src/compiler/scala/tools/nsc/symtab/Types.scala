@@ -1065,11 +1065,9 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
       underlyingCache
     }
 
-    override def isImmediatelyDependent = {
-      if (sym ne NoSymbol) println("immedDep?"+(sym.owner.paramss, (sym.owner.paramss exists (_ contains sym))))
-      else println("immedDep??"+ this)
-      (sym ne NoSymbol) && (sym.owner.paramss exists (_ contains sym))
-    }
+    // more precise conceptually, but causes cyclic errors:    (paramss exists (_ contains sym))
+    override def isImmediatelyDependent = (sym ne NoSymbol) && (sym.owner.isMethod && sym.isValueParameter)
+
     override def isVolatile : Boolean = underlying.isVolatile && (!sym.isStable)
 /*
     override def narrow: Type = {
@@ -3386,11 +3384,8 @@ A type's typeSymbol should never be inspected directly.
   class InstantiateDependentMap(params: List[Symbol], actuals: List[Type]) extends TypeMap {
     def existentialsNeeded: List[Symbol] = List()
 
-    def apply(tp: Type): Type = {
-      val res=tp subst (params, actuals) // TODO: should we optimise this? only need to consider singletontypes
-      println("instantiate dependent: "+(params, actuals, tp, res))
-      res
-    }
+    def apply(tp: Type): Type = tp subst (params, actuals) // TODO: should we optimise this? only need to consider singletontypes
+
     // TODO: existential abstraction for annotations
   }
 

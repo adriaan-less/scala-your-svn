@@ -211,7 +211,7 @@ self: Analyzer =>
    */
   class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: Context) 
     extends Typer(context0) {
-
+    if(traceImplicits) println("start implicit search"+(tree, pt, isView))
 //    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
