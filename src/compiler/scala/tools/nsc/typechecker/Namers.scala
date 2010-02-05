@@ -748,12 +748,13 @@ trait Namers { self: Analyzer =>
 
     private def methodSig(mods: Modifiers, tparams: List[TypeDef],
                           vparamss: List[List[ValDef]], tpt: Tree, rhs: Tree): Type = {
-      val meth = context.owner 
+      val meth = context.owner
 
       // enters the skolemized version into scope, returns the deSkolemized symbols
       val tparamSyms = typer.reenterTypeParams(tparams)
       // since the skolemized tparams are in scope, the TypeRefs in vparamSymss refer to skolemized tparams
       var vparamSymss = enterValueParams(meth, vparamss)
+      // DEPMETTODO: do we need to skolemize value parameter symbols?
 
       if (tpt.isEmpty && meth.name == nme.CONSTRUCTOR) {
         tpt defineType context.enclClass.owner.tpe

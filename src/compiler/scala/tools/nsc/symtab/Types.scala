@@ -1847,18 +1847,8 @@ A type's typeSymbol should never be inspected directly.
 
     override def finalResultType: Type = resultType.finalResultType
 
-    private def dependentToString(base: Int): String = {
-      val params = for ((pt, n) <- paramTypes.zipWithIndex) yield "x$"+n+":"+pt
-      val res = resultType match {
-        case mt: MethodType => mt.dependentToString(base + params.length)
-        case rt => rt.toString
-      }
-      params.mkString("(", ",", ")")+res
-    }
-
     override def safeToString: String =
-      if (resultType.isDependent) dependentToString(0)
-      else params.map(_.defString).mkString("(", ",", ")") + resultType
+      params.map(_.defString).mkString("(", ",", ")") + resultType
 
     override def cloneInfo(owner: Symbol) = {
       val vparams = cloneSymbols(params, owner)
@@ -3302,10 +3292,7 @@ A type's typeSymbol should never be inspected directly.
 
   object ApproximateDependentMap extends TypeMap {
     def apply(tp: Type): Type = 
-      if(tp isImmediatelyDependent) {
-        println("approx: "+(tp))
-        WildcardType
-      }
+      if(tp isImmediatelyDependent) WildcardType
       else mapOver(tp)
   }
 
@@ -3380,13 +3367,12 @@ A type's typeSymbol should never be inspected directly.
   }
 */
 
-// TODODEPMET
   class InstantiateDependentMap(params: List[Symbol], actuals: List[Type]) extends TypeMap {
     def existentialsNeeded: List[Symbol] = List()
 
-    def apply(tp: Type): Type = tp subst (params, actuals) // TODO: should we optimise this? only need to consider singletontypes
-
-    // TODO: existential abstraction for annotations
+    def apply(tp: Type): Type = tp subst (params, actuals)
+    // TODO: should we optimise this? only need to consider singletontypes
+    // TODODEPMET: existential abstraction for annotations?
   }
 
 
