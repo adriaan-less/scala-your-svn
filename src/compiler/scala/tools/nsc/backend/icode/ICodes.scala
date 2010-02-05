@@ -72,8 +72,6 @@ abstract class ICodes extends AnyRef
 
   lazy val AnyRefReference: TypeKind = REFERENCE(global.definitions.ObjectClass)
 
-  import global.settings
-
   object icodeReader extends ICodeReader {
     lazy val global: ICodes.this.global.type = ICodes.this.global
   }
