@@ -27,7 +27,7 @@ self: Analyzer =>
   import global._
   import definitions._
 
-  def traceImplicits = true //printTypings
+  def traceImplicits = printTypings
 
   /** Search for an implicit value. See the comment on `result` at the end of class `ImplicitSearch`
    *  for more info how the search is conducted. 
@@ -414,7 +414,7 @@ self: Analyzer =>
 
       incCounter(plausiblyCompatibleImplicits)
 
-      if (traceImplicits) println("typedImplicit0 for "+wildPt+" "+info.name+":"+depoly(info.tpe)+"/"+undetParams+"/plaus="+isPlausiblyCompatible(info.tpe, wildPt)+"/match="+matchesPt(depoly(info.tpe), wildPt, List())+"/pre="+info.pre+"/stable="+isStable(info.pre))
+      //if (traceImplicits) println("typed impl for "+wildPt+"? "+info.name+":"+depoly(info.tpe)+"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
 
         incCounter(matchingImplicits)
@@ -423,7 +423,7 @@ self: Analyzer =>
           if (info.pre == NoPrefix) Ident(info.name) 
           else Select(gen.mkAttributedQualifier(info.pre), info.name)
         } 
-        if (traceImplicits) println("typedImplicit0 matched "+info.name+":"+info.tpe+" ==> "+itree+" with pt = "+pt+", wildpt = "+wildPt)
+        if (traceImplicits) println("typed impl?? "+info.name+":"+info.tpe+" ==> "+itree+" with pt = "+pt+", wildpt = "+wildPt)
         def fail(reason: String): SearchResult = {
           if (settings.XlogImplicits.value)
             inform(itree+" is not a valid implicit value for "+pt+" because:\n"+reason)
@@ -442,11 +442,10 @@ self: Analyzer =>
 
           incCounter(typedImplicits)
 
-    
           if (traceImplicits) println("typed implicit "+itree1+":"+itree1.tpe+", pt = "+wildPt)
           val itree2 = if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
                        else adapt(itree1, EXPRmode, wildPt)
-          if (traceImplicits) println("adapted implicit "+itree2.symbol+":"+itree2.tpe+" to "+wildPt)
+          if (traceImplicits) println("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
               case Apply(fun, _) => hasMatchingSymbol(fun)
