@@ -768,12 +768,18 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      */
     //TODO: use narrow only for modules? (correct? efficiency gain?)
     def findMember(name: Name, excludedFlags: Long, requiredFlags: Long, stableOnly: Boolean): Symbol = {
-      // if this type contains type variables, get rid of them;
+      val suspension = TypeVar.Suspension
+      // if this type contains type variables, put them to sleep for a while -- don't just wipe them out by
+      // replacing them by the corresponding type parameter, as that messes up (e.g.) type variables in type refinements
       // without this, the matchesType call would lead to type variables on both sides
       // of a subtyping/equality judgement, which can lead to recursive types being constructed.
       // See (t0851) for a situation where this happens.
-      if (!this.isGround)
-        return typeVarToOriginMap(this).findMember(name, excludedFlags, requiredFlags, stableOnly)
+      if (!this.isGround) {
+        // make each type var in this type use its original type for comparisons instead of collecting constraints
+        for(tv@TypeVar(_, _) <- this) {
+          suspension suspend tv
+        } 
+      }
 
       incCounter(findMemberCount)
       val start = startTimer(findMemberNanos)
@@ -804,6 +810,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
                    (bcs0.head.hasTransOwner(bcs.head)))) {
                 if (name.isTypeName || stableOnly && sym.isStable) {
                   stopTimer(findMemberNanos, start)
+                  suspension.resumeAll
                   return sym
                 } else if (member == NoSymbol) {
                   member = sym
@@ -845,6 +852,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
         excluded = excludedFlags
       } // while (continue)
       stopTimer(findMemberNanos, start)
+      suspension.resumeAll
       if (members eq null) {
         if (member == NoSymbol) incCounter(noMemberCount)
         member
@@ -1159,6 +1167,11 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
             var tvs = Set[TypeVar]()
             for (p <- parents)
               for (t <- p) t match {
+                case tv: TypeVar => tvs += tv
+                case _ =>
+              }
+            for (d <- decls)
+              for (t <- d.info) t match {
                 case tv: TypeVar => tvs += tv
                 case _ =>
               }
@@ -2058,9 +2071,25 @@ A type's typeSymbol should never be inspected directly.
   // then, constr became mutable (to support UndoLog, I guess), but pattern-matching returned the original constr0 (a bug)
   // now, pattern-matching returns the most recent constr
   object TypeVar {
+    // encapsulate suspension so we can automatically link the suspension of cloned typevars to their original if this turns out to be necessary
+    def Suspension = new Suspension
+    class Suspension {
+      private val suspended = collection.mutable.HashSet[TypeVar]()
+      def suspend(tv: TypeVar): Unit = {
+        tv.suspended = true
+        suspended += tv
+      }
+      def resumeAll: Unit = {
+        for(tv <- suspended) {
+          tv.suspended = false
+        }
+        suspended.clear
+      }
+    }
+
     def unapply(tv: TypeVar): Some[(Type, TypeConstraint)] = Some((tv.origin, tv.constr))
     def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr, List(), List())
-    def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint, List(), tparam.typeParams)
+    def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint, List(), tparam.typeParams) // TODO why not initialise TypeConstraint with bounds of tparam?
     def apply(origin: Type, constr: TypeConstraint, args: List[Type], params: List[Symbol]) = new TypeVar(origin, constr, args, params)
   }
   
@@ -2119,6 +2148,9 @@ A type's typeSymbol should never be inspected directly.
       constr.addHiBound(tp, numBound)
     }
 
+    // ignore subtyping&equality checks while true -- see findMember
+    private[TypeVar] var suspended = false
+
     /** Called from isSubtype0 when a TypeVar is involved in a subtyping check.
      * if isLowerBound is true,
      *   registerBound returns whether this TypeVar could plausibly be a supertype of tp and, 
@@ -2151,7 +2183,8 @@ A type's typeSymbol should never be inspected directly.
         if(isLowerBound) isSubArgs(args1, args2, params)
         else             isSubArgs(args2, args1, params)
 
-      if (constr.instValid) // type var is already set
+      if (suspended) checkSubtype(tp, origin)
+      else if (constr.instValid) // type var is already set
         checkSubtype(tp, constr.inst)
       else isRelatable(tp) && { 
         if(params.isEmpty) { // type var has kind *
@@ -2173,7 +2206,8 @@ A type's typeSymbol should never be inspected directly.
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst
 
-      if (constr.instValid) checkIsSameType(tp)
+      if (suspended) tp =:= origin
+      else if (constr.instValid) checkIsSameType(tp)
       else isRelatable(tp) && {
         undoLog record this
 
@@ -2222,7 +2256,10 @@ A type's typeSymbol should never be inspected directly.
     override def isVolatile = origin.isVolatile
     override def kind = "TypeVar"
 
-    def cloneInternal = TypeVar(origin, constr cloneInternal, typeArgs, params) // @M TODO: clone args/params?
+    def cloneInternal = {
+      assert(!suspended) // cloning a suspended type variable when it's suspended will cause the clone to never be resumed with the current implementation 
+      TypeVar(origin, constr cloneInternal, typeArgs, params) // @M TODO: clone args/params?
+    }
   }
 
   /** A type carrying some annotations. Created by the typechecker
@@ -3964,7 +4001,7 @@ A type's typeSymbol should never be inspected directly.
       case mt1: MethodType =>
         tp2 match {
           case mt2: MethodType =>
-            // new dependent types: probably fix this, use substSym as done for PolyType
+            // DEPMETTODO new dependent types: probably fix this, use substSym as done for PolyType
             return isSameTypes(mt1.paramTypes, mt2.paramTypes) &&
               mt1.resultType =:= mt2.resultType &&
               mt1.isImplicit == mt2.isImplicit
