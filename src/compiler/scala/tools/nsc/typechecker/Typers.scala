@@ -1827,7 +1827,7 @@ trait Typers { self: Analyzer =>
         } else {
           transformedOrTyped(ddef.rhs, tpt1.tpe)
         }
-      
+
       if (meth.isPrimaryConstructor && meth.isClassConstructor && 
           phase.id <= currentRun.typerPhase.id && !reporter.hasErrors)
         computeParamAliases(meth.owner, vparamss1, rhs1)
@@ -2419,7 +2419,6 @@ trait Typers { self: Analyzer =>
                 constfold(treeCopy.Apply(tree, fun, args1).setType(ifPatternSkipFormals(restpe)))
               }
               */
-
             } else if (needsInstantiation(tparams, formals, args)) {
               //println("needs inst "+fun+" "+tparams+"/"+(tparams map (_.info)))
               inferExprInstance(fun, tparams, WildcardType, true)

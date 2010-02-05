@@ -1673,7 +1673,7 @@ A type's typeSymbol should never be inspected directly.
       if (sym == clazz && !args.isEmpty) args.head else this
 
     def normalize0: Type = 
-      if (pre eq WildcardType) WildcardType // arises when argument-dependent types are approximated (see def depoly in implicits)
+      if ((pre eq WildcardType) || pre.isInstanceOf[TypeVar]) WildcardType // arises when argument-dependent types are approximated (see def depoly in implicits)
       else if (sym.isAliasType) { // beta-reduce 
         if (sym.info.typeParams.length == args.length || !isHigherKinded) { 
           /* !isHigherKinded && sym.info.typeParams.length != args.length only happens when compiling e.g., 
@@ -2201,7 +2201,7 @@ A type's typeSymbol should never be inspected directly.
       }
     }
 
-    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
+    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS, suspended, constr.instValid, constr.inst)) //@MDEBUG
       def checkIsSameType(tp: Type) = 
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst
@@ -2213,9 +2213,13 @@ A type's typeSymbol should never be inspected directly.
 
         val newInst = wildcardToTypeVarMap(tp)
         if (constr.isWithinBounds(newInst)) {
+          println("TV::inst in constr"+(newInst, constr))
           setInst(tp)
           true
-        } else false
+        } else {
+          println("TV::inst not in constr"+(newInst, constr))
+          false
+        }
       }
     }
 
@@ -2425,6 +2429,8 @@ A type's typeSymbol should never be inspected directly.
       val resultThis = result.typeSymbol.thisType
       for (sym <- syms2)
         sym.setInfo(sym.info.substThis(original.typeSymbol, resultThis).substSym(syms1, syms2))
+      // println("copyRefinedType"+(original, parents, decls, result))
+      // Thread.dumpStack
       result
     }
 
@@ -3927,7 +3933,8 @@ A type's typeSymbol should never be inspected directly.
   }
 */
   private def isSameType1(tp1: Type, tp2: Type): Boolean = {
-    if ((tp1 eq tp2) || 
+    // println("IST1"+(tp1, tp2))
+    val res = if ((tp1 eq tp2) || 
         (tp1 eq ErrorType) || (tp1 eq WildcardType) ||
         (tp2 eq ErrorType) || (tp2 eq WildcardType))
       true
@@ -3944,6 +3951,8 @@ A type's typeSymbol should never be inspected directly.
         ((tp1n ne tp1) || (tp2n ne tp2)) && isSameType(tp1n, tp2n)
       }
     }
+    // println("IST1="+(tp1, tp2,res))
+    res
   }
   
   def isSameType2(tp1: Type, tp2: Type): Boolean = {
@@ -4210,6 +4219,8 @@ A type's typeSymbol should never be inspected directly.
    */
   private def isSubType2(tp1: Type, tp2: Type, depth: Int): Boolean = {
     if (tp1 eq tp2) return true
+    @inline def trace(msg: String)(body: => Boolean) = body //{println(tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); val res = body; println(res +" for "+ tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); res}
+
     if (isErrorOrWildcard(tp1)) return true
     if (isErrorOrWildcard(tp2)) return true
     if (tp1 eq NoType) return false
@@ -4218,14 +4229,14 @@ A type's typeSymbol should never be inspected directly.
     if (tp2 eq NoPrefix) return (tp1 eq NoPrefix) || tp1.typeSymbol.isPackageClass
     if (isSingleType(tp1) && isSingleType(tp2) ||
         isConstantType(tp1) && isConstantType(tp2)) return tp1 =:= tp2
-    if (tp1.isHigherKinded || tp2.isHigherKinded) return isHKSubType0(tp1, tp2, depth)
+    if (tp1.isHigherKinded || tp2.isHigherKinded) return trace("HK"){isHKSubType0(tp1, tp2, depth)}
 
     /** First try, on the right:
      *   - unwrap Annotated types, BoundedWildcardTypes,
      *   - bind TypeVars  on the right, if lhs is not Annotated nor BoundedWildcard
      *   - handle common cases for first-kind TypeRefs on both sides as a fast path.
      */
-    def firstTry = { incCounter(ctr1); tp2 match {
+    def firstTry = { incCounter(ctr1); trace("first")(tp2 match {
       // fast path: two typerefs, none of them HK
       case tr2: TypeRef =>
         tp1 match {
@@ -4260,14 +4271,14 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         secondTry
-    }}
+    })}
 
     /** Second try, on the left:
      *   - unwrap AnnotatedTypes, BoundedWildcardTypes,
      *   - bind typevars,
      *   - handle existential types by skolemization.
      */
-    def secondTry = { incCounter(ctr2); tp1 match {
+    def secondTry = { incCounter(ctr2); trace("second")(tp1 match {
       case AnnotatedType(_, _, _) =>
         tp1.withoutAnnotations <:< tp2.withoutAnnotations && annotationsConform(tp1, tp2)
       case BoundedWildcardType(bounds) =>
@@ -4283,10 +4294,11 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         thirdTry
-    }}
+    })}
 
     def thirdTryRef(tp1: Type, tp2: TypeRef): Boolean = { 
       incCounter(ctr3); 
+      trace("thirdRef")({
       val sym2 = tp2.sym
       sym2 match {
         case _: ClassSymbol =>
@@ -4310,14 +4322,14 @@ A type's typeSymbol should never be inspected directly.
         case _ =>
           fourthTry
       }
-    }
+    })}
     
     /** Third try, on the right:
      *   - decompose refined types.
      *   - handle typerefs, existentials, and notnull types.
      *   - handle left+right method types, polytypes, typebounds
      */
-    def thirdTry = { incCounter(ctr3); tp2 match {
+    def thirdTry = { incCounter(ctr3); trace("third")(tp2 match {
       case tr2: TypeRef =>
         thirdTryRef(tp1, tr2)
       case rt2: RefinedType =>
@@ -4356,12 +4368,12 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         fourthTry
-    }}
+    })}
 
     /** Fourth try, on the left:
      *   - handle typerefs, refined types, notnull and singleton types. 
      */
-    def fourthTry = { incCounter(ctr4); tp1 match {
+    def fourthTry = { incCounter(ctr4); trace("fourth")(tp1 match {
       case tr1 @ TypeRef(_, sym1, _) =>
         sym1 match {
           case _: ClassSymbol =>
@@ -4396,7 +4408,7 @@ A type's typeSymbol should never be inspected directly.
         tp1.underlying <:< tp2
       case _ =>
         false
-    }}
+    })}
 
     firstTry
   }
@@ -4413,9 +4425,8 @@ A type's typeSymbol should never be inspected directly.
    */
   def specializesSym(tp: Type, sym: Symbol): Boolean =
     tp.typeSymbol == NothingClass ||
-    tp.typeSymbol == NullClass && (sym.owner isSubClass ObjectClass) ||
-    (tp.nonPrivateMember(sym.name).alternatives exists
-      (alt => sym == alt || specializesSym(tp.narrow, alt, sym.owner.thisType, sym)))
+    tp.typeSymbol == NullClass && (sym.owner isSubClass ObjectClass) || (tp.nonPrivateMember(sym.name).alternatives exists
+        (alt => sym == alt || specializesSym(tp.narrow, alt, sym.owner.thisType, sym)))
 
   /** Does member `sym1' of `tp1' have a stronger type
    *  than member `sym2' of `tp2'?
@@ -4423,7 +4434,11 @@ A type's typeSymbol should never be inspected directly.
   private def specializesSym(tp1: Type, sym1: Symbol, tp2: Type, sym2: Symbol): Boolean = {
     val info1 = tp1.memberInfo(sym1)
     val info2 = tp2.memberInfo(sym2).substThis(tp2.typeSymbol, tp1)
-    //System.out.println("specializes "+tp1+"."+sym1+":"+info1+sym1.locationString+" AND "+tp2+"."+sym2+":"+info2)//DEBUG
+    // System.out.println("specializes "+tp1+"."+sym1+":"+info1+sym1.locationString+" AND "+tp2+"."+sym2+":"+info2)//DEBUG
+    // if(sym2.isAliasType) {
+      // println("alias"+(tp1, tp1.underlying, sym1, tp1.memberType(sym1), tp2, tp2.underlying, sym2, tp2.memberType(sym2)))
+      // println("alias"+(tp2.memberType(sym2).substThis(tp2.typeSymbol, tp1), tp1.memberType(sym1), "\n ==> ", tp2.memberType(sym2).substThis(tp2.typeSymbol, tp1) =:= tp1.memberType(sym1)))
+    // }
     sym2.isTerm && (info1 <:< info2) /*&& (!sym2.isStable || sym1.isStable) */ ||
     sym2.isAbstractType && info2.bounds.containsType(tp1.memberType(sym1)) ||
     sym2.isAliasType && tp2.memberType(sym2).substThis(tp2.typeSymbol, tp1) =:= tp1.memberType(sym1) //@MAT ok

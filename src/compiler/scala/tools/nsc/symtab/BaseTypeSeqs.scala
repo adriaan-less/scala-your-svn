@@ -113,7 +113,7 @@ trait BaseTypeSeqs {
     def map(f: Type => Type): BaseTypeSeq = {
 	  // inlined `elems map f' for performance
       val len = length
-      var arr = new Array[Type](len)
+      val arr = new Array[Type](len)
       var i = 0
       while (i < len) {
         arr(i) = f(elems(i))
@@ -125,7 +125,24 @@ trait BaseTypeSeqs {
     def lateMap(f: Type => Type): BaseTypeSeq = new BaseTypeSeq(parents map f, elems) {
       override def apply(i: Int) = f(self.apply(i))
       override def rawElem(i: Int) = f(self.rawElem(i))
+
+      // val typeSymbolsMapped = new Array[Symbol](length)
+      // override def typeSymbol(i: Int) = {
+      //   var ts = typeSymbolsMapped(i) // the fast and the ugly
+      //   if(ts == null) {
+      //     ts = self.typeSymbol(i)
+      //     val inf = ts.info
+      //     val finf = f(inf)
+      //     if(inf ne finf) {
+      //       ts = ts.cloneSymbol.setInfo(finf)
+      //       typeSymbolsMapped(i) = ts
+      //     }
+      //   }
+      //   println("lateMap typeSymbol"+(ts, ts.info.decls))
+      //   ts
+      // }
       override def typeSymbol(i: Int) = self.typeSymbol(i)
+
       override def toList = self.toList map f
       override protected def copy(head: Type, offset: Int) = (self map f).copy(head, offset)
       override def map(g: Type => Type) = lateMap(g)
