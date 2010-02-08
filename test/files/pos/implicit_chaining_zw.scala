@@ -7,7 +7,6 @@ trait ZipWith[N, S] {
 }
 
 object ZipWith {
-  // type ZWT[N, S, TT] = ZipWith[N, S] { type T = TT }
   implicit def ZeroZipWith[S] = new ZipWith[Zero, S] {
     type T = Stream[S]
   }
@@ -19,8 +18,7 @@ object ZipWith {
   // can't use implicitly[ZipWith[Succ[Succ[Zero]], Int => String => Boolean]], 
   // since that will chop of the {type T = ... } refinement in adapt (pt = ZipWith[Succ[Succ[Zero]], Int => String => Boolean])
   // this works
-  // def zipWith(implicit zw: ZipWith[Succ[Succ[Zero]], Int => String => Boolean]): zw.T = zw.x 
-  
+  // def zipWith(implicit zw: ZipWith[Succ[Succ[Zero]], Int => String => Boolean]): zw.T = zw.x
   // thus, I present ?: implicitly on steroids!
   def ?[T <: AnyRef](implicit w: T): w.type = w
 
