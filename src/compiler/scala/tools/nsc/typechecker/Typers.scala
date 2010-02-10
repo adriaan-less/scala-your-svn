@@ -2499,7 +2499,7 @@ trait Typers { self: Analyzer =>
                 error(fun.pos, "cannot resolve overloaded unapply")
                 (ErrorType, List())
             }
-            val (unappFormal, freeVars) = freshArgType(unappType)
+            val (unappFormal, freeVars) = freshArgType(unappType skolemizeExistential(context.owner, context.tree))
             val context1 = context.makeNewScope(context.tree, context.owner)
             freeVars foreach context1.scope.enter
             val typer1 = newTyper(context1)
