@@ -117,7 +117,7 @@ self =>
     scheduler.pollException() match {
       case Some(ex: CancelActionReq) => if (acting) throw ex
       case Some(ex: FreshRunReq) => 
-        currentTyperRun = new TyperRun()
+        currentTyperRun = newTyperRun
         minRunId = currentRunId
         if (outOfDate) throw ex 
         else outOfDate = true
@@ -286,7 +286,7 @@ self =>
 
   /** Make sure a set of compilation units is loaded and parsed */
   def reloadSources(sources: List[SourceFile]) {
-    currentTyperRun = new TyperRun()
+    currentTyperRun = newTyperRun
     for (source <- sources) {
       val unit = new RichCompilationUnit(source)
       unitOfFile(source.file) = unit
@@ -333,7 +333,7 @@ self =>
 
   def stabilizedType(tree: Tree): Type = tree match {
     case Ident(_) if tree.symbol.isStable => singleType(NoPrefix, tree.symbol)
-    case Select(qual, _) if tree.symbol.isStable => singleType(qual.tpe, tree.symbol)
+    case Select(qual, _) if  qual.tpe != null && tree.symbol.isStable => singleType(qual.tpe, tree.symbol)
     case Import(expr, selectors) =>
       tree.symbol.info match {
         case analyzer.ImportType(expr) => expr match {
@@ -494,7 +494,7 @@ self =>
       println("starting typedTreeAt")
       val tree = locateTree(pos)
       println("at pos "+pos+" was found: "+tree+tree.pos.show)
-      if (tree.tpe ne null) {
+      if (stabilizedType(tree) ne null) {
         println("already attributed")
         tree
       } else {
@@ -531,6 +531,8 @@ self =>
       }
     }
   }
+  
+  def newTyperRun = new TyperRun
 
   class TyperResult(val tree: Tree) extends Exception with ControlException
   

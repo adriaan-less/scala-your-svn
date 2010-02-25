@@ -232,6 +232,9 @@ trait Namers { self: Analyzer =>
           (currentRun.canRedefine(m) || (m hasFlag SYNTHETIC))) {
         updatePosFlags(m, tree.pos, moduleFlags)
         setPrivateWithin(tree, m, tree.mods)
+        if (m.moduleClass != NoSymbol)
+          setPrivateWithin(tree, m.moduleClass, tree.mods)
+          
         context.unit.synthetics -= m
       } else {        
         m = context.owner.newModule(tree.pos, tree.name)
@@ -1192,8 +1195,11 @@ trait Namers { self: Analyzer =>
                 case ImportSelector(from, _, to, _) :: rest =>
                   if (from != nme.WILDCARD && base != ErrorType) {                    
                     if (base.nonLocalMember(from) == NoSymbol && 
-                        base.nonLocalMember(from.toTypeName) == NoSymbol)
+                        base.nonLocalMember(from.toTypeName) == NoSymbol) {
+                      if (currentRun.compileSourceFor(expr, from))
+                        return typeSig(tree)  
                       context.error(tree.pos, from.decode + " is not a member of " + expr)
+                    }
 
                     if (checkNotRedundant(tree.pos, from, to))
                       checkNotRedundant(tree.pos, from.toTypeName, to.toTypeName)

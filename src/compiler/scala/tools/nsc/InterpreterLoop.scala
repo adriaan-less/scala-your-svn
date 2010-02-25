@@ -6,14 +6,16 @@
 
 package scala.tools.nsc
 
-import java.io.{ BufferedReader, File, FileReader, PrintWriter }
+import java.io.{ BufferedReader, FileReader, PrintWriter }
 import java.io.IOException
 
 import scala.tools.nsc.{ InterpreterResults => IR }
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
+import scala.concurrent.ops
+import util.{ ClassPath }
 import interpreter._
-import io.{ Process }
+import io.{ File, Process }
 
 // Classes to wrap up interpreter commands and their results
 // You can add new commands by adding entries to val commands
@@ -87,17 +89,17 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
   var settings: Settings = _          // set by main()
   var interpreter: Interpreter = _    // set by createInterpreter()
     
-  // XXX
-  var addedClasspath: List[String] = Nil
+  // classpath entries added via :cp
+  var addedClasspath: String = ""
 
   /** A reverse list of commands to replay if the user requests a :replay */
-  var replayCommandsRev: List[String] = Nil
+  var replayCommandStack: List[String] = Nil
 
   /** A list of commands to replay if the user requests a :replay */
-  def replayCommands = replayCommandsRev.reverse
+  def replayCommands = replayCommandStack.reverse
 
   /** Record a command for replay should the user request a :replay */
-  def addReplay(cmd: String) = replayCommandsRev = cmd :: replayCommandsRev
+  def addReplay(cmd: String) = replayCommandStack ::= cmd
 
   /** Close the interpreter and set the var to <code>null</code>. */
   def closeInterpreter() {
@@ -110,8 +112,8 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
 
   /** Create a new interpreter. */
   def createInterpreter() {
-    if (!addedClasspath.isEmpty)
-      settings.classpath.value += addedClasspath.map(File.pathSeparator + _).mkString
+    if (addedClasspath != "")
+      settings.classpath append addedClasspath
       
     interpreter = new Interpreter(settings, out) {
       override protected def parentClassLoader = classOf[InterpreterLoop].getClassLoader
@@ -189,10 +191,10 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
   val standardCommands: List[Command] = {
     import CommandImplicits._
     List(
+       OneArg("cp", "add an entry (jar or directory) to the classpath", addClasspath),
        NoArgs("help", "print this help message", printHelp),
        VarArgs("history", "show the history (optional arg: lines to show)", printHistory),
        LineArg("h?", "search the history", searchHistory),
-       OneArg("jar", "add a jar to the classpath", addJar),
        OneArg("load", "load and interpret a Scala file", load),
        NoArgs("power", "enable power user mode", power),
        NoArgs("quit", "exit the interpreter", () => Result(false, None)),
@@ -241,27 +243,36 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
         case _                          => true
       }
 
+    // this is about the illusion of snappiness.  We call initialize()
+    // which spins off a separate thread, then print the prompt and try 
+    // our best to look ready.  Ideally the user will spend a
+    // couple seconds saying "wow, it starts so fast!" and by the time
+    // they type a command the compiler is ready to roll.
+    interpreter.initialize()
+    
     while (processLine(readOneLine)) { }
   }
 
   /** interpret all lines from a specified file */
   def interpretAllFrom(filename: String) {
-    val fileIn = 
-      try   { new FileReader(filename) }
-      catch { case _:IOException => return out.println("Error opening file: " + filename) }
-      
+    val fileIn = File(filename)
+    if (!fileIn.exists)
+      return out.println("Error opening file: " + filename)
+    
     val oldIn = in
-    val oldReplay = replayCommandsRev
+    val oldReplay = replayCommandStack
+    
     try {
-      val inFile = new BufferedReader(fileIn)
-      in = new SimpleReader(inFile, out, false)
-      out.println("Loading " + filename + "...")
-      out.flush
-      repl
-    } finally {
+      fileIn applyReader { reader =>
+        in = new SimpleReader(reader, out, false)
+        out.println("Loading " + filename + "...")
+        out.flush
+        repl
+      }
+    }
+    finally {
       in = oldIn
-      replayCommandsRev = oldReplay
-      fileIn.close
+      replayCommandStack = oldReplay
     }
   }
 
@@ -292,8 +303,8 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
   }
   
   def withFile(filename: String)(action: String => Unit) {
-    if (! new File(filename).exists) out.println("That file does not exist")
-    else action(filename)
+    if (File(filename).exists) action(filename)
+    else out.println("That file does not exist")
   }
   
   def load(arg: String) = {
@@ -304,17 +315,16 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     })
     Result(true, shouldReplay)
   }
-  
 
-  def addJar(arg: String): Unit = {
-    val f = new java.io.File(arg)
-    if (!f.exists) {
-      out.println("The file '" + f + "' doesn't seem to exist.")
-      return
+  def addClasspath(arg: String): Unit = {
+    val f = File(arg).normalize
+    if (f.exists) {
+      addedClasspath = ClassPath.join(addedClasspath, f.path)
+      val totalClasspath = ClassPath.join(settings.classpath.value, addedClasspath)
+      println("Added '%s'.  Your new classpath is:\n%s".format(f.path, totalClasspath))
+      replay()
     }
-    addedClasspath = addedClasspath ::: List(f.getCanonicalPath)
-    println("Added " + f.getCanonicalPath + " to your classpath.")
-    replay()
+    else out.println("The path '" + f + "' doesn't seem to exist.")
   }
   
   /** This isn't going to win any efficiency awards, but it's only
@@ -531,7 +541,7 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
       for (filename <- settings.loadfiles.value) {
         val cmd = ":load " + filename
         command(cmd)
-        replayCommandsRev = cmd :: replayCommandsRev
+        addReplay(cmd)
         out.println()
       }
     case _ =>
@@ -544,11 +554,9 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     // sets in to some kind of reader depending on environmental cues
     in = in0 match {
       case Some(in0)  => new SimpleReader(in0, out, true)
-      case None       =>
-        val emacsShell = System.getProperty("env.emacs", "") != ""
-        
+      case None       =>        
         // the interpreter is passed as an argument to expose tab completion info
-        if (settings.Xnojline.value || emacsShell) new SimpleReader
+        if (settings.Xnojline.value || Properties.isEmacsShell) new SimpleReader
         else if (settings.noCompletion.value) InteractiveReader.createDefault()
         else InteractiveReader.createDefault(interpreter)
     }

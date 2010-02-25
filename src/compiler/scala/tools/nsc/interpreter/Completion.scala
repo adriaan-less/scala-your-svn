@@ -22,9 +22,16 @@ import jline._
 import java.net.URL
 import java.util.{ List => JList }
 import java.lang.reflect
+import scala.tools.util.PathResolver
 import io.{ Path, Directory }
 
 object Completion {
+  // methods to leave out of completion
+  val excludeMethods = List("hashCode", "equals", "wait", "notify", "notifyAll")  
+  
+  // strings to look for an exclude by default
+  val excludeStrings = List("$$super", "MODULE$")
+  
   def looksLikeInvocation(code: String) = (
         (code != null)
     &&  (code startsWith ".")
@@ -46,20 +53,14 @@ import Completion._
 class Completion(repl: Interpreter) {
   self =>
   
-  private def asURLs(xs: List[String]) = xs map (x => io.File(x).toURL)
-  private def classPath = (
-    // compiler jars, scala-library.jar etc.
-    (repl.compilerClasspath) :::
-    // boot classpath, java.lang.* etc.
-    (asURLs(repl.settings.bootclasspath.value split ':' toList))
-  )
+  private lazy val classPath = repl.compilerClasspath
   
   // the unqualified vals/defs/etc visible in the repl
   val ids = new IdentCompletion(repl)
   // the top level packages we know about
   val pkgs = new PackageCompletion(classPath)
   // members of Predef
-  val predef = new StaticCompletion("scala.Predef") {
+  val predef = new StaticCompletion(classOf[scala.Predef$]) {
     override def filterNotFunction(s: String) = (
       (s contains "2") ||
       (s startsWith "wrap") ||

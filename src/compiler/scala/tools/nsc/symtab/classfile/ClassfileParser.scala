@@ -428,12 +428,12 @@ abstract class ClassfileParser {
         superType :: ifaces
       }
     }
-    
+
     if (c != clazz && externalName.toString.indexOf("$") < 0) {
       if ((clazz eq NoSymbol) && (c ne NoSymbol)) clazz = c
       else throw new IOException("class file '" + in.file + "' contains wrong " + c)
     }
-    
+
     addEnclosingTParams(clazz)
     parseInnerClasses() // also sets the isScala / isScalaRaw / hasMeta flags, see r15956
     // get the class file parser to reuse scopes.
@@ -952,7 +952,7 @@ abstract class ClassfileParser {
     for (entry <- innerClasses.valuesIterator) {
       // create a new class member for immediate inner classes
       if (entry.outerName == externalName) {
-        val file = global.classPath.findAbstractFile(entry.externalName.toString) getOrElse {
+        val file = global.classPath.findSourceFile(entry.externalName.toString) getOrElse {
           throw new AssertionError(entry.externalName)
         }
         enterClassAndModule(entry, new global.loaders.ClassfileLoader(file), entry.jflags)

@@ -595,6 +595,34 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
       }
     }
     
+    /** Can this type only be subtyped by bottom types?
+     *  This is assessed to be the case if the class is final,
+     *  and all type parameters (if any) are invariant.
+     */
+    def isFinalType = (
+      typeSymbol.isFinal &&
+      (typeSymbol.typeParams forall (_.variance == 0))
+    )
+    
+    /** Is this type a subtype of that type in a pattern context?
+     *  Any type arguments on the right hand side are replaced with
+     *  fresh existentials, except for Arrays.
+     *
+     *  See bug1434.scala for an example of code which would fail
+     *  if only a <:< test were applied.
+     */     
+    def matchesPattern(that: Type): Boolean = {
+      (this <:< that) || ((this, that) match {        
+        case (TypeRef(_, ArrayClass, List(arg1)), TypeRef(_, ArrayClass, List(arg2))) if arg2.typeSymbol.typeParams.nonEmpty =>
+          arg1 matchesPattern arg2
+        case (_, TypeRef(_, _, args)) =>
+          val newtp = existentialAbstraction(args map (_.typeSymbol), that)
+          !(that =:= newtp) && (this <:< newtp)
+        case _ =>
+          false
+      })
+    }
+    
     def stat_<:<(that: Type): Boolean = {
       incCounter(subtypeCount)
       val start = startTimer(subtypeNanos)
@@ -3171,12 +3199,13 @@ A type's typeSymbol should never be inspected directly.
     protected def matches(sym: Symbol, sym1: Symbol): Boolean = sym eq sym1
 
     /** Map target to type, can be tuned by subclasses */
-    protected def toType(fromtp: Type, t: T): Type
+    protected def toType(fromtp: Type, tp: T): Type
 
-      def subst(tp: Type, sym: Symbol, from: List[Symbol], to: List[T]): Type =
-        if (from.isEmpty) tp
-        else if (matches(from.head, sym)) toType(tp, to.head)
-        else subst(tp, sym, from.tail, to.tail)
+    def subst(tp: Type, sym: Symbol, from: List[Symbol], to: List[T]): Type =
+      if (from.isEmpty) tp
+      else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(tp, from))
+      else if (matches(from.head, sym)) toType(tp, to.head)
+      else subst(tp, sym, from.tail, to.tail)
 
     private def renameBoundSyms(tp: Type): Type = tp match {
       case MethodType(ps, restp) =>
@@ -3230,6 +3259,7 @@ A type's typeSymbol should never be inspected directly.
     override def apply(tp: Type): Type = if (from.isEmpty) tp else {
       def subst(sym: Symbol, from: List[Symbol], to: List[Symbol]): Symbol =
         if (from.isEmpty) sym
+        else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(sym, from))
         else if (matches(from.head, sym)) to.head
         else subst(sym, from.tail, to.tail)
       tp match {
@@ -3280,7 +3310,6 @@ A type's typeSymbol should never be inspected directly.
   class SubstTypeMap(from: List[Symbol], to: List[Type])
   extends SubstMap(from, to) {
     protected def toType(fromtp: Type, tp: Type) = tp 
-
 
     override def mapOver(tree: Tree, giveup: ()=>Nothing): Tree = {
       object trans extends TypeMapTransformer {
@@ -4637,7 +4666,9 @@ A type's typeSymbol should never be inspected directly.
    *  @return        ...
    */
   def isWithinBounds(pre: Type, owner: Symbol, tparams: List[Symbol], targs: List[Type]): Boolean = {
-    val bounds = instantiatedBounds(pre, owner, tparams, targs)
+    var bounds = instantiatedBounds(pre, owner, tparams, targs)
+    if (targs.exists(_.annotations.nonEmpty))
+      bounds = adaptBoundsToAnnotations(bounds, tparams, targs)
     (bounds corresponds targs)(_ containsType _)  // @PP: corresponds
   }
 

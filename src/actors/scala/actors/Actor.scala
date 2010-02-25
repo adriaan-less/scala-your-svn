@@ -22,7 +22,7 @@ import java.util.concurrent.{ExecutionException, Callable}
  *
  * @author Philipp Haller
  */
-object Actor {
+object Actor extends Combinators {
 
   private[actors] val tl = new ThreadLocal[Reactor]
 
@@ -276,26 +276,6 @@ object Actor {
   }
 
   /**
-   * Causes <code>self</code> to repeatedly execute
-   * <code>body</code>.
-   *
-   * @param body the code block to be executed
-   */
-  def loop(body: => Unit): Unit = body andThen loop(body)
-
-  /**
-   * Causes <code>self</code> to repeatedly execute
-   * <code>body</code> while the condition
-   * <code>cond</code> is <code>true</code>.
-   *
-   * @param cond the condition to test
-   * @param body the code block to be executed
-   */
-  def loopWhile(cond: => Boolean)(body: => Unit): Unit =
-    if (cond) { body andThen loopWhile(cond)(body) }
-    else continue
-
-  /**
    * Links <code>self</code> to actor <code>to</code>.
    *
    * @param  to the actor to link to
@@ -350,7 +330,6 @@ object Actor {
    */
   def exit(): Nothing = self.exit()
 
-  def continue: Unit = throw new KillActorException
 }
 
 /**
@@ -690,13 +669,12 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
     // Note that we do *not* reset `trapExit`. The reason is that
     // users should be able to set the field in the constructor
     // and before `act` is called.
-
     exitReason = 'normal
     exiting = false
     shouldExit = false
 
-    scheduler.newActor(this)
-    scheduler.execute(new Reaction(this))
+    scheduler newActor this
+    scheduler execute (new Reaction(this))
 
     this
   }
@@ -751,7 +729,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   }
 
   var trapExit = false
-  private[actors] var exitReason: AnyRef = 'normal
+  private var exitReason: AnyRef = 'normal
   private[actors] var shouldExit = false
 
   /**
@@ -820,7 +798,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
         // (because shouldExit == true)
         if (isSuspended)
           resumeActor()
-        else if (waitingFor ne waitingForNone) {
+        else if (waitingFor ne Reactor.waitingForNone) {
           scheduleActor(waitingFor, null)
           /* Here we should not throw a SuspendActorException,
              since the current method is called from an actor that

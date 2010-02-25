@@ -22,10 +22,9 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
 
   val headers =
     <xml:group>
-		  <style type="text/css">
-		    @import url({ relativeLinkTo(List("template.css", "lib")) }) screen;
-		  </style>
-		  <script type="text/javascript" src={ relativeLinkTo{List("template.js", "lib")} }></script>
+      <link href={ relativeLinkTo(List("template.css", "lib")) }   media="screen" type="text/css" rel="stylesheet"/>
+      <script type="text/javascript" src={ relativeLinkTo{List("template.js", "lib")} }></script>
+      <script type="text/javascript" src={ relativeLinkTo{List("tools.tooltip.js", "lib")} }></script>
     </xml:group>
     
   val valueMembers =
@@ -62,7 +61,8 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
             <div id="mbrsel">
               <div id="ancestors">
                 <h3>Inherits</h3>
-                <ol>{ tpl.linearization map { wte => <li class="in" name={ wte.qualifiedName }>{ wte.name }</li> } }</ol>
+                <ol id="linearizationtoggle"><li class="hideall">Hide All</li><li class="showall">Show all</li></ol>
+                <ol id="linearization">{ tpl.linearization map { wte => <li class="in" name={ wte.qualifiedName }>{ wte.name }</li> } }</ol>
               </div>
             </div>
         }
@@ -89,6 +89,8 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
         }
         
       </div>
+      
+      <div id="tooltip" ></div>
       
     </body>
   

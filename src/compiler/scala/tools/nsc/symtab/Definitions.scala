@@ -287,6 +287,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val ProductRootClass: Symbol = getClass("scala.Product")
       def Product_productArity = getMember(ProductRootClass, nme.productArity)
       def Product_productElement = getMember(ProductRootClass, nme.productElement)
+      def Product_productElementName = getMember(ProductRootClass, nme.productElementName)
       def Product_productPrefix = getMember(ProductRootClass, nme.productPrefix)
       def Product_canEqual = getMember(ProductRootClass, nme.canEqual_)
       
@@ -352,6 +353,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     //
     // .NET backend
     //
+    
+    lazy val ComparatorClass = getClass("scala.runtime.Comparator")    
     // System.ValueType
     lazy val ValueTypeClass: Symbol = getClass(sn.ValueType)
     // System.MulticastDelegate
@@ -422,18 +425,6 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val BoxedLongClass         = getClass("java.lang.Long")
     lazy val BoxedFloatClass        = getClass("java.lang.Float")
     lazy val BoxedDoubleClass       = getClass("java.lang.Double")
-    
-    /** The various ways a boxed primitive might materialize at runtime. */
-    def isMaybeBoxed(sym: Symbol) =
-      if (forMSIL)
-        sym isNonBottomSubClass BoxedNumberClass
-      else {
-        (sym == ObjectClass) ||
-        (sym == SerializableClass) ||
-        (sym == ComparableClass) ||
-        (sym isNonBottomSubClass BoxedNumberClass) ||
-        (sym isNonBottomSubClass BoxedCharacterClass)   
-      }
     
     lazy val BoxedUnitClass         = getClass("scala.runtime.BoxedUnit")
     lazy val BoxedUnitModule        = getModule("scala.runtime.BoxedUnit")

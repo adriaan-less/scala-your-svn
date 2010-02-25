@@ -9,11 +9,11 @@ package symtab
 package classfile
 
 import java.lang.{Float, Double}
-import scala.tools.nsc.util.{Position, NoPosition, ShowPickled}
-import scala.collection.mutable.Set
-import Flags._
+import util.{ Position, NoPosition, ShowPickled }
+import collection.mutable.Set
+import reflect.generic.{ PickleBuffer, PickleFormat }
 import PickleFormat._
-
+import Flags._
 
 /**
  * Serialize a top-level module and/or class.
@@ -145,7 +145,7 @@ abstract class Pickler extends SubComponent {
                 localChildDummy.setInfo(ClassInfoType(List(sym.tpe), EmptyScope, localChildDummy))
                 localChildDummy :: globals
               }
-            putChildren(sym, children sortWith (_ isLess _))
+            putChildren(sym, children sortBy (_.sealedSortName))
           }
           for (annot <- staticAnnotations(sym.annotations.reverse))
             putAnnotation(sym, annot)

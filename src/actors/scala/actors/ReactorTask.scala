@@ -8,11 +8,12 @@
 
 // $Id$
 
-
 package scala.actors
 
 import java.lang.Runnable
 import java.util.concurrent.Callable
+
+import scala.concurrent.forkjoin.RecursiveAction
 
 /** <p>
  *    The class <code>ReactorTask</code>.
@@ -21,13 +22,11 @@ import java.util.concurrent.Callable
  *  @author Philipp Haller
  */
 private[actors] class ReactorTask[T >: Null <: Reactor](var reactor: T, var fun: () => Any)
-  extends Callable[Unit] with Runnable {
+  extends RecursiveAction with Callable[Unit] with Runnable {
 
   def run() {
-    val saved = Actor.tl.get
-    Actor.tl set reactor
     try {
-      beforeExecuting()
+      beginExecution()
       try {
         try {
           fun()
@@ -48,9 +47,9 @@ private[actors] class ReactorTask[T >: Null <: Reactor](var reactor: T, var fun:
         Debug.info(reactor+": caught "+e)
         Debug.doInfo { e.printStackTrace() }
         reactor.terminated()
-        afterExecuting(e)
+        terminateExecution(e)
     } finally {
-      Actor.tl set saved
+      suspendExecution()
       this.reactor = null
       this.fun = null
     }
@@ -58,8 +57,12 @@ private[actors] class ReactorTask[T >: Null <: Reactor](var reactor: T, var fun:
 
   def call() = run()
 
-  protected def beforeExecuting() {}
+  def compute() = run()
 
-  protected def afterExecuting(e: Exception) {}
+  protected def beginExecution() {}
+
+  protected def suspendExecution() {}
+
+  protected def terminateExecution(e: Exception) {}
 
 }

@@ -19,6 +19,7 @@ import java.net.URL
 import java.util.jar.{ JarEntry, JarOutputStream }
 import java.util.regex.Pattern
 
+import scala.tools.util.PathResolver
 import scala.tools.nsc.reporters.{Reporter,ConsoleReporter}
 import scala.tools.nsc.util.{ClassPath, CompoundSourceFile, BatchSourceFile, SourceFile, SourceFileFragment}
 
@@ -194,31 +195,15 @@ object ScriptRunner
       settings: GenericRunnerSettings,
       scriptFileIn: String): Boolean =
   {
-    val scriptFile = CompileClient absFileName scriptFileIn
-    
-    {
-      import settings._
-      for (setting <- List(classpath, sourcepath, bootclasspath, extdirs, outdir)) {
-        // DBG("%s = %s".format(setting.name, setting.value))
-        setting.value = CompileClient absFileName setting.value
-      }
-    }
-      
-    val compSettingNames  = new Settings(error).settingSet.toList map (_.name)
-    val compSettings      = settings.settingSet.toList filter (compSettingNames contains _.name)
+    val scriptFile        = Path(scriptFileIn).toAbsolute.path
+    val compSettingNames  = new Settings(error).visibleSettings.toList map (_.name)
+    val compSettings      = settings.visibleSettings.toList filter (compSettingNames contains _.name)
     val coreCompArgs      = compSettings flatMap (_.unparse)
     val compArgs          = coreCompArgs ::: List("-Xscript", scriptMain(settings), scriptFile)
     var compok            = true
-        
-    // XXX temporary as I started using ManagedResource not remembering it wasn't checked in.
-    def ManagedResource[T](x: => T) = Some(x)
     
-    for {
-      socket <- ManagedResource(CompileSocket getOrCreateSocket "")
-      val _ = if (socket == null) return false
-      out <- ManagedResource(new PrintWriter(socket.getOutputStream(), true))
-      in <- ManagedResource(new BufferedReader(new InputStreamReader(socket.getInputStream())))
-    } {
+    val socket = CompileSocket getOrCreateSocket "" getOrElse (return false)
+    socket.applyReaderAndWriter { (in, out) =>
       out println (CompileSocket getPassword socket.getPort)
       out println (compArgs mkString "\0")
       
@@ -227,8 +212,7 @@ object ScriptRunner
         if (CompileSocket.errorPattern matcher fromServer matches)
           compok = false
       }
-      // XXX temp until managed resource is available
-      in.close() ; out.close() ; socket.close()
+      socket.close()
     }
     
     compok
@@ -306,21 +290,9 @@ object ScriptRunner
     settings: GenericRunnerSettings,
 		compiledLocation: String,
 		scriptArgs: List[String]): Boolean =
-	{
-    def fileToURL(f: JFile): Option[URL] =
-      try Some(f.toURI.toURL) catch { case _: Exception => None }
-
-    def paths(str: String, expandStar: Boolean): List[URL] =
-      for {
-        file <- ClassPath.expandPath(str, expandStar) map (new JFile(_))
-        if file.exists 
-        url <- fileToURL(file)
-      } yield url
-
-    val classpath =
-      (paths(settings.bootclasspath.value, true) :::
-       paths(compiledLocation, false) :::
-       paths(settings.classpath.value, true))
+	{	  
+	  val pr = new PathResolver(settings)
+	  val classpath = pr.asURLs :+ File(compiledLocation).toURL
 
     try {
       ObjectRunner.run(
@@ -348,7 +320,7 @@ object ScriptRunner
     settings: GenericRunnerSettings,
 		scriptFile: String,
 		scriptArgs: List[String]): Boolean =
-	{
+	{	  
 	  if (File(scriptFile).isFile)
 	    withCompiledScript(settings, scriptFile) { runCompiled(settings, _, scriptArgs) }
 	  else
@@ -363,7 +335,7 @@ object ScriptRunner
     settings: GenericRunnerSettings,
     command: String,
 		scriptArgs: List[String]) : Boolean =
-	{
+	{    
     val scriptFile = File.makeTemp("scalacmd", ".scala")
     // save the command to the file
     scriptFile writeAll List(command)

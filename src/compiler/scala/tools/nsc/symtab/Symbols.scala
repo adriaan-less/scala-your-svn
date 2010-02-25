@@ -1434,6 +1434,13 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     /** The simple name of this Symbol */
     final def simpleName: Name = name
+    
+    /** The String used to order otherwise identical sealed symbols.
+     *  This uses data which is stable across runs and variable classpaths
+     *  (the initial Name) before falling back on id, which varies depending
+     *  on exactly when a symbol is loaded.
+     */
+    final def sealedSortName: String = initName.toString + "#" + id
 
     /** String representation of symbol's definition key word */
     final def keyString: String =
