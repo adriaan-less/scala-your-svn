@@ -65,7 +65,7 @@ import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
 class Scaladoc extends MatchingTask {
 
   /** The unique Ant file utilities instance to use in this task. */
-  private val fileUtils = FileUtils.newFileUtils()
+  private val fileUtils = FileUtils.getFileUtils()
 
 /*============================================================================*\
 **                             Ant user-properties                            **
@@ -103,6 +103,12 @@ class Scaladoc extends MatchingTask {
 
   /** The document title of the generated HTML documentation. */
   private var doctitle: Option[String] = None
+
+  /** The document version, to be added to the title. */
+  private var docversion: Option[String] = None
+
+  /** Instruct the compiler to generate links to sources */
+  private var docsourceurl: Option[String] = None
 
   /** Instruct the compiler to use additional parameters */
   private var addParams: String = ""
@@ -259,6 +265,22 @@ class Scaladoc extends MatchingTask {
    */
   def setEncoding(input: String) {
     encoding = Some(input)
+  }
+
+  /** Sets the <code>docversion</code> attribute.
+   *
+   *  @param input The value of <code>docversion</code>.
+   */
+  def setDocversion(input: String) {
+    docversion = Some(input)
+  }
+
+  /** Sets the <code>docsourceurl</code> attribute.
+   *
+   *  @param input The value of <code>docsourceurl</code>.
+   */
+  def setDocsourceurl(input: String) {
+    docsourceurl = Some(input)
   }
 
   /** Sets the <code>doctitle</code> attribute.
@@ -493,21 +515,13 @@ class Scaladoc extends MatchingTask {
     if (!extdirs.isEmpty) docSettings.extdirs.value = asString(getExtdirs)
     if (!encoding.isEmpty) docSettings.encoding.value = encoding.get
     if (!doctitle.isEmpty) docSettings.doctitle.value = decodeEscapes(doctitle.get)
+    if (!docversion.isEmpty) docSettings.docversion.value = decodeEscapes(docversion.get)
+    if (!docsourceurl.isEmpty) docSettings.docsourceurl.value =decodeEscapes(docsourceurl.get)
     docSettings.deprecation.value = deprecation
     docSettings.unchecked.value = unchecked
     log("Scaladoc params = '" + addParams + "'", Project.MSG_DEBUG)
-    var args = docSettings.splitParams(addParams)
-    
-    while (!args.isEmpty) {
-      if (args.head startsWith "-") {
-        val args0 = args
-        args = docSettings.parseParams(args)
-        if (args0 eq args) error("Parameter '" + args.head + "' is not recognised by Scaladoc.")
-      }
-      else if (args.head == "") args = args.tail
-      else error("Parameter '" + args.head + "' does not start with '-'.")
-    }
 
+    docSettings processArgumentString addParams
     Pair(docSettings, sourceFiles)
   }
 

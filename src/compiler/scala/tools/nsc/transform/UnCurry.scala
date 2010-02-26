@@ -9,7 +9,6 @@ package transform
 
 import symtab.Flags._
 import scala.collection.mutable.{HashMap, HashSet}
-import scala.tools.nsc.util.Position
 
 /*<export>*/
 /** - uncurry all symbol and tree types (@see UnCurryPhase)
@@ -61,11 +60,9 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
       tp match {
         case MethodType(params, MethodType(params1, restpe)) =>
           apply(MethodType(params ::: params1, restpe))
-        case MethodType(formals, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
+        case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
           assert(false, "unexpected curried method types with intervening exitential") 
           tp0
-        case mt: ImplicitMethodType =>
-          apply(MethodType(mt.params, mt.resultType))
         case PolyType(List(), restpe) => // nullary method type
           apply(MethodType(List(), restpe))
         case PolyType(tparams, restpe) => // polymorphic nullary method type, since it didn't occur in a higher-kinded position
@@ -189,8 +186,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
      *  additional parameter sections of a case class are skipped.
      */
     def uncurryTreeType(tp: Type): Type = tp match {
-      case MethodType(formals, MethodType(formals1, restpe)) if (inPattern) =>
-        uncurryTreeType(MethodType(formals, restpe))
+      case MethodType(params, MethodType(params1, restpe)) if (inPattern) =>
+        uncurryTreeType(MethodType(params, restpe))
       case _ =>
         uncurry(tp)
     }
@@ -451,13 +448,15 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
             if (isJava && 
                 suffix.tpe.typeSymbol == ArrayClass &&
                 isValueClass(suffix.tpe.typeArgs.head.typeSymbol) &&
-                fun.tpe.paramTypes.last.typeSymbol == ArrayClass &&
-                fun.tpe.paramTypes.last.typeArgs.head.typeSymbol == ObjectClass)
+                { val lastFormal2 = fun.tpe.params.last.tpe
+                  lastFormal2.typeSymbol == ArrayClass &&
+                  lastFormal2.typeArgs.head.typeSymbol == ObjectClass
+                })
               suffix = localTyper.typedPos(pos) {
                 gen.mkRuntimeCall("toObjectArray", List(suffix))
               }
           }
-          args.take(formals.length - 1) ::: List(suffix setType formals.last)
+          args.take(formals.length - 1) ::: List(suffix setType lastFormal)
         case _ =>
           args
       }
@@ -591,7 +590,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
             transform(treeCopy.Apply(tree, fn, List(liftTree(args.head))))
           } else {
             withNeedLift(true) {
-              val formals = fn.tpe.paramTypes;
+              val formals = fn.tpe.paramTypes
               treeCopy.Apply(tree, transform(fn), transformTrees(transformArgs(tree.pos, fn.symbol, args, formals)))
             }
           }

@@ -14,7 +14,6 @@ import java.io.File
 
 import org.apache.tools.ant.types.{Path, Reference}
 
-@cloneable
 class Settings {
   
   private var gBf: Option[String] = None
@@ -65,9 +64,12 @@ class Settings {
   def more = moreBf.get
   def more_=(s: String): this.type = { moreBf = Some(s); this }
   
+  var javaignorecp: Boolean = false
+  
   def toArgs: List[String] =
     (if (!gBf.isEmpty) "-g:"+g :: Nil else Nil) :::
     (if (uncheckedBf) "-unchecked" :: Nil else Nil) :::
+    (if (javaignorecp) "-javaignorecp" :: Nil else Nil) :::
     (if (!classpathBf.isEmpty) "-classpath" :: classpath.toString :: Nil else Nil) :::
     (if (!sourcepathBf.isEmpty) "-sourcepath" :: sourcepath.toString :: Nil else Nil) :::
     (if (!sourcedirBf.isEmpty) "-Xsourcedir" :: sourcedir.toString :: Nil else Nil) :::

@@ -9,11 +9,12 @@
 
 package scala.tools.scalap
 
-
 import java.io.{File, PrintStream, OutputStreamWriter, ByteArrayOutputStream}
 import scalax.rules.scalasig._
 import tools.nsc.io.AbstractFile
-import tools.nsc.util.{ClassPath, JavaClassPath}
+import tools.nsc.util.{ ClassPath }
+import tools.util.PathResolver
+import ClassPath.DefaultJavaContext
 
 /**The main object used to execute scalap on the command-line.
  *
@@ -34,7 +35,8 @@ object Main {
    */
   def usage {
     Console.println("usage: scalap {<option>} <name>")
-    Console.println("where <option> is")
+    Console.println("where <name> is fully-qualified class name or <package_name>.package for package objects")
+    Console.println("and <option> is")
     Console.println("  -private           print private definitions")
     Console.println("  -verbose           print out additional information")
     Console.println("  -version           print out the version number of scalap")
@@ -46,7 +48,7 @@ object Main {
   def isScalaFile(bytes: Array[Byte]): Boolean = {
     val byteCode = ByteCode(bytes)
     val classFile = ClassFileParser.parse(byteCode)
-    classFile.attribute("ScalaSig") match {case Some(_) => true; case None => false}
+    classFile.attribute("ScalaSig").isDefined
   }
 
   /**Processes the given Java class file.
@@ -263,13 +265,8 @@ object Main {
       verbose = arguments contains "-verbose"
       printPrivates = arguments contains "-private"
       // construct a custom class path
-      val path = arguments.getArgument("-classpath") match {
-        case None => arguments.getArgument("-cp") match {
-          case None => EmptyClasspath
-          case Some(path) => new JavaClassPath("", "", path, "", "")
-        }
-        case Some(path) => new JavaClassPath("", "", path, "", "")
-      }
+      def cparg = List("-classpath", "-cp") map (arguments getArgument _) reduceLeft (_ orElse _)
+      val path = cparg map (PathResolver fromPathString _) getOrElse EmptyClasspath
       // print the classpath if output is verbose
       if (verbose) {
         Console.println(Console.BOLD + "CLASSPATH" + Console.RESET + " = " + path)
@@ -280,13 +277,14 @@ object Main {
   }
 
   object EmptyClasspath extends ClassPath[AbstractFile] {
-    import tools.nsc.util.ClassRep
     /**
      * The short name of the package (without prefix)
      */
     def name: String = ""
-    def classes: List[ClassRep[AbstractFile]] = Nil
-    def packages: List[ClassPath[AbstractFile]] = Nil
-    def sourcepaths: List[AbstractFile] = Nil 
+    def asURLs = Nil
+    val context = DefaultJavaContext
+    val classes: List[ClassRep] = Nil
+    val packages: List[ClassPath[AbstractFile]] = Nil
+    val sourcepaths: List[AbstractFile] = Nil
   }
 }

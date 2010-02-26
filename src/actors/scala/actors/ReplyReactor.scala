@@ -52,25 +52,26 @@ trait ReplyReactor extends Reactor with ReplyableReactor {
     send(msg, Actor.sender)
   }
 
-  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), onSameThread: Boolean) {
+  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), handler: PartialFunction[Any, Any], onSameThread: Boolean) {
     senders = List(item._2)
-    // assert continuation != null
     if (onSameThread)
-      continuation(item._1)
-    else
-      scheduleActor(continuation, item._1)
+      handler(item._1)
+    else {
+      scheduleActor(handler, item._1)
+      // see Reactor.resumeReceiver
+      throw Actor.suspendException
+    }
   }
 
-  // assume continuation != null
-  private[actors] override def searchMailbox(startMbox: MessageQueue,
-                                             handlesMessage: Any => Boolean,
+  private[actors] override def searchMailbox(startMbox: MQueue,
+                                             handler: PartialFunction[Any, Any],
                                              resumeOnSameThread: Boolean) {
     var tmpMbox = startMbox
     var done = false
     while (!done) {
       val qel = tmpMbox.extractFirst((msg: Any, replyTo: OutputChannel[Any]) => {
         senders = List(replyTo)
-        handlesMessage(msg)
+        handler.isDefinedAt(msg)
       })
       if (tmpMbox ne mailbox)
         tmpMbox.foreach((m, s) => mailbox.append(m, s))
@@ -78,19 +79,23 @@ trait ReplyReactor extends Reactor with ReplyableReactor {
         synchronized {
           // in mean time new stuff might have arrived
           if (!sendBuffer.isEmpty) {
-            tmpMbox = new MessageQueue("Temp")
+            tmpMbox = new MQueue("Temp")
             drainSendBuffer(tmpMbox)
             // keep going
           } else {
-            waitingFor = handlesMessage
-            done = true
+            waitingFor = handler
+            // see Reactor.searchMailbox
+            throw Actor.suspendException
           }
         }
       } else {
-        resumeReceiver((qel.msg, qel.session), resumeOnSameThread)
+        resumeReceiver((qel.msg, qel.session), handler, resumeOnSameThread)
         done = true
       }
     }
   }
+
+  private[actors] override def makeReaction(fun: () => Unit): Runnable =
+    new ReplyReactorTask(this, fun)
 
 }

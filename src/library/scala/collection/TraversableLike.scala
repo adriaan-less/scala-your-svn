@@ -16,7 +16,13 @@ import scala.reflect.ClassManifest
 import mutable.{Builder, StringBuilder, Buffer, ArrayBuffer, ListBuffer}
 import immutable.{List, Stream, Nil, ::}
 
-/** A template trait for traversable collections.
+/** A template trait for traversable collections of type `Traversable[A]`.
+ *  $traversableinfo
+ * 
+ *  @tparam A    the element type of the collection
+ *  @tparam Repr the type of the actual collection containing the elements.
+ *
+ *  @define traversableinfo
  *  This is a base trait of all kinds of Scala collections. It implements
  *  the behavior common to all collections, in terms of a method
  *  `foreach` with signature:
@@ -57,10 +63,7 @@ import immutable.{List, Stream, Nil, ::}
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   2.8
- *
- *  @tparam A    the element type of the collection
- *  @tparam Repr the type of the actual collection containing the elements.
- *
+
  *  @define Coll Traversable
  *  @define coll traversable collection
  *  @define thatinfo the class of the returned collection. Where possible, `That` is 
@@ -69,7 +72,7 @@ import immutable.{List, Stream, Nil, ::}
  *    which means that an implicit instance of type `CanBuildFrom[Repr, B, That]`
  *    is found.
  *  @define bfinfo an implicit value of class `CanBuildFrom` which determines the
- *    result class `That` from the current representation type `Repr`
+ *    result class `That` from the current representation type `Repr` and
  *    and the new element type `B`. 
  *  @define orderDependent
  * 
@@ -130,7 +133,7 @@ self =>
    */
   def foreach[U](f: A => U): Unit
 
-  /** Tests whether the $coll is empty.
+  /** Tests whether this $coll is empty.
    *
    *  @return    `true` if the $coll contain no elements, `false` otherwise.
    */
@@ -475,7 +478,6 @@ self =>
    *             op(...op(z, x,,1,,), x,,2,,, ..., x,,n,,)
    *           }}}
    *           where `x,,1,,, ..., x,,n,,` are the elements of this $coll.
-   * 
    */
   def foldLeft[B](z: B)(op: (B, A) => B): B = {
     var result = z
@@ -503,6 +505,9 @@ self =>
   def /: [B](z: B)(op: (B, A) => B): B = foldLeft(z)(op)
 
   /** Applies a binary operator to all elements of this $coll and a start value, going right to left.
+   * 
+   *  $willNotTerminateInf
+   *  $orderDependentFold
    *  @param   z    the start value.
    *  @param   op   the binary operator.
    *  @tparam  B    the result type of the binary operator.
@@ -512,9 +517,6 @@ self =>
    *             op(x,,1,,, op(x,,2,,, ... op(x,,n,,, z)...))
    *           }}}
    *           where `x,,1,,, ..., x,,n,,` are the elements of this $coll.
-   *
-   *  $willNotTerminateInf
-   *  $orderDependentFold
    */
   def foldRight[B](z: B)(op: (A, B) => B): B = {
     var elems: List[A] = Nil
@@ -606,7 +608,6 @@ self =>
    *  @tparam  B    the result type of the binary operator.
    *  @return  an option value containing the result of `reduceRight(op)` is this $coll is nonempty,
    *           `None` otherwise.
-   *  @throws `UnsupportedOperationException` if this $coll is empty.
    */
   def reduceRightOption[B >: A](op: (A, B) => B): Option[B] =
     if (isEmpty) None else Some(reduceRight(op))
@@ -686,7 +687,7 @@ self =>
     acc
   }
 
-  /** Selects the first element.
+  /** Selects the first element of this $coll.
    *  $orderDependent
    *  @return  the first element of this $coll.
    *  @throws `NoSuchElementException` if the $coll is empty.
@@ -758,7 +759,7 @@ self =>
 
   /** Selects first ''n'' elements.
    *  $orderDependent
-   *  @param  n    The number of elements to take
+   *  @param  n    Tt number of elements to take from this $coll.
    *  @return a $coll consisting only of the first `n` elements of this $coll, or else the
    *          whole $coll, if it has less than `n` elements.
    */
@@ -777,7 +778,7 @@ self =>
 
   /** Selects all elements except first ''n'' ones. 
    *  $orderDependent
-   *  @param  n    The number of elements to take
+   *  @param  n    the number of elements to drop from this $coll.
    *  @return a $coll consisting of all elements of this $coll except the first `n` ones, or else the
    *          empty $coll, if this $coll has less than `n` elements.
    */
@@ -896,7 +897,7 @@ self =>
     for (x <- this) dest += x
   }
 
-  /** Copies selected elements of this $coll to an array.
+  /** Copies elements of this $coll to an array.
    *  Fills the given array `xs` with at most `len` elements of
    *  this $coll, starting at position `start`.
    *  Copying will stop once either the end of the current $coll is reached,
@@ -924,7 +925,7 @@ self =>
     }
   }
 
-  /** Copies selected suffix of this $coll to an array.
+  /** Copies elements of this $coll to an array.
    *  Fills the given array `xs` with all elements of
    *  this $coll, starting at position `start`.
    *  Copying will stop once either the end of the current $coll is reached,
@@ -940,6 +941,23 @@ self =>
    */
   def copyToArray[B >: A](xs: Array[B], start: Int) { 
     copyToArray(xs, start, xs.length - start)
+  }
+
+  /** Copies elements of this $coll to an array.
+   *  Fills the given array `xs` with all elements of
+   *  this $coll, starting at position `0`.
+   *  Copying will stop once either the end of the current $coll is reached,
+   *  or the end of the array is reached.
+   *
+   *  $willNotTerminateInf
+   *
+   *  @param  xs     the array to fill.
+   *  @tparam B      the type of the elements of the array. 
+   *
+   *  @usecase def copyToArray(xs: Array[A], start: Int): Unit
+   */
+  def copyToArray[B >: A](xs: Array[B]) { 
+    copyToArray(xs, 0)
   }
 
   /** Converts this $coll to an array.
@@ -966,9 +984,7 @@ self =>
   def toList: List[A] = (new ListBuffer[A] ++= thisCollection).toList
 
   /** Converts this $coll to an iterable collection.
-   * 
-   *  Note:  Will not terminate for infinite-sized collections.
-   * 
+   *  $willNotTerminateInf 
    *  @return an `Iterable` containing all elements of this $coll.
    */	
   def toIterable: Iterable[A] = toStream
@@ -997,17 +1013,33 @@ self =>
    */
   def toSet[B >: A]: immutable.Set[B] = immutable.Set() ++ thisCollection
 
+  /** Converts this $coll to a map.  This method is unavailable unless
+   *  the elements are members of Tuple2, each ((K, V)) becoming a key-value
+   *  pair in the map.  Duplicate keys will be overwritten by later keys:
+   *  if this is an unordered collection, which key is in the resulting map
+   *  is undefined.
+   *  $willNotTerminateInf
+   *  @return      a map containing all elements of this $coll.
+   */
+  def toMap[T, U](implicit ev: A <:< (T, U)): immutable.Map[T, U] = {
+    val b = immutable.Map.newBuilder[T, U]
+    for (x <- this)
+      b += x
+      
+    b.result
+  }
+
   /** Displays all elements of this $coll in a string using start, end, and separator strings.
    *
    *  @param start the starting string.
    *  @param sep   the separator string.
    *  @param end   the ending string.
    *  @return      a string representation of this $coll. The resulting string
-   *               begins with the string `start` and is finished by the string
+   *               begins with the string `start` and ends with the string
    *               `end`. Inside, the string representations (w.r.t. the method `toString`)
    *               of all elements of this $coll are separated by the string `sep`.
    *
-   *  @ex  `List(1, 2, 3).mkString("(", "; ", ")") = "(1; 2; 3)"`
+   *  @example  `List(1, 2, 3).mkString("(", "; ", ")") = "(1; 2; 3)"`
    */
   def mkString(start: String, sep: String, end: String): String =
     addString(new StringBuilder(), start, sep, end).toString
@@ -1019,7 +1051,7 @@ self =>
    *               the string representations (w.r.t. the method `toString`)
    *               of all elements of this $coll are separated by the string `sep`.
    *
-   *  @ex  `List(1, 2, 3).mkString("|") = "1|2|3"`
+   *  @example  `List(1, 2, 3).mkString("|") = "1|2|3"`
    */
   def mkString(sep: String): String =
     addString(new StringBuilder(), sep).toString
@@ -1033,7 +1065,7 @@ self =>
     addString(new StringBuilder()).toString
 
   /** Appends all elements of this $coll to a string builder using start, end, and separator strings.
-   *  The written text begins with the string `start` and is finished by the string
+   *  The written text begins with the string `start` and ends with the string
    *  `end`. Inside, the string representations (w.r.t. the method `toString`)
    *  of all elements of this $coll are separated by the string `sep`.
    *
@@ -1074,7 +1106,7 @@ self =>
   def addString(b: StringBuilder): StringBuilder = addString(b, "")
 
   /** Converts this $coll to a string
-   *  @returns  a string representation of this collection. By default this
+   *  @return   a string representation of this collection. By default this
    *            string consists of the `stringPrefix` of this $coll,
    *            followed by all elements separated by commas and enclosed in parentheses.
    */

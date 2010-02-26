@@ -32,7 +32,7 @@ object UIElement {
    * it will return that wrapper. Otherwise it returns `null`. This 
    * method never throws an exception.
    */
-  private[swing] def cachedWrapper[C<:UIElement](c: java.awt.Component): C = {
+  private[swing] def cachedWrapper[C>:Null<:UIElement](c: java.awt.Component): C = {
     val w = c match {
       case c: javax.swing.JComponent => c.getClientProperty(ClientKey)
       case _ => wrapperCache.get(c)
@@ -119,7 +119,7 @@ trait UIElement extends Proxy with LazyPublisher {
   def ignoreRepaint: Boolean = peer.getIgnoreRepaint
   def ignoreRepaint_=(b: Boolean) { peer.setIgnoreRepaint(b) }
   
-  def onFirstSubscribe {
+  protected def onFirstSubscribe {
     peer.addComponentListener(new java.awt.event.ComponentListener {
       def componentHidden(e: java.awt.event.ComponentEvent) { 
         publish(UIElementHidden(UIElement.this)) 
@@ -135,5 +135,5 @@ trait UIElement extends Proxy with LazyPublisher {
       }
     })
   }
-  def onLastUnsubscribe {}
+  protected def onLastUnsubscribe {}
 }

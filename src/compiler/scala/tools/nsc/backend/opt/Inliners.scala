@@ -278,10 +278,13 @@ abstract class Inliners extends SubComponent {
        assert(pending.isEmpty, "Pending NEW elements: " + pending)
      }
 
+    /** The current iclass */
+    private var currentIClazz: IClass = _
+
     def analyzeClass(cls: IClass): Unit = if (settings.inline.value) {
       if (settings.debug.value)
       	log("Analyzing " + cls);
-      
+      this.currentIClazz = cls
       cls.methods filterNot (_.symbol.isConstructor) foreach analyzeMethod
     }
 
@@ -292,7 +295,7 @@ abstract class Inliners extends SubComponent {
     private val inlinedMethods: Map[Symbol, Int] = new HashMap[Symbol, Int] {
     	override def default(k: Symbol) = 0       
     }
-      
+
     def analyzeMethod(m: IMethod): Unit = {
       var retry = false
       var count = 0
@@ -310,7 +313,13 @@ abstract class Inliners extends SubComponent {
             for (i <- bb) {
               if (!retry) {
                 i match {
-                  case CALL_METHOD(msym, Dynamic) => 
+                  case CALL_METHOD(msym, Dynamic) =>
+                    def warnNoInline(reason: String) = {
+                      if (msym.hasAnnotation(ScalaInlineAttr) && !m.symbol.hasFlag(Flags.BRIDGE))
+                        currentIClazz.cunit.warning(i.pos,
+                          "Could not inline required method %s because %s.".format(msym.originalName.decode, reason))
+                    }
+
                     val receiver = info.stack.types.drop(msym.info.paramTypes.length).head match {
                       case REFERENCE(s) => s;
                       case _ => NoSymbol;
@@ -319,10 +328,10 @@ abstract class Inliners extends SubComponent {
                     if (receiver != msym.owner && receiver != NoSymbol) { 
                       if (settings.debug.value)
                         log("" + i + " has actual receiver: " + receiver);
-                      if (!concreteMethod.isFinal && receiver.isFinal) {
+                      if (!concreteMethod.isEffectivelyFinal && receiver.isFinal) {
                         concreteMethod = lookupImpl(concreteMethod, receiver)
                         if (settings.debug.value)
-                          log("\tlooked up method: " + concreteMethod.fullNameString)
+                          log("\tlooked up method: " + concreteMethod.fullName)
                       }
                     }
 
@@ -333,11 +342,11 @@ abstract class Inliners extends SubComponent {
                       log("Treating " + i 
                           + "\n\treceiver: " + receiver
                           + "\n\ticodes.available: " + icodes.available(receiver)
-                          + "\n\tconcreteMethod.isFinal: " + concreteMethod.isFinal);
+                          + "\n\tconcreteMethod.isEffectivelyFinal: " + concreteMethod.isFinal);
 
                     if (   icodes.available(receiver) 
                         && (isClosureClass(receiver)
-                            || concreteMethod.isFinal
+                            || concreteMethod.isEffectivelyFinal
                             || receiver.isFinal)) {
                       icodes.icode(receiver).get.lookupMethod(concreteMethod) match {
                         case Some(inc) =>
@@ -361,28 +370,26 @@ abstract class Inliners extends SubComponent {
                                   + "\n\tinc.code ne null: " + (inc.code ne null) + (if (inc.code ne null)
                                     "\n\tisSafeToInline(m, inc, info.stack): " + isSafeToInline(m, inc, info.stack)
                                     + "\n\tshouldInline heuristics: " + shouldInline(m, inc) else ""));
+                            warnNoInline(
+                              if (inc.code eq null) "bytecode was unavailable"
+                              else if (!isSafeToInline(m, inc, info.stack)) "it is unsafe (target may reference private fields)"
+                              else "a bug (run with -Ylog:inline -Ydebug for more information)")
                           }
                         case None =>
+                          warnNoInline("bytecode was not available")
                           if (settings.debug.value)
                             log("could not find icode\n\treceiver: " + receiver + "\n\tmethod: " + concreteMethod)
                       }
-                    }
+                    } else
+                      warnNoInline(if (icodes.available(receiver)) "it is not final" else "bytecode was not available")
 
                   case _ => ();
                 }
                 info = tfa.interpret(info, i)
               }}}
-        if (tfa.stat) log(m.symbol.fullNameString + " iterations: " + tfa.iterations + " (size: " + m.code.blocks.length + ")")
+        if (tfa.stat) log(m.symbol.fullName + " iterations: " + tfa.iterations + " (size: " + m.code.blocks.length + ")")
       }} while (retry && count < 15)
       m.normalize
-//    } catch {
-//      case e => 
-//        Console.println("############# Caught exception: " + e + " #################");
-//        Console.println("\nMethod: " + m + 
-//                        "\nMethod owner: " + m.symbol.owner);
-//        e.printStackTrace();
-//        m.dump
-//        throw e
 		}
     
     
@@ -395,7 +402,7 @@ abstract class Inliners extends SubComponent {
     /** Should the given method be loaded from disk? */
     def shouldLoad(receiver: Symbol, method: Symbol): Boolean = {
       if (settings.debug.value) log("shouldLoad: " + receiver + "." + method)
-      ((method.isFinal && isMonadMethod(method) && isHigherOrderMethod(method))
+      ((method.isEffectivelyFinal && isMonadMethod(method) && isHigherOrderMethod(method))
         || (receiver.enclosingPackage == definitions.ScalaRunTimeModule.enclosingPackage)
         || (receiver == definitions.PredefModule.moduleClass)
         || (method.hasAnnotation(ScalaInlineAttr)))
@@ -481,7 +488,7 @@ abstract class Inliners extends SubComponent {
     }
     
     private def lookupImpl(meth: Symbol, clazz: Symbol): Symbol = {
-      //println("\t\tlooking up " + meth + " in " + clazz.fullNameString + " meth.owner = " + meth.owner)
+      //println("\t\tlooking up " + meth + " in " + clazz.fullName + " meth.owner = " + meth.owner)
       if (meth.owner == clazz 
           || clazz == definitions.NullClass 
           || clazz == definitions.NothingClass) meth
@@ -537,13 +544,10 @@ abstract class Inliners extends SubComponent {
      }
   } /* class Inliner */
     
-  /** Is the given class a subtype of a function trait? */
+  /** Is the given class a closure? */
   def isClosureClass(cls: Symbol): Boolean = {
-    val res = cls.isFinal && cls.hasFlag(Flags.SYNTHETIC) && !cls.isModuleClass &&
-        cls.tpe.parents.exists { t => 
-          val TypeRef(_, sym, _) = t;
-          definitions.FunctionClass exists sym.==
-        }
+    val res = (cls.isFinal && cls.hasFlag(Flags.SYNTHETIC)
+      && !cls.isModuleClass && cls.isAnonymousFunction)
     res
   }
   

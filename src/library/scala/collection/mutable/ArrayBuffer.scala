@@ -43,7 +43,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
 
   override def sizeHint(len: Int) {
     if (len > size && len >= 1) {
-      val newarray = new Array[AnyRef](len min 1)
+      val newarray = new Array[AnyRef](len)
       Array.copy(array, 0, newarray, 0, size0)
       array = newarray
     }
@@ -112,8 +112,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
    */
   def insertAll(n: Int, seq: Traversable[A]) {
-    if ((n < 0) || (n > size0))
-      throw new IndexOutOfBoundsException(n.toString)
+    if (n < 0 || n > size0) throw new IndexOutOfBoundsException(n.toString)
     val xs = seq.toList
     val len = xs.length
     ensureSize(size0 + len)
@@ -130,10 +129,10 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
    */
   override def remove(n: Int, count: Int) {
-    if ((n < 0) || (n >= size0) && count > 0)
-      throw new IndexOutOfBoundsException(n.toString)
+    require(count >= 0, "removing negative number of elements")
+    if (n < 0 || n > size0 - count) throw new IndexOutOfBoundsException(n.toString)
     copy(n + count, n, size0 - (n + count))
-    size0 -= count
+    reduceToSize(size0 - count)
   }
 
   /** Removes the element on a given index position

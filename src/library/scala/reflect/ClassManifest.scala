@@ -82,6 +82,7 @@ trait ClassManifest[T] extends OptManifest[T] {
     case m: ClassManifest[_]  => this.erasure == m.erasure
     case _ => false
   }
+  override def hashCode = this.erasure.hashCode
 
   protected def arrayClass[T](tp: Predef.Class[_]): Predef.Class[Array[T]] = 
     java.lang.reflect.Array.newInstance(tp, 0).getClass.asInstanceOf[Predef.Class[Array[T]]]
@@ -207,9 +208,21 @@ object ClassManifest {
   /** ClassManifest for the abstract type `prefix # name'. `upperBound' is not
     * strictly necessary as it could be obtained by reflection. It was
     * added so that erasure can be calculated without reflection. */
-  def abstractType[T](prefix: OptManifest[_], name: String, upperBound: ClassManifest[_], args: OptManifest[_]*): ClassManifest[T] =
+  def abstractType[T](prefix: OptManifest[_], name: String, clazz: Predef.Class[_], args: OptManifest[_]*): ClassManifest[T] =
     new (ClassManifest[T] @serializable) {
-      def erasure = upperBound.erasure
+      def erasure = clazz
+      override val typeArguments = args.toList
+      override def toString = prefix.toString+"#"+name+argString
+    }
+
+  /** ClassManifest for the abstract type `prefix # name'. `upperBound' is not
+    * strictly necessary as it could be obtained by reflection. It was
+    * added so that erasure can be calculated without reflection.
+    * todo: remove after next boostrap
+    */
+  def abstractType[T](prefix: OptManifest[_], name: String, upperbound: ClassManifest[_], args: OptManifest[_]*): ClassManifest[T] =
+    new (ClassManifest[T] @serializable) {
+      def erasure = upperbound.erasure
       override val typeArguments = args.toList
       override def toString = prefix.toString+"#"+name+argString
     }

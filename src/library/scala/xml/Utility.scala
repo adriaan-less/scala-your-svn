@@ -84,7 +84,7 @@ object Utility extends AnyRef with parsing.TokenTests
   
   object Escapes {
     /** For reasons unclear escape and unescape are a long ways from
-        being logical inverses. */
+      * being logical inverses. */
     val pairs = Map(
       "lt"    -> '<',
       "gt"    -> '>',
@@ -106,12 +106,30 @@ object Utility extends AnyRef with parsing.TokenTests
    * @param s    ...
    * @return     ...
    */
-  final def escape(text: String, s: StringBuilder): StringBuilder =
-    text.foldLeft(s)((s, c) => escMap.get(c) match {
-      case Some(str)  => s append str
-      case None       => s append c
-    })
-
+  final def escape(text: String, s: StringBuilder): StringBuilder = {
+    // Implemented per XML spec: 
+    // http://www.w3.org/International/questions/qa-controls
+    // imperative code 3x-4x faster than current implementation
+    // dpp (David Pollak) 2010/02/03
+    val len = text.length
+    var pos = 0
+    while (pos < len) {
+      text.charAt(pos) match {
+        case '<' => s.append("&lt;")
+        case '>' => s.append("&gt;")
+        case '&' => s.append("&amp;")
+        case '"' => s.append("&quot;")
+        case '\n' => s.append('\n')
+        case '\r' => s.append('\r')
+        case '\t' => s.append('\t')
+        case c => if (c >= ' ') s.append(c)
+      }
+      
+      pos += 1
+    }
+    s
+  }
+  
   /**
    * Appends unescaped string to <code>s</code>, amp becomes &amp;
    * lt becomes &lt; etc..
@@ -289,9 +307,10 @@ object Utility extends AnyRef with parsing.TokenTests
    */
   def getName(s: String, index: Int): String = {
     if (index >= s.length) null
-    else (s drop index) match {
-      case Seq(x, xs @ _*) if isNameStart(x)  => x.toString + (xs takeWhile isNameChar).mkString
-      case _                                  => ""
+    else {
+      val xs = s drop index
+      if (xs.nonEmpty && isNameStart(xs.head)) xs takeWhile isNameChar
+      else ""
     }
   }
 

@@ -10,7 +10,6 @@ package typechecker
 import symtab.Flags._
 import collection.mutable.{HashSet, HashMap}
 import transform.InfoTransform
-import scala.tools.nsc.util.{Position, NoPosition}
 import scala.collection.mutable.ListBuffer
 
 /** <p>
@@ -78,7 +77,7 @@ abstract class RefChecks extends InfoTransform {
     private def checkDefaultsInOverloaded(clazz: Symbol) {
       def check(members: List[Symbol]): Unit = members match {
         case x :: xs =>
-          if (x.paramss.exists(_.exists(p => p.hasFlag(DEFAULTPARAM)))) {
+          if (x.paramss.exists(_.exists(p => p.hasFlag(DEFAULTPARAM))) && !nme.isProtectedAccessor(x.name)) {
             val others = xs.filter(alt => {
               alt.name == x.name &&
               alt.paramss.exists(_.exists(_.hasFlag(DEFAULTPARAM))) &&
@@ -87,7 +86,7 @@ abstract class RefChecks extends InfoTransform {
             if (!others.isEmpty) {
               val all = x :: others
               val rest = if (all.exists(_.owner != clazz)) ".\nThe members with defaults are defined in "+
-                         all.map(_.owner).mkString("", " and ", ".")
+                         all.map(_.owner).mkString("", " and ", ".") else "."
               unit.error(clazz.pos, "in "+ clazz +", multiple overloaded alternatives of "+ x +
                          " define default arguments"+ rest)
               }
@@ -191,7 +190,7 @@ abstract class RefChecks extends InfoTransform {
           case List(MixinOverrideError(_, msg)) =>
             unit.error(clazz.pos, msg)
           case MixinOverrideError(member, msg) :: others =>
-            val others1 = others.map(_.member.name.decode).filter(member.name.decode != _).removeDuplicates
+            val others1 = others.map(_.member.name.decode).filter(member.name.decode != _).distinct
             unit.error(
               clazz.pos, 
               msg+(if (others1.isEmpty) "" 
@@ -316,7 +315,7 @@ abstract class RefChecks extends InfoTransform {
                    (other hasFlag ACCESSOR) && other.accessed.isVariable && !other.accessed.hasFlag(LAZY)) {
           overrideError("cannot override a mutable variable")
         } else if ((member hasFlag (OVERRIDE | ABSOVERRIDE)) && 
-                   !(member.owner isSubClass other.owner) && 
+                   !(member.owner.thisType.baseClasses exists (_ isSubClass other.owner)) && 
                    !member.isDeferred && !other.isDeferred && 
                    intersectionIsEmpty(member.allOverriddenSymbols, other.allOverriddenSymbols)) {
           overrideError("cannot override a concrete member without a third member that's overridden by both "+
@@ -385,7 +384,7 @@ abstract class RefChecks extends InfoTransform {
 
       val opc = new overridingPairs.Cursor(clazz)
       while (opc.hasNext) {
-        //Console.println(opc.overriding/* + ":" + opc.overriding.tpe*/ + " in "+opc.overriding.fullNameString + " overrides " + opc.overridden/* + ":" + opc.overridden.tpe*/ + " in "+opc.overridden.fullNameString + "/"+ opc.overridden.hasFlag(DEFERRED));//debug
+        //Console.println(opc.overriding/* + ":" + opc.overriding.tpe*/ + " in "+opc.overriding.fullName + " overrides " + opc.overridden/* + ":" + opc.overridden.tpe*/ + " in "+opc.overridden.fullName + "/"+ opc.overridden.hasFlag(DEFERRED));//debug
         if (!opc.overridden.isClass) checkOverride(clazz, opc.overriding, opc.overridden);
         
         opc.next
@@ -425,7 +424,7 @@ abstract class RefChecks extends InfoTransform {
               infoString(member) + " is marked `abstract' and `override'" +
               (if (other != NoSymbol) 
                 " and overrides incomplete superclass member " + infoString(other)
-               else ""))
+               else ", but no concrete implementation could be found in a base class"))
           }
 
         // 3. Check that concrete classes do not have deferred definitions
@@ -493,7 +492,7 @@ abstract class RefChecks extends InfoTransform {
 
       /** validate all base types of a class in reverse linear order. */
       def register(tp: Type) {
-//        if (clazz.fullNameString.endsWith("Collection.Projection"))
+//        if (clazz.fullName.endsWith("Collection.Projection"))
 //            println("validate base type "+tp)
         val baseClass = tp.typeSymbol
         if (baseClass.isClass) {
@@ -740,7 +739,7 @@ abstract class RefChecks extends InfoTransform {
                 sym = sym.info.bounds.hi.widen.typeSymbol
               sym
             }
-            val formal = underlyingClass(fn.tpe.paramTypes.head)
+            val formal = underlyingClass(fn.tpe.params.head.tpe)
             val actual = underlyingClass(args.head.tpe)
             val receiver = underlyingClass(qual.tpe)
             def nonSensibleWarning(what: String, alwaysEqual: Boolean) = 
@@ -903,7 +902,7 @@ abstract class RefChecks extends InfoTransform {
           val clazz = pat.tpe.typeSymbol;
           clazz == seltpe.typeSymbol &&
           clazz.isClass && (clazz hasFlag CASE) &&
-          ((args, clazz.primaryConstructor.tpe.asSeenFrom(seltpe, clazz).paramTypes).zipped forall isIrrefutable)
+          (args corresponds clazz.primaryConstructor.tpe.asSeenFrom(seltpe, clazz).paramTypes)(isIrrefutable) // @PP: corresponds
         case Typed(pat, tpt) => 
           seltpe <:< tpt.tpe
         case Ident(nme.WILDCARD) =>
@@ -948,7 +947,7 @@ abstract class RefChecks extends InfoTransform {
     private def isRepeatedParamArg(tree: Tree) = currentApplication match {
       case Apply(fn, args) =>
         !args.isEmpty && (args.last eq tree) && 
-        fn.tpe.paramTypes.length == args.length && isRepeatedParamType(fn.tpe.paramTypes.last)
+        fn.tpe.params.length == args.length && isRepeatedParamType(fn.tpe.params.last.tpe)
       case _ =>
         false
     }

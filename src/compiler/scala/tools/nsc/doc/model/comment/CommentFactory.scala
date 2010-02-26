@@ -21,18 +21,18 @@ import scala.annotation.switch
   * @author Gilles Dubochet */
 final class CommentFactory(val reporter: Reporter) { parser =>
   
-  final val endOfText      = '\u0003'
-  final val endOfLine      = '\u000A'
+  val endOfText      = '\u0003'
+  val endOfLine      = '\u000A'
   
   /** Something that should not have happened, happened, and Scaladoc should exit. */
   protected def oops(msg: String): Nothing =
     throw FatalError("program logic: " + msg)
 
   protected val CleanHtml =
-  new Regex("""</?(p|h\d|pre|dl|dt|dd|ol|ul|li|blockquote|div|hr|br|br)\s*/?>""")
+  new Regex("""</?(p|h\d|pre|dl|dt|dd|ol|ul|li|blockquote|div|hr|br|br).*/?>""")
 
   protected val ShortLineEnd =
-  new Regex("""\.|</(p|h\d|pre|dd|li|div|blockquote)>|<(hr|table)\s*/?>""")
+  new Regex("""\.|</?.*>""")
 
   /** The body of a comment, dropping start and end markers. */
   protected val CleanComment =
@@ -50,6 +50,14 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     * line. */
   protected val SymbolTag =
     new Regex("""\s*@(param|tparam|throws)\s+(\S*)\s*(.*)""")
+
+  /** The start of a scaladoc code block */
+  protected val CodeBlockStart =
+    new Regex("""(.*)\{\{\{(.*)""")
+
+  /** The end of a scaladoc code block */
+  protected val CodeBlockEnd =
+    new Regex("""(.*)\}\}\}(.*)""")
   
   /** A key used for a tag map. The key is built from the name of the tag and from the linked symbol if the tag has one.
     * Equality on tag keys is structural. */
@@ -84,23 +92,40 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     * splits the whole comment into main body and tag bodies, then runs the `WikiParser` on each body before creating
     * the comment instance.
     *
-    * @param body       The body of the comment parsed until now.
-    * @param tags       All tags parsed until now.
-    * @param lastTagKey The last parsed tag, or `None` if the tag section hasn't started. Lines that are not tagged
-    *                   are part of the previous tag or, if none exists, of the body.
-    * @param remaining  The lines that must still recursively be parsed. */
-  def parse0(docBody: String, tags: Map[TagKey, List[String]], lastTagKey: Option[TagKey], remaining: List[String]): Comment =
+    * @param body        The body of the comment parsed until now.
+    * @param tags        All tags parsed until now.
+    * @param lastTagKey  The last parsed tag, or `None` if the tag section hasn't started. Lines that are not tagged
+    *                    are part of the previous tag or, if none exists, of the body.
+    * @param remaining   The lines that must still recursively be parsed.
+    * @param inCodeBlock Whether the next line is part of a code block (in which no tags must be read). */
+  def parse0(docBody: String, tags: Map[TagKey, List[String]], lastTagKey: Option[TagKey], remaining: List[String], inCodeBlock: Boolean): Comment = {
     remaining match {
-        
-      case SymbolTag(name, sym, body) :: ls =>
+
+      case CodeBlockStart(before, after) :: ls if (!inCodeBlock) =>
+        if (before.trim != "")
+          parse0(docBody, tags, lastTagKey, before :: ("{{{" + after) :: ls, false)
+        else if (after.trim != "")
+          parse0(docBody, tags, lastTagKey, after :: ls, true)
+        else
+          parse0(docBody, tags, lastTagKey, ls, true)
+
+      case CodeBlockEnd(before, after) :: ls =>
+        if (before.trim != "")
+          parse0(docBody, tags, lastTagKey, before :: ("}}}" + after) :: ls, true)
+        else if (after.trim != "")
+          parse0(docBody, tags, lastTagKey, after :: ls, false)
+        else
+          parse0(docBody, tags, lastTagKey, ls, false)
+
+      case SymbolTag(name, sym, body) :: ls if (!inCodeBlock) =>
         val key = SymbolTagKey(name, sym)
         val value = body :: tags.getOrElse(key, Nil)
-        parse0(docBody, tags + (key -> value), Some(key), ls)
+        parse0(docBody, tags + (key -> value), Some(key), ls, inCodeBlock)
     
-      case SimpleTag(name, body) :: ls =>
+      case SimpleTag(name, body) :: ls if (!inCodeBlock) =>
         val key = SimpleTagKey(name)
         val value = body :: tags.getOrElse(key, Nil)
-        parse0(docBody, tags + (key -> value), Some(key), ls)
+        parse0(docBody, tags + (key -> value), Some(key), ls, inCodeBlock)
         
       case line :: ls if (lastTagKey.isDefined) =>
         val key = lastTagKey.get
@@ -109,12 +134,11 @@ final class CommentFactory(val reporter: Reporter) { parser =>
             case Some(b :: bs) => (b + endOfLine + line) :: bs
             case None => oops("lastTagKey set when no tag exists for key")
           }
-        parse0(docBody, tags + (key -> value), lastTagKey, ls)
+        parse0(docBody, tags + (key -> value), lastTagKey, ls, inCodeBlock)
         
       case line :: ls =>
-        val newBody =
-          if (docBody == "") line else docBody + endOfLine + line
-        parse0(newBody, tags, lastTagKey, ls)
+        val newBody = if (docBody == "") line else docBody + endOfLine + line
+        parse0(newBody, tags, lastTagKey, ls, inCodeBlock)
         
       case Nil =>
       
@@ -163,6 +187,8 @@ final class CommentFactory(val reporter: Reporter) { parser =>
           val since       = oneTag(SimpleTagKey("since"))
           val todo        = allTags(SimpleTagKey("todo"))
           val deprecated  = oneTag(SimpleTagKey("deprecated"))
+          val note        = allTags(SimpleTagKey("note"))
+          val example     = allTags(SimpleTagKey("example"))
           val short = {
             val shortText = ShortLineEnd.findFirstMatchIn(docBody) match {
               case None => docBody
@@ -172,7 +198,8 @@ final class CommentFactory(val reporter: Reporter) { parser =>
             parseWiki(safeText, pos) match {
               case Body(Paragraph(inl) :: _) => inl
               case _ =>
-                reporter.warning(pos, "Comment must start with a sentence")
+                if (safeText != "")
+                  reporter.warning(pos, "Comment must start with a sentence")
                 Text("")
             }
           }
@@ -183,9 +210,9 @@ final class CommentFactory(val reporter: Reporter) { parser =>
 
         com
 
+      }
     }
-    
-    parse0("", Map.empty, None, cleaned)    
+    parse0("", Map.empty, None, cleaned, false)
   }
   
   /** Parses a string containing wiki syntax into a `Comment` object. Note that the string is assumed to be clean:
@@ -193,7 +220,7 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     *  * Removed start-of-line star and one whitespace afterwards (if present).
     *  * Removed all end-of-line whitespace.
     *  * Only `endOfLine` is used to mark line endings. */
-  protected def parseWiki(string: String, pos: Position): Body =
+  def parseWiki(string: String, pos: Position): Body =
     new WikiParser(string.toArray, pos).document()
   
   /** TODO
@@ -221,18 +248,52 @@ final class CommentFactory(val reporter: Reporter) { parser =>
         title()
       else if (check("----"))
         hrule()
-      // TODO: Lists
+      else if (check(" - "))
+        listBlock(countWhitespace, '-', UnorderedList)
+      else if (check(" 1 "))
+        listBlock(countWhitespace, '1', OrderedList)
       else {
         para()
       }
     }
+        
+    /** 
+     * {{{
+     *   nListBlock ::= nLine { mListBlock }
+     *   nLine ::= nSpc '*' para '\n'
+     * }}} 
+     * Where n and m stand for the number of spaces. When m > n, a new list is nested.  */
+	def listBlock(indentation: Int, marker: Char, constructor: (Seq[Block] => Block)): Block = {
+      var count  = indentation
+      val start  = " " * count + marker + " "
+      var chk    = check(start)
+      var line   = listLine(indentation, marker)
+      val blocks = mutable.ListBuffer.empty[Block]
+      while (chk) {
+        blocks += line
+        count = countWhitespace
+        if (count > indentation) { // nesting-in
+          blocks += listBlock(count, marker, constructor) // TODO is tailrec really needed here?
+        }
+        chk = check(start)
+        if (chk) { line = listLine(indentation, marker) }
+      }
+      constructor(blocks)
+    }
+        
+    def listLine(indentation: Int, marker: Char): Block = {
+      jump(" " * indentation + marker + " ")
+      val p = Paragraph(inline(check(Array(endOfLine))))
+      blockEnded("end of list line ")
+      p
+    }    
     
     /** {{{ code ::= "{{{" { char } '}' "}}" '\n' }}} */
     def code(): Block = {
       jump("{{{")
       readUntil("}}}")
       if (char == endOfText)
-        reporter.warning(pos, "unclosed code block")
+        reportError(pos, "unclosed code block")
       else
         jump("}}}")
       blockEnded("code block")
@@ -245,7 +306,7 @@ final class CommentFactory(val reporter: Reporter) { parser =>
       val text = inline(check(Array.fill(inLevel)('=')))
       val outLevel = repeatJump("=", inLevel)
       if (inLevel != outLevel)
-        reporter.warning(pos, "unbalanced or unclosed heading")
+        reportError(pos, "unbalanced or unclosed heading")
       blockEnded("heading")
       Title(text, inLevel)
     }
@@ -260,9 +321,10 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     /** {{{ para ::= inline '\n' }}} */
     def para(): Block = {
       def checkParaEnd(): Boolean = {
-        check(Array(endOfLine, endOfLine)) ||
-        check(Array(endOfLine, '='))
-        check(Array(endOfLine, '{', '{', '{'))
+        check(Array(endOfLine, endOfLine)) || 
+        check(Array(endOfLine, '=')) || 
+        check(Array(endOfLine, '{', '{', '{')) || 
+        check(Array(endOfLine, ' ', '-', ' '))
       }
       val p = Paragraph(inline(checkParaEnd()))
       while (char == endOfLine && char != endOfText)
@@ -363,7 +425,16 @@ final class CommentFactory(val reporter: Reporter) { parser =>
       jump("[[")
       readUntil { check("]]") }
       jump("]]")
-      Link(getRead())
+      val read = getRead()
+      val (target, title) = {
+    	  val index = read.indexOf(' ');
+    	  val split = read.splitAt( if (index > -1) index else 0 )
+    	  if (split._1 == "")
+          (split._2, None)
+    	  else
+          (split._1, Some(split._2.trim))
+      }
+      Link(target, title)
     }
     
     /* UTILITY */
@@ -371,7 +442,7 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     /** {{{ eol ::= { whitespace } '\n' }}} */
     def blockEnded(blockType: String): Unit = {
       if (char != endOfLine && char != endOfText) {
-        reporter.warning(pos, "no additional content on same line after " + blockType)
+        reportError(pos, "no additional content on same line after " + blockType)
         jumpUntil(endOfLine)
       }
       while (char == endOfLine)
@@ -381,6 +452,9 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     def checkParaEnded(): Boolean = {
       char == endOfText || check(Array(endOfLine, endOfLine)) || check(Array(endOfLine, '{', '{', '{')) || check(Array(endOfLine, '\u003D'))
     }
+
+    def reportError(pos: Position, message: String): Unit =
+      reporter.warning(pos, message)
     
   }
     
@@ -416,6 +490,30 @@ final class CommentFactory(val reporter: Reporter) { parser =>
       ok
     }
     
+    def checkSkipWhitespace(chars: Array[Char]): Boolean = {
+      assert(chars.head!=' ') // or it makes no sense   
+      val poff = offset
+      val pc = char
+      jumpWhitespace
+      val ok = jump(chars)
+      offset = poff
+      char = pc
+      ok
+    }
+    
+    def countWhitespace:Int = {
+      var count = 0
+      val poff = offset
+      val pc = char
+      while (isWhitespace(char) && char!=endOfText) {
+        nextChar()
+        count += 1
+      }
+      offset = poff
+      char = pc
+      count
+    }
+    
     /* JUMPERS */
     
     final def jump(chars: Array[Char]): Boolean = {
@@ -444,7 +542,8 @@ final class CommentFactory(val reporter: Reporter) { parser =>
       while (more && count < max) {
         if (!checkedJump(chars))
           more = false
-        count += 1
+        else
+          count += 1
       }
       count
     }
@@ -455,15 +554,18 @@ final class CommentFactory(val reporter: Reporter) { parser =>
       while (more) {
         if (!checkedJump(chars))
           more = false
-        count += 1
+        else
+          count += 1
       }
       count
     }
   
     final def jumpUntil(ch: Char): Int = {
       var count = 0
-      while(char != ch && char != endOfText)
+      while(char != ch && char != endOfText) {
         nextChar()
+        count=count+1
+      }
       count
     }
   
@@ -473,16 +575,20 @@ final class CommentFactory(val reporter: Reporter) { parser =>
       val c = chars(0)
       while(!check(chars) && char != endOfText) {
         nextChar()
-        while (char != c && char != endOfText)
+        while (char != c && char != endOfText) {
           nextChar()
+          count += 1
+        }
       }
       count
     }
   
     final def jumpUntil(pred: => Boolean): Int = {
       var count = 0
-      while (!pred && char != endOfText)
+      while (!pred && char != endOfText) {
         nextChar()
+        count += 1
+      }
       count
     }
     
@@ -495,7 +601,7 @@ final class CommentFactory(val reporter: Reporter) { parser =>
     final def getRead(): String = {
       val bld = readBuilder.toString
       readBuilder.clear()
-      bld
+      if (bld.length < 6) bld.intern else bld
     }
   
     final def readUntil(ch: Char): Int = {

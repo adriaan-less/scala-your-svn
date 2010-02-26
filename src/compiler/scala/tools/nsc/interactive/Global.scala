@@ -117,7 +117,7 @@ self =>
     scheduler.pollException() match {
       case Some(ex: CancelActionReq) => if (acting) throw ex
       case Some(ex: FreshRunReq) => 
-        currentTyperRun = new TyperRun()
+        currentTyperRun = newTyperRun
         minRunId = currentRunId
         if (outOfDate) throw ex 
         else outOfDate = true
@@ -150,7 +150,7 @@ self =>
     val tree = locateTree(pos)
     val sw = new StringWriter
     val pw = new PrintWriter(sw)
-    treePrinters.create(pw).print(tree)
+    newTreePrinter(pw).print(tree)
     pw.flush
     
     val typed = new Response[Tree]
@@ -159,7 +159,7 @@ self =>
       case Some(tree) =>
         val sw = new StringWriter
         val pw = new PrintWriter(sw)
-        treePrinters.create(pw).print(tree)
+        newTreePrinter(pw).print(tree)
         pw.flush
         sw.toString
       case None => "<None>"      
@@ -286,7 +286,7 @@ self =>
 
   /** Make sure a set of compilation units is loaded and parsed */
   def reloadSources(sources: List[SourceFile]) {
-    currentTyperRun = new TyperRun()
+    currentTyperRun = newTyperRun
     for (source <- sources) {
       val unit = new RichCompilationUnit(source)
       unitOfFile(source.file) = unit
@@ -333,7 +333,7 @@ self =>
 
   def stabilizedType(tree: Tree): Type = tree match {
     case Ident(_) if tree.symbol.isStable => singleType(NoPrefix, tree.symbol)
-    case Select(qual, _) if tree.symbol.isStable => singleType(qual.tpe, tree.symbol)
+    case Select(qual, _) if  qual.tpe != null && tree.symbol.isStable => singleType(qual.tpe, tree.symbol)
     case Import(expr, selectors) =>
       tree.symbol.info match {
         case analyzer.ImportType(expr) => expr match {
@@ -398,18 +398,24 @@ self =>
   }
 
   def typeMembers(pos: Position): List[TypeMember] = {
-    val tree1 = typedTreeAt(pos)
-    val tree0 = tree1 match {
-      case tt : TypeTree => tt.original
-      case t => t 
+    var tree = typedTreeAt(pos)
+    tree match {
+      case tt : TypeTree => tree = tt.original
+      case _ => 
     }
-    val tree = tree0 match {
-      case s@Select(qual, name) if s.tpe == ErrorType => qual
-      case t => t
+
+    tree match {
+      case Select(qual, name) if tree.tpe == ErrorType => tree = qual
+      case _ => 
     }
-    
-    println("typeMembers at "+tree+" "+tree.tpe)
+
     val context = doLocateContext(pos)
+
+    if (tree.tpe == null)
+      tree = analyzer.newTyper(context).typedQualifier(tree)
+      
+    println("typeMembers at "+tree+" "+tree.tpe)
+
     val superAccess = tree.isInstanceOf[Super]
     val scope = new Scope
     val members = new LinkedHashMap[Symbol, TypeMember]
@@ -466,12 +472,20 @@ self =>
   /** The typer run */
   class TyperRun extends Run {
     // units is always empty
-    // symSource, symData are ignored
-    override def compiles(sym: Symbol) = false
 
-    def typeCheck(unit: CompilationUnit): Unit = applyPhase(typerPhase, unit)
+    /** canRedefine is used to detect double declarations in multiple source files.
+     *  Since the IDE rechecks units several times in the same run, these tests
+     *  are disabled by always returning true here.
+     */
+    override def canRedefine(sym: Symbol) = true
 
-    def enterNames(unit: CompilationUnit): Unit = applyPhase(namerPhase, unit)
+    def typeCheck(unit: CompilationUnit): Unit = {
+      applyPhase(typerPhase, unit)
+    }
+
+    def enterNames(unit: CompilationUnit): Unit = {
+      applyPhase(namerPhase, unit)
+    }
 
     /** Return fully attributed tree at given position
      *  (i.e. largest tree that's contained by position)
@@ -480,7 +494,7 @@ self =>
       println("starting typedTreeAt")
       val tree = locateTree(pos)
       println("at pos "+pos+" was found: "+tree+tree.pos.show)
-      if (tree.tpe ne null) {
+      if (stabilizedType(tree) ne null) {
         println("already attributed")
         tree
       } else {
@@ -517,6 +531,8 @@ self =>
       }
     }
   }
+  
+  def newTyperRun = new TyperRun
 
   class TyperResult(val tree: Tree) extends Exception with ControlException
   

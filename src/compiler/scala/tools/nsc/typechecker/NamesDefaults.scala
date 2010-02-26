@@ -7,8 +7,9 @@
 package scala.tools.nsc
 package typechecker
 
+import symtab.Flags._
+
 import scala.collection.mutable.ListBuffer
-  import symtab.Flags._
 
 /**
  *  @author Lukas Rytz
@@ -132,8 +133,15 @@ trait NamesDefaults { self: Analyzer =>
             case TypeRef(pre, sym, args)
             if (!args.forall(a => context.undetparams contains a.typeSymbol)) =>
               args.map(TypeTree(_))
-            case _ => Nil
+            case _ =>
+              Nil
           }
+          (baseFun, Nil, targsInSource)
+
+        case Select(TypeApply(New(TypeTree()), targs), _) if isConstr =>
+          val targsInSource =
+            if (targs.forall(a => context.undetparams contains a.symbol)) Nil
+            else targs
           (baseFun, Nil, targsInSource)
 
         case _ => (baseFun, Nil, Nil)
@@ -170,28 +178,41 @@ trait NamesDefaults { self: Analyzer =>
         b
       }
 
+      def moduleQual(pos: Position, tree: Symbol => Tree) = {
+        val module = baseFun.symbol.owner.linkedModuleOfClass
+        if (module == NoSymbol) None
+        else Some(atPos(pos.focus)(tree(module)))
+      }
+
       baseFun1 match {
         // constructor calls
 
         case Select(New(TypeTree()), _) if isConstr =>
           blockWithoutQualifier(None)
+        case Select(TypeApply(New(TypeTree()), _), _) if isConstr =>
+          blockWithoutQualifier(None)
 
         case Select(New(Ident(_)), _) if isConstr =>
           blockWithoutQualifier(None)
+        case Select(TypeApply(New(Ident(_)), _), _) if isConstr =>
+          blockWithoutQualifier(None)
 
-        case Select(nev @ New(sel @ Select(qual, typeName)), constr) if isConstr =>
-          // #2057
-          val module = baseFun.symbol.owner.linkedModuleOfClass
-          val defaultQual =
-            if (module == NoSymbol) None
-            else Some(atPos(qual.pos.focus)(gen.mkAttributedSelect(qual.duplicate, module)))
+        case Select(New(Select(qual, _)), _) if isConstr =>
           // in `new q.C()', q is always stable
           assert(treeInfo.isPureExpr(qual), qual)
+          // #2057
+          val defaultQual = moduleQual(qual.pos, mod => gen.mkAttributedSelect(qual.duplicate, mod))
+          blockWithoutQualifier(defaultQual)
+
+        case Select(TypeApply(New(Select(qual, _)), _), _) if isConstr =>
+          assert(treeInfo.isPureExpr(qual), qual)
+          val defaultQual = moduleQual(qual.pos, mod => gen.mkAttributedSelect(qual.duplicate, mod))
           blockWithoutQualifier(defaultQual)
 
         // super constructor calls
         case Select(Super(_, _), _) if isConstr =>
-          blockWithoutQualifier(None)
+          val defaultQual = moduleQual(baseFun.pos, mod => gen.mkAttributedRef(mod))
+          blockWithoutQualifier(defaultQual)
 
         // self constructor calls (in secondary constructors)
         case Select(qual, name) if isConstr =>
@@ -319,14 +340,15 @@ trait NamesDefaults { self: Analyzer =>
    * the argument list (y = "lt") is transformed to (y = "lt", x = foo$default$1())
    */
   def addDefaults(givenArgs: List[Tree], qual: Option[Tree], targs: List[Tree],
-                  previousArgss: List[List[Tree]], params: List[Symbol], pos: util.Position): (List[Tree], List[Symbol]) = {
+                  previousArgss: List[List[Tree]], params: List[Symbol],
+                  pos: util.Position, context: Context): (List[Tree], List[Symbol]) = {
     if (givenArgs.length < params.length) {
       val (missing, positional) = missingParams(givenArgs, params)
       if (missing forall (_.hasFlag(DEFAULTPARAM))) {
         val defaultArgs = missing map (p => {
           var default1 = qual match {
-            case Some(q) => gen.mkAttributedSelect(q.duplicate, p.defaultGetter)
-            case None => gen.mkAttributedRef(p.defaultGetter)
+            case Some(q) => gen.mkAttributedSelect(q.duplicate, defaultGetter(p, context))
+            case None => gen.mkAttributedRef(defaultGetter(p, context))
           }
           default1 = if (targs.isEmpty) default1
                      else TypeApply(default1, targs.map(_.duplicate))
@@ -340,6 +362,38 @@ trait NamesDefaults { self: Analyzer =>
         (givenArgs ::: defaultArgs, Nil)
       } else (givenArgs, missing filter (! _.hasFlag(DEFAULTPARAM)))
     } else (givenArgs, Nil)
+  }
+
+  /**
+   * For a parameter with default argument, find the method symbol of
+   * the default getter.
+   */
+  def defaultGetter(param: Symbol, context: Context) = {
+    val i = param.owner.paramss.flatten.findIndexOf(p => p.name == param.name) + 1
+    if (i > 0) {
+      if (param.owner.isConstructor) {
+        val defGetterName = "init$default$"+ i
+        param.owner.owner.linkedModuleOfClass.info.member(defGetterName)
+      } else {
+        val defGetterName = param.owner.name +"$default$"+ i
+        if (param.owner.owner.isClass) {
+          param.owner.owner.info.member(defGetterName)
+        } else {
+          // the owner of the method is another method. find the default
+          // getter in the context.
+          var res: Symbol = NoSymbol
+          var ctx = context
+          while(res == NoSymbol && ctx.outer != ctx) {
+            val s = ctx.scope.lookup(defGetterName)
+            if (s != NoSymbol && s.owner == param.owner.owner)
+              res = s
+            else
+              ctx = ctx.outer
+          }
+          res
+        }
+      }
+    } else NoSymbol
   }
 
   /**
@@ -370,7 +424,7 @@ trait NamesDefaults { self: Analyzer =>
         } else if (argPos contains pos) {
           errorTree(arg, "parameter specified twice: "+ name)
         } else {
-          // for named arguments, check wether the assignment expression would
+          // for named arguments, check whether the assignment expression would
           // typecheck. if it does, report an ambiguous error.
           val param = params(pos)
           val paramtpe = params(pos).tpe.cloneInfo(param)

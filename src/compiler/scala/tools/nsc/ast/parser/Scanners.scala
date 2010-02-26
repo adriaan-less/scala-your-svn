@@ -7,12 +7,11 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.tools.nsc.util._
-import Chars.{LF, FF, CR, SU}
+import Chars._
 import Tokens._
 import scala.annotation.switch
 import scala.collection.mutable.{ListBuffer, ArrayBuffer}
 import scala.xml.Utility.{ isNameStart }
-import util.Chars._
 
 trait Scanners {
   val global : Global
@@ -164,6 +163,11 @@ trait Scanners {
         case RBRACKET | RPAREN | ARROW =>
           if (!sepRegions.isEmpty && sepRegions.head == lastToken)
             sepRegions = sepRegions.tail
+        case _ =>
+      }
+      (lastToken: @switch) match {
+        case RBRACE | RBRACKET | RPAREN =>
+          docBuffer = null
         case _ =>
       }
 
@@ -332,7 +336,7 @@ trait Scanners {
           nextChar()
           if (isIdentifierStart(ch))
             charLitOr(getIdentRest)
-          else if (isSpecial(ch))
+          else if (isOperatorPart(ch) && (ch != '\\'))
             charLitOr(getOperatorRest)
           else {
             getLitChar()
@@ -1010,7 +1014,7 @@ trait Scanners {
   class UnitScanner(unit: CompilationUnit, patches: List[BracePatch]) extends Scanner {
     def this(unit: CompilationUnit) = this(unit, List())
     val buf = unit.source.asInstanceOf[BatchSourceFile].content
-    val decodeUnit = !settings.nouescape.value
+    override val decodeUni: Boolean = !settings.nouescape.value
 
     def warning(off: Offset, msg: String) = unit.warning(unit.position(off), msg)
     def error  (off: Offset, msg: String) = unit.error(unit.position(off), msg)

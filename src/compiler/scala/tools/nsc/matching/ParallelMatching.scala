@@ -15,7 +15,6 @@ import collection._
 import mutable.ListBuffer
 import immutable.IntMap
 import annotation.elidable
-import Function.tupled
 
 trait ParallelMatching extends ast.TreeDSL
       with MatchSupport
@@ -281,7 +280,9 @@ trait ParallelMatching extends ast.TreeDSL
       
       lazy val pvgroup  = PatternVarGroup.fromBindings(subst.get())
       
-      final def tree(): Tree = squeezedBlock(pvgroup.valDefs, codegen)
+      final def tree(): Tree = 
+        if (guard.isEmpty) success
+        else squeezedBlock(pvgroup.valDefs, codegen)
     }
 
     /** Mixture rule for all literal ints (and chars) i.e. hopefully a switch
@@ -583,7 +584,7 @@ trait ParallelMatching extends ast.TreeDSL
       }
       
       lazy val failure =
-        mkFail(remaining map tupled((p1, p2) => rest rows p1 insert p2))
+        mkFail(remaining map { case (p1, p2) => rest rows p1 insert p2 })
 
       final def tree(): Tree = codegen
     }
@@ -620,7 +621,7 @@ trait ParallelMatching extends ast.TreeDSL
         def isNotAlternative(p: Pattern) = !cond(p.tree) { case _: Alternative => true }
         
         // classify all the top level patterns - alternatives come back unaltered
-        val newPats: List[Pattern] = pats.zipWithIndex map tupled(classifyPat)        
+        val newPats: List[Pattern] = pats.zipWithIndex map classifyPat.tupled
         // see if any alternatives were in there
         val (ps, others) = newPats span isNotAlternative
         // make a new row for each alternative, with it spliced into the original position
@@ -699,18 +700,12 @@ trait ParallelMatching extends ast.TreeDSL
         referenceCount += 1
 
         if (isLabellable) {
-          // val mtype = MethodType(freeVars, bodyTpe)
-          val mtype = MethodType(args, bodyTpe)
+          val mtype = MethodType(freeVars, bodyTpe)
           _labelSym = owner.newLabel(body.pos, name) setInfo mtype
           
           TRACE("Creating index %d: mtype = %s".format(bx, mtype))
-          if (freeVars.size != args.size)
-            TRACE("We will be hosed! freeVars = %s, args = %s, vdefs = %s".format(freeVars, args, vdefs))
-
-          // Labelled expression - the symbols in the array (must be Idents!) 
-          // are those the label takes as argument 
-          _label = typer typedLabelDef LabelDef(_labelSym, args, body setType bodyTpe)
-          TRACE("[New label] def %s%s: %s = %s".format(name, pp(args), bodyTpe, body))
+          _label = typer typedLabelDef LabelDef(_labelSym, freeVars, body setType bodyTpe)
+          TRACE("[New label] def %s%s: %s = %s".format(name, pp(freeVars), bodyTpe, body))
         }
         
         ifLabellable(vdefs, squeezedBlock(vdefs, label))

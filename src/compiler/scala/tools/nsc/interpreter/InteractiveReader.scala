@@ -22,6 +22,13 @@ trait InteractiveReader {
     }
     catching(handler) { readOneLine(prompt) }
   }
+  
+  // overide if history is available
+  def history: Option[History] = None
+  def historyList = history map (_.asList) getOrElse Nil
+  
+  // override if completion is available
+  def completion: Option[Completion] = None
     
   // hack necessary for OSX jvm suspension because read calls are not restarted after SIGTSTP
   private def restartSystemCall(e: Exception): Boolean =
@@ -39,8 +46,11 @@ object InteractiveReader {
    *  library is available, but otherwise uses a <code>SimpleReader</code>. 
    */
   def createDefault(interpreter: Interpreter): InteractiveReader =
-    catching(exes: _*) 
-      . opt (new JLineReader(interpreter))
-      . getOrElse (new SimpleReader)
+    try new JLineReader(interpreter)
+    catch {
+      case e @ (_: Exception | _: NoClassDefFoundError) =>
+        // println("Failed to create JLineReader(%s): %s".format(interpreter, e))
+        new SimpleReader
+    }
 }
 

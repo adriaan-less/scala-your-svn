@@ -16,11 +16,12 @@ import generic._
 import mutable.{Builder, ListBuffer}
 import annotation.tailrec
 
-/** A class representing an ordered collection of elements of type
- *  `a`. This class comes with two implementing case
- *  classes `scala.Nil` and `scala.::` that
- *  implement the abstract members `isEmpty`,
- *  `head` and `tail`.
+/** A class for immutable linked lists representing ordered collections
+ *  of elements of type. 
+ *
+ * This class comes with two implementing case classes `scala.Nil`
+ * and `scala.::` that implement the abstract members `isEmpty`,
+ * `head` and `tail`.
  *
  *  @author  Martin Odersky and others
  *  @version 2.8
@@ -50,58 +51,40 @@ sealed abstract class List[+A] extends LinearSeq[A]
 
   import scala.collection.{Iterable, Traversable, Seq, IndexedSeq}
 
-  /** Returns true if the list does not contain any elements.
-   *  @return `true`, iff the list is empty.
-   */
   def isEmpty: Boolean
-
-  /** Returns this first element of the list.
-   *
-   *  @return the first element of this list.
-   *  @throws Predef.NoSuchElementException if the list is empty.
-   */
   def head: A
-
-  /** Returns this list without its first element.
-   *
-   *  @return this list without its first element.
-   *  @throws Predef.NoSuchElementException if the list is empty.
-   */
   def tail: List[A]
 
   // New methods in List
 
-  /** <p>
-   *    Add an element `x` at the beginning of this list.
-   *  </p>
-   *
+  /** Adds an element at the beginning of this list.
    *  @param x the element to prepend.
-   *  @return  the list with `x` added at the beginning.
-   *  @ex `1 :: List(2, 3) = List(2, 3).::(1) = List(1, 2, 3)`
+   *  @return  a list which contains `x` as first element and
+   *           which continues with this list.
+   *  @example `1 :: List(2, 3) = List(2, 3).::(1) = List(1, 2, 3)`
+   *  @usecase def ::(x: A): List[A]
    */
   def ::[B >: A] (x: B): List[B] =
     new scala.collection.immutable.::(x, this)
 
-  /** <p>
-   *    Returns a list resulting from the concatenation of the given
+  /** Adds the elements of a given list in front of this list.
+   *  @param prefix  The list elements to prepend.
+   *  @return a list resulting from the concatenation of the given
    *    list `prefix` and this list. 
-   *  </p>
-   *
-   *  @param prefix the list to concatenate at the beginning of this list.
-   *  @return the concatenation of the two lists.
-   *  @ex `List(1, 2) ::: List(3, 4) = List(3, 4).:::(List(1, 2)) = List(1, 2, 3, 4)`
+   *  @example `List(1, 2) ::: List(3, 4) = List(3, 4).:::(List(1, 2)) = List(1, 2, 3, 4)`
+   *  @usecase def :::(prefix: List[A]): List[A]
    */
   def :::[B >: A](prefix: List[B]): List[B] =
     if (isEmpty) prefix
     else (new ListBuffer[B] ++= prefix).prependToList(this)
 
-  /** Reverse the given prefix and append the current list to that.
-   *  This function is equivalent to an application of `reverse`
-   *  on the prefix followed by a call to `:::`, but is more
-   *  efficient.
+  /** Adds the elements of a given list in reverse order in front of this list.
+   *  `xs reverse_::: ys` is equivalent to
+   *  `xs.reverse ::: ys` but is more efficient.
    *
    *  @param prefix the prefix to reverse and then prepend
    *  @return       the concatenation of the reversed prefix and the current list.
+   *  @usecase def reverse_:::(prefix: List[A]): List[A]
    */
   def reverse_:::[B >: A](prefix: List[B]): List[B] = {
     var these: List[B] = this
@@ -113,17 +96,25 @@ sealed abstract class List[+A] extends LinearSeq[A]
     these
   }
 
-  /** Like xs map f, but returns `xs` unchanged if function
-   *  `f` maps all elements to themselves (wrt ==).
-   *  @note Unlike `map`, `mapConserve` is not tail-recursive.
+  /** Builds a new list by applying a function to all elements of this list.
+   *  Like `xs map f`, but returns `xs` unchanged if function
+   *  `f` maps all elements to themselves (wrt eq).
+   *
+   *  Note: Unlike `map`, `mapConserve` is not tail-recursive.
+   * 
+   *  @param f      the function to apply to each element.
+   *  @tparam B     the element type of the returned collection.
+   *  @return       a list resulting from applying the given function
+   *                `f` to each element of this list and collecting the results.
+   *  @usecase def mapConserve(f: A => A): List[A] 
    */
-  def mapConserve[B >: A] (f: A => B): List[B] = {
+  def mapConserve[B >: A <: AnyRef] (f: A => B): List[B] = {
     def loop(ys: List[A]): List[B] =
       if (ys.isEmpty) this
       else {
         val head0 = ys.head
         val head1 = f(head0)
-        if (head1 == head0) {
+        if (head1 eq head0.asInstanceOf[AnyRef]) {
           loop(ys.tail)
         } else {
           val ys1 = head1 :: ys.tail.mapConserve(f)
@@ -144,33 +135,17 @@ sealed abstract class List[+A] extends LinearSeq[A]
 
   // Overridden methods from IterableLike or overloaded variants of such methods
   
-  /** Create a new list which contains all elements of this list
-   *  followed by all elements of Traversable `that'
-   */
   override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
     val b = bf(this)
     if (b.isInstanceOf[ListBuffer[_]]) (this ::: that.toList).asInstanceOf[That]
     else super.++(that)
   }
 
-  /** Create a new list which contains all elements of this list
-   *  followed by all elements of Iterator `that'
-   */
   override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[List[A], B, That]): That =
     this ++ that.toList
 
-  /** Overrides the method in Iterable for efficiency.
-   *
-   *  @return  the list itself
-   */
   override def toList: List[A] = this
 
-  /** Returns the `n` first elements of this list, or else the whole 
-   *  list, if it has less than `n` elements.
-
-   *  @param n the number of elements to take.
-   *  @return the `n` first elements of this list.
-   */
   override def take(n: Int): List[A] = {
     val b = new ListBuffer[A]
     var i = 0
@@ -184,12 +159,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
     else b.toList
   }
 
-  /** Returns the list without its `n` first elements.
-   *  If this list has less than `n` elements, the empty list is returned.
-   *
-   *  @param n the number of elements to drop.
-   *  @return the list without its `n` first elements.
-   */
   override def drop(n: Int): List[A] = {
     var these = this
     var count = n
@@ -200,23 +169,12 @@ sealed abstract class List[+A] extends LinearSeq[A]
     these
   }
 
-  /** Returns the list with elements belonging to the given index range.
-   *
-   *  @param start the start position of the list slice.
-   *  @param end   the end position (exclusive) of the list slice.
-   *  @return the list with elements belonging to the given index range.
-   */
   override def slice(start: Int, end: Int): List[A] = {
     var len = end
     if (start > 0) len -= start
     drop(start) take len
   }
 
-  /** Returns the rightmost `n` elements from this list.
-   *
-   *  @param n the number of elements to take
-   *  @return the suffix of length `n` of the list
-   */
   override def takeRight(n: Int): List[A] = {
     @tailrec
     def loop(lead: List[A], lag: List[A]): List[A] = lead match {
@@ -226,15 +184,8 @@ sealed abstract class List[+A] extends LinearSeq[A]
     loop(drop(n), this)
   }
   
-  // dropRight is inherited from Stream
+  // dropRight is inherited from LinearSeq
 
-  /** Split the list at a given point and return the two parts thus
-   *  created.
-   *
-   *  @param n the position at which to split
-   *  @return  a pair of lists composed of the first `n`
-   *           elements, and the other elements.
-   */
   override def splitAt(n: Int): (List[A], List[A]) = {
     val b = new ListBuffer[A]
     var i = 0
@@ -247,13 +198,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
     (b.toList, these)
   }
 
-  /** Returns the longest prefix of this list whose elements satisfy
-   *  the predicate `p`.
-   *
-   *  @param p the test predicate.
-   *  @return  the longest prefix of this list whose elements satisfy
-   *           the predicate `p`.
-   */
   override def takeWhile(p: A => Boolean): List[A] = {
     val b = new ListBuffer[A]
     var these = this
@@ -264,13 +208,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
     b.toList
   }
 
-  /** Returns the longest suffix of this list whose first element
-   *  does not satisfy the predicate `p`.
-   *
-   *  @param p the test predicate.
-   *  @return  the longest suffix of the list whose first element
-   *           does not satisfy the predicate `p`.
-   */
   override def dropWhile(p: A => Boolean): List[A] = {
     @tailrec
     def loop(xs: List[A]): List[A] =
@@ -280,13 +217,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
     loop(this)
   }
 
-  /** Returns the longest prefix of the list whose elements all satisfy
-   *  the given predicate, and the rest of the list.
-   *
-   *  @param p the test predicate
-   *  @return  a pair consisting of the longest prefix of the list whose
-   *           elements all satisfy `p`, and the rest of the list.
-   */
   override def span(p: A => Boolean): (List[A], List[A]) = {
     val b = new ListBuffer[A]
     var these = this
@@ -297,8 +227,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
     (b.toList, these)
   }
 
-  /** A list consisting of all elements of this list in reverse order.
-   */
   override def reverse: List[A] = {
     var result: List[A] = Nil
     var these = this
@@ -359,6 +287,9 @@ sealed abstract class List[+A] extends LinearSeq[A]
     }
     b.toList
   }
+  
+  @deprecated("use `distinct' instead")
+  def removeDuplicates: List[A] = distinct
 
   /** <p>
    *    Sort the list according to the comparison function
@@ -371,7 +302,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
    *  @param lt the comparison function
    *  @return   a list sorted according to the comparison function
    *            `lt(e1: a, e2: a) =&gt; Boolean`.
-   *  @ex <pre>
+   *  @example <pre>
    *    List("Steve", "Tom", "John", "Bob")
    *      .sort((e1, e2) => (e1 compareTo e2) &lt; 0) =
    *    List("Bob", "John", "Steve", "Tom")</pre>
@@ -454,7 +385,7 @@ case object Nil extends List[Nothing] {
   override def head: Nothing =
     throw new NoSuchElementException("head of empty list")
   override def tail: List[Nothing] =
-    throw new NoSuchElementException("tail of empty list")
+    throw new UnsupportedOperationException("tail of empty list")
   // Removal of equals method here might lead to an infinite recusion similar to IntMap.equals.
   override def equals(that: Any) = that match {
     case that1: Seq[_] => that1.isEmpty
@@ -463,7 +394,9 @@ case object Nil extends List[Nothing] {
 }
 
 /** A non empty list characterized by a head and a tail.
- *
+ *  @param hd   the first element of the list
+ *  @param tl   the list containing the remaining elements of this list after the first one.
+ *  @tparam B   the type of the list elements.
  *  @author  Martin Odersky
  *  @version 1.0, 15/07/2003
  *  @since   2.8
@@ -498,18 +431,14 @@ final case class ::[B](private var hd: B, private[scala] var tl: List[B]) extend
   }
 }
 
-/** This object provides methods for creating specialized lists, and for
- *  transforming special kinds of lists (e.g. lists of lists).
- *
- *  @author  Martin Odersky
- *  @version 2.8
- *  @since   2.8
- */
+/** $factoryInfo */
 object List extends SeqFactory[List] {
   
   import scala.collection.{Iterable, Seq, IndexedSeq}
 
+  /** $genericCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, List[A]] = new GenericCanBuildFrom[A]
+
   def newBuilder[A]: Builder[A, List[A]] = new ListBuffer[A]
 
   override def empty[A]: List[A] = Nil
@@ -567,7 +496,7 @@ object List extends SeqFactory[List] {
    *  @param xss the list of lists that are to be concatenated
    *  @return    the concatenation of all the lists
    */
-  @deprecated("use `xss.flatten' instead")
+  @deprecated("use `xss.flatten' instead of `List.flatten(xss)'")
   def flatten[A](xss: List[List[A]]): List[A] = { 
     val b = new ListBuffer[A] 
     for (xs <- xss) {
@@ -585,7 +514,7 @@ object List extends SeqFactory[List] {
    *  @param xs the list of pairs to unzip
    *  @return a pair of lists.
    */
-  @deprecated("use `xs.unzip' instead")
+  @deprecated("use `xs.unzip' instead of `List.unzip(xs)'")
   def unzip[A,B](xs: List[(A,B)]): (List[A], List[B]) = {
     val b1 = new ListBuffer[A]
     val b2 = new ListBuffer[B]
@@ -603,7 +532,7 @@ object List extends SeqFactory[List] {
    *  @param xs the iterable of pairs to unzip
    *  @return a pair of lists.
    */
-  @deprecated("use `xs.unzip' instead")
+  @deprecated("use `xs.unzip' instead of `List.unzip(xs)'")
   def unzip[A,B](xs: Iterable[(A,B)]): (List[A], List[B]) = 
       xs.foldRight[(List[A], List[B])]((Nil, Nil)) {
         case ((x, y), (xs, ys)) => (x :: xs, y :: ys)
@@ -613,7 +542,7 @@ object List extends SeqFactory[List] {
    * Returns the `Left` values in the given `Iterable`
    * of `Either`s.
    */
-  @deprecated("use `xs partialMap { case Left(x: A) => x }' instead")
+  @deprecated("use `xs partialMap { case Left(x: A) => x }' instead of `List.lefts(xs)'")
   def lefts[A, B](es: Iterable[Either[A, B]]) = 
     es.foldRight[List[A]](Nil)((e, as) => e match {
       case Left(a) => a :: as
@@ -623,7 +552,7 @@ object List extends SeqFactory[List] {
   /**
    * Returns the `Right` values in the given`Iterable` of  `Either`s.
    */
-  @deprecated("use `xs partialMap { case Right(x: B) => x }' instead")
+  @deprecated("use `xs partialMap { case Right(x: B) => x }' instead of `List.rights(xs)'")
   def rights[A, B](es: Iterable[Either[A, B]]) = 
     es.foldRight[List[B]](Nil)((e, bs) => e match {
       case Left(_) => bs
@@ -648,7 +577,7 @@ object List extends SeqFactory[List] {
    *  @return   a list that contains the elements returned by successive
    *            calls to `it.next`
    */
-  @deprecated("use `it.toList' instead")
+  @deprecated("use `it.toList' instead of `List.toList(it)'")
   def fromIterator[A](it: Iterator[A]): List[A] = it.toList
 
   /** Converts an array into a list.
@@ -657,7 +586,7 @@ object List extends SeqFactory[List] {
    *  @return    a list that contains the same elements than `arr`
    *             in the same order
    */
-  @deprecated("use `array.toList' instead")
+  @deprecated("use `array.toList' instead of `List.fromArray(array)'")
   def fromArray[A](arr: Array[A]): List[A] = fromArray(arr, 0, arr.length)
 
   /** Converts a range of an array into a list.
@@ -668,7 +597,7 @@ object List extends SeqFactory[List] {
    *  @return      a list that contains the same elements than `arr`
    *               in the same order
    */
-  @deprecated("use `array.view(start, end).toList' instead")
+  @deprecated("use `array.view(start, end).toList' instead of `List.fromArray(array, start, end)'")
   def fromArray[A](arr: Array[A], start: Int, len: Int): List[A] = {
     var res: List[A] = Nil
     var i = start + len
@@ -686,7 +615,7 @@ object List extends SeqFactory[List] {
    *  @param separator the separator character
    *  @return          the list of substrings
    */
-  @deprecated("use `str.split(separator).toList' instead")
+  @deprecated("use `str.split(separator).toList' instead of `List.fromString(str, separator)'")
   def fromString(str: String, separator: Char): List[String] = {
     var words: List[String] = Nil
     var pos = str.length()
@@ -704,7 +633,7 @@ object List extends SeqFactory[List] {
    *  @param xs the list to convert.
    *  @return   the list in form of a string.
    */
-  @deprecated("use `xs.mkString' instead")
+  @deprecated("use `xs.mkString' instead of `List.toString(xs)'")
   def toString(xs: List[Char]): String = {
     val sb = new StringBuilder()
     var xc = xs
@@ -718,7 +647,7 @@ object List extends SeqFactory[List] {
   /** Like xs map f, but returns `xs` unchanged if function
    *  `f` maps all elements to themselves.
    */
-  @deprecated("use `xs.mapConserve(f)' instead")
+  @deprecated("use `xs.mapConserve(f)' instead of `List.mapConserve(xs, f)'")
   def mapConserve[A <: AnyRef](xs: List[A])(f: A => A): List[A] = {
     def loop(ys: List[A]): List[A] =
       if (ys.isEmpty) xs
@@ -752,7 +681,7 @@ object List extends SeqFactory[List] {
    *          `[a0, ..., ak]`, `[b0, ..., bl]` and
    *          `n = min(k,l)`
    */
-  @deprecated("use `(xs, ys).zipped.map(f)' instead")
+  @deprecated("use `(xs, ys).zipped.map(f)' instead of `List.map2(xs, ys)(f)'")
   def map2[A,B,C](xs: List[A], ys: List[B])(f: (A, B) => C): List[C] = {
     val b = new ListBuffer[C]
     var xc = xs
@@ -776,7 +705,7 @@ object List extends SeqFactory[List] {
    *           `[c<sub>0</sub>, ..., c<sub>m</sub>]` and
    *           `n = min(k,l,m)`
    */
-  @deprecated("use `(xs, ys, zs).zipped.map(f)' instead")
+  @deprecated("use `(xs, ys, zs).zipped.map(f)' instead of `List.map3(xs, ys, zs)(f)'")
   def map3[A,B,C,D](xs: List[A], ys: List[B], zs: List[C])(f: (A, B, C) => D): List[D] = {
     val b = new ListBuffer[D]
     var xc = xs
@@ -801,7 +730,7 @@ object List extends SeqFactory[List] {
    *           `[b<sub>0</sub>, ..., b<sub>l</sub>]`
    *           and `n = min(k,l)`
    */
-  @deprecated("use `(xs, ys).zipped.forall(f)' instead")
+  @deprecated("use `(xs, ys).zipped.forall(f)' instead of `List.forall2(xs, ys)(f)'")
   def forall2[A,B](xs: List[A], ys: List[B])(f: (A, B) => Boolean): Boolean = {
     var xc = xs
     var yc = ys
@@ -823,7 +752,7 @@ object List extends SeqFactory[List] {
    *           `[b<sub>0</sub>, ..., b<sub>l</sub>]` and
    *           `n = min(k,l)`
    */
-  @deprecated("use `(xs, ys).zipped.exists(f)' instead")
+  @deprecated("use `(xs, ys).zipped.exists(f)' instead of `List.exists2(xs, ys)(f)'")
   def exists2[A,B](xs: List[A], ys: List[B])(f: (A, B) => Boolean): Boolean = {
     var xc = xs
     var yc = ys
@@ -841,7 +770,7 @@ object List extends SeqFactory[List] {
    *  @param xss the list of lists
    *  @return    the transposed list of lists
    */
-  @deprecated("use `xss.transpose' instead")
+  @deprecated("use `xss.transpose' instead of `List.transpose(xss)'")
   def transpose[A](xss: List[List[A]]): List[List[A]] = {
     val buf = new ListBuffer[List[A]]
     var yss = xss

@@ -14,7 +14,6 @@ import scala.collection.mutable._
 import scala.tools.nsc._
 import scala.tools.nsc.backend.icode._
 import scala.tools.nsc.io._
-import scala.tools.nsc.util.{Position, NoPosition, ClassRep}
 
 import ClassfileConstants._
 import Flags._
@@ -49,19 +48,11 @@ abstract class ICodeReader extends ClassfileParser {
     
     isScalaModule = cls.isModule && !cls.hasFlag(JAVA)
     log("Reading class: " + cls + " isScalaModule?: " + isScalaModule)
-    val name = cls.fullNameString('.') + (if (sym.hasFlag(MODULE)) "$" else "")
-    classPath.findClass(name) match {
-      case Some(ClassRep(bin, _)) =>
-        assert(bin.isDefined, "No classfile for " + cls)
-        classFile = bin.get.asInstanceOf[AbstractFile]
-//      if (isScalaModule)
-//        sym = cls.linkedClassOfModule
-
-//      for (s <- cls.info.members) 
-//        Console.println("" + s + ": " + s.tpe)
-        parse(classFile, sym)
-      case _ =>
-        log("Could not find: " + cls)
+    val name = cls.fullName('.') + (if (sym.hasFlag(MODULE)) "$" else "")
+    
+    classPath.findSourceFile(name) match {
+      case Some(classFile)  => parse(classFile, sym)
+      case _                => log("Could not find: " + cls)
     }
 
     (staticCode, instanceCode)
@@ -145,23 +136,21 @@ abstract class ICodeReader extends ClassfileParser {
   }
   
   /** Checks if tp1 is the same type as tp2, modulo implict methods.
-   *  We don't care about the distinction between implcit and explicit
+   *  We don't care about the distinction between implicit and explicit
    *  methods as this point, and we can't get back the information from
    *  bytecode anyway.
    */
   private def sameType(tp1: Type, tp2: Type): Boolean = (tp1, tp2) match {
-    case (MethodType(args1, resTpe1), MethodType(args2, resTpe2)) =>
-      if (tp1.isInstanceOf[ImplicitMethodType] || tp2.isInstanceOf[ImplicitMethodType]) {
-        MethodType(args1, resTpe1) =:= MethodType(args2, resTpe2)
-      } else
-        tp1 =:= tp2
-    case _ => tp1 =:= tp2
+    case (mt1 @ MethodType(args1, resTpe1), mt2 @ MethodType(args2, resTpe2)) if mt1.isImplicit || mt2.isImplicit =>
+      MethodType(args1, resTpe1) =:= MethodType(args2, resTpe2)
+    case _ =>
+      tp1 =:= tp2
   }
   
   override def parseMethod() {
     val (jflags, sym) = parseMember(false)
     if (sym != NoSymbol) {
-      log("Parsing method " + sym.fullNameString + ": " + sym.tpe);
+      log("Parsing method " + sym.fullName + ": " + sym.tpe);
       this.method = new IMethod(sym);
       this.method.returnType = toTypeKind(sym.tpe.resultType)
       getCode(jflags).addMethod(this.method)

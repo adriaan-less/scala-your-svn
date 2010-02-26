@@ -11,9 +11,9 @@
 
 package scala
 
-/** A partial function of type <code>PartialFunction[A, B]</code> is a
+/** A partial function of type `PartialFunction[A, B]` is a
  *  unary function where the domain does not necessarily include all values of type
- *  <code>A</code>. The function <code>isDefinedAt</code> allows to
+ *  `A`. The function `isDefinedAt` allows to
  *  test dynamically if a value is in the domain of the function.
  *
  *  @author  Martin Odersky
@@ -24,7 +24,7 @@ trait PartialFunction[-A, +B] extends (A => B) {
   /** Checks if a value is contained in the function's domain.
    *
    *  @param  x   the value to test
-   *  @return `true`, iff <code>x</code> is in the domain of this function, `false` otherwise.
+   *  @return `true`, iff `x` is in the domain of this function, `false` otherwise.
    */
   def isDefinedAt(x: A): Boolean
 
@@ -90,19 +90,19 @@ object PartialFunction
    *
    *  @param  x   the value to test
    *  @param  pf  the partial function
-   *  @return true, iff <code>x</code> is in the domain of pf && pf(x) == true
+   *  @return true, iff `x` is in the domain of `pf` and `pf(x) == true`.
    */
   def cond[T](x: T)(pf: PartialFunction[T, Boolean]): Boolean =
     (pf isDefinedAt x) && pf(x)
   
-  /** Transforms a PartialFunction[T,U] `pf' into Function1[T, Option[U]] `f'
+  /** Transforms a PartialFunction[T, U] `pf' into Function1[T, Option[U]] `f'
    *  whose result is Some(x) if the argument is in pf's domain and None otherwise,
    *  and applies it to the value `x'.  In effect, it is a 'match' statement
    *  which wraps all case results in Some(_) and adds 'case _ => None' to the end.
    *
    *  @param  x     the value to test
-   *  @param  pf    the PartialFunction[T,U]
-   *  @return Some(pf(x)) iff (pf isDefinedAt x) and None otherwise
+   *  @param  pf    the PartialFunction[T, U]
+   *  @return `Some(pf(x))` if `pf isDefinedAt x`, `None` otherwise.
    */
   def condOpt[T,U](x: T)(pf: PartialFunction[T, U]): Option[U] =
     if (pf isDefinedAt x) Some(pf(x)) else None

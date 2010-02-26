@@ -26,7 +26,7 @@ trait EtaExpansion { self: Analyzer =>
     }
       
     def unapply(tree: Tree): Option[(List[ValDef], Tree, List[Tree])] = tree match {
-      case Function(vparams, Apply(fn, args)) if (vparams, args).zipped forall isMatch =>
+      case Function(vparams, Apply(fn, args)) if (vparams corresponds args)(isMatch) => // @PP: corresponds
         Some((vparams, fn, args))
       case _ =>
         None
@@ -114,9 +114,7 @@ trait EtaExpansion { self: Analyzer =>
      *  @return     ...
      */
     def expand(tree: Tree, tpe: Type): Tree = tpe match {
-      case mt: ImplicitMethodType =>
-        tree
-      case MethodType(paramSyms, restpe) =>
+      case mt @ MethodType(paramSyms, restpe) if !mt.isImplicit =>
         val params = paramSyms map (sym =>
           ValDef(Modifiers(SYNTHETIC | PARAM), 
                  sym.name, TypeTree(sym.tpe) , EmptyTree))

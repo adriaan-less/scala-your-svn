@@ -22,7 +22,7 @@ import java.util.concurrent.{ExecutionException, Callable}
  *
  * @author Philipp Haller
  */
-object Actor {
+object Actor extends Combinators {
 
   private[actors] val tl = new ThreadLocal[Reactor]
 
@@ -276,26 +276,6 @@ object Actor {
   }
 
   /**
-   * Causes <code>self</code> to repeatedly execute
-   * <code>body</code>.
-   *
-   * @param body the code block to be executed
-   */
-  def loop(body: => Unit): Unit = body andThen loop(body)
-
-  /**
-   * Causes <code>self</code> to repeatedly execute
-   * <code>body</code> while the condition
-   * <code>cond</code> is <code>true</code>.
-   *
-   * @param cond the condition to test
-   * @param body the code block to be executed
-   */
-  def loopWhile(cond: => Boolean)(body: => Unit): Unit =
-    if (cond) { body andThen loopWhile(cond)(body) }
-    else continue
-
-  /**
    * Links <code>self</code> to actor <code>to</code>.
    *
    * @param  to the actor to link to
@@ -350,7 +330,6 @@ object Actor {
    */
   def exit(): Nothing = self.exit()
 
-  def continue: Unit = throw new KillActorException
 }
 
 /**
@@ -400,7 +379,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
 
   protected[actors] override def scheduler: IScheduler = Scheduler
 
-  private[actors] override def startSearch(msg: Any, replyTo: OutputChannel[Any], handler: Any => Boolean) =
+  private[actors] override def startSearch(msg: Any, replyTo: OutputChannel[Any], handler: PartialFunction[Any, Any]) =
     if (isSuspended) {
       () => synchronized {
         mailbox.append(msg, replyTo)
@@ -411,7 +390,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   private[actors] override def makeReaction(fun: () => Unit): Runnable =
     new ActorTask(this, fun)
 
-  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), onSameThread: Boolean) {
+  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), handler: PartialFunction[Any, Any], onSameThread: Boolean) {
     synchronized {
       if (!onTimeout.isEmpty) {
         onTimeout.get.cancel()
@@ -419,7 +398,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       }
     }
     senders = List(item._2)
-    super.resumeReceiver(item, onSameThread)
+    super.resumeReceiver(item, handler, onSameThread)
   }
 
   /**
@@ -451,7 +430,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             drainSendBuffer(mailbox)
             // keep going
           } else {
-            waitingFor = f.isDefinedAt
+            waitingFor = f
             isSuspended = true
             scheduler.managedBlock(blocker)
             drainSendBuffer(mailbox)
@@ -517,7 +496,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             done = true
             receiveTimeout
           } else {
-            waitingFor = f.isDefinedAt
+            waitingFor = f
             received = None
             isSuspended = true
             val thisActor = this
@@ -565,8 +544,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       if (shouldExit) exit() // links
       drainSendBuffer(mailbox)
     }
-    continuation = f
-    searchMailbox(mailbox, f.isDefinedAt, false)
+    searchMailbox(mailbox, f, false)
     throw Actor.suspendException
   }
 
@@ -616,8 +594,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             done = true
             receiveTimeout
           } else {
-            waitingFor = f.isDefinedAt
-            continuation = f
+            waitingFor = f
             val thisActor = this
             onTimeout = Some(new TimerTask {
               def run() { thisActor.send(TIMEOUT, thisActor) }
@@ -646,14 +623,13 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   }
 
   // guarded by lock of this
-  private[actors] override def scheduleActor(f: PartialFunction[Any, Unit], msg: Any) =
-    if ((f eq null) && (continuation eq null)) {
+  // never throws SuspendActorException
+  private[actors] override def scheduleActor(f: PartialFunction[Any, Any], msg: Any) =
+    if (f eq null) {
       // do nothing (timeout is handled instead)
     }
     else {
-      val task = new Reaction(this,
-                              if (f eq null) continuation else f,
-                              msg)
+      val task = new Reaction(this, f, msg)
       scheduler executeFromActor task
     }
 
@@ -693,13 +669,12 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
     // Note that we do *not* reset `trapExit`. The reason is that
     // users should be able to set the field in the constructor
     // and before `act` is called.
-
     exitReason = 'normal
     exiting = false
     shouldExit = false
 
-    scheduler.newActor(this)
-    scheduler.execute(new Reaction(this))
+    scheduler newActor this
+    scheduler execute (new Reaction(this))
 
     this
   }
@@ -754,7 +729,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   }
 
   var trapExit = false
-  private[actors] var exitReason: AnyRef = 'normal
+  private var exitReason: AnyRef = 'normal
   private[actors] var shouldExit = false
 
   /**
@@ -823,8 +798,15 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
         // (because shouldExit == true)
         if (isSuspended)
           resumeActor()
-        else if (waitingFor ne waitingForNone) {
-          scheduleActor(continuation, null)
+        else if (waitingFor ne Reactor.waitingForNone) {
+          scheduleActor(waitingFor, null)
+          /* Here we should not throw a SuspendActorException,
+             since the current method is called from an actor that
+             is in the process of exiting.
+             
+             Therefore, the contract for scheduleActor is that
+             it never throws a SuspendActorException.
+           */
         }
       }
   }

@@ -13,39 +13,37 @@ import generic._
 import immutable.{List, Stream}
 import annotation.unchecked.uncheckedVariance
 
-/** <p>
- *    A template trait for iterable collections of type `Iterable[A]`.
- *  </p>
- *  <p>
- *    Collection classes mixing in this trait provide a method
- *    <code>iterator</code> which returns an iterator over all the
- *    elements contained in the collection. They also provide a method
- *    <code>newBuilder</code> which creates a builder for collections of the
- *    same kind.
- *  </p>
- *  <p>
- *    This trait implements <code>Iterable</code>'s <code>foreach</code>
- *    method by stepping through all elements. Subclasses of <code>Iterable</code>
- *    should re-implement <code>foreach</code> with something more efficient,
+/** A template trait for iterable collections of type `Iterable[A]`.
+ *  $iterableInfo
+ *  @tparam A    the element type of the collection
+ *  @tparam Repr the type of the actual collection containing the elements.
+ *  @define iterableInfo
+ *    This is a base trait for all scala collections that define an `iterator`
+ *    method to step through one-by-one the collection's elements.
+ *    Implementations of this trait need to provide a concrete method with
+ *    signature:
+ *    {{{
+ *       def iterator: Iterator[A]
+ *    }}}
+ *    They also need to provide a method `newBuilder`
+ *    which creates a builder for collections of the same kind.
+ *
+ *    This trait implements `Iterable`'s `foreach`
+ *    method by stepping through all elements using `iterator`.
+ *    Subclasses should re-implement `foreach` with something more efficient,
  *    if possible.
- *  </p>
- *  <p>
- *    This trait adds methods <code>iterator</code>, <code>sameElements</code>,
- *    <code>takeRight</code>, <code>dropRight</code> to the methods inherited
- *    from trait <a href="../Iterable.html" target="ContentFrame">
- *    <code>Iterable</code></a>.
- *  </p>
- *
- *  Note: This trait replaces every method that uses breaks in the original by an iterator version.
- *
- *  @see Iterable
+
+ *    This trait adds methods `iterator`, `sameElements`,
+ *    `takeRight`, `dropRight` to the methods inherited
+ *    from trait <a href="../Traversable.html" target="ContentFrame">
+ *    `Traversable`</a>.
+
+ *    Note: This trait replaces every method that uses `break` in
+ *    `TraversableLike` by an iterator version.
  *
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   2.8
- *
- *  @tparam A    the element type of the collection
- *  @tparam Repr the type of the actual collection containing the elements.
  *
  *  @define Coll Iterable
  *  @define coll iterable collection
@@ -139,6 +137,38 @@ self =>
     }
     b.result
   }
+  
+  /** Partitions elements in fixed size ${coll}s.
+   *  @see Iterator#grouped   
+   *
+   *  @param size the number of elements per group
+   *  @return An iterator producing ${coll}s of size `size`, except the
+   *          last will be truncated if the elements don't divide evenly.
+   */
+  def grouped(size: Int): Iterator[Repr] =
+    for (xs <- iterator grouped size) yield {
+      val b = newBuilder
+      b ++= xs
+      b.result
+    }
+  
+  /** Groups elements in fixed size blocks by passing a "sliding window"
+   *  over them (as opposed to partitioning them, as is done in grouped.)
+   *  @see Iterator#sliding   
+   *
+   *  @param size the number of elements per group
+   *  @param step the distance between the first elements of successive
+   *         groups (defaults to 1)
+   *  @return An iterator producing ${coll}s of size `size`, except the
+   *          last will be truncated if the elements don't divide evenly.
+   */
+  def sliding[B >: A](size: Int): Iterator[Repr] = sliding(size, 1)
+  def sliding[B >: A](size: Int, step: Int): Iterator[Repr] =
+    for (xs <- iterator.sliding(size, step)) yield {
+      val b = newBuilder
+      b ++= xs
+      b.result
+    }
 
   /** Selects last ''n'' elements.
    *  $orderDependent
@@ -159,7 +189,7 @@ self =>
     b.result
   }
 
-  /** Selects all elements except first ''n'' ones. 
+  /** Selects all elements except last ''n'' ones. 
    *  $orderDependent
    *  
    *  @param  n    The number of elements to take
@@ -223,7 +253,7 @@ self =>
   /** Returns a $coll formed from this $coll and another iterable collection
    *  by combining corresponding elements in pairs.
    *  If one of the two collections is shorter than the other,
-   *  placeholder elements are used to extend the collection to the longer length.
+   *  placeholder elements are used to extend the shorter collection to the length of the longer.
    * 
    *  $orderDependent
    *
@@ -337,19 +367,16 @@ self =>
 
   override /*TraversableLike*/ def view(from: Int, until: Int) = view.slice(from, until)
   
-  /** @deprecated use `head' instead. */
   @deprecated("use `head' instead") def first: A = head
 
-  /** <code>None</code> if iterable is empty.
-   *  @deprecated "use `headOption' instead"
+  /** `None` if iterable is empty.
    */
   @deprecated("use `headOption' instead") def firstOption: Option[A] = headOption
 
   /** 
-   * returns a projection that can be used to call non-strict <code>filter</code>,
-   * <code>map</code>, and <code>flatMap</code> methods that build projections
+   * returns a projection that can be used to call non-strict `filter`,
+   * `map`, and `flatMap` methods that build projections
    * of the collection.
-   * @deprecated "use `view' instead"
    */
   @deprecated("use `view' instead")
   def projection = view

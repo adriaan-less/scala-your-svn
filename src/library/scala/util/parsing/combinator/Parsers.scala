@@ -11,7 +11,8 @@
 package scala.util.parsing.combinator
 
 import scala.util.parsing.input._
-import scala.collection.mutable.{Map=>MutableMap}
+import scala.collection.mutable.ListBuffer
+import scala.annotation.tailrec
 
 // TODO: better error handling (labelling like parsec's <?>)
 
@@ -47,35 +48,21 @@ import scala.collection.mutable.{Map=>MutableMap}
  *    of the input.
  *  </p>
  *
- * @requires Elem the type of elements the provided parsers consume 
- *              (When consuming invidual characters, a parser is typically called a ``scanner'', 
- *               which produces ``tokens'' that are consumed by what is normally called a ``parser''.
- *               Nonetheless, the same principles apply, regardless of the input type.)</p>
- *<p>
- * @provides Input = Reader[Elem] 
- *              The type of input the parsers in this component expect.</p>
- *<p>
- * @provides Parser[+T] extends (Input => ParseResult[T]) 
- *              Essentially, a `Parser[T]' is a function from `Input' to `ParseResult[T]'.</p>
- *<p>
- * @provides ParseResult[+T] is like an `Option[T]', in the sense that it is either
- *              `Success[T]', which consists of some result (:T) (and the rest of the input) or
- *              `Failure[T]', which provides an error message (and the rest of the input).</p>
- *
  * @author Martin Odersky, Iulian Dragos, Adriaan Moors 
  */
 trait Parsers {
-  /** the type of input elements */
+  /** the type of input elements the provided parsers consume (When consuming invidual characters, a parser is typically
+   * called a ``scanner'', which produces ``tokens'' that are consumed by what is normally called a ``parser''.
+   * Nonetheless, the same principles apply, regardless of the input type.) */
   type Elem
 
-  /** The parser input is an abstract reader of input elements */
+  /** The parser input is an abstract reader of input elements, i.e. the type of input the parsers in this component
+   * expect. */
   type Input = Reader[Elem]
 
-  /** A base class for parser results. 
-   *  A result is either successful or not (failure may be fatal, i.e.,
-   *  an Error, or not, i.e., a Failure)
-   *  On success, provides a result of type <code>T</code>. 
-   */
+  /** A base class for parser results. A result is either successful or not (failure may be fatal, i.e., an Error, or
+   * not, i.e., a Failure). On success, provides a result of type `T` which consists of some result (and the rest of
+   * the input). */
   sealed abstract class ParseResult[+T] {
     /** Functional composition of ParseResults
      * 
@@ -537,8 +524,7 @@ trait Parsers {
     val r = p(in)
     println(name +" --> "+ r)
     r
-  } 
-
+  }
   
   /** A parser generator for repetitions.
    *  
@@ -589,36 +575,24 @@ trait Parsers {
    * @return A parser that returns a list of results produced by first applying `f' and then 
    *         repeatedly `p' to the input (it only succeeds if `f' matches).
    */
-  def rep1[T](first: => Parser[T], p: => Parser[T]): Parser[List[T]] = Parser{ in0 =>
-    val xs = new scala.collection.mutable.ListBuffer[T]
-    var in = in0
+  def rep1[T](first: => Parser[T], p: => Parser[T]): Parser[List[T]] = Parser { in =>
+    val elems = new ListBuffer[T]
 
-    var res = first(in)
-
-    while(res.successful) {
-      xs += res.get
-      in = res.next
-      res = p(in)
+    def continue(in: Input): ParseResult[List[T]] = {
+      val p0 = p    // avoid repeatedly re-evaluating by-name parser
+      @tailrec def applyp(in0: Input): ParseResult[List[T]] = p0(in0) match {
+        case Success(x, rest) => elems += x ; applyp(rest)
+        case _                => Success(elems.toList, in0)
+      }
+      
+      applyp(in)
     }
 
-    // assert(res.isInstanceOf[NoSuccess])
-
-    res match {
-      case e: Error => e
-      case _  => 
-        if (!xs.isEmpty) {
-          // the next parser should start parsing where p failed, 
-          // since `!p(in).successful', the next input to be consumed is `in'
-          Success(xs.toList, in)  // TODO: I don't think in == res.next holds
-        }
-        else {
-          Failure(res.asInstanceOf[NoSuccess].msg, in0)
-        }
+    first(in) match {
+      case Success(x, rest) => elems += x ; continue(rest)
+      case ns: NoSuccess    => ns
     }
   }
-  
-  //= first ~ rep(p) ^^ { case ~(x, xs) => x :: xs }
-  
 
   /** A parser generator for a specified number of repetitions.
    *  
@@ -630,8 +604,20 @@ trait Parsers {
    * @return A parser that returns a list of results produced by repeatedly applying `p' to the input
    *        (and that only succeeds if `p' matches exactly `n' times).
    */  
-  def repN[T](n: Int, p: => Parser[T]): Parser[List[T]] = 
-    if(n==0) success(Nil) else p ~ repN(n-1, p) ^^ { case ~(x, xs) => x :: xs }
+  def repN[T](num: Int, p: => Parser[T]): Parser[List[T]] = 
+    if (num == 0) success(Nil) else Parser { in =>
+      val elems = new ListBuffer[T]
+      val p0 = p    // avoid repeatedly re-evaluating by-name parser
+      
+      @tailrec def applyp(in0: Input): ParseResult[List[T]] =
+        if (elems.length == num) Success(elems.toList, in0)
+        else p0(in0) match {
+          case Success(x, rest)   => elems += x ; applyp(rest)
+          case ns: NoSuccess      => return ns
+        }
+      
+      applyp(in)
+    }
   
   /** A parser generator for non-empty repetitions.
    *  

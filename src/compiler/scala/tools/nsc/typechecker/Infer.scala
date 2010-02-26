@@ -6,7 +6,7 @@
 
 package scala.tools.nsc
 package typechecker
-import scala.tools.nsc.util.{Position, NoPosition}
+
 import scala.collection.mutable.ListBuffer
 import scala.util.control.ControlException
 import symtab.Flags._
@@ -21,11 +21,6 @@ trait Infer {
   import global._
   import definitions._
 
-  // statistics
-  var normM = 0
-  var normP = 0
-  var normO = 0
-
   private final val inferInfo = false //@MDEBUG
 
 /* -- Type parameter inference utility functions --------------------------- */
@@ -33,7 +28,8 @@ trait Infer {
   private def assertNonCyclic(tvar: TypeVar) =
     assert(tvar.constr.inst != tvar, tvar.origin)
 
-  def isVarArgs(formals: List[Type]) = !formals.isEmpty && isRepeatedParamType(formals.last)
+  def isVarArgs(params: List[Symbol]) = !params.isEmpty && isRepeatedParamType(params.last.tpe)
+  def isVarArgTpes(formals: List[Type]) = !formals.isEmpty && isRepeatedParamType(formals.last)
 
   def isWildcard(tp: Type) = tp match {
     case WildcardType | BoundedWildcardType(_) => true
@@ -53,11 +49,11 @@ trait Infer {
 
   /** This variant allows keeping ByName parameters. Useed in NamesDefaults. */
   def formalTypes(formals: List[Type], nargs: Int, removeByName: Boolean): List[Type] = {
-    val formals1 = if (removeByName) formals map {
+    val formals1 = if (removeByName) formals mapConserve {
       case TypeRef(_, sym, List(arg)) if (sym == ByNameParamClass) => arg
       case formal => formal
     } else formals
-    if (isVarArgs(formals1)) {
+    if (isVarArgTpes(formals1)) {
       val ft = formals1.last.normalize.typeArgs.head
       formals1.init ::: (for (i <- List.range(formals1.length - 1, nargs)) yield ft)
     } else formals1
@@ -82,9 +78,11 @@ trait Infer {
   //todo: remove comments around following privates; right now they cause an IllegalAccess
   // error when built with scalac
 
-  /*private*/ class NoInstance(msg: String) extends RuntimeException(msg) with ControlException
+  /*private*/ 
+  class NoInstance(msg: String) extends RuntimeException(msg) with ControlException
 
-  /*private*/ class DeferredNoInstance(getmsg: () => String) extends NoInstance("") {
+  /*private*/ 
+  class DeferredNoInstance(getmsg: () => String) extends NoInstance("") {
     override def getMessage(): String = getmsg()
   }
 
@@ -161,6 +159,9 @@ trait Infer {
     if (!solve(tvars, tparams, variances, upper, depth)) {
 //    no panic, it's good enough to just guess a solution, we'll find out
 //    later whether it works.
+// @M danger, Will Robinson! this means that you should never trust inferred type arguments!
+// need to call checkBounds on the args/typars or type1 on the tree for the expression that results from type inference
+// see e.g., #2421: implicit search had been ignoring this caveat
 //      throw new DeferredNoInstance(() =>
 //        "no solution exists for constraints"+(tvars map boundsString))
     }
@@ -174,25 +175,26 @@ trait Infer {
     tvars map instantiate
   }
 
-  def skipImplicit(tp: Type) =
-    if (tp.isInstanceOf[ImplicitMethodType]) tp.resultType else tp
+  def skipImplicit(tp: Type) = tp match {
+    case mt: MethodType if mt.isImplicit  => mt.resultType
+    case _                                => tp
+  }
 
   /** Automatically perform the following conversions on expression types:
    *  A method type becomes the corresponding function type.
    *  A nullary method type becomes its result type.
    *  Implicit parameters are skipped.
+   *  This method seems to be performance critical.
    */
-  def normalize(tp: Type): Type = skipImplicit(tp) match {
-    case MethodType(params, restpe) if (!restpe.isDependent) =>
-      if (util.Statistics.enabled) normM += 1
-      functionType(params map (_.tpe), normalize(restpe))
+  def normalize(tp: Type): Type = tp match {
+    case mt @ MethodType(params, restpe) if (!restpe.isDependent) =>
+      if (mt.isImplicit) normalize(restpe)
+      else functionType(params map (_.tpe), normalize(restpe))
     case PolyType(List(), restpe) => // nullary method type
-      if (util.Statistics.enabled) normP += 1
       normalize(restpe)
     case ExistentialType(tparams, qtpe) =>
       ExistentialType(tparams, normalize(qtpe))
     case tp1 =>
-      if (util.Statistics.enabled) normO += 1
       tp1 // @MAT aliases already handled by subtyping
   }
 
@@ -392,41 +394,56 @@ trait Infer {
         }
       }
 
-    def isPlausiblyPopulated(tp1: Type, tp2: Type): Boolean = true
-
     def isPlausiblyCompatible(tp: Type, pt: Type): Boolean = tp match {
       case PolyType(_, restpe) =>
         isPlausiblyCompatible(restpe, pt)
-      case mt: ImplicitMethodType =>
-        isPlausiblyCompatible(mt.resultType, pt)
       case ExistentialType(tparams, qtpe) =>
         isPlausiblyCompatible(qtpe, pt)
-      case MethodType(params, _) =>
-        val formals = tp.paramTypes
-        pt.normalize match {
+      case mt @ MethodType(params, restpe) =>
+        if (mt.isImplicit) isPlausiblyCompatible(restpe, pt)
+        else pt match {
           case TypeRef(pre, sym, args) =>
-            !sym.isClass || {
+            if (sym.isAliasType) {
+              isPlausiblyCompatible(tp, pt.dealias)
+            } else if (sym.isAbstractType) {
+              isPlausiblyCompatible(tp, pt.bounds.lo)
+            } else {
               val l = args.length - 1
-              l == formals.length &&
-              sym == FunctionClass(l) &&
-              ((args, formals).zipped forall isPlausiblySubType) &&
-              isPlausiblySubType(tp.resultApprox, args.last)
+              l == params.length &&
+              sym == FunctionClass(l) && {
+                var curargs = args
+                var curparams = params
+                while (curparams.nonEmpty) {
+                  if (!isPlausiblySubType(curargs.head, curparams.head.tpe))
+                    return false
+                  curargs = curargs.tail
+                  curparams = curparams.tail
+                }
+                isPlausiblySubType(restpe, curargs.head)
+              }
             }
           case _ =>
-            true
+            false
         }
       case _ =>
-        true
+        isPlausiblySubType(tp, pt)
     }
         
-    private def isPlausiblySubType(tp1: Type, tp2: Type): Boolean = tp1.normalize match {
+    private def isPlausiblySubType(tp1: Type, tp2: Type): Boolean = tp1 match {
       case TypeRef(_, sym1, _) =>
-        !sym1.isClass || {
-          tp2.normalize match {
-            case TypeRef(_, sym2, _) => 
-              !sym2.isClass || (sym1 isSubClass sym2) || isNumericSubType(tp1, tp2)
-            case _ => true
-          }
+        if (sym1.isAliasType) isPlausiblySubType(tp1.dealias, tp2)
+        else if (!sym1.isClass) true
+        else tp2 match {
+          case TypeRef(_, sym2, _) => 
+            if (sym2.isAliasType) isPlausiblySubType(tp1, tp2.dealias)
+            else if (!sym2.isClass) true
+            else if (sym1 isSubClass sym2) true
+            else 
+              isNumericValueClass(sym1) &&
+              isNumericValueClass(sym2) &&
+              (sym1 == sym2 || numericWidth(sym1) < numericWidth(sym2))
+          case _ => 
+            true
         }
       case _ =>
         true
@@ -435,6 +452,41 @@ trait Infer {
     def isCompatible(tp: Type, pt: Type): Boolean = {
       val tp1 = normalize(tp)
       (tp1 <:< pt) || isCoercible(tp1, pt)
+    }
+
+    final def normSubType(tp: Type, pt: Type): Boolean = tp match {
+      case mt @ MethodType(params, restpe) =>
+        if (mt.isImplicit) normSubType(restpe, pt)
+        else  pt match {
+          case TypeRef(pre, sym, args) =>
+            if (sym.isAliasType) {
+              normSubType(tp, pt.dealias)
+            } else if (sym.isAbstractType) {
+              normSubType(tp, pt.bounds.lo)
+            } else {
+              val l = args.length - 1
+              l == params.length &&
+              sym == FunctionClass(l) && {
+                var curargs = args
+                var curparams = params
+                while (curparams.nonEmpty) {
+                  if (!(curargs.head <:< curparams.head.tpe))
+                    return false
+                  curargs = curargs.tail
+                  curparams = curparams.tail
+                }
+                normSubType(restpe, curargs.head)
+              }
+            }
+          case _ =>
+            tp <:< pt
+        }
+      case PolyType(List(), restpe) => // nullary method type
+        normSubType(restpe, pt)
+      case ExistentialType(tparams, qtpe) =>
+        normalize(tp) <:< pt
+      case _ =>
+        tp <:< pt
     }
 
     def isCompatibleArg(tp: Type, pt: Type): Boolean = {
@@ -446,7 +498,7 @@ trait Infer {
       pt.typeSymbol == UnitClass || // can perform unit coercion
       isCompatible(tp, pt) ||
       tp.isInstanceOf[MethodType] && // can perform implicit () instantiation
-      tp.paramTypes.length == 0 && isCompatible(tp.resultType, pt)
+      tp.params.isEmpty && isCompatible(tp.resultType, pt)
 
     /** Like weakly compatible but don't apply any implicit conversions yet.
      *  Used when comparing the result type of a method with its prototype.
@@ -463,8 +515,8 @@ trait Infer {
 
     def isCoercible(tp: Type, pt: Type): Boolean = false
 
-    def isCompatibleArgs(tps: List[Type], pts: List[Type]): Boolean =
-      (tps, pts).zipped forall isCompatibleArg
+    def isCompatibleArgs(tps: List[Type], pts: List[Type]) = 
+      (tps corresponds pts)(isCompatibleArg)  // @PP: corresponds
 
     /* -- Type instantiation------------------------------------------------ */
 
@@ -509,7 +561,7 @@ trait Infer {
           // optimze type varianbles wrt to the implicit formals only; ignore the result type.
           // See test pos/jesper.scala 
           val varianceType = restpe match {
-            case mt: ImplicitMethodType if isFullyDefined(pt) =>
+            case mt: MethodType if mt.isImplicit && isFullyDefined(pt) =>
               MethodType(mt.params, AnyClass.tpe)
             case _ =>
               restpe
@@ -700,8 +752,10 @@ trait Infer {
       case OverloadedType(pre, alts) =>
         alts exists (alt => hasExactlyNumParams(pre.memberType(alt), n))
       case _ =>
-        formalTypes(tp.paramTypes, n).length == n
+        val len = tp.params.length
+        len == n || isVarArgs(tp.params) && len <= n + 1
     }
+
     /**
      * Verifies whether the named application is valid. The logic is very
      * similar to the one in NamesDefaults.removeNames.
@@ -767,13 +821,13 @@ trait Infer {
         case ExistentialType(tparams, qtpe) =>
           isApplicable(undetparams, qtpe, argtpes0, pt)
         case MethodType(params, _) =>
-          def paramType(param: Symbol) = param.tpe match {
-            case TypeRef(_, sym, List(tpe)) if sym isNonBottomSubClass CodeClass =>
-              tpe
-            case tpe =>
-              tpe
+          val formals0 = params map { param => 
+            param.tpe match {
+              case TypeRef(_, sym, List(tpe)) if sym isNonBottomSubClass CodeClass => tpe
+              case tpe => tpe
+            }
           }
-          val formals = formalTypes(params map paramType, argtpes0.length)
+          val formals = formalTypes(formals0, argtpes0.length)
 
           def tryTupleApply: Boolean = {
             // if 1 formal, 1 argtpe (a tuple), otherwise unmodified argtpes0
@@ -879,15 +933,15 @@ trait Infer {
       case et: ExistentialType =>
         isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
         //et.withTypeVars(isAsSpecific(_, ftpe2)) 
-      case mt: ImplicitMethodType =>
+      case mt: MethodType if mt.isImplicit =>
         isAsSpecific(ftpe1.resultType, ftpe2)
       case MethodType(params @ (x :: xs), _) =>
         var argtpes = params map (_.tpe)
-        if (isVarArgs(argtpes) && isVarArgs(ftpe2.paramTypes))
+        if (isVarArgs(params) && isVarArgs(ftpe2.params))
           argtpes = argtpes map (argtpe => 
             if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
         isApplicable(List(), ftpe2, argtpes, WildcardType)
-      case PolyType(tparams, mt: ImplicitMethodType) =>
+      case PolyType(tparams, mt: MethodType) if mt.isImplicit =>
         isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
       case PolyType(_, MethodType(params @ (x :: xs), _)) =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
@@ -899,12 +953,10 @@ trait Infer {
             alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
           case et: ExistentialType =>
             et.withTypeVars(isAsSpecific(ftpe1, _))
-          case mt: ImplicitMethodType =>
-            isAsSpecific(ftpe1, mt.resultType)
-          case PolyType(tparams, mt: ImplicitMethodType) =>
-            isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
-          case MethodType(_, _) | PolyType(_, MethodType(_, _)) =>
-            true
+          case mt: MethodType =>
+            !mt.isImplicit || isAsSpecific(ftpe1, mt.resultType)
+          case PolyType(tparams, mt: MethodType) =>
+            !mt.isImplicit || isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
           case _ =>
             isAsSpecificValueType(ftpe1, ftpe2, List(), List())
         }
@@ -937,12 +989,12 @@ trait Infer {
         val specificCount = (if (isAsSpecific(ftpe1, ftpe2)) 1 else 0) - 
                             (if (isAsSpecific(ftpe2, ftpe1) &&
                                  // todo: move to isAsSepecific test
-                                 (!ftpe2.isInstanceOf[OverloadedType] || ftpe1.isInstanceOf[OverloadedType]) &&
+//                                 (!ftpe2.isInstanceOf[OverloadedType] || ftpe1.isInstanceOf[OverloadedType]) &&
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
         val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
                             (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
-        //println("is more specific? "+sym1+sym1.locationString+"/"+sym2+sym2.locationString+":"+
-        //        specificCount+"/"+subClassCount)
+//        println("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
+//                specificCount+"/"+subClassCount)
         specificCount + subClassCount > 0
       }
     }
@@ -994,7 +1046,7 @@ trait Infer {
     def isStrictlyBetter(tpe1: Type, tpe2: Type) = {
       def isNullary(tpe: Type): Boolean = tpe match {
         case tp: RewrappingTypeProxy => isNullary(tp.underlying)
-        case _ => tpe.paramSectionCount == 0 || tpe.paramTypes.isEmpty
+        case _ => tpe.paramSectionCount == 0 || tpe.params.isEmpty
       }
       def isMethod(tpe: Type): Boolean = tpe match {
         case tp: RewrappingTypeProxy => isMethod(tp.underlying)
@@ -1362,7 +1414,7 @@ trait Infer {
         if (lo <:< hi) {
           if (!((lo <:< tparam.info.bounds.lo) && (tparam.info.bounds.hi <:< hi))) {
             context.nextEnclosing(_.tree.isInstanceOf[CaseDef]).pushTypeBounds(tparam)
-            tparam setInfo mkTypeBounds(lo, hi)
+            tparam setInfo TypeBounds(lo, hi)
             if (settings.debug.value) log("new bounds of " + tparam + " = " + tparam.info)
           } else {
             if (settings.debug.value) log("redundant: "+tparam+" "+tparam.info+"/"+lo+" "+hi)
@@ -1442,6 +1494,11 @@ trait Infer {
 
     def inferTypedPattern(pos: Position, pattp: Type, pt0: Type): Type = {
       val pt = widen(pt0)
+      
+      /** If we can absolutely rule out a match we can fail fast. */
+      if (pt.isFinalType && !(pt matchesPattern pattp))
+        error(pos, "scrutinee is incompatible with pattern type"+foundReqMsg(pattp, pt))
+      
       checkCheckable(pos, pattp, "pattern ")
       if (!(pattp <:< pt)) {
         val tpparams = freeTypeParamsOfTerms.collect(pattp)
@@ -1454,25 +1511,12 @@ trait Infer {
           val ptparams = freeTypeParamsOfTerms.collect(pt)
           if (settings.debug.value) log("free type params (2) = " + ptparams)
           val ptvars = ptparams map freshVar
-          val pt1 = pt.instantiateTypeParams(ptparams, ptvars)
-          if (!(isPopulated(tp, pt1) && isInstantiatable(tvars ::: ptvars))) {
-            // In ticket #2486 we have this example of code which would fail
-            // here without a change:
-            //
-            // class A[T]
-            // class B extends A[Int]
-            // class C[T] extends A[T] { def f(t: A[T]) = t match { case x: B => () } }
-            //
-            // This reports error: pattern type is incompatible with expected type;
-            // found   : B
-            // required: A[T]
-            //
-            // I am not sure what is the ideal fix, but for the moment I am intercepting
-            // it at the last minute and applying a looser check before failing.
-            if (!isPlausiblyCompatible(pattp, pt)) {
-              error(pos, "pattern type is incompatible with expected type"+foundReqMsg(pattp, pt))
-              return pattp
-            }
+          val pt1 = pt.instantiateTypeParams(ptparams, ptvars)  
+          // See ticket #2486 we have this example of code which would incorrectly
+          // fail without verifying that !(pattp matchesPattern pt)
+          if (!(isPopulated(tp, pt1) && isInstantiatable(tvars ::: ptvars)) && !(pattp matchesPattern pt)) {
+            error(pos, "pattern type is incompatible with expected type"+foundReqMsg(pattp, pt))
+            return pattp
           }
           ptvars foreach instantiateTypeVar
         }
@@ -1640,7 +1684,7 @@ trait Infer {
             isApplicable(undetparams, followApply(pre.memberType(alt)), argtpes, pt))
 
           if (varArgsOnly)
-            allApplicable = allApplicable filter (alt => isVarArgs(alt.tpe.paramTypes))
+            allApplicable = allApplicable filter (alt => isVarArgs(alt.tpe.params))
 
           // if there are multiple, drop those that use a default
           // (keep those that use vararg / tupling conversion)
@@ -1653,7 +1697,7 @@ trait Infer {
                   alts map (_.tpe)
                 case t => List(t)
               }
-              mtypes.exists(t => t.paramTypes.length < argtpes.length || // tupling (*)
+              mtypes.exists(t => t.params.length < argtpes.length || // tupling (*)
                                  hasExactlyNumParams(t, argtpes.length)) // same nb or vararg
               // (*) more arguments than parameters, but still applicable: tuplig conversion works.
               //     todo: should not return "false" when paramTypes = (Unit) no argument is given
@@ -1661,6 +1705,7 @@ trait Infer {
             })
 
           def improves(sym1: Symbol, sym2: Symbol) =
+//            util.trace("improve "+sym1+sym1.locationString+" on "+sym2+sym2.locationString)(
             sym2 == NoSymbol || sym2.isError ||
             isStrictlyMoreSpecific(followApply(pre.memberType(sym1)),
                                    followApply(pre.memberType(sym2)), sym1, sym2)
