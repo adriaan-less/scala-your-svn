@@ -9,7 +9,6 @@ package transform
 
 import symtab.Flags._
 import scala.collection.mutable.{HashMap, HashSet}
-import scala.tools.nsc.util.Position
 
 /*<export>*/
 /** - uncurry all symbol and tree types (@see UnCurryPhase)
@@ -64,8 +63,6 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
           assert(false, "unexpected curried method types with intervening exitential") 
           tp0
-        case mt: ImplicitMethodType =>
-          apply(MethodType(mt.params, mt.resultType))
         case PolyType(List(), restpe) => // nullary method type
           apply(MethodType(List(), restpe))
         case PolyType(tparams, restpe) => // polymorphic nullary method type, since it didn't occur in a higher-kinded position
@@ -296,11 +293,11 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
      *    }
      *    new $anon()
      *
-     *  transform a function node (x => body) of type T =>? R where
+     *  transform a function node (x => body) of type PartialFunction[T, R] where
      *    body = expr match { case P_i if G_i => E_i }_i=1..n
      *  to:
      *
-     *    class $anon() extends Object() with T =>? R with ScalaObject {
+     *    class $anon() extends Object() with PartialFunction[T, R] with ScalaObject {
      *      def apply(x: T): R = (expr: @unchecked) match {
      *        { case P_i if G_i => E_i }_i=1..n
      *      def isDefinedAt(x: T): boolean = (x: @unchecked) match {

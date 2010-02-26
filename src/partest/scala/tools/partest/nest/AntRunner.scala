@@ -19,14 +19,10 @@ class AntRunner extends DirectRunner {
     var JAVACMD: String = "java"
     var JAVAC_CMD: String = "javac"
     var CLASSPATH: String = _
-    var EXT_CLASSPATH: String = _
     var LATEST_LIB: String = _
     val TESTROOT: String = ""
   }
   
-  def reflectiveRunTestsForFiles(kindFiles: Array[File], kind: String): Int = {
-    val (succs, fails) = runTestsForFiles(kindFiles.toList, kind)
-    succs << 16 | fails
-  }
-  
+  def reflectiveRunTestsForFiles(kindFiles: Array[File], kind: String) = 
+    runTestsForFiles(kindFiles.toList, kind)
 }

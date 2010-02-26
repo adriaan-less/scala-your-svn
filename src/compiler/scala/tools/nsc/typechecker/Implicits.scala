@@ -12,7 +12,7 @@ package scala.tools.nsc
 package typechecker
 
 import scala.collection.mutable.{LinkedHashMap, ListBuffer}
-import scala.tools.nsc.util.{ HashSet, Position, Set, NoPosition, SourceFile }
+import scala.tools.nsc.util.{HashSet, Set, SourceFile}
 import symtab.Flags._
 import util.Statistics._
 
@@ -173,7 +173,7 @@ self: Analyzer =>
   object HasMethodMatching {
     def apply(name: Name, argtpes: List[Type], restpe: Type): Type = {
       def templateArgType(argtpe: Type) =
-        new BoundedWildcardType(mkTypeBounds(argtpe, AnyClass.tpe))
+        new BoundedWildcardType(TypeBounds(argtpe, AnyClass.tpe))
       val dummyMethod = new TermSymbol(NoSymbol, NoPosition, "typer$dummy")
       val mtpe = MethodType(dummyMethod.newSyntheticValueParams(argtpes map templateArgType), restpe)
       memberWildcardType(name, mtpe)
@@ -387,9 +387,9 @@ self: Analyzer =>
         result
       }
 
-      def matchesPtView(tp: Type, ptarg: Type, ptres: Type, undet: List[Symbol]): Boolean =  tp match {
-        case MethodType(params, restpe) =>
-          if (tp.isInstanceOf[ImplicitMethodType]) matchesPtView(restpe, ptarg, ptres, undet)
+      def matchesPtView(tp: Type, ptarg: Type, ptres: Type, undet: List[Symbol]): Boolean = tp match {
+        case mt @ MethodType(params, restpe) =>
+          if (mt.isImplicit) matchesPtView(restpe, ptarg, ptres, undet)
           else params.length == 1 && matchesArgRes(params.head.tpe, restpe, ptarg, ptres, undet)
         case ExistentialType(tparams, qtpe) =>
           matchesPtView(normalize(tp), ptarg, ptres, undet)
@@ -797,8 +797,12 @@ self: Analyzer =>
                 "classType", tp, 
                 (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
                  else findSubManifest(pre) :: suffix): _*)
-            } else if (sym.isAbstractType) {
-              if (sym.isExistential) 
+            } else {
+              EmptyTree
+/* the following is dropped because it is dangerous
+ *
+             if (sym.isAbstractType) {
+              if (sym.isExistentiallyBound) 
                 EmptyTree // todo: change to existential parameter manifest
               else if (sym.isTypeParameterOrSkolem)
                 EmptyTree  // a manifest should have been found by normal searchImplicit
@@ -818,6 +822,7 @@ self: Analyzer =>
               }
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
+*/
             }
           case RefinedType(parents, decls) =>
             // refinement is not generated yet

@@ -43,8 +43,8 @@ trait MemberEntity extends Entity {
   def definitionName: String
   def visibility: Option[Paragraph]
   def flags: List[Paragraph]
+  def deprecation: Option[Body]
   def inheritedFrom: List[TemplateEntity]
-  def isDeprecated: Boolean
   def resultType: TypeEntity
   def isDef: Boolean
   def isVal: Boolean
@@ -60,6 +60,7 @@ trait MemberEntity extends Entity {
 trait DocTemplateEntity extends TemplateEntity with MemberEntity {
   def toRoot: List[DocTemplateEntity]
   def inSource: Option[(io.AbstractFile, Int)]
+  def sourceUrl: Option[java.net.URL]
   def typeParams: List[TypeParam]
   def parentType: Option[TypeEntity]
   def linearization: List[TemplateEntity]
@@ -70,6 +71,22 @@ trait DocTemplateEntity extends TemplateEntity with MemberEntity {
   def values: List[Val]
   def abstractTypes: List[AbstractType]
   def aliasTypes: List[AliasType]
+  def companion: Option[DocTemplateEntity]
+  // temporary implementation: to be removed
+  def findMember(str: String): Option[DocTemplateEntity] = {
+    val root = toRoot.last
+    val path = if (str.length > 0) str.split("\\.") else Array[String]()
+    var i = 0;
+    var found: DocTemplateEntity = root
+    while(i < path.length && found != null) {
+      found = found.members.find(_.name == path(i)) match {
+        case Some(doc:DocTemplateEntity) => doc
+        case _ => null
+      }
+      i += 1
+    }
+    Option(found)
+  }
 }
 
 /** A ''documentable'' trait. */
@@ -140,5 +157,7 @@ trait TypeParam extends ParameterEntity {
 
 /** A value parameter to a constructor or to a method. */
 trait ValueParam extends ParameterEntity {
-  def resultType : TypeEntity
+  def resultType: TypeEntity
+  def defaultValue: Option[String]
+  def isImplicit: Boolean
 }

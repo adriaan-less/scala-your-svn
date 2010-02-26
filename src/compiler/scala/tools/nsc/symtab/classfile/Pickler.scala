@@ -9,11 +9,11 @@ package symtab
 package classfile
 
 import java.lang.{Float, Double}
-import scala.tools.nsc.util.{Position, NoPosition, ShowPickled}
-import scala.collection.mutable.Set
-import Flags._
+import util.{ Position, NoPosition, ShowPickled }
+import collection.mutable.Set
+import reflect.generic.{ PickleBuffer, PickleFormat }
 import PickleFormat._
-
+import Flags._
 
 /**
  * Serialize a top-level module and/or class.
@@ -136,7 +136,6 @@ abstract class Pickler extends SubComponent {
           if (sym.thisSym.tpeHK != sym.tpeHK)
             putType(sym.typeOfThis);
           putSymbol(sym.alias)
-          putSymbol(sym.defaultGetter)
           if (!sym.children.isEmpty) {
             val (locals, globals) = sym.children.toList.partition(_.isLocalClass)
             val children = 
@@ -146,7 +145,7 @@ abstract class Pickler extends SubComponent {
                 localChildDummy.setInfo(ClassInfoType(List(sym.tpe), EmptyScope, localChildDummy))
                 localChildDummy :: globals
               }
-            putChildren(sym, children.sortWith((x, y) => x isLess y))
+            putChildren(sym, children sortBy (_.sealedSortName))
           }
           for (annot <- staticAnnotations(sym.annotations.reverse))
             putAnnotation(sym, annot)
@@ -272,11 +271,11 @@ abstract class Pickler extends SubComponent {
             putEntry(from)
             putEntry(to)
           }
-
-        case DocDef(comment, definition) =>
+/*
+        case DocDef(comment, definition) =>  should not be needed
           putConstant(Constant(comment))
           putTree(definition)
-
+*/
         case Template(parents, self, body) =>
           writeNat(parents.length)
           putTrees(parents)
@@ -561,8 +560,6 @@ abstract class Pickler extends SubComponent {
           writeSymInfo(sym)
           if (sym.isAbstractType) TYPEsym else ALIASsym
         case sym: TermSymbol =>
-          if (!sym.isModule && sym.defaultGetter != NoSymbol)
-            writeRef(sym.defaultGetter)
           writeSymInfo(sym)
           if (sym.alias != NoSymbol) writeRef(sym.alias)
           if (sym.isModule) MODULEsym else VALsym
@@ -586,9 +583,9 @@ abstract class Pickler extends SubComponent {
           writeRef(tp.typeSymbol); writeRefs(parents); REFINEDtpe
         case ClassInfoType(parents, decls, clazz) =>
           writeRef(clazz); writeRefs(parents); CLASSINFOtpe
-        case MethodType(formals, restpe) =>
+        case mt @ MethodType(formals, restpe) =>
           writeRef(restpe); writeRefs(formals)
-          if (entry.isInstanceOf[ImplicitMethodType]) IMPLICITMETHODtpe
+          if (mt.isImplicit) IMPLICITMETHODtpe
           else METHODtpe
         case PolyType(tparams, restpe) =>
           writeRef(restpe); writeRefs(tparams); POLYtpe
@@ -1017,7 +1014,6 @@ abstract class Pickler extends SubComponent {
         case sym: TermSymbol =>
           print(if (sym.isModule) "MODULEsym " else "VALsym ")
           printSymInfo(sym)
-          if (!sym.isModule) printRef(sym.defaultGetter)
           if (sym.alias != NoSymbol) printRef(sym.alias)
         case NoType =>
           print("NOtpe")
@@ -1037,13 +1033,14 @@ abstract class Pickler extends SubComponent {
           print("REFINEDtpe "); printRef(tp.typeSymbol); printRefs(parents); 
         case ClassInfoType(parents, decls, clazz) =>
           print("CLASSINFOtpe "); printRef(clazz); printRefs(parents); 
-        case MethodType(formals, restpe) =>
-          print(if (entry.isInstanceOf[ImplicitMethodType]) "IMPLICITMETHODtpe " else "METHODtpe ");
+        case mt @ MethodType(formals, restpe) =>
+          print(if (mt.isImplicit) "IMPLICITMETHODtpe " else "METHODtpe ");
           printRef(restpe); printRefs(formals)
         case PolyType(tparams, restpe) =>
           print("POLYtpe "); printRef(restpe); printRefs(tparams); 
         case ExistentialType(tparams, restpe) =>
           print("EXISTENTIALtpe "); printRef(restpe); printRefs(tparams); 
+          print("||| "+entry)
         case DeBruijnIndex(l, i) =>
           print("DEBRUIJNINDEXtpe "); print(l+" "+i)
         case c @ Constant(_) =>
@@ -1099,7 +1096,7 @@ abstract class Pickler extends SubComponent {
         println("Pickled info for "+rootName+" V"+MajorVersion+"."+MinorVersion)
       }
       for (i <- 0 until ep) {
-        if (showSig) {
+        if (showSig/* || rootName.toString == "StaticCompletion"*/) {
           print((i formatted "%3d: ")+(writeIndex formatted "%5d: "))
           printEntry(entries(i))
         }

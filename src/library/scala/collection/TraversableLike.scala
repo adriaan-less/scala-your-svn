@@ -292,13 +292,13 @@ self =>
    *                `pf` to each element on which it is defined and collecting the results.
    *                The order of the elements is preserved.
    *
-   *  @usecase def partialMap[B](pf: A =>? B): $Coll[B]
+   *  @usecase def partialMap[B](pf: PartialFunction[A, B]): $Coll[B]
    *  
    *  @return       a new $coll resulting from applying the given partial function
    *                `pf` to each element on which it is defined and collecting the results.
    *                The order of the elements is preserved.
    */
-  def partialMap[B, That](pf: A =>? B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def partialMap[B, That](pf: PartialFunction[A, B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     for (x <- this) if (pf.isDefinedAt(x)) b += pf(x)
     b.result
@@ -1039,7 +1039,7 @@ self =>
    *               `end`. Inside, the string representations (w.r.t. the method `toString`)
    *               of all elements of this $coll are separated by the string `sep`.
    *
-   *  @ex  `List(1, 2, 3).mkString("(", "; ", ")") = "(1; 2; 3)"`
+   *  @example  `List(1, 2, 3).mkString("(", "; ", ")") = "(1; 2; 3)"`
    */
   def mkString(start: String, sep: String, end: String): String =
     addString(new StringBuilder(), start, sep, end).toString
@@ -1051,7 +1051,7 @@ self =>
    *               the string representations (w.r.t. the method `toString`)
    *               of all elements of this $coll are separated by the string `sep`.
    *
-   *  @ex  `List(1, 2, 3).mkString("|") = "1|2|3"`
+   *  @example  `List(1, 2, 3).mkString("|") = "1|2|3"`
    */
   def mkString(sep: String): String =
     addString(new StringBuilder(), sep).toString
@@ -1106,7 +1106,7 @@ self =>
   def addString(b: StringBuilder): StringBuilder = addString(b, "")
 
   /** Converts this $coll to a string
-   *  @returns  a string representation of this collection. By default this
+   *  @return   a string representation of this collection. By default this
    *            string consists of the `stringPrefix` of this $coll,
    *            followed by all elements separated by commas and enclosed in parentheses.
    */

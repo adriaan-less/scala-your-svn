@@ -621,7 +621,7 @@ trait ParallelMatching extends ast.TreeDSL
         def isNotAlternative(p: Pattern) = !cond(p.tree) { case _: Alternative => true }
         
         // classify all the top level patterns - alternatives come back unaltered
-        val newPats: List[Pattern] = pats.zipWithIndex map classifyPat.tuple
+        val newPats: List[Pattern] = pats.zipWithIndex map classifyPat.tupled
         // see if any alternatives were in there
         val (ps, others) = newPats span isNotAlternative
         // make a new row for each alternative, with it spliced into the original position
@@ -700,18 +700,12 @@ trait ParallelMatching extends ast.TreeDSL
         referenceCount += 1
 
         if (isLabellable) {
-          // val mtype = MethodType(freeVars, bodyTpe)
-          val mtype = MethodType(args, bodyTpe)
+          val mtype = MethodType(freeVars, bodyTpe)
           _labelSym = owner.newLabel(body.pos, name) setInfo mtype
           
           TRACE("Creating index %d: mtype = %s".format(bx, mtype))
-          if (freeVars.size != args.size)
-            TRACE("We will be hosed! freeVars = %s, args = %s, vdefs = %s".format(freeVars, args, vdefs))
-
-          // Labelled expression - the symbols in the array (must be Idents!) 
-          // are those the label takes as argument 
-          _label = typer typedLabelDef LabelDef(_labelSym, args, body setType bodyTpe)
-          TRACE("[New label] def %s%s: %s = %s".format(name, pp(args), bodyTpe, body))
+          _label = typer typedLabelDef LabelDef(_labelSym, freeVars, body setType bodyTpe)
+          TRACE("[New label] def %s%s: %s = %s".format(name, pp(freeVars), bodyTpe, body))
         }
         
         ifLabellable(vdefs, squeezedBlock(vdefs, label))

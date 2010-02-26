@@ -21,17 +21,29 @@ class Index(modelRoot: Package) extends HtmlPage {
 
   def headers =
     <xml:group>
-		  <style type="text/css">
-		    @import url({ relativeLinkTo(List("index.css", "lib")) }) screen;
-		  </style>
-		  <script type="text/javascript" src={ relativeLinkTo{List("index.js", "lib")} }></script>
+      <link href={ relativeLinkTo(List("index.css", "lib")) }  media="screen" type="text/css" rel="stylesheet"/>
+      <script type="text/javascript" src={ relativeLinkTo{List("index.js", "lib")} }></script>
+      <script type="text/javascript" src={ relativeLinkTo{List("scheduler.js", "lib")} }></script>
     </xml:group>
 
   def body =
     <body>
+      <div id="library">
+        <img class='class icon' src='lib/class.png'/>
+        <img class='trait icon' src='lib/trait.png'/>
+        <img class='object icon' src='lib/object.png'/>
+        <img class='package icon' src='lib/package.png'/>
+      </div>
       <div id="browser">
-        <input id="quickflt" type="text" accesskey="/"/>
-        <div id="tpl">{
+        <div id="filter"></div>
+        <div class="pack" id="tpl">{
+          def isExcluded(dtpl: DocTemplateEntity) = {
+            val qname = dtpl.qualifiedName
+            (qname.startsWith("scala.Tuple") || qname.startsWith("scala.Product") || qname.startsWith("scala.Function")) &&
+              !(qname=="scala.Function1" || qname=="scala.Function2" || qname=="scala.Function" ||
+                      qname=="scala.Product1" || qname=="scala.Product2" || qname=="scala.Product" ||
+                      qname=="scala.Tuple1" || qname=="scala.Tuple2")
+          }
           def packageElem(pack: model.Package): NodeSeq = {
             <xml:group>
               { if (!pack.isRootPackage)
@@ -40,8 +52,8 @@ class Index(modelRoot: Package) extends HtmlPage {
               }
               <ol class="templates">{
                 val tpls: Map[String, Seq[DocTemplateEntity]] =
-                  (pack.templates filter (!_.isPackage)) groupBy (_.name)
-                for (tn <- tpls.keySet.toSeq sortWith (_.toLowerCase < _.toLowerCase)) yield {
+                  (pack.templates filter (t => !t.isPackage && !isExcluded(t) )) groupBy (_.name)
+                for (tn <- tpls.keySet.toSeq sortBy (_.toLowerCase)) yield {
                   val entries = tpls(tn) sortWith { (less, more) => less.isTrait || more.isObject }
                   def doEntry(ety: DocTemplateEntity, firstEty: Boolean): NodeSeq = {
                     val etyTpe =
@@ -57,8 +69,8 @@ class Index(modelRoot: Package) extends HtmlPage {
                 }
               }</ol>
               <ol class="packages"> {
-                for (sp <- pack.packages sortWith (_.name.toLowerCase < _.name.toLowerCase)) yield
-                  <li>{ packageElem(sp) }</li>
+                for (sp <- pack.packages sortBy (_.name.toLowerCase)) yield
+                  <li class="pack" title={ sp.qualifiedName }>{ packageElem(sp) }</li>
               }</ol>
             </xml:group>
           }
@@ -66,7 +78,7 @@ class Index(modelRoot: Package) extends HtmlPage {
         }</div>
       </div>
 		  <div id="content">
-		  	<iframe src={ relativeLinkTo{List("package.html")} }/>
+		  	<iframe name="template" src={ relativeLinkTo{List("package.html")} }/>
 		  </div>
     </body>
 

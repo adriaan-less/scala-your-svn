@@ -8,7 +8,6 @@ package scala.tools.nsc
 package typechecker
 
 import scala.collection.mutable.HashMap
-import scala.tools.nsc.util.Position
 import symtab.Flags
 import symtab.Flags._
 
@@ -29,7 +28,7 @@ trait Namers { self: Analyzer =>
       case TypeRef(pre, sym, args) 
       if (sym.isTypeSkolem && (tparams contains sym.deSkolemize)) =>
 //        println("DESKOLEMIZING "+sym+" in "+sym.owner)
-        mapOver(rawTypeRef(NoPrefix, sym.deSkolemize, args))
+        mapOver(TypeRef(NoPrefix, sym.deSkolemize, args))
 /*
       case PolyType(tparams1, restpe) =>
         new DeSkolemizeMap(tparams1 ::: tparams).mapOver(tp)
@@ -76,7 +75,7 @@ trait Namers { self: Analyzer =>
     }
 
     def inConstructorFlag: Long = 
-      if (context.owner.isConstructor && !context.inConstructorSuffix || context.owner.isEarly) INCONSTRUCTOR
+      if (context.owner.isConstructor && !context.inConstructorSuffix || context.owner.isEarlyInitialized) INCONSTRUCTOR
       else 0l
 
     def moduleClassFlags(moduleFlags: Long) = 
@@ -127,6 +126,7 @@ trait Namers { self: Analyzer =>
         unsafeTypeParams foreach(sym => paramContext.scope.enter(sym))
         newNamer(paramContext)
       }
+
       def usePrimary = sym.isTerm && (
         (sym hasFlag PARAMACCESSOR) ||
         ((sym hasFlag PARAM) && sym.owner.isPrimaryConstructor)
@@ -197,7 +197,7 @@ trait Namers { self: Analyzer =>
 
     def enterClassSymbol(tree : ClassDef): Symbol = {
       var c: Symbol = context.scope.lookup(tree.name)
-      if (c.isType && c.owner.isPackageClass && context.scope == c.owner.info.decls && !currentRun.compiles(c)) {
+      if (c.isType && c.owner.isPackageClass && context.scope == c.owner.info.decls && currentRun.canRedefine(c)) {
         updatePosFlags(c, tree.pos, tree.mods.flags)
         setPrivateWithin(tree, c, tree.mods)
       } else {
@@ -214,7 +214,7 @@ trait Namers { self: Analyzer =>
         }
         clazz.sourceFile = file
         if (clazz.sourceFile ne null) {
-          assert(!currentRun.compiles(clazz) || clazz.sourceFile == currentRun.symSource(c));
+          assert(currentRun.canRedefine(clazz) || clazz.sourceFile == currentRun.symSource(c));
           currentRun.symSource(c) = clazz.sourceFile
         }
       }  
@@ -229,9 +229,12 @@ trait Namers { self: Analyzer =>
       var m: Symbol = context.scope.lookup(tree.name)
       val moduleFlags = tree.mods.flags | MODULE | FINAL
       if (m.isModule && !m.isPackage && inCurrentScope(m) && 
-          (!currentRun.compiles(m) || (m hasFlag SYNTHETIC))) {
+          (currentRun.canRedefine(m) || (m hasFlag SYNTHETIC))) {
         updatePosFlags(m, tree.pos, moduleFlags)
         setPrivateWithin(tree, m, tree.mods)
+        if (m.moduleClass != NoSymbol)
+          setPrivateWithin(tree, m.moduleClass, tree.mods)
+          
         context.unit.synthetics -= m
       } else {        
         m = context.owner.newModule(tree.pos, tree.name)
@@ -288,8 +291,11 @@ trait Namers { self: Analyzer =>
     def ensureCompanionObject(tree: ClassDef, creator: => Tree): Symbol = {
       val m: Symbol = context.scope.lookup(tree.name.toTermName).filter(! _.isSourceMethod)
       if (m.isModule && inCurrentScope(m) && currentRun.compiles(m)) m
-      else enterSyntheticSym(creator)
+      else
+        /*util.trace("enter synthetic companion object for "+currentRun.compiles(m)+":")*/(
+        enterSyntheticSym(creator))
     }
+
     private def enterSymFinishWith(tree: Tree, tparams: List[TypeDef]) {
       val sym = tree.symbol
       if (settings.debug.value) log("entered " + sym + " in " + context.owner + ", scope-id = " + context.scope.hashCode());
@@ -316,7 +322,6 @@ trait Namers { self: Analyzer =>
                (param, cparam) <- params.zip(cparams)) {
             // need to clone the type cparam.tpe??? problem is: we don't have the new owner yet (the new param symbol)
             param.tpt.setType(subst(cparam.tpe))
-            () // @LUC TODO workaround for #1996
           }
           ltype.complete(sym)
         }))
@@ -725,7 +730,7 @@ trait Namers { self: Analyzer =>
           }
           if (!hasCopy(decls) &&
               !parents.exists(p => hasCopy(p.typeSymbol.info.decls)) &&
-              !parents.flatMap(_.baseClasses).removeDuplicates.exists(bc => hasCopy(bc.info.decls)))
+              !parents.flatMap(_.baseClasses).distinct.exists(bc => hasCopy(bc.info.decls)))
             addCopyMethod(cdef, templateNamer)
         case None =>
       }
@@ -835,9 +840,7 @@ trait Namers { self: Analyzer =>
         val params = vparams map (vparam =>
           if (meth hasFlag JAVA) vparam.setInfo(objToAny(vparam.tpe)) else vparam)
         val restpe1 = convertToDeBruijn(vparams, 1)(restpe) // new dependent types: replace symbols in restpe with the ones in vparams
-        if (!vparams.isEmpty && vparams.head.hasFlag(IMPLICIT)) 
-          ImplicitMethodType(params, restpe1)
-        else if (meth hasFlag JAVA) JavaMethodType(params, restpe1)
+        if (meth hasFlag JAVA) JavaMethodType(params, restpe1)
         else MethodType(params, restpe1)
       }
 
@@ -944,7 +947,7 @@ trait Namers { self: Analyzer =>
         // match empty and missing parameter list
         if (vparamss.isEmpty && baseParamss == List(Nil)) baseParamss = Nil
         if (vparamss == List(Nil) && baseParamss.isEmpty) baseParamss = List(Nil)
-        assert(!overrides || vparamss.length == baseParamss.length, ""+ meth.fullNameString + ", "+ overridden.fullNameString)
+        assert(!overrides || vparamss.length == baseParamss.length, ""+ meth.fullName + ", "+ overridden.fullName)
 
       var ownerNamer: Option[Namer] = None
       var moduleNamer: Option[(ClassDef, Namer)] = None
@@ -955,7 +958,7 @@ trait Namers { self: Analyzer =>
       // denotes the parameter lists which are on the left side of the current one. these get added
       // to the default getter. Example: "def foo(a: Int)(b: Int = a)" gives "foo$default$1(a: Int) = a"
       (List[List[ValDef]]() /: (vparamss))((previous: List[List[ValDef]], vparams: List[ValDef]) => {
-        assert(!overrides || vparams.length == baseParamss.head.length, ""+ meth.fullNameString + ", "+ overridden.fullNameString)
+        assert(!overrides || vparams.length == baseParamss.head.length, ""+ meth.fullName + ", "+ overridden.fullName)
         var baseParams = if (overrides) baseParamss.head else Nil
         for (vparam <- vparams) {
           val sym = vparam.symbol
@@ -1030,12 +1033,10 @@ trait Namers { self: Analyzer =>
             }
             meth.owner.resetFlag(INTERFACE) // there's a concrete member now
             val default = parentNamer.enterSyntheticSym(defaultTree)
-            sym.defaultGetter = default
           } else if (baseHasDefault) {
             // the parameter does not have a default itself, but the corresponding parameter
             // in the base class does.
             sym.setFlag(DEFAULTPARAM)
-            sym.defaultGetter = baseParams.head.defaultGetter
           }
           posCounter += 1
           if (overrides) baseParams = baseParams.tail
@@ -1187,18 +1188,14 @@ trait Namers { self: Analyzer =>
               }
               def checkSelectors(selectors: List[ImportSelector]): Unit = selectors match {
                 case ImportSelector(from, _, to, _) :: rest =>
-                  if (from != nme.WILDCARD && base != ErrorType) {
-                    if (base.member(from) == NoSymbol && 
-                        base.member(from.toTypeName) == NoSymbol)
-                      context.error(tree.pos, from.decode + " is not a member of " + expr);
-/* The previous test should be:
+                  if (from != nme.WILDCARD && base != ErrorType) {                    
                     if (base.nonLocalMember(from) == NoSymbol && 
-                        base.nonLocalMember(from.toTypeName) == NoSymbol)
-                      context.error(tree.pos, from.decode + " is not a member of " + expr);
+                        base.nonLocalMember(from.toTypeName) == NoSymbol) {
+                      if (currentRun.compileSourceFor(expr, from))
+                        return typeSig(tree)  
+                      context.error(tree.pos, from.decode + " is not a member of " + expr)
+                    }
 
- * but this breaks the jvm/interpreter.scala test, because
- * it seems it imports a local member of a $iw object
- */
                     if (checkNotRedundant(tree.pos, from, to))
                       checkNotRedundant(tree.pos, from.toTypeName, to.toTypeName)
                   }

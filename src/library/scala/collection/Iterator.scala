@@ -328,7 +328,7 @@ trait Iterator[+A] { self =>
   }
 
   /** Concatenates this iterator with another.
-   *  @that   the other iterator
+   *  @param   that   the other iterator
    *  @return  a new iterator that first yields the values produced by this
    *  iterator followed by the values produced by iterator `that`.
    *  @usecase def ++(that: => Iterator[A]): Iterator[A]
@@ -411,7 +411,7 @@ trait Iterator[+A] { self =>
   *  @return a new iterator which yields each value `x` produced by this iterator for
   *          which `pf` is defined the image `pf(x)`.
   */
-  def partialMap[B](pf: A =>? B): Iterator[B] = {
+  def partialMap[B](pf: PartialFunction[A, B]): Iterator[B] = {
     val self = buffered
     new Iterator[B] {
       private def skip() = while (self.hasNext && !pf.isDefinedAt(self.head)) self.next()
@@ -554,7 +554,7 @@ trait Iterator[+A] { self =>
    *                  of the returned iterator is the maximum of the lengths of this iterator and `that`.
    *                  If this iterator is shorter than `that`, `thisElem` values are used to pad the result.
    *                  If `that` is shorter than this iterator, `thatElem` values are used to pad the result.
-   *  @usecase def zipAll[B](that: Iterator[B], thisElem: A, thatElem: B): Iterator[(A, B1)]
+   *  @usecase def zipAll[B](that: Iterator[B], thisElem: A, thatElem: B): Iterator[(A, B)]
    */
   def zipAll[B, A1 >: A, B1 >: B](that: Iterator[B], thisElem: A1, thatElem: B1) = new Iterator[(A1, B1)] {  
     def hasNext = self.hasNext || that.hasNext
@@ -937,6 +937,8 @@ trait Iterator[+A] { self =>
       if (!filled)
         fill()
       
+      if (!filled)
+        throw new NoSuchElementException("next on empty iterator")
       filled = false
       buffer.toList
     }      
@@ -994,7 +996,8 @@ trait Iterator[+A] { self =>
   }
   
   /** Creates two new iterators that both iterate over the same elements
-   *  as this iterator (in the same order).
+   *  as this iterator (in the same order).  The duplicate iterators are
+   *  considered equal if they are positioned at the same element.
    *
    *  @return a pair of iterators
    */
@@ -1012,7 +1015,15 @@ trait Iterator[+A] { self =>
           gap enqueue e
           e
         } else gap.dequeue
-      }	
+      }
+      // to verify partnerhood we use reference equality on gap because
+      // type testing does not discriminate based on origin.
+      private def compareGap(queue: scala.collection.mutable.Queue[A]) = gap eq queue
+      override def hashCode = gap.hashCode
+      override def equals(other: Any) = other match {
+        case x: Partner   => x.compareGap(gap) && gap.isEmpty
+        case _            => super.equals(other)
+      }
     }
     (new Partner, new Partner)
   }
@@ -1112,9 +1123,21 @@ trait Iterator[+A] { self =>
     res.toList
   }
 
-  /** Traverses this iterator and returns all produced values in a list.
+  /** Traverses this iterator and returns all produced values in a set.
+   *  $willNotTerminateInf
    *
-   *  @return  a stream which contains all values produced by this iterator.
+   *  @return  a set which contains all values produced by this iterator.
+   */
+  def toSet[B >: A]: immutable.Set[B] = {
+    val res = new ListBuffer[B]
+    while (hasNext) res += next
+    res.toSet
+  }
+
+  /** Lazily wraps a Stream around this iterator so its values are memoized.
+   *
+   *  @return  a Stream which can repeatedly produce all the values
+   *           produced by this iterator.
    */
   def toStream: Stream[A] =
     if (hasNext) Stream.cons(next, toStream) else Stream.empty
@@ -1128,6 +1151,20 @@ trait Iterator[+A] { self =>
     val buffer = new ArrayBuffer[A]
     this copyToBuffer buffer
     buffer 
+  }
+  
+  /** Traverses this iterator and returns all produced values in a map.
+   *  $willNotTerminateInf
+   *  @see    TraversableLike.toMap
+   *
+   *  @return  a map containing all elements of this iterator.
+   */
+  def toMap[T, U](implicit ev: A <:< (T, U)): immutable.Map[T, U] = {
+    val b = immutable.Map.newBuilder[T, U]
+    while (hasNext)
+      b += next
+
+    b.result
   }
   
   /** Tests if another iterator produces the same valeus as this one.
@@ -1253,7 +1290,7 @@ trait Iterator[+A] { self =>
    *  @param  xs    the array to fill.
    *  @param  start the starting index.
    *  @param  sz    the maximum number of elements to be read.
-   *  @pre          the array must be large enough to hold `sz` elements.
+   *  @note          the array must be large enough to hold `sz` elements.
    */
   @deprecated("use copyToArray instead")
   def readInto[B >: A](xs: Array[B], start: Int, sz: Int) {

@@ -192,7 +192,7 @@ abstract class TreeGen
     mkTypeApply(value, tpe, (if (any) Any_asInstanceOf else Object_asInstanceOf))
 
   def mkClassOf(tp: Type): Tree = 
-    Literal(Constant(tp)) setType Predef_classOfType(tp)
+    Literal(Constant(tp)) setType ClassType(tp)
 
   def mkCheckInit(tree: Tree): Tree = {
     val tpe =
@@ -227,6 +227,9 @@ abstract class TreeGen
   // tree1 OR tree2
   def mkOr(tree1: Tree, tree2: Tree): Tree =
     Apply(Select(tree1, Boolean_or), List(tree2))
+
+  // wrap the given expression in a SoftReference so it can be gc-ed
+  def mkSoftRef(expr: Tree): Tree = New(TypeTree(SoftReferenceClass.tpe), List(List(expr)))
 
   def mkCached(cvar: Symbol, expr: Tree): Tree = {
     val cvarRef = if (cvar.owner.isClass) Select(This(cvar.owner), cvar) else Ident(cvar)

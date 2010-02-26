@@ -22,7 +22,7 @@ import java.util.concurrent.{ExecutionException, Callable}
  *
  * @author Philipp Haller
  */
-object Actor {
+object Actor extends Combinators {
 
   private[actors] val tl = new ThreadLocal[Reactor]
 
@@ -160,7 +160,7 @@ object Actor {
    * @param  f a partial function specifying patterns and actions
    * @return   the result of processing the received message
    */
-  def receive[A](f: Any =>? A): A =
+  def receive[A](f: PartialFunction[Any, A]): A =
     self.receive(f)
 
   /**
@@ -175,7 +175,7 @@ object Actor {
    * @param  f    a partial function specifying patterns and actions
    * @return      the result of processing the received message
    */
-  def receiveWithin[R](msec: Long)(f: Any =>? R): R =
+  def receiveWithin[R](msec: Long)(f: PartialFunction[Any, R]): R =
     self.receiveWithin(msec)(f)
 
   /**
@@ -188,7 +188,7 @@ object Actor {
    * @param  f a partial function specifying patterns and actions
    * @return   this function never returns
    */
-  def react(f: Any =>? Unit): Nothing =
+  def react(f: PartialFunction[Any, Unit]): Nothing =
     rawSelf.react(f)
 
   /**
@@ -202,14 +202,14 @@ object Actor {
    * @param  f    a partial function specifying patterns and actions
    * @return      this function never returns
    */
-  def reactWithin(msec: Long)(f: Any =>? Unit): Nothing =
+  def reactWithin(msec: Long)(f: PartialFunction[Any, Unit]): Nothing =
     self.reactWithin(msec)(f)
 
-  def eventloop(f: Any =>? Unit): Nothing =
+  def eventloop(f: PartialFunction[Any, Unit]): Nothing =
     rawSelf.react(new RecursiveProxyHandler(rawSelf, f))
 
-  private class RecursiveProxyHandler(a: Reactor, f: Any =>? Unit)
-          extends (Any =>? Unit) {
+  private class RecursiveProxyHandler(a: Reactor, f: PartialFunction[Any, Unit])
+          extends PartialFunction[Any, Unit] {
     def isDefinedAt(m: Any): Boolean =
       true // events are immediately removed from the mailbox
     def apply(m: Any) {
@@ -261,9 +261,9 @@ object Actor {
    * }
    * </pre>
    */
-  def respondOn[A, B](fun: A =>? Unit => Nothing):
-    A =>? B => Responder[B] =
-      (caseBlock: A =>? B) => new Responder[B] {
+  def respondOn[A, B](fun: PartialFunction[A, Unit] => Nothing):
+    PartialFunction[A, B] => Responder[B] =
+      (caseBlock: PartialFunction[A, B]) => new Responder[B] {
         def respond(k: B => Unit) = fun(caseBlock andThen k)
       }
 
@@ -274,26 +274,6 @@ object Actor {
   implicit def mkBody[a](body: => a) = new Body[a] {
     def andThen[b](other: => b): Unit = rawSelf.seq(body, other)
   }
-
-  /**
-   * Causes <code>self</code> to repeatedly execute
-   * <code>body</code>.
-   *
-   * @param body the code block to be executed
-   */
-  def loop(body: => Unit): Unit = body andThen loop(body)
-
-  /**
-   * Causes <code>self</code> to repeatedly execute
-   * <code>body</code> while the condition
-   * <code>cond</code> is <code>true</code>.
-   *
-   * @param cond the condition to test
-   * @param body the code block to be executed
-   */
-  def loopWhile(cond: => Boolean)(body: => Unit): Unit =
-    if (cond) { body andThen loopWhile(cond)(body) }
-    else continue
 
   /**
    * Links <code>self</code> to actor <code>to</code>.
@@ -350,7 +330,6 @@ object Actor {
    */
   def exit(): Nothing = self.exit()
 
-  def continue: Unit = throw new KillActorException
 }
 
 /**
@@ -400,7 +379,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
 
   protected[actors] override def scheduler: IScheduler = Scheduler
 
-  private[actors] override def startSearch(msg: Any, replyTo: OutputChannel[Any], handler: Any => Boolean) =
+  private[actors] override def startSearch(msg: Any, replyTo: OutputChannel[Any], handler: PartialFunction[Any, Any]) =
     if (isSuspended) {
       () => synchronized {
         mailbox.append(msg, replyTo)
@@ -411,7 +390,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   private[actors] override def makeReaction(fun: () => Unit): Runnable =
     new ActorTask(this, fun)
 
-  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), onSameThread: Boolean) {
+  private[actors] override def resumeReceiver(item: (Any, OutputChannel[Any]), handler: PartialFunction[Any, Any], onSameThread: Boolean) {
     synchronized {
       if (!onTimeout.isEmpty) {
         onTimeout.get.cancel()
@@ -419,7 +398,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
       }
     }
     senders = List(item._2)
-    super.resumeReceiver(item, onSameThread)
+    super.resumeReceiver(item, handler, onSameThread)
   }
 
   /**
@@ -428,7 +407,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    * @param  f    a partial function with message patterns and actions
    * @return      result of processing the received value
    */
-  def receive[R](f: Any =>? R): R = {
+  def receive[R](f: PartialFunction[Any, R]): R = {
     assert(Actor.self(scheduler) == this, "receive from channel belonging to other actor")
 
     synchronized {
@@ -451,7 +430,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             drainSendBuffer(mailbox)
             // keep going
           } else {
-            waitingFor = f.isDefinedAt
+            waitingFor = f
             isSuspended = true
             scheduler.managedBlock(blocker)
             drainSendBuffer(mailbox)
@@ -479,7 +458,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    * @param  f    a partial function with message patterns and actions
    * @return      result of processing the received value
    */
-  def receiveWithin[R](msec: Long)(f: Any =>? R): R = {
+  def receiveWithin[R](msec: Long)(f: PartialFunction[Any, R]): R = {
     assert(Actor.self(scheduler) == this, "receive from channel belonging to other actor")
 
     synchronized {
@@ -517,7 +496,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             done = true
             receiveTimeout
           } else {
-            waitingFor = f.isDefinedAt
+            waitingFor = f
             received = None
             isSuspended = true
             val thisActor = this
@@ -559,14 +538,13 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    *
    * @param  f    a partial function with message patterns and actions
    */
-  override def react(f: Any =>? Unit): Nothing = {
+  override def react(f: PartialFunction[Any, Unit]): Nothing = {
     assert(Actor.self(scheduler) == this, "react on channel belonging to other actor")
     synchronized {
       if (shouldExit) exit() // links
       drainSendBuffer(mailbox)
     }
-    continuation = f
-    searchMailbox(mailbox, f.isDefinedAt, false)
+    searchMailbox(mailbox, f, false)
     throw Actor.suspendException
   }
 
@@ -580,7 +558,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
    * @param  msec the time span before timeout
    * @param  f    a partial function with message patterns and actions
    */
-  def reactWithin(msec: Long)(f: Any =>? Unit): Nothing = {
+  def reactWithin(msec: Long)(f: PartialFunction[Any, Unit]): Nothing = {
     assert(Actor.self(scheduler) == this, "react on channel belonging to other actor")
 
     synchronized {
@@ -616,8 +594,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
             done = true
             receiveTimeout
           } else {
-            waitingFor = f.isDefinedAt
-            continuation = f
+            waitingFor = f
             val thisActor = this
             onTimeout = Some(new TimerTask {
               def run() { thisActor.send(TIMEOUT, thisActor) }
@@ -647,14 +624,12 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
 
   // guarded by lock of this
   // never throws SuspendActorException
-  private[actors] override def scheduleActor(f: Any =>? Unit, msg: Any) =
-    if ((f eq null) && (continuation eq null)) {
+  private[actors] override def scheduleActor(f: PartialFunction[Any, Any], msg: Any) =
+    if (f eq null) {
       // do nothing (timeout is handled instead)
     }
     else {
-      val task = new Reaction(this,
-                              if (f eq null) continuation else f,
-                              msg)
+      val task = new Reaction(this, f, msg)
       scheduler executeFromActor task
     }
 
@@ -694,13 +669,12 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
     // Note that we do *not* reset `trapExit`. The reason is that
     // users should be able to set the field in the constructor
     // and before `act` is called.
-
     exitReason = 'normal
     exiting = false
     shouldExit = false
 
-    scheduler.newActor(this)
-    scheduler.execute(new Reaction(this))
+    scheduler newActor this
+    scheduler execute (new Reaction(this))
 
     this
   }
@@ -755,7 +729,7 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
   }
 
   var trapExit = false
-  private[actors] var exitReason: AnyRef = 'normal
+  private var exitReason: AnyRef = 'normal
   private[actors] var shouldExit = false
 
   /**
@@ -824,8 +798,8 @@ trait Actor extends AbstractActor with ReplyReactor with ReplyableActor {
         // (because shouldExit == true)
         if (isSuspended)
           resumeActor()
-        else if (waitingFor ne waitingForNone) {
-          scheduleActor(continuation, null)
+        else if (waitingFor ne Reactor.waitingForNone) {
+          scheduleActor(waitingFor, null)
           /* Here we should not throw a SuspendActorException,
              since the current method is called from an actor that
              is in the process of exiting.

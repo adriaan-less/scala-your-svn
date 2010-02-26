@@ -9,7 +9,6 @@ package ast.parser
 
 import symtab.Flags._
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.Position
 
 /** Methods for building trees, used in the parser.  All the trees
  *  returned by this class must be untyped.
@@ -363,7 +362,13 @@ abstract class TreeBuilder {
 
     /** The position of the closure that starts with generator at position `genpos`.
      */
-    def closurePos(genpos: Position) = r2p(genpos.startOrPoint, genpos.point, body.pos.endOrPoint)
+    def closurePos(genpos: Position) = {
+      val end = body.pos match {
+        case NoPosition => genpos.point
+        case bodypos => bodypos.endOrPoint
+      }
+      r2p(genpos.startOrPoint, genpos.point, end) 
+    }
 
 //    val result = 
     enums match {
@@ -451,6 +456,37 @@ abstract class TreeBuilder {
   /** Create tree for pattern definition &lt;val pat0 = rhs&gt; */
   def makePatDef(pat: Tree, rhs: Tree): List[Tree] =
     makePatDef(Modifiers(0), pat, rhs)
+  
+  /** For debugging only.  Desugar a match statement like so:
+   *  val x = scrutinee
+   *  x match {
+   *    case case1 => ...
+   *    case _ => x match {
+   *       case case2 => ...
+   *       case _ => x match ...
+   *    }
+   *  }
+   * 
+   *  This way there are never transitions between nontrivial casedefs.
+   *  Of course many things break: exhaustiveness and unreachable checking
+   *  do not work, no switches will be generated, etc.
+   */
+  def makeSequencedMatch(selector: Tree, cases: List[CaseDef]): Tree = {
+    require(cases.nonEmpty)
+    
+    val selectorName = freshName()
+    val valdef = atPos(selector.pos)(ValDef(Modifiers(PRIVATE | LOCAL | SYNTHETIC), selectorName, TypeTree(), selector))
+    val nselector = Ident(selectorName)
+    
+    def loop(cds: List[CaseDef]): Match = {
+      def mkNext = CaseDef(Ident(nme.WILDCARD), EmptyTree, loop(cds.tail))
+      
+      if (cds.size == 1) Match(nselector, cds)
+      else Match(selector, List(cds.head, mkNext))
+    }
+    
+    Block(List(valdef), loop(cases))
+  }
 
   /** Create tree for pattern definition <mods val pat0 = rhs> */
   def makePatDef(mods: Modifiers, pat: Tree, rhs: Tree): List[Tree] = matchVarPattern(pat) match {

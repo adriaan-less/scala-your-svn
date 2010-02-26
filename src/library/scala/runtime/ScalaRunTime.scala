@@ -12,9 +12,10 @@
 package scala.runtime
 
 import scala.reflect.ClassManifest
-import scala.collection.Seq
-import scala.collection.mutable._
+import scala.collection.{ Seq, IndexedSeq }
+import scala.collection.mutable.WrappedArray
 import scala.collection.immutable.{ List, Stream, Nil, :: }
+import scala.xml.Node
 import scala.util.control.ControlException
 
 /* The object <code>ScalaRunTime</code> provides ...
@@ -74,6 +75,20 @@ object ScalaRunTime {
     case null => throw new NullPointerException
   }    
 
+  def array_clone(xs: AnyRef): AnyRef = xs match {
+    case x: Array[AnyRef]  => ArrayRuntime.cloneArray(x)
+    case x: Array[Int]     => ArrayRuntime.cloneArray(x)
+    case x: Array[Double]  => ArrayRuntime.cloneArray(x)
+    case x: Array[Long]    => ArrayRuntime.cloneArray(x)
+    case x: Array[Float]   => ArrayRuntime.cloneArray(x)
+    case x: Array[Char]    => ArrayRuntime.cloneArray(x)
+    case x: Array[Byte]    => ArrayRuntime.cloneArray(x)
+    case x: Array[Short]   => ArrayRuntime.cloneArray(x)
+    case x: Array[Boolean] => ArrayRuntime.cloneArray(x)
+    case x: Array[Unit]    => x
+    case null => throw new NullPointerException
+  }
+
   /** Convert a numeric value array to an object array.
    *  Needed to deal with vararg arguments of primtive types that are passed
    *  to a generic Java vararg parameter T ...
@@ -100,7 +115,7 @@ object ScalaRunTime {
     if (x == null) throw new UninitializedError else x
 
   abstract class Try[+A] {
-    def Catch[B >: A](handler: Throwable =>? B): B
+    def Catch[B >: A](handler: PartialFunction[Throwable, B]): B
     def Finally(fin: => Unit): A
   }
 
@@ -115,7 +130,7 @@ object ScalaRunTime {
 
     def run() { result = block }
 
-    def Catch[B >: A](handler: Throwable =>? B): B =
+    def Catch[B >: A](handler: PartialFunction[Throwable, B]): B =
       if (exception == null) result
       else if (handler isDefinedAt exception) handler(exception)
       else throw exception
@@ -172,12 +187,23 @@ object ScalaRunTime {
    * @return a string representation of <code>arg</code>
    *
    */  
-  def stringOf(arg : Any): String = arg match {
-    case null => "null"
-    case arg: AnyRef if isArray(arg) => 
-      val d: collection.IndexedSeq[Any] = WrappedArray.make(arg).deep
-      d.toString
-    case arg: WrappedArray[_] => arg.deep.toString
-    case arg => arg.toString
+  def stringOf(arg: Any): String = {
+    def inner(arg: Any): String = arg match {
+      case null                     => "null"
+      // Node extends NodeSeq extends Seq[Node] strikes again
+      case x: Node                  => x toString
+      case x: AnyRef if isArray(x)  => WrappedArray make x map inner mkString ("Array(", ", ", ")")
+      case x: Traversable[_] if !x.hasDefiniteSize => x.toString
+      case x: Traversable[_]        => 
+        // Some subclasses of AbstractFile implement Iterable, then throw an
+        // exception if you call iterator.  What a world.
+	// And they can't be infinite either.
+        if (x.getClass.getName startsWith "scala.tools.nsc.io") x.toString
+        else (x map inner) mkString (x.stringPrefix + "(", ", ", ")")
+      case x                        => x toString
+    }
+    val s = inner(arg)
+    val nl = if (s contains "\n") "\n" else ""
+    nl + s + "\n"    
   }
 }

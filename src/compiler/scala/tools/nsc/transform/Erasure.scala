@@ -10,7 +10,6 @@ package transform
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 import scala.collection.mutable.{HashMap,ListBuffer}
 import scala.collection.immutable.Set
-import scala.tools.nsc.util.Position
 import symtab._
 import Flags._
 
@@ -192,7 +191,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             traverse(st.supertype)
           case TypeRef(pre, sym, args) =>
             if (sym == ArrayClass) args foreach traverse
-            else if (sym.isTypeParameterOrSkolem || sym.isExistential || !args.isEmpty) result = true
+            else if (sym.isTypeParameterOrSkolem || sym.isExistentiallyBound || !args.isEmpty) result = true
             else if (sym.isClass) traverse(rebindInnerClass(pre, sym)) // #2585
             else if (!sym.owner.isPackageClass) traverse(pre)
           case PolyType(_, _) | ExistentialType(_, _) =>
@@ -254,7 +253,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               }
             }
           def classSig: String = 
-            "L"+atPhase(currentRun.icodePhase)(sym.fullNameString + global.genJVM.moduleSuffix(sym)).replace('.', '/')
+            "L"+atPhase(currentRun.icodePhase)(sym.fullName + global.genJVM.moduleSuffix(sym)).replace('.', '/')
           def classSigSuffix: String = 
             "."+sym.name
           if (sym == ArrayClass)
@@ -374,7 +373,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     else if (sym == Object_isInstanceOf || sym == ArrayClass) 
       PolyType(sym.info.typeParams, erasure(sym.info.resultType))
     else if (sym.isAbstractType) 
-      mkTypeBounds(WildcardType, WildcardType)
+      TypeBounds(WildcardType, WildcardType)
     else if (sym.isTerm && sym.owner == ArrayClass) {
       if (sym.isClassConstructor)
         tp match {
@@ -476,17 +475,6 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
      */
     private def cast(tree: Tree, pt: Type): Tree =
       tree AS_ATTR pt
-    
-    /** Is symbol a member of unboxed arrays (which will be expanded directly
-     *  later)?
-     *
-     *  @param sym ..
-     *  @return    <code>true</code> if .. 
-     */
-    private def isUnboxedArrayMember(sym: Symbol) = sym.name match {
-      case nme.apply | nme.length | nme.update  => true
-      case _                                    => sym.owner == ObjectClass
-    }
 
     private def isUnboxedValueMember(sym: Symbol) =
       sym != NoSymbol && isValueClass(sym.owner)

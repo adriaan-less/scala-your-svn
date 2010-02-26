@@ -10,7 +10,6 @@ package typechecker
 import symtab.Flags._
 import collection.mutable.{HashSet, HashMap}
 import transform.InfoTransform
-import scala.tools.nsc.util.{Position, NoPosition}
 import scala.collection.mutable.ListBuffer
 
 /** <p>
@@ -191,7 +190,7 @@ abstract class RefChecks extends InfoTransform {
           case List(MixinOverrideError(_, msg)) =>
             unit.error(clazz.pos, msg)
           case MixinOverrideError(member, msg) :: others =>
-            val others1 = others.map(_.member.name.decode).filter(member.name.decode != _).removeDuplicates
+            val others1 = others.map(_.member.name.decode).filter(member.name.decode != _).distinct
             unit.error(
               clazz.pos, 
               msg+(if (others1.isEmpty) "" 
@@ -385,7 +384,7 @@ abstract class RefChecks extends InfoTransform {
 
       val opc = new overridingPairs.Cursor(clazz)
       while (opc.hasNext) {
-        //Console.println(opc.overriding/* + ":" + opc.overriding.tpe*/ + " in "+opc.overriding.fullNameString + " overrides " + opc.overridden/* + ":" + opc.overridden.tpe*/ + " in "+opc.overridden.fullNameString + "/"+ opc.overridden.hasFlag(DEFERRED));//debug
+        //Console.println(opc.overriding/* + ":" + opc.overriding.tpe*/ + " in "+opc.overriding.fullName + " overrides " + opc.overridden/* + ":" + opc.overridden.tpe*/ + " in "+opc.overridden.fullName + "/"+ opc.overridden.hasFlag(DEFERRED));//debug
         if (!opc.overridden.isClass) checkOverride(clazz, opc.overriding, opc.overridden);
         
         opc.next
@@ -493,7 +492,7 @@ abstract class RefChecks extends InfoTransform {
 
       /** validate all base types of a class in reverse linear order. */
       def register(tp: Type) {
-//        if (clazz.fullNameString.endsWith("Collection.Projection"))
+//        if (clazz.fullName.endsWith("Collection.Projection"))
 //            println("validate base type "+tp)
         val baseClass = tp.typeSymbol
         if (baseClass.isClass) {
@@ -903,7 +902,7 @@ abstract class RefChecks extends InfoTransform {
           val clazz = pat.tpe.typeSymbol;
           clazz == seltpe.typeSymbol &&
           clazz.isClass && (clazz hasFlag CASE) &&
-          ((args, clazz.primaryConstructor.tpe.asSeenFrom(seltpe, clazz).paramTypes).zipped forall isIrrefutable)
+          (args corresponds clazz.primaryConstructor.tpe.asSeenFrom(seltpe, clazz).paramTypes)(isIrrefutable) // @PP: corresponds
         case Typed(pat, tpt) => 
           seltpe <:< tpt.tpe
         case Ident(nme.WILDCARD) =>

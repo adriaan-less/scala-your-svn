@@ -55,10 +55,13 @@ object Array extends FallbackArrayBuilding {
                        dest : AnyRef, 
                        destPos : Int, 
                        length : Int) {
-    var i = 0
-    while (i < length) {
-      array_update(dest, i, array_apply(src, i))
+    var i = srcPos
+    var j = destPos
+    val srcUntil = srcPos + length
+    while (i < srcUntil) {
+      array_update(dest, j, array_apply(src, i))
       i += 1
+      j += 1
     }  
   }
 
@@ -538,4 +541,12 @@ final class Array[T](_length: Int) {
    *          <code>length <= i</code>
    */
   def update(i: Int, x: T) { throw new Error() }
+  
+  /** <p>
+   *    Clone the Array.
+   *  </p>
+   *
+   *  @return A clone of the Array.
+   */
+  override def clone: Array[T] = throw new Error()
 }

@@ -10,7 +10,7 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.{Position, OffsetPosition, NoPosition, BatchSourceFile}
+import scala.tools.nsc.util.{OffsetPosition, BatchSourceFile}
 import symtab.Flags
 import Tokens._
 
@@ -421,17 +421,19 @@ self =>
     def joinComment(trees: => List[Tree]): List[Tree] = {
       val doc = in.flushDoc
       if ((doc ne null) && doc.raw.length > 0) {
-        val ts = trees
-        val main = ts.find(_.pos.isOpaqueRange)
-        ts map {
+        val joined = trees map {
           t =>
             val dd = DocDef(doc, t)
-            val pos = doc.pos.withEnd(t.pos.endOrPoint)
-            dd setPos (
-              if (main exists (_ eq t)) pos
-              else pos.makeTransparent
-            )
+            val defnPos = t.pos
+            val pos = doc.pos.withEnd(defnPos.endOrPoint)
+            dd setPos (if (defnPos.isOpaqueRange) pos else pos.makeTransparent)
         }
+        joined.find(_.pos.isOpaqueRange) foreach {
+          main =>
+            val mains = List(main)
+            joined foreach { t => if (t ne main) ensureNonOverlapping(t, mains) }
+        }
+        joined
       }
       else trees
     }
@@ -1102,7 +1104,11 @@ self =>
           }
         } else if (in.token == MATCH) {
           t = atPos(t.pos.startOrPoint, in.skipToken()) {
-            Match(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
+            /** For debugging pattern matcher transition issues */
+            if (settings.Ypmatnaive.value)
+              makeSequencedMatch(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
+            else
+              Match(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
           }
         }
         // in order to allow anonymous functions as statements (as opposed to expressions) inside
@@ -1235,7 +1241,7 @@ self =>
           val npos = r2p(nstart, nstart, in.lastOffset)
           val tstart = in.offset
           val (parents, argss, self, stats) = template(false)
-          val cpos = r2p(tstart, tstart, in.lastOffset)
+          val cpos = r2p(tstart, tstart, in.lastOffset max tstart)
           makeNew(parents, self, stats, argss, npos, cpos)
         case _ =>
           syntaxErrorOrIncomplete("illegal start of simple expression", true)
@@ -1890,14 +1896,14 @@ self =>
     /** Import  ::= import ImportExpr {`,' ImportExpr}
      */
     def importClause(): List[Tree] = {
-      accept(IMPORT)
-      commaSeparated(importExpr())
+      val offset = accept(IMPORT)
+      commaSeparated(importExpr(offset))
     }
 
     /**  ImportExpr ::= StableId `.' (Id | `_' | ImportSelectors)
      * XXX: Hook for IDE
      */
-    def importExpr(): Tree = {
+    def importExpr(importOffset: Int): Tree = {
       val start = in.offset
       var t: Tree = null
       if (in.token == THIS) {
@@ -1924,7 +1930,7 @@ self =>
         if (in.token == USCORE) {
           val uscoreOffset = in.offset
           in.nextToken()
-          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, null, -1)))
+          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, nme.WILDCARD, -1)))
         } else if (in.token == LBRACE) {
           Import(t, importSelectors())
         } else {
@@ -1941,7 +1947,7 @@ self =>
             Import(t, List(ImportSelector(name, nameOffset, name, nameOffset)))
           }
         }
-      atPos(start) { loop() }
+      atPos(importOffset, start) { loop() }
     }
       
     /** ImportSelectors ::= `{' {ImportSelector `,'} (ImportSelector | `_') `}'
@@ -2464,13 +2470,18 @@ self =>
       while (in.token != RBRACE && in.token != EOF) {
         if (in.token == PACKAGE) {
           val start = in.skipToken()
-          stats += {
-            if (in.token == OBJECT) makePackageObject(start, objectDef(in.offset, NoMods))
-            else packaging(start)
+          stats ++= {
+            if (in.token == OBJECT) {
+              joinComment(List(makePackageObject(start, objectDef(in.offset, NoMods))))
+            }
+            else {
+              in.flushDoc
+              List(packaging(start))
+            }
           }
         } else if (in.token == IMPORT) {
+          in.flushDoc
           stats ++= importClause()
-          // XXX: IDE hook this all.
         } else if (in.token == CLASS ||
                    in.token == CASECLASS ||
                    in.token == TRAIT ||
@@ -2501,6 +2512,7 @@ self =>
       var self: ValDef = emptyValDef
       val stats = new ListBuffer[Tree]
       if (isExprIntro) {
+        in.flushDoc
         val first = expr(InTemplate) // @S: first statement is potentially converted so cannot be stubbed.
         if (in.token == ARROW) {
           first match {
@@ -2521,8 +2533,10 @@ self =>
       }
       while (in.token != RBRACE && in.token != EOF) {
         if (in.token == IMPORT) {
+          in.flushDoc
           stats ++= importClause()
         } else if (isExprIntro) {
+          in.flushDoc
           stats += statement(InTemplate)
         } else if (isDefIntro || isModifier || in.token == LBRACKET /*todo: remove */ || in.token == AT) {
           stats ++= joinComment(nonLocalDefOrDcl)
@@ -2621,14 +2635,15 @@ self =>
         while (in.token == SEMI) in.nextToken()
         val start = in.offset
         if (in.token == PACKAGE) {
-          in.nextToken()
+          in.nextToken()   
           if (in.token == OBJECT) {
-            ts += makePackageObject(start, objectDef(in.offset, NoMods))
+            ts ++= joinComment(List(makePackageObject(start, objectDef(in.offset, NoMods))))
             if (in.token != EOF) {
               acceptStatSep()
               ts ++= topStatSeq()
             }
           } else {
+            in.flushDoc
             val pkg = qualId()
             newLineOptWhenFollowedBy(LBRACE)
             if (in.token == EOF) {
@@ -2648,10 +2663,14 @@ self =>
         }
         ts.toList
       }
-      val start = caseAwareTokenOffset max 0
       topstats() match {        
         case List(stat @ PackageDef(_, _)) => stat
-        case stats => makePackaging(start, atPos(o2p(start)) { Ident(nme.EMPTY_PACKAGE_NAME) }, stats)
+        case stats =>
+          val start = stats match {
+            case Nil => 0
+            case _ => wrappingPos(stats).startOrPoint
+          }
+          makePackaging(start, atPos(start, start, start) { Ident(nme.EMPTY_PACKAGE_NAME) }, stats)
       }
     }
   }

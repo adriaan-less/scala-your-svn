@@ -7,7 +7,6 @@
 package scala.tools.nsc
 package typechecker
 
-import scala.tools.nsc.util.Position
 import symtab.Flags._
 
 import scala.collection.mutable.ListBuffer
@@ -341,14 +340,15 @@ trait NamesDefaults { self: Analyzer =>
    * the argument list (y = "lt") is transformed to (y = "lt", x = foo$default$1())
    */
   def addDefaults(givenArgs: List[Tree], qual: Option[Tree], targs: List[Tree],
-                  previousArgss: List[List[Tree]], params: List[Symbol], pos: util.Position): (List[Tree], List[Symbol]) = {
+                  previousArgss: List[List[Tree]], params: List[Symbol],
+                  pos: util.Position, context: Context): (List[Tree], List[Symbol]) = {
     if (givenArgs.length < params.length) {
       val (missing, positional) = missingParams(givenArgs, params)
       if (missing forall (_.hasFlag(DEFAULTPARAM))) {
         val defaultArgs = missing map (p => {
           var default1 = qual match {
-            case Some(q) => gen.mkAttributedSelect(q.duplicate, p.defaultGetter)
-            case None => gen.mkAttributedRef(p.defaultGetter)
+            case Some(q) => gen.mkAttributedSelect(q.duplicate, defaultGetter(p, context))
+            case None => gen.mkAttributedRef(defaultGetter(p, context))
           }
           default1 = if (targs.isEmpty) default1
                      else TypeApply(default1, targs.map(_.duplicate))
@@ -362,6 +362,38 @@ trait NamesDefaults { self: Analyzer =>
         (givenArgs ::: defaultArgs, Nil)
       } else (givenArgs, missing filter (! _.hasFlag(DEFAULTPARAM)))
     } else (givenArgs, Nil)
+  }
+
+  /**
+   * For a parameter with default argument, find the method symbol of
+   * the default getter.
+   */
+  def defaultGetter(param: Symbol, context: Context) = {
+    val i = param.owner.paramss.flatten.findIndexOf(p => p.name == param.name) + 1
+    if (i > 0) {
+      if (param.owner.isConstructor) {
+        val defGetterName = "init$default$"+ i
+        param.owner.owner.linkedModuleOfClass.info.member(defGetterName)
+      } else {
+        val defGetterName = param.owner.name +"$default$"+ i
+        if (param.owner.owner.isClass) {
+          param.owner.owner.info.member(defGetterName)
+        } else {
+          // the owner of the method is another method. find the default
+          // getter in the context.
+          var res: Symbol = NoSymbol
+          var ctx = context
+          while(res == NoSymbol && ctx.outer != ctx) {
+            val s = ctx.scope.lookup(defGetterName)
+            if (s != NoSymbol && s.owner == param.owner.owner)
+              res = s
+            else
+              ctx = ctx.outer
+          }
+          res
+        }
+      }
+    } else NoSymbol
   }
 
   /**
@@ -392,7 +424,7 @@ trait NamesDefaults { self: Analyzer =>
         } else if (argPos contains pos) {
           errorTree(arg, "parameter specified twice: "+ name)
         } else {
-          // for named arguments, check wether the assignment expression would
+          // for named arguments, check whether the assignment expression would
           // typecheck. if it does, report an ambiguous error.
           val param = params(pos)
           val paramtpe = params(pos).tpe.cloneInfo(param)
