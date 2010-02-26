@@ -3159,7 +3159,7 @@ A type's typeSymbol should never be inspected directly.
 
     def subst(tp: Type, sym: Symbol, from: List[Symbol], to: List[T]): Type =
       if (from.isEmpty) tp
-      else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(tp, from))
+      // else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(tp, from))
       else if (matches(from.head, sym)) toType(tp, to.head)
       else subst(tp, sym, from.tail, to.tail)
 
@@ -3215,7 +3215,7 @@ A type's typeSymbol should never be inspected directly.
     override def apply(tp: Type): Type = if (from.isEmpty) tp else {
       def subst(sym: Symbol, from: List[Symbol], to: List[Symbol]): Symbol =
         if (from.isEmpty) sym
-        else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(sym, from))
+        // else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(sym, from))
         else if (matches(from.head, sym)) to.head
         else subst(sym, from.tail, to.tail)
       tp match {
