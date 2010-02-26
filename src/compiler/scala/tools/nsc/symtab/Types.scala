@@ -3867,10 +3867,10 @@ A type's typeSymbol should never be inspected directly.
          tp1.isImplicit == tp2.isImplicit)
       case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => 
         // assert((tparams1 map (_.typeParams.length)) == (tparams2 map (_.typeParams.length)))
-        (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210 
+        (tparams1.length == tparams2.length) && (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210 
           res1 =:= res2.substSym(tparams2, tparams1)
       case (ExistentialType(tparams1, res1), ExistentialType(tparams2, res2)) =>
-        (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210
+        (tparams1.length == tparams2.length) && (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210
           res1 =:= res2.substSym(tparams2, tparams1)
       case (TypeBounds(lo1, hi1), TypeBounds(lo2, hi2)) =>
         lo1 =:= lo2 && hi1 =:= hi2
@@ -3994,6 +3994,7 @@ A type's typeSymbol should never be inspected directly.
 //            assert((tparams1 map (_.typeParams.length)) == (tparams2 map (_.typeParams.length)))
               // @M looks like it might suffer from same problem as #2210
               return (
+                (tparams1.length == tparams2.length) && // corresponds does not check length of two sequences before checking the predicate
                 (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && 
                 res1 =:= res2.substSym(tparams2, tparams1)
               )
@@ -4004,6 +4005,7 @@ A type's typeSymbol should never be inspected directly.
           case ExistentialType(tparams2, res2) =>
             // @M looks like it might suffer from same problem as #2210
             return (
+              (tparams1.length == tparams2.length) && // corresponds does not check length of two sequences before checking the predicate -- faster & needed to avoid crasher in #2956
               (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && 
               res1 =:= res2.substSym(tparams2, tparams1)
             )
