@@ -54,6 +54,7 @@ trait ParallelMatching extends ast.TreeDSL
      
     /** first time bx is requested, a LabelDef is returned. next time, a jump.
      *  the function takes care of binding
+     * @param bx the index of the case for which the body or a reference (on second retrieval) is to be retrieved 
      */
     final def requestBody(bx: Int, subst: Bindings): Tree = {
       // shortcut
@@ -203,7 +204,7 @@ trait ParallelMatching extends ast.TreeDSL
         tracing("Rule", head match {
           case x if isEquals(x.tree.tpe)        => new MixEquals(this, rest)
           case x: SequencePattern               => new MixSequence(this, rest, x)
-          case AnyUnapply(false)                => new MixUnapply(this, rest, false)
+          case AnyUnapply(false)                => new MixUnapply(this, rest, false) // this is the only place where the temp unapply variable is created, only happens when unapply comes first, but it might be needed before that
           case _ =>
             isPatternSwitch(scrut, ps) match {
               case Some(x)  => new MixLiteralInts(x, rest)
@@ -213,12 +214,6 @@ trait ParallelMatching extends ast.TreeDSL
       }
       override def toString() = "%s match {%s}".format(scrut, indentAll(ps))
     } // PatternMatch
-  
-    /** picks which rewrite rule to apply
-     *  @precondition: column does not contain alternatives
-     */
-    def MixtureRule(scrut: Scrutinee, column: List[Pattern], rest: Rep): RuleApplication =
-      PatternMatch(scrut, column) mkRule rest
 
     /**
      * Class encapsulating a guard expression in a pattern match:
@@ -369,7 +364,7 @@ trait ParallelMatching extends ast.TreeDSL
       
       private lazy val zipped      = pmatch pzip rest.rows
       
-      lazy val unapplyResult: PatternVar =
+      lazy val unapplyResult: PatternVar = 
         scrut.createVar(app.tpe, lhs => reapply setType lhs.tpe)
 
       // XXX in transition.
@@ -576,7 +571,7 @@ trait ParallelMatching extends ast.TreeDSL
       
       lazy val newRows =
         for ((j, ps) <- subtests) yield 
-          (rest rows j).insert2(ps, pmatch(j).boundVariables, casted.sym)
+          (rest rows j).insert2(ps, pmatch(j).boundVariables, casted.sym) //@M seems like this may cause discrepancy in row-indexes
       
       lazy val success = {
         val srep = remake(newRows, subtestVars ::: casted.accessorPatternVars, includeScrut = false)
@@ -736,21 +731,6 @@ trait ParallelMatching extends ast.TreeDSL
       /** Sealed classes. */
       def checkExhaustive = new ExhaustivenessChecker(this).check
       
-      /** Cut out the column containing the non-default pattern. */
-      class Cut(index: Int) {
-        /** The first two separate out the 'i'th pattern in each row from the remainder. */        
-        private val (_column, _rows) = rows map (_ extractColumn index) unzip
-        
-        /** Now the 'i'th tvar is separated out and used as a new Scrutinee. */
-        private val (_pv, _tvars) = tvars extractIndex index
-        
-        /** The non-default pattern (others.head) replaces the column head. */
-        private val (_ncol, _nrep) =
-          (others.head :: _column.tail, make(_tvars, _rows))
-        
-        def mix = MixtureRule(new Scrutinee(specialVar(_pv.sym, _pv.checked)), _ncol, _nrep)
-      }
-      
       /** Converts this to a tree - recursively acquires subreps. */
       final def toTree(): Tree = tracing("toTree", typer typed applyRule())
       
@@ -758,13 +738,30 @@ trait ParallelMatching extends ast.TreeDSL
       private def variable() = {                
         val binding = (defaults map (_.boundVariables) zip tvars.pvs) .
           foldLeft(subst)((b, pair) => b.add(pair._1, pair._2.lhs))
-        
         VariableRule(binding, guard, guardedRest, index)
       }
       
-      /** The MixtureRule. */
-      def mixture() = new Cut(defaults.size) mix
-      
+      /** The MixtureRule. 
+       *
+       * Cut out the column containing the non-default pattern. 
+       */
+      def mixture = {
+        val firstNonDefault = defaults.size
+
+        // The first two separate out the 'i'th pattern in each row from the remainder.
+        val (_column, _rows) = rows map (_ extractColumn firstNonDefault) unzip
+
+        // Now the 'i'th tvar is separated out and used as a new Scrutinee.
+        val (_pv, _tvars) = tvars extractIndex firstNonDefault
+
+        // The non-default pattern (others.head) replaces the column head.
+        val (_ncol, _nrep) = (others.head :: _column.tail, make(_tvars, _rows))
+
+        // mkRule picks which rewrite rule to apply
+        // _ncol must not contain alternatives
+        PatternMatch(new Scrutinee(specialVar(_pv.sym, _pv.checked)), _ncol) mkRule _nrep
+      }
+
       /** Applying the rule will result in one of:
         *
         *   VariableRule - if all patterns are default patterns
