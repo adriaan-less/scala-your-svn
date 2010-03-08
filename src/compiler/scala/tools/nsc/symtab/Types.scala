@@ -1681,23 +1681,22 @@ A type's typeSymbol should never be inspected directly.
     override def remove(clazz: Symbol): Type = 
       if (sym == clazz && !args.isEmpty) args.head else this
 
-    // @pre sym.isInitialized
     def normalize0: Type = 
       if (sym.isAliasType) { // beta-reduce 
-        if (sym.info.typeParams.length == args.length || !isHigherKinded) { 
+        if (sym.info.typeParams.length == args.length || !isHigherKinded) {
           /* !isHigherKinded && sym.info.typeParams.length != args.length only happens when compiling e.g., 
            `val x: Class' with -Xgenerics, while `type Class = java.lang.Class' had already been compiled without -Xgenerics */
           val xform = transform(sym.info.resultType)
           assert(xform ne this, this)
           xform.normalize // cycles have been checked in typeRef
-        } else {
-          PolyType(typeParams, transform(sym.info.resultType).normalize)  // eta-expand
+        } else { // should rarely happen, if at all
+          PolyType(sym.info.typeParams, transform(sym.info.resultType).normalize)  // eta-expand -- for regularity, go through sym.info for typeParams
           // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         }
       } else if (isHigherKinded) {
         // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
-        // @M: initialize needed (see test/files/pos/ticket0137.scala)
-        PolyType(typeParams, typeRef(pre, sym, dummyArgs))
+        // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
+        PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
         //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
@@ -1719,7 +1718,6 @@ A type's typeSymbol should never be inspected directly.
       if (phase.erasedTypes) normalize0
       else if (normalized == null || typeParamsDirect.length != normalizeTyparCount) {
         normalizeTyparCount = typeParamsDirect.length
-        sym.initialize // does this obsolete the typeParamsDirect.length != normalizeTyparCount check?
         normalized = normalize0
         normalized
       } else normalized
