@@ -1681,6 +1681,7 @@ A type's typeSymbol should never be inspected directly.
     override def remove(clazz: Symbol): Type = 
       if (sym == clazz && !args.isEmpty) args.head else this
 
+    // @pre sym.isInitialized
     def normalize0: Type = 
       if (sym.isAliasType) { // beta-reduce 
         if (sym.info.typeParams.length == args.length || !isHigherKinded) { 
@@ -1693,10 +1694,10 @@ A type's typeSymbol should never be inspected directly.
           PolyType(typeParams, transform(sym.info.resultType).normalize)  // eta-expand
           // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         }
-      } else if (isHigherKinded) { 
+      } else if (isHigherKinded) {
         // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         // @M: initialize needed (see test/files/pos/ticket0137.scala)
-        PolyType(typeParams, typeRef(pre, sym.initialize, dummyArgs))
+        PolyType(typeParams, typeRef(pre, sym, dummyArgs))
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
         //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
@@ -1718,6 +1719,7 @@ A type's typeSymbol should never be inspected directly.
       if (phase.erasedTypes) normalize0
       else if (normalized == null || typeParamsDirect.length != normalizeTyparCount) {
         normalizeTyparCount = typeParamsDirect.length
+        sym.initialize // does this obsolete the typeParamsDirect.length != normalizeTyparCount check?
         normalized = normalize0
         normalized
       } else normalized
@@ -1918,6 +1920,7 @@ A type's typeSymbol should never be inspected directly.
    */
   case class PolyType(override val typeParams: List[Symbol], override val resultType: Type)
        extends Type {
+    // assert(!(typeParams contains NoSymbol), this)
 
     override def paramSectionCount: Int = resultType.paramSectionCount
     override def paramss: List[List[Symbol]] = resultType.paramss
