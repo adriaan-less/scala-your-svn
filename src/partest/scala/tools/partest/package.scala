@@ -4,39 +4,21 @@
 
 package scala.tools
 
+import java.io.{ File => JFile }
 import nsc.io.{ Path, Process, Directory }
 import util.{ PathResolver }
 import nsc.Properties.{ propOrElse, propOrNone, propOrEmpty }
 
 package object partest { 
   import nest.NestUI
-
+  
+  implicit private[partest] def temporaryPath2File(x: Path): JFile = x.jfile
+  implicit private[partest] def temporaryFile2Path(x: JFile): Path = Path(x)
+  
   def basename(name: String): String = Path(name).stripExtension
   def resultsToStatistics(results: Iterable[(_, Int)]): (Int, Int) = {
     val (files, failures) = results map (_._2 == 0) partition (_ == true)
     (files.size, failures.size)
-  }
-  
-  object PartestDefaults {
-    import nsc.Properties._
-    private def wrapAccessControl[T](body: => Option[T]): Option[T] =
-      try body catch { case _: java.security.AccessControlException => None }
-    
-    def prefixDir   = Directory.Current map (_.normalize.toDirectory)
-    def srcDirName  = propOrElse("partest.srcdir", "files")
-    def classPath   = PathResolver.Environment.javaUserClassPath    // XXX
-
-    def javaCmd     = propOrElse("scalatest.javacmd", "java")
-    def javacCmd    = propOrElse("scalatest.javac_cmd", "javac")
-    def javaOpts    = propOrElse("scalatest.java_opts", "")
-    def scalacOpts  = propOrElse("scalatest.scalac_opts", "-deprecation")
-
-    def testBuild   = propOrNone("scalatest.build")
-    def errorCount  = propOrElse("scalatest.errors", "0").toInt
-    def numActors   = propOrElse("scalatest.actors", "8").toInt
-    def poolSize    = wrapAccessControl(propOrNone("actors.corePoolSize"))
-
-    def timeout     = "1200000"
   }
   
   def vmArgString = {    
@@ -54,5 +36,5 @@ package object partest {
     NestUI.verbose(allPropertiesString)
   }
    
-  def isPartestDebug = List("partest.debug", "scalatest.debug") map propOrEmpty contains "true"
+  def isPartestDebug = propOrEmpty("partest.debug") == "true"
 }

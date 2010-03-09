@@ -136,7 +136,9 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 // ------------------ Reporting -------------------------------------
 
   def error(msg: String) = reporter.error(NoPosition, msg)
-  def warning(msg: String) = reporter.warning(NoPosition, msg)
+  def warning(msg: String) =
+    if (settings.Ywarnfatal.value) reporter.error(NoPosition, msg)
+    else reporter.warning(NoPosition, msg)
   def inform(msg: String) = reporter.info(NoPosition, msg, true)
   def inform[T](msg: String, value: T): T = { inform(msg+value); value }
 
@@ -152,28 +154,25 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     if (settings.log contains phase.name) inform("[log " + phase + "] " + msg)
   }
 
-  class ErrorWithPosition(val pos: Int, val error: Throwable) extends Error
+  class ThrowableWithPosition(val pos: Int, val error: Throwable) extends Throwable
 
-  def tryWith[T](pos: Int, body: => T): T = try {
-    body
-  } catch {
-    case e : ErrorWithPosition => throw e
-    case te: TypeError => throw te
-    case e : Error            => throw new ErrorWithPosition(pos, e)
-    case e : RuntimeException => throw new ErrorWithPosition(pos, e)
-  }
+  def tryWith[T](pos: Int, body: => T): T =
+    try body
+    catch {
+      case e : ThrowableWithPosition  => throw e
+      case te: TypeError              => throw te
+      case e : RuntimeException       => throw new ThrowableWithPosition(pos, e)
+    }
 
-  def catchWith[T](source : SourceFile, body : => T) : T = try {
-    body
-  } catch {
-    case e : ErrorWithPosition =>
-      logError("POS: " + source.dbg(e.pos), e)
-      throw e.error
-  }
+  def catchWith[T](source : SourceFile, body : => T) : T =
+    try body
+    catch {
+      case e : ThrowableWithPosition =>
+        logError("POS: " + source.dbg(e.pos), e)
+        throw e.error
+    }
 
   def logError(msg: String, t: Throwable): Unit = ()
-
-  def abort(msg: String) = throw new Error(msg)
 
 // ------------ File interface -----------------------------------------
 
@@ -550,13 +549,16 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
  
   /* The set of phase objects that is the basis for the compiler phase chain */
   protected val phasesSet : HashSet[SubComponent] = new HashSet[SubComponent]
+  
+  /** The names of the phases. */
+  lazy val phaseNames = {
+    new Run // force some initialization
+    phaseDescriptors map (_.phaseName)
+  }
 
   /** A description of the phases that will run */
-  def phaseDescriptions: String = {
-    new Run // force some initialization
-    
-    phaseDescriptors map (_.phaseName) mkString "\n" // todo: + " - " + phase.description
-  }
+  def phaseDescriptions: String =     
+    phaseNames mkString "\n" // todo: + " - " + phase.description
 
   // ----------- Runs ---------------------------------------
 
@@ -725,7 +727,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
         val startTime = currentTime
         phase = globalPhase
         globalPhase.run
-        if (settings.print contains globalPhase.name)
+        if (settings.Xprint contains globalPhase.name)
           if (settings.writeICode.value && globalPhase.id >= icodePhase.id) writeICode()
           else if (settings.Xshowtrees.value) nodePrinters.printAll() 
           else printAllUnits()

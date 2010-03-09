@@ -10,8 +10,9 @@
 
 package scala.actors
 
-import scala.actors.scheduler.{DelegatingScheduler, DefaultThreadPoolScheduler,
+import scala.actors.scheduler.{DelegatingScheduler, ExecutorScheduler,
                                ForkJoinScheduler, ThreadPoolConfig}
+import java.util.concurrent.{ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue}
 
 private[actors] object Reactor {
 
@@ -19,9 +20,14 @@ private[actors] object Reactor {
     def makeNewScheduler: IScheduler = {
       val sched = if (!ThreadPoolConfig.useForkJoin) {
         // default is non-daemon
-        val s = new DefaultThreadPoolScheduler(false)
-        s.start()
-        s
+        val workQueue = new LinkedBlockingQueue[Runnable]
+        ExecutorScheduler(
+          new ThreadPoolExecutor(ThreadPoolConfig.corePoolSize,
+                                 ThreadPoolConfig.maxPoolSize,
+                                 60000L,
+                                 TimeUnit.MILLISECONDS,
+                                 workQueue,
+                                 new ThreadPoolExecutor.CallerRunsPolicy))
       } else {
         // default is non-daemon, non-fair
         val s = new ForkJoinScheduler(ThreadPoolConfig.corePoolSize, ThreadPoolConfig.maxPoolSize, false, false)
@@ -45,13 +51,13 @@ private[actors] object Reactor {
  *
  * @author Philipp Haller
  */
-trait Reactor extends OutputChannel[Any] with Combinators {
+trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
 
   /* The actor's mailbox. */
-  private[actors] val mailbox = new MQueue("Reactor")
+  private[actors] val mailbox = new MQueue[Msg]("Reactor")
 
   // guarded by this
-  private[actors] val sendBuffer = new MQueue("SendBuffer")
+  private[actors] val sendBuffer = new MQueue[Msg]("SendBuffer")
 
   /* Whenever this actor executes on some thread, `waitingFor` is
    * guaranteed to be equal to `Reactor.waitingForNone`.
@@ -65,12 +71,15 @@ trait Reactor extends OutputChannel[Any] with Combinators {
    *
    * guarded by this
    */
-  private[actors] var waitingFor: PartialFunction[Any, Any] =
+  private[actors] var waitingFor: PartialFunction[Msg, Any] =
     Reactor.waitingForNone
 
+  // guarded by this
+  private[actors] var _state: Actor.State.Value = Actor.State.New
+
   /**
-   * The behavior of an actor is specified by implementing this
-   * abstract method.
+   * The behavior of a <code>Reactor</code> is specified by implementing
+   * this method.
    */
   def act(): Unit
 
@@ -90,7 +99,7 @@ trait Reactor extends OutputChannel[Any] with Combinators {
    * @param  msg      the message to send
    * @param  replyTo  the reply destination
    */
-  def send(msg: Any, replyTo: OutputChannel[Any]) {
+  def send(msg: Msg, replyTo: OutputChannel[Any]) {
     val todo = synchronized {
       if (waitingFor ne Reactor.waitingForNone) {
         val savedWaitingFor = waitingFor
@@ -104,9 +113,9 @@ trait Reactor extends OutputChannel[Any] with Combinators {
     todo()
   }
 
-  private[actors] def startSearch(msg: Any, replyTo: OutputChannel[Any], handler: PartialFunction[Any, Any]) =
+  private[actors] def startSearch(msg: Msg, replyTo: OutputChannel[Any], handler: PartialFunction[Msg, Any]) =
     () => scheduler execute (makeReaction(() => {
-      val startMbox = new MQueue("Start")
+      val startMbox = new MQueue[Msg]("Start")
       synchronized { startMbox.append(msg, replyTo) }
       searchMailbox(startMbox, handler, true)
     }))
@@ -114,39 +123,39 @@ trait Reactor extends OutputChannel[Any] with Combinators {
   private[actors] def makeReaction(fun: () => Unit): Runnable =
     new ReactorTask(this, fun)
 
-  private[actors] def resumeReceiver(item: (Any, OutputChannel[Any]), handler: PartialFunction[Any, Any], onSameThread: Boolean) {
+  private[actors] def resumeReceiver(item: (Msg, OutputChannel[Any]), handler: PartialFunction[Msg, Any], onSameThread: Boolean) {
     if (onSameThread)
       handler(item._1)
     else {
       scheduleActor(handler, item._1)
-      /* Here, we throw a SuspendActorException to avoid
+      /* Here, we throw a SuspendActorControl to avoid
          terminating this actor when the current ReactorTask
          is finished.
 
-         The SuspendActorException skips the termination code
+         The SuspendActorControl skips the termination code
          in ReactorTask.
        */
       throw Actor.suspendException
     }
   }
 
-  def !(msg: Any) {
+  def !(msg: Msg) {
     send(msg, null)
   }
 
-  def forward(msg: Any) {
+  def forward(msg: Msg) {
     send(msg, null)
   }
 
   def receiver: Actor = this.asInstanceOf[Actor]
 
   // guarded by this
-  private[actors] def drainSendBuffer(mbox: MQueue) {
+  private[actors] def drainSendBuffer(mbox: MQueue[Msg]) {
     sendBuffer.foreachDequeue(mbox)
   }
 
-  private[actors] def searchMailbox(startMbox: MQueue,
-                                    handler: PartialFunction[Any, Any],
+  private[actors] def searchMailbox(startMbox: MQueue[Msg],
+                                    handler: PartialFunction[Msg, Any],
                                     resumeOnSameThread: Boolean) {
     var tmpMbox = startMbox
     var done = false
@@ -158,16 +167,16 @@ trait Reactor extends OutputChannel[Any] with Combinators {
         synchronized {
           // in mean time new stuff might have arrived
           if (!sendBuffer.isEmpty) {
-            tmpMbox = new MQueue("Temp")
+            tmpMbox = new MQueue[Msg]("Temp")
             drainSendBuffer(tmpMbox)
             // keep going
           } else {
             waitingFor = handler
-            /* Here, we throw a SuspendActorException to avoid
+            /* Here, we throw a SuspendActorControl to avoid
                terminating this actor when the current ReactorTask
                is finished.
 
-               The SuspendActorException skips the termination code
+               The SuspendActorControl skips the termination code
                in ReactorTask.
              */
             throw Actor.suspendException
@@ -180,9 +189,17 @@ trait Reactor extends OutputChannel[Any] with Combinators {
     }
   }
 
-  protected[actors] def react(f: PartialFunction[Any, Unit]): Nothing = {
+  /**
+   * Receives a message from this actor's mailbox.
+   * <p>
+   * This method never returns. Therefore, the rest of the computation
+   * has to be contained in the actions of the partial function.
+   *
+   * @param  handler  a partial function with message patterns and actions
+   */
+  protected[actors] def react(handler: PartialFunction[Msg, Unit]): Nothing = {
     synchronized { drainSendBuffer(mailbox) }
-    searchMailbox(mailbox, f, false)
+    searchMailbox(mailbox, handler, false)
     throw Actor.suspendException
   }
 
@@ -191,17 +208,32 @@ trait Reactor extends OutputChannel[Any] with Combinators {
    *
    * assume handler != null
    *
-   * never throws SuspendActorException
+   * never throws SuspendActorControl
    */
-  private[actors] def scheduleActor(handler: PartialFunction[Any, Any], msg: Any) = {
+  private[actors] def scheduleActor(handler: PartialFunction[Msg, Any], msg: Msg) = {
     val fun = () => handler(msg): Unit
     scheduler executeFromActor makeReaction(fun)
   }
 
-  def start(): Reactor = {
-    scheduler newActor this
-    scheduler execute makeReaction(() => act())
-    this
+  def start(): Reactor[Msg] = synchronized {
+    if (_state == Actor.State.New) {
+      _state = Actor.State.Runnable
+      scheduler newActor this
+      scheduler execute makeReaction(() => act())
+      this
+    } else
+      this
+  }
+
+  /** Returns the execution state of this actor.
+   *  
+   *  @return the execution state
+   */
+  def getState: Actor.State.Value = synchronized {
+    if (waitingFor ne Reactor.waitingForNone)
+      Actor.State.Suspended
+    else
+      _state
   }
 
   implicit def mkBody[A](body: => A) = new Actor.Body[A] {
@@ -224,19 +256,22 @@ trait Reactor extends OutputChannel[Any] with Combinators {
       // to avoid stack overflow:
       // instead of directly executing `next`,
       // schedule as continuation
-      scheduleActor({ case _ => next }, 1)
+      scheduleActor({ case _ => next }, null)
       throw Actor.suspendException
     }
     first
-    throw new KillActorException
+    throw new KillActorControl
   }
 
-  protected[this] def exit(): Nothing = {
+  protected[actors] def exit(): Nothing = {
     terminated()
     throw Actor.suspendException
   }
 
   private[actors] def terminated() {
+    synchronized {
+      _state = Actor.State.Terminated
+    }
     scheduler.terminated(this)
   }
 

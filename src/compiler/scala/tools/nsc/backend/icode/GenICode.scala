@@ -26,8 +26,9 @@ abstract class GenICode extends SubComponent  {
   import icodes._
   import icodes.opcodes._
   import definitions.{
-    ArrayClass, ObjectClass, ThrowableClass,
-    Object_equals, Object_isInstanceOf, Object_asInstanceOf
+    ArrayClass, ObjectClass, ThrowableClass, StringClass, NothingClass, NullClass,
+    Object_equals, Object_isInstanceOf, Object_asInstanceOf, ScalaRunTimeModule,
+    getMember
   }
   import scalaPrimitives.{
     isArrayOp, isComparisonOp, isLogicalOp,
@@ -49,13 +50,13 @@ abstract class GenICode extends SubComponent  {
     var unit: CompilationUnit = _
 
     // We assume definitions are alread initialized
-    val STRING = REFERENCE(definitions.StringClass)
+    val STRING = REFERENCE(StringClass)
 
     // this depends on the backend! should be changed.
     val ANY_REF_CLASS = REFERENCE(ObjectClass)
 
-    val SCALA_ALL    = REFERENCE(definitions.NothingClass)
-    val SCALA_ALLREF = REFERENCE(definitions.NullClass)
+    val SCALA_ALL    = REFERENCE(NothingClass)
+    val SCALA_ALLREF = REFERENCE(NullClass)
     val THROWABLE    = REFERENCE(ThrowableClass)
 
     override def run {
@@ -423,6 +424,8 @@ abstract class GenICode extends SubComponent  {
         genArithmeticOp(tree, ctx, code)
       else if (code == scalaPrimitives.CONCAT)
         (genStringConcat(tree, ctx), STRING)
+      else if (code == scalaPrimitives.HASH)
+        (genScalaHash(receiver, ctx), INT)
       else if (isArrayOp(code))
         genArrayOp(tree, ctx, code, expectedType)
       else if (isLogicalOp(code) || isComparisonOp(code)) {
@@ -834,8 +837,7 @@ abstract class GenICode extends SubComponent  {
                 generatedType = l.kind
               } catch {
                 case ex: MatchError => 
-                  throw new Error("symbol " + tree.symbol +
-                                  " does not exist in " + ctx.method)
+                  abort("symbol " + tree.symbol + " does not exist in " + ctx.method)
               }
             }
           }
@@ -1166,6 +1168,19 @@ abstract class GenICode extends SubComponent  {
 
       ctx1
     }
+    
+    /** Generate the scala ## method.
+     */
+    def genScalaHash(tree: Tree, ctx: Context): Context = {
+      val hashMethod = {
+        ctx.bb.emit(LOAD_MODULE(ScalaRunTimeModule))
+        getMember(ScalaRunTimeModule, "hash")
+      }
+      
+      val ctx1 = genLoad(tree, ctx, ANY_REF_CLASS)
+      ctx1.bb.emit(CALL_METHOD(hashMethod, Static(false)))
+      ctx1
+    }
 
     /**
      * Returns a list of trees that each should be concatenated, from
@@ -1355,8 +1370,8 @@ abstract class GenICode extends SubComponent  {
         val equalsMethod =
           if (!settings.XO.value) platform.externalEquals
           else {
-            ctx.bb.emit(LOAD_MODULE(definitions.ScalaRunTimeModule))
-            definitions.getMember(definitions.ScalaRunTimeModule, nme.inlinedEquals)
+            ctx.bb.emit(LOAD_MODULE(ScalaRunTimeModule))
+            getMember(ScalaRunTimeModule, nme.inlinedEquals)
           }
 
         val ctx1 = genLoad(l, ctx, ANY_REF_CLASS)

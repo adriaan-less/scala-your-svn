@@ -15,8 +15,8 @@ import scala.reflect.ClassManifest
 import scala.collection.{ Seq, IndexedSeq }
 import scala.collection.mutable.WrappedArray
 import scala.collection.immutable.{ List, Stream, Nil, :: }
-import scala.xml.Node
-import scala.util.control.ControlException
+import scala.xml.{ Node, MetaData }
+import scala.util.control.ControlThrowable
 
 /* The object <code>ScalaRunTime</code> provides ...
  */
@@ -124,7 +124,7 @@ object ScalaRunTime {
     private var exception: Throwable = 
       try   { run() ; null }
       catch { 
-        case e: ControlException  => throw e  // don't catch non-local returns etc
+        case e: ControlThrowable  => throw e  // don't catch non-local returns etc
         case e: Throwable         => e
       }
 
@@ -173,6 +173,18 @@ object ScalaRunTime {
     case y: Product if x.productArity == y.productArity => x.productIterator sameElements y.productIterator
     case _                                              => false
   }
+  
+  /** Just a stub for now, but I think this is where the Predef.hash
+   *  methods should be.
+   */
+  @inline def hash(x: Any): Int = Predef.hash(x)
+
+  /** A helper method for constructing case class equality methods,
+   *  because existential types get in the way of a clean outcome and
+   *  it's performing a series of Any/Any equals comparisons anyway.
+   *  See ticket #2867 for specifics.
+   */
+  def sameElements(xs1: Seq[Any], xs2: Seq[Any]) = xs1 sameElements xs2
 
   /** Given any Scala value, convert it to a String.
    *
@@ -192,12 +204,14 @@ object ScalaRunTime {
       case null                     => "null"
       // Node extends NodeSeq extends Seq[Node] strikes again
       case x: Node                  => x toString
+      // Not to mention MetaData extends Iterable[MetaData]
+      case x: MetaData              => x toString
       case x: AnyRef if isArray(x)  => WrappedArray make x map inner mkString ("Array(", ", ", ")")
       case x: Traversable[_] if !x.hasDefiniteSize => x.toString
       case x: Traversable[_]        => 
         // Some subclasses of AbstractFile implement Iterable, then throw an
         // exception if you call iterator.  What a world.
-	// And they can't be infinite either.
+        // And they can't be infinite either.
         if (x.getClass.getName startsWith "scala.tools.nsc.io") x.toString
         else (x map inner) mkString (x.stringPrefix + "(", ", ", ")")
       case x                        => x toString

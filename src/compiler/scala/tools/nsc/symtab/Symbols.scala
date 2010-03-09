@@ -24,7 +24,6 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
   def symbolCount = ids // statistics
 
   val emptySymbolArray = new Array[Symbol](0)
-  val emptySymbolSet = Set.empty[Symbol]
 
   /** Used for deciding in the IDE whether we can interrupt the compiler */
   protected var activeLocks = 0
@@ -133,6 +132,14 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     def getAnnotation(cls: Symbol): Option[AnnotationInfo] = 
       annotations find (_.atp.typeSymbol == cls)
+      
+    /** Finds the requested annotation and returns Some(Tree) containing
+     *  the argument at position 'index', or None if either the annotation
+     *  or the index does not exist.
+     */
+    private def getAnnotationArg(cls: Symbol, index: Int) =
+      for (AnnotationInfo(_, args, _) <- getAnnotation(cls) ; if args.size > index) yield
+        args(index)
 
     /** Remove all annotations matching the given class. */
     def removeAnnotation(cls: Symbol): Unit = 
@@ -382,8 +389,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** Is this symbol a type but not a class? */
     def isNonClassType = false 
 
-    /** Term symbols with the exception of static parts of Java classes and packages */
-    final def isValue = isTerm && !(isModule && hasFlag(PACKAGE | JAVA))
+    /** Term symbols with the exception of static parts of Java classes and packages
+     *  and the faux companion objects of primitives.  (See tickets #1392 and #3123.)
+     */
+    final def isValue = isTerm && !(isModule && (hasFlag(PACKAGE | JAVA) || isValueClass(companionClass)))
 
     final def isVariable  = isTerm && hasFlag(MUTABLE) && !isMethod
     
@@ -445,26 +454,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         }
       }
 
-    def isDeprecated = hasAnnotation(DeprecatedAttr)
-    def deprecationMessage: Option[String] =
-      annotations find (_.atp.typeSymbol == DeprecatedAttr) flatMap { annot =>
-        annot.args match {
-          case Literal(const) :: Nil =>
-            Some(const.stringValue)
-          case _ =>
-            None
-        }
-      }
-    def elisionLevel: Option[Int] = {
-      if (!hasAnnotation(ElidableMethodClass)) None
-      else annotations find (_.atp.typeSymbol == ElidableMethodClass) flatMap { annot =>
-        // since we default to enabled by default, only look hard for falsity
-        annot.args match {
-          case Literal(Constant(x: Int)) :: Nil => Some(x)
-          case _                                => None
-        }
-      }
-    }
+    def isDeprecated        = hasAnnotation(DeprecatedAttr)
+    def deprecationMessage  = getAnnotationArg(DeprecatedAttr, 0) partialMap { case Literal(const) => const.stringValue }
+    def migrationMessage    = getAnnotationArg(MigrationAnnotationClass, 2) partialMap { case Literal(const) => const.stringValue }
+    def elisionLevel        = getAnnotationArg(ElidableMethodClass, 0) partialMap { case Literal(Constant(x: Int)) => x }
 
     /** Does this symbol denote a wrapper object of the interpreter or its class? */
     final def isInterpreterWrapper = 
@@ -739,7 +732,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         cnt += 1
         // allow for two completions:
         //   one: sourceCompleter to LazyType, two: LazyType to completed type
-        if (cnt == 3) throw new Error("no progress in completing " + this + ":" + tp)
+        if (cnt == 3) abort("no progress in completing " + this + ":" + tp)
       }
       val result = rawInfo
       result
@@ -758,6 +751,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     /** Set initial info. */
     def setInfo(info: Type): this.type = { info_=(info); this }
+
+    def setInfoOwnerAdjusted(info: Type): this.type = setInfo(info.atOwner(this))
 
     /** Set new info valid from start of this phase. */
     final def updateInfo(info: Type): Symbol = {
@@ -879,7 +874,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  Not applicable for term symbols.
      */
     def typeConstructor: Type =
-      throw new Error("typeConstructor inapplicable for " + this)
+      abort("typeConstructor inapplicable for " + this)
 
     /** @M -- tpe vs tpeHK:
      * Symbol::tpe creates a TypeRef that has dummy type arguments to get a type of kind *
@@ -960,7 +955,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       else if (this.isTerm) 
          TypeBounds(NothingClass.tpe, intersectionType(List(this.tpe, SingletonClass.tpe)))
       else 
-        throw new Error("unexpected alias type: "+this)
+        abort("unexpected alias type: "+this)
 
     /** Reset symbol to initial state
      */
@@ -1172,7 +1167,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
                && !packSym.isPackageClass) 
           packSym = packSym.owner
         if (packSym != NoSymbol)
-          packSym = packSym.linkedModuleOfClass
+          packSym = packSym.companionModule
         packSym
       }
 
@@ -1203,11 +1198,31 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         
         res
       }
+    
+    /** @PP: Added diagram because every time I come through here I end up
+     *       losing my train of thought.  [Renaming occurs.] This diagram is a 
+     *       bit less necessary since the renaming, but leaving in place
+     *       due to high artistic merit.
+     *
+     * class Foo  <
+     *  ^  ^ (2)   \
+     *  |  |  |     \
+     *  | (5) |     (3)
+     *  |  |  |       \
+     * (1) v  v        \
+     * object Foo (4)-> > class Foo$
+     *
+     * (1) companionClass
+     * (2) companionModule
+     * (3) linkedClassOfClass
+     * (4) moduleClass
+     * (5) companionSymbol
+     */  
 
     /** The class with the same name in the same package as this module or
-     *  case class factory. A better name would be companionClassOfModule.
+     *  case class factory.
      */
-    final def linkedClassOfModule: Symbol = {
+    final def companionClass: Symbol = {
       if (this != NoSymbol)
         flatOwnerInfo.decl(name.toTypeName).suchThat(_ isCoDefinedWith this)
       else NoSymbol
@@ -1216,38 +1231,35 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** A helper method that factors the common code used the discover a companion module of a class. If a companion
       * module exists, its symbol is returned, otherwise, `NoSymbol` is returned. The method assumes that `this`
       * symbol has already been checked to be a class (using `isClass`). */
-    private final def linkedModuleOfClass0: Symbol =
+    private final def companionModule0: Symbol =
       flatOwnerInfo.decl(name.toTermName).suchThat(
           sym => (sym hasFlag MODULE) && (sym isCoDefinedWith this))
 
     /** The module or case class factory with the same name in the same
-     *  package as this class. A better name would be companionModuleOfClass.
+     *  package as this class.
      */
-    final def linkedModuleOfClass: Symbol =
+    final def companionModule: Symbol =
       if (this.isClass && !this.isAnonymousClass && !this.isRefinementClass)
-        linkedModuleOfClass0
+        companionModule0
       else NoSymbol
 
     /** For a module its linked class, for a class its linked module or case
      *  factory otherwise.
      */
-    final def linkedSym: Symbol =
-      if (isTerm) linkedClassOfModule
+    final def companionSymbol: Symbol =
+      if (isTerm) companionClass
       else if (isClass)
-        linkedModuleOfClass0
+        companionModule0
       else NoSymbol
 
-    /** For a module class its linked class, for a plain class
-     *  the module class of its linked module.
-     *  For instance:
-     *    object Foo
-     *    class Foo
+    /** For a module class: its linked class
+     *   For a plain class: the module class of its linked module.
      *
      *  Then object Foo has a `moduleClass' (invisible to the user, the backend calls it Foo$
-     *  linkedClassOFClass goes from class Foo$ to class Foo, and back.
+     *  linkedClassOfClass goes from class Foo$ to class Foo, and back.
      */
     final def linkedClassOfClass: Symbol =
-      if (isModuleClass) linkedClassOfModule else linkedModuleOfClass.moduleClass
+      if (isModuleClass) companionClass else companionModule.moduleClass
       
     /**
      * Returns the rawInfo of the owner. If the current phase has flat classes, it first
@@ -1418,14 +1430,22 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       (if (isModule) moduleClass else toplevelClass).sourceFile
 
     def sourceFile_=(f: AbstractFile) {
-      throw new Error("sourceFile_= inapplicable for " + this)
+      abort("sourceFile_= inapplicable for " + this)
     }
 
     def isFromClassFile: Boolean =
       (if (isModule) moduleClass else toplevelClass).isFromClassFile
 
     /** If this is a sealed class, its known direct subclasses. Otherwise Set.empty */
-    def children: Set[Symbol] = emptySymbolSet
+    def children: List[Symbol] = Nil
+    
+    /** Recursively finds all sealed descendants and returns a sorted list. */
+    def sealedDescendants: List[Symbol] = {
+      val kids = children flatMap (_.sealedDescendants)
+      val all = if (this hasFlag ABSTRACT) kids else this :: kids
+      
+      all.distinct sortBy (_.sealedSortName)
+    }
 
 // ToString -------------------------------------------------------------------
 
@@ -1949,10 +1969,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     }
 
     override def sourceModule =
-      if (isModuleClass) linkedModuleOfClass else NoSymbol
+      if (isModuleClass) companionModule else NoSymbol
 
-    private var childSet: Set[Symbol] = emptySymbolSet
-    override def children: Set[Symbol] = childSet
+    private var childSet: Set[Symbol] = Set()
+    override def children: List[Symbol] = childSet.toList sortBy (_.sealedSortName)
     override def addChild(sym: Symbol) { childSet = childSet + sym }
 
     incCounter(classSymbolCount)
@@ -1989,7 +2009,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     override def enclClass: Symbol = this
     override def toplevelClass: Symbol = this
     override def enclMethod: Symbol = this
-    override def owner: Symbol = throw new Error("no-symbol does not have owner")
+    override def owner: Symbol = abort("no-symbol does not have owner")
     override def sourceFile: AbstractFile = null
     override def ownerChain: List[Symbol] = List()
     override def ownersIterator: Iterator[Symbol] = Iterator.empty
@@ -1999,7 +2019,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     override def rawInfo: Type = NoType
     protected def doCookJavaRawInfo() {}
     override def accessBoundary(base: Symbol): Symbol = RootClass
-    def cloneSymbolImpl(owner: Symbol): Symbol = throw new Error()
+    def cloneSymbolImpl(owner: Symbol): Symbol = abort()
   }
 
 

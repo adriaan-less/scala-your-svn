@@ -292,7 +292,7 @@ abstract class GenMSIL extends SubComponent {
             tBuilder.SetCustomAttribute(SYMTAB_ATTRIBUTE_CONSTRUCTOR, symtab)
 
             currentRun.symData -= sym
-            currentRun.symData -= sym.linkedSym
+            currentRun.symData -= sym.companionSymbol
 
           case _ =>
             addMarker()
@@ -513,7 +513,7 @@ abstract class GenMSIL extends SubComponent {
       tBuilder.setPosition(line, iclass.cunit.source.file.name)
 
       if (isTopLevelModule(sym)) {
-        if (sym.linkedClassOfModule == NoSymbol)
+        if (sym.companionClass == NoSymbol)
           dumpMirrorClass(sym)
         else
           log("No mirror class for module with linked class: " +
@@ -1690,7 +1690,7 @@ abstract class GenMSIL extends SubComponent {
         val name = typeString(sym)
         val typ = clrTypes.getType(name)
         if (typ == null)
-          throw new Error(showsym(sym) + " with name " + name)
+          abort(showsym(sym) + " with name " + name)
         else {
           clrTypes.types(sym) = typ
           typ
@@ -2046,7 +2046,7 @@ abstract class GenMSIL extends SubComponent {
         if (constr eq null) {
           System.out.println("Cannot find constructor " + sym.owner + "::" + sym.name)
           System.out.println("scope = " + sym.owner.tpe.decls)
-          throw new Error(sym.fullName)
+          abort(sym.fullName)
         }
         else {
           mapConstructor(sym, constr)
@@ -2080,7 +2080,7 @@ abstract class GenMSIL extends SubComponent {
             if (method eq null) {
               System.out.println("Cannot find method " + sym.owner + "::" + msilName(sym))
               System.out.println("scope = " + sym.owner.tpe.decls)
-              throw new Error(sym.fullName)
+              abort(sym.fullName)
             }
             else {
               mapMethod(sym, method)

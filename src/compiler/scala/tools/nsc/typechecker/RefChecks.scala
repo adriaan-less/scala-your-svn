@@ -922,11 +922,17 @@ abstract class RefChecks extends InfoTransform {
       if (sym.isDeprecated && !currentOwner.ownerChain.exists(_.isDeprecated)) {
         val dmsg = sym.deprecationMessage
         val msg = sym.toString + sym.locationString +" is deprecated"+
-                  (if (dmsg.isDefined) ": "+ dmsg.get
-                   else "")
+                  (if (dmsg.isDefined) ": "+ dmsg.get else "")
         unit.deprecationWarning(pos, msg)
       }
     }
+    /** Similar to deprecation: check if the symbol is marked with @migration
+     *  indicating it has changed semantics between versions.
+     */
+    private def checkMigration(sym: Symbol, pos: Position) =
+      for (msg <- sym.migrationMessage)
+        unit.warning(pos, "%s%s has changed semantics:\n %s".format(sym, sym.locationString, msg))
+    
     /** Check that a deprecated val or def does not override a
       * concrete, non-deprecated method.  If it does, then
       * deprecation is meaningless.
@@ -1014,7 +1020,7 @@ abstract class RefChecks extends InfoTransform {
           }
         }
         val newResult = localTyper.typedPos(tree.pos) {
-          Apply(Apply(Select(gen.mkAttributedRef(ArrayModule), nme.ofDim), args), List(manif))
+          new ApplyToImplicitArgs(Apply(Select(gen.mkAttributedRef(ArrayModule), nme.ofDim), args), List(manif))
         }
         currentApplication = tree
         newResult
@@ -1027,7 +1033,16 @@ abstract class RefChecks extends InfoTransform {
     private def transformSelect(tree: Select): Tree = {
       val Select(qual, name) = tree
       val sym = tree.symbol
+      
+      /** Note: if a symbol has both @deprecated and @migration annotations and both
+       *  warnings are enabled, only the first one checked here will be emitted.
+       *  I assume that's a consequence of some code trying to avoid noise by suppressing
+       *  warnings after the first, but I think it'd be better if we didn't have to
+       *  arbitrarily choose one as more important than the other.
+       */
       checkDeprecated(sym, tree.pos)
+      if (settings.Xmigration28.value)
+        checkMigration(sym, tree.pos)        
       
       if (currentClass != sym.owner && (sym hasFlag LOCAL)) {
         var o = currentClass
@@ -1063,106 +1078,109 @@ abstract class RefChecks extends InfoTransform {
       }
     }
     
-    override def transform(tree: Tree): Tree = try {
+    override def transform(tree: Tree): Tree = {
       val savedLocalTyper = localTyper
       val savedCurrentApplication = currentApplication
-      val sym = tree.symbol
+      try {
+        val sym = tree.symbol
       
-      // Apply RefChecks to annotations. Makes sure the annotations conform to
-      // type bounds (bug #935), issues deprecation warnings for symbols used
-      // inside annotations.
-      applyRefchecksToAnnotations(tree)
+        // Apply RefChecks to annotations. Makes sure the annotations conform to
+        // type bounds (bug #935), issues deprecation warnings for symbols used
+        // inside annotations.
+        applyRefchecksToAnnotations(tree)
 
-      var result: Tree = tree match {
-        case DefDef(mods, name, tparams, vparams, tpt, EmptyTree) if tree.symbol.hasAnnotation(NativeAttr) =>
-          tree.symbol.resetFlag(DEFERRED)
-          transform(treeCopy.DefDef(tree, mods, name, tparams, vparams, tpt, 
-                typed(Apply(gen.mkAttributedRef(Predef_error), List(Literal("native method stub"))))))
+        var result: Tree = tree match {
+          case DefDef(mods, name, tparams, vparams, tpt, EmptyTree) if tree.symbol.hasAnnotation(NativeAttr) =>
+            tree.symbol.resetFlag(DEFERRED)
+            transform(treeCopy.DefDef(tree, mods, name, tparams, vparams, tpt, 
+                  typed(Apply(gen.mkAttributedRef(Predef_error), List(Literal("native method stub"))))))
 
-        case ValDef(_, _, _, _) | DefDef(_, _, _, _, _, _) =>
-          checkDeprecatedOvers(tree)
-          tree
+          case ValDef(_, _, _, _) | DefDef(_, _, _, _, _, _) =>
+            checkDeprecatedOvers(tree)
+            tree
 
-        case Template(parents, self, body) =>
-          localTyper = localTyper.atOwner(tree, currentOwner)
-          validateBaseTypes(currentOwner)
-          checkDefaultsInOverloaded(currentOwner)
-          val bridges = addVarargBridges(currentOwner)
-          checkAllOverrides(currentOwner)
-          
-          if (bridges.nonEmpty) treeCopy.Template(tree, parents, self, body ::: bridges)
-          else tree
+          case Template(parents, self, body) =>
+            localTyper = localTyper.atOwner(tree, currentOwner)
+            validateBaseTypes(currentOwner)
+            checkDefaultsInOverloaded(currentOwner)
+            val bridges = addVarargBridges(currentOwner)
+            checkAllOverrides(currentOwner)
 
-        case TypeTree() => 
-          val existentialParams = new ListBuffer[Symbol]
-          doTypeTraversal(tree) { // check all bounds, except those that are
-                            // existential type parameters
-            case ExistentialType(tparams, tpe) => 
-              existentialParams ++= tparams
-            case t: TypeRef => 
-              val exparams = existentialParams.toList
-              val wildcards = exparams map (_ => WildcardType)
-              checkTypeRef(t.subst(exparams, wildcards), tree.pos)
-            case _ => 
-          }
-          tree
+            if (bridges.nonEmpty) treeCopy.Template(tree, parents, self, body ::: bridges)
+            else tree
 
-        case TypeApply(fn, args) =>
-          checkBounds(NoPrefix, NoSymbol, fn.tpe.typeParams, args map (_.tpe), tree.pos)
-          transformCaseApply(tree, ())
-
-        case x @ Apply(_, _)  =>
-          transformApply(x)
-
-        case x @ If(_, _, _)  =>
-          transformIf(x)
-
-        case New(tpt) =>
-          enterReference(tree.pos, tpt.tpe.typeSymbol)
-          tree
-
-        case Typed(expr, tpt @ Ident(name)) if name == nme.WILDCARD_STAR.toTypeName && !isRepeatedParamArg(tree) =>
-          unit.error(tree.pos, "no `: _*' annotation allowed here\n"+
-            "(such annotations are only allowed in arguments to *-parameters)")
-          tree
-
-        case Ident(name) =>
-          transformCaseApply(tree,
-            if (name != nme.WILDCARD && name != nme.WILDCARD_STAR.toTypeName) {
-              assert(sym != NoSymbol, tree) //debug
-              enterReference(tree.pos, sym)
+          case TypeTree() => 
+            val existentialParams = new ListBuffer[Symbol]
+            doTypeTraversal(tree) { // check all bounds, except those that are
+                              // existential type parameters
+              case ExistentialType(tparams, tpe) => 
+                existentialParams ++= tparams
+              case t: TypeRef => 
+                val exparams = existentialParams.toList
+                val wildcards = exparams map (_ => WildcardType)
+                checkTypeRef(t.subst(exparams, wildcards), tree.pos)
+              case _ => 
             }
-          )
-          
-        case x @ Select(_, _) =>
-          transformSelect(x)
+            tree
 
-        case _ => tree
-      }
-      result = result match {
-        case CaseDef(pat, guard, body) =>
-          inPattern = true
-          val pat1 = transform(pat)
-          inPattern = false
-          treeCopy.CaseDef(tree, pat1, transform(guard), transform(body))
-        case _ =>
-          super.transform(result)
-      }
-      result match {
-        case ClassDef(_, _, _, _) 
-           | TypeDef(_, _, _, _) =>
-          if (result.symbol.isLocal || result.symbol.owner.isPackageClass) 
-            varianceValidator.traverse(result)
-        case _ =>
-      }
-      localTyper = savedLocalTyper
-      currentApplication = savedCurrentApplication
-      result
-    } catch {
-      case ex: TypeError =>
-        if (settings.debug.value) ex.printStackTrace();
-        unit.error(tree.pos, ex.getMessage())
-        tree
+          case TypeApply(fn, args) =>
+            checkBounds(NoPrefix, NoSymbol, fn.tpe.typeParams, args map (_.tpe), tree.pos)
+            transformCaseApply(tree, ())
+
+          case x @ Apply(_, _)  =>
+            transformApply(x)
+
+          case x @ If(_, _, _)  =>
+            transformIf(x)
+
+          case New(tpt) =>
+            enterReference(tree.pos, tpt.tpe.typeSymbol)
+            tree
+
+          case Typed(expr, tpt @ Ident(name)) if name == nme.WILDCARD_STAR.toTypeName && !isRepeatedParamArg(tree) =>
+            unit.error(tree.pos, "no `: _*' annotation allowed here\n"+
+              "(such annotations are only allowed in arguments to *-parameters)")
+            tree
+
+          case Ident(name) =>
+            transformCaseApply(tree,
+              if (name != nme.WILDCARD && name != nme.WILDCARD_STAR.toTypeName) {
+                assert(sym != NoSymbol, tree) //debug
+                enterReference(tree.pos, sym)
+              }
+            )
+
+          case x @ Select(_, _) =>
+            transformSelect(x)
+
+          case _ => tree
+        }
+        result = result match {
+          case CaseDef(pat, guard, body) =>
+            inPattern = true
+            val pat1 = transform(pat)
+            inPattern = false
+            treeCopy.CaseDef(tree, pat1, transform(guard), transform(body))
+          case _ =>
+            super.transform(result)
+        }
+        result match {
+          case ClassDef(_, _, _, _) 
+             | TypeDef(_, _, _, _) =>
+            if (result.symbol.isLocal || result.symbol.owner.isPackageClass) 
+              varianceValidator.traverse(result)
+          case _ =>
+        }
+        result
+      } catch {
+        case ex: TypeError =>
+          if (settings.debug.value) ex.printStackTrace();
+          unit.error(tree.pos, ex.getMessage())
+          tree
+      } finally {
+        localTyper = savedLocalTyper
+        currentApplication = savedCurrentApplication
+      }        
     }
   }
 }

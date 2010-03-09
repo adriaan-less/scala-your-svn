@@ -51,7 +51,7 @@ abstract class Pickler extends SubComponent {
             val sym = tree.symbol
             val pickle = new Pickle(sym, sym.name.toTermName, sym.owner)
             add(sym, pickle)
-            add(sym.linkedSym, pickle)
+            add(sym.companionSymbol, pickle)
             pickle.finish
           case _ =>
         }
@@ -68,7 +68,7 @@ abstract class Pickler extends SubComponent {
     private val index = new LinkedHashMap[AnyRef, Int]
 
     // collect higher-order type params
-    private var locals: Set[Symbol] = Set()
+    //private var locals: Set[Symbol] = Set()
 
 //    private var boundSyms: List[Symbol] = Nil
 
@@ -92,7 +92,7 @@ abstract class Pickler extends SubComponent {
       (isRootSym(sym) ||
        sym.isRefinementClass ||
        sym.isAbstractType && sym.hasFlag(EXISTENTIAL) || // existential param
-       (locals contains sym) || // higher-order type param
+       (sym hasFlag PARAM) || 
        isLocal(sym.owner))
 
     private def staticAnnotations(annots: List[AnnotationInfo]) =
@@ -193,9 +193,11 @@ abstract class Pickler extends SubComponent {
         case MethodType(params, restpe) =>
           putType(restpe); putSymbols(params)
         case PolyType(tparams, restpe) =>
+          /** no longer needed since all params are now local 
           tparams foreach { tparam => 
             if (!isLocal(tparam)) locals += tparam // similar to existential types, these tparams are local
           }
+          */
           putType(restpe); putSymbols(tparams)
         case ExistentialType(tparams, restpe) =>
 //          val savedBoundSyms = boundSyms // boundSyms are known to be local based on the EXISTENTIAL flag  (see isLocal)

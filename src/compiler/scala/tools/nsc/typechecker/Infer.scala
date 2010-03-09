@@ -8,7 +8,7 @@ package scala.tools.nsc
 package typechecker
 
 import scala.collection.mutable.ListBuffer
-import scala.util.control.ControlException
+import scala.util.control.ControlThrowable
 import symtab.Flags._
 
 /** This trait ...
@@ -69,15 +69,9 @@ trait Infer {
    *  @return       ...
    */
   def freshVar(tparam: Symbol): TypeVar = TypeVar(tparam) 
-
-  //todo: remove comments around following privates; right now they cause an IllegalAccess
-  // error when built with scalac
-
-  /*private*/ 
-  class NoInstance(msg: String) extends RuntimeException(msg) with ControlException
-
-  /*private*/ 
-  class DeferredNoInstance(getmsg: () => String) extends NoInstance("") {
+  
+  private class NoInstance(msg: String) extends Throwable(msg) with ControlThrowable { }
+  private class DeferredNoInstance(getmsg: () => String) extends NoInstance("") {
     override def getMessage(): String = getmsg()
   }
 

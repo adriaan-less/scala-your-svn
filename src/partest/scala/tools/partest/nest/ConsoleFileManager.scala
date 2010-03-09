@@ -21,15 +21,8 @@ import ClassPath.{ join }
 import PathResolver.{ Environment, Defaults }
 import RunnerUtils._
 
-object ConsoleFileManager {  
-  def testRootPropDir = Option(propOrElse("scalatest.root", null)) map (x => Directory(x))
-}
-import ConsoleFileManager._
 
-class ConsoleFileManager extends FileManager {
-  implicit private def temporaryPath2File(x: Path): File = x.jfile
-  implicit private def temporaryFile2Path(x: File): Path = Path(x)
-  
+class ConsoleFileManager extends FileManager {  
   var testBuild: Option[String] = PartestDefaults.testBuild
   def testBuildFile = testBuild map (testParent / _)
   
@@ -55,56 +48,25 @@ class ConsoleFileManager extends FileManager {
     SCALAC_OPTS = SCALAC_OPTS+" "+moreOpts
   }
 
-  var CLASSPATH = PartestDefaults.classPath
-  var JAVACMD   = PartestDefaults.javaCmd
-  var JAVAC_CMD = PartestDefaults.javacCmd
+  lazy val srcDir        = PathSettings.srcDir
+  lazy val testRootDir   = PathSettings.testRoot
+  lazy val testRootPath  = testRootDir.toAbsolute.path  
+  def testParent    = testRootDir.parent
+
+  var CLASSPATH   = PartestDefaults.classPath
+  var JAVACMD     = PartestDefaults.javaCmd
+  var JAVAC_CMD   = PartestDefaults.javacCmd
+  
 
   NestUI.verbose("CLASSPATH: "+CLASSPATH)
-  
-  val prefixDir   = PartestDefaults.prefixDir getOrElse error("user.dir property not set")
-  val srcDirName  = PartestDefaults.srcDirName
-  val PREFIX      = prefixDir.toAbsolute.path
-
-/* 
-if [ -d "$PREFIX/test" ]; then 
-    TESTROOT="$PREFIX/test"; 
-elif [ -d "$PREFIX/misc/scala-test" ]; then 
-    TESTROOT="$PREFIX/misc/scala-test"; 
-else 
-    abort "Test directory not found"; 
-*/ 
-
-  val testRootDir = {
-    def isTestDir(d: Directory) = d.name == "test" && (d / "files" isDirectory)
-    
-    (
-      testRootPropDir orElse (
-        if (isTestDir(prefixDir)) Some(prefixDir) else None   // cwd is `test`
-      ) orElse (
-        (prefixDir / "test") ifDirectory (x => x)             // cwd is `test/..` 
-      ) orElse (
-        (prefixDir / "misc" / "scala-test") ifDirectory (x => x) 
-      ) getOrElse (
-        error("Test directory not found")
-      )
-    ).normalize
-  }
-  val TESTROOT = testRootDir.toAbsolute.path
-  
-  def testParent = testRootDir.parent
-
-  val srcDir = (testRootDir / srcDirName).toDirectory
   
   if (!srcDir.isDirectory) {
     NestUI.failure("Source directory \"" + srcDir.path + "\" not found")
     exit(1)
   }
-
-
-  LIB_DIR = (testParent / "lib").normalize.toAbsolute.path
   
   CLASSPATH = {
-    val libs = (srcDir / Directory("lib")).files filter (_ hasExtension "jar") map (_.normalize.toAbsolute.path)
+    val libs = (srcDir / Directory("lib")).files filter (_ hasExtension "jar") map (_.normalize.path)
     
     // add all jars in libs
     (CLASSPATH :: libs.toList) mkString pathSeparator
@@ -194,22 +156,11 @@ else
       
       latestFjbgFile = prefixFile("lib/fjbg.jar")
     }
-
-    BIN_DIR = latestFile.getAbsolutePath
+    
     LATEST_LIB = latestLibFile.getAbsolutePath
-    LATEST_COMP = latestCompFile.getAbsolutePath
-    LATEST_PARTEST = latestPartestFile.getAbsolutePath
-
-    SCALA = (latestFile / scalaCmd).toAbsolute.path
-    SCALAC_CMD = (latestFile / scalacCmd).toAbsolute.path
   }
-
-  var BIN_DIR: String = ""
+  
   var LATEST_LIB: String = ""
-  var LATEST_COMP: String = ""
-  var LATEST_PARTEST: String = ""
-  var SCALA: String = ""
-  var SCALAC_CMD: String = ""
 
   var latestFile: File = _
   var latestLibFile: File = _
@@ -220,43 +171,20 @@ else
   // initialize above fields
   findLatest()
 
-  var testFiles: List[File] = List()
+  var testFiles: List[io.Path] = Nil
 
-  def getFiles(kind: String, doCheck: Boolean, filter: Option[(String, Boolean)]): List[File] = {
-        
-    val dir = new File(srcDir, kind)
-    NestUI.verbose("look in "+dir+" for tests")
-    val files = if (dir.isDirectory) {
-      if (!testFiles.isEmpty) {
-        val dirpath = dir.getAbsolutePath
-        testFiles filter { _.getParentFile.getAbsolutePath == dirpath }
-      } else if (doCheck) filter match {
-        case Some((ending, enableDirs)) =>
-          val filter = new FilenameFilter {
-            def accept(dir: File, name: String) =
-              name.endsWith(ending) ||
-              (enableDirs && (name != ".svn") && (!name.endsWith(".obj")) &&
-              (new File(dir, name)).isDirectory)
-          }
-          dir.listFiles(filter).toList
-        case None =>
-          val filter = new FilenameFilter {
-            def accept(dir: File, name: String) = name != ".svn"
-          }
-          dir.listFiles(filter).toList
-      } else // skip
-        Nil
-    } else {
-      NestUI.failure("Directory \"" + dir.getPath + "\" not found")
-      Nil
-    }
-    if (failed)
-      files filter { logFileExists(_, kind) }
-    else
-      files
+  def getFiles(kind: String, cond: Path => Boolean): List[File] = {
+    def ignoreDir(p: Path) = List("svn", "obj") exists (p hasExtension _)
+
+    val dir = Directory(srcDir / kind)
+
+    if (dir.isDirectory) NestUI.verbose("look in %s for tests" format dir)
+    else NestUI.failure("Directory '%s' not found" format dir)      
+    
+    val files =
+      if (testFiles.nonEmpty) testFiles filter (_.parent isSame dir)
+      else dir.list filterNot ignoreDir filter cond toList
+
+    ( if (failed) files filter (x => logFileExists(x, kind)) else files ) map (_.jfile)
   }
-
-  def getFiles(kind: String, doCheck: Boolean): List[File] =
-    getFiles(kind, doCheck, Some((".scala", true)))
-  
 }

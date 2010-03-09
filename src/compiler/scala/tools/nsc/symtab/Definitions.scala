@@ -103,7 +103,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     // exceptions and other throwables
     lazy val ThrowableClass                 = getClass(sn.Throwable)
     lazy val NullPointerExceptionClass      = getClass(sn.NPException)
-    lazy val NonLocalReturnExceptionClass   = getClass(sn.NLRException)
+    lazy val NonLocalReturnControlClass   = getClass(sn.NLRControl)
     lazy val IndexOutOfBoundsExceptionClass = getClass(sn.IOOBException)
     lazy val UninitializedErrorClass        = getClass("scala.UninitializedFieldError")
     lazy val MatchErrorClass                = getClass("scala.MatchError")
@@ -151,6 +151,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def arrayUpdateMethod = getMember(ScalaRunTimeModule, "array_update")
       def arrayLengthMethod = getMember(ScalaRunTimeModule, "array_length")
       def arrayCloneMethod = getMember(ScalaRunTimeModule, "array_clone")
+      def scalaRuntimeHash = getMember(ScalaRunTimeModule, "hash")
+      def scalaRuntimeSameElements = getMember(ScalaRunTimeModule, nme.sameElements)
     
     // classes with special meanings
     lazy val NotNullClass         = getClass("scala.NotNull")
@@ -245,11 +247,11 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     // Option classes
     lazy val OptionClass: Symbol  = getClass("scala.Option")
     lazy val SomeClass: Symbol    = getClass("scala.Some")
-    lazy val NoneClass: Symbol    = getModule("scala.None")
+    lazy val NoneModule: Symbol    = getModule("scala.None")
 
     def isOptionType(tp: Type)  = cond(tp.normalize) { case TypeRef(_, OptionClass, List(_)) => true }
     def isSomeType(tp: Type)    = cond(tp.normalize) { case TypeRef(_,   SomeClass, List(_)) => true }
-    def isNoneType(tp: Type)    = cond(tp.normalize) { case TypeRef(_,   NoneClass, List(_)) => true }
+    def isNoneType(tp: Type)    = cond(tp.normalize) { case TypeRef(_,   NoneModule, List(_)) => true }
 
     def optionType(tp: Type)    = typeRef(OptionClass.typeConstructor.prefix, OptionClass, List(tp))
     def someType(tp: Type)      = typeRef(SomeClass.typeConstructor.prefix, SomeClass, List(tp))
@@ -388,12 +390,14 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     var Any_toString    : Symbol = _
     var Any_isInstanceOf: Symbol = _
     var Any_asInstanceOf: Symbol = _
+    var Any_##          : Symbol = _
 
     // members of class java.lang.{Object, String}
     var Object_eq          : Symbol = _
     var Object_ne          : Symbol = _
     var Object_==          : Symbol = _
     var Object_!=          : Symbol = _
+    var Object_##          : Symbol = _
     var Object_synchronized: Symbol = _
     lazy val Object_isInstanceOf = newPolyMethod(
       ObjectClass, "$isInstanceOf",
@@ -434,6 +438,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     // special attributes
     lazy val SerializableAttr: Symbol = getClass("scala.serializable")
     lazy val DeprecatedAttr: Symbol = getClass("scala.deprecated")
+    lazy val MigrationAnnotationClass: Symbol = getClass("scala.annotation.migration")
     lazy val BeanPropertyAttr: Symbol = getClass(sn.BeanProperty)
     lazy val BooleanBeanPropertyAttr: Symbol = getClass(sn.BooleanBeanProperty)
     
@@ -572,18 +577,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     val unboxMethod = new HashMap[Symbol, Symbol] // Type -> Method
     val boxMethod = new HashMap[Symbol, Symbol] // Type -> Method
 
-    def isUnbox(m: Symbol) = (m.name == nme.unbox) && cond(m.tpe) { 
-      case MethodType(_, restpe) => cond(unboxMethod get restpe.typeSymbol) {
-        case Some(`m`)  => true
-      }
-    }
-
-    /** Test whether a method symbol is that of a boxing method. */
-    def isBox(m: Symbol) = (boxMethod.valuesIterator contains m) && cond(m.tpe) {
-      case MethodType(List(arg), _) => cond(boxMethod get arg.tpe.typeSymbol) {
-        case Some(`m`) => true
-      }
-    }
+    def isUnbox(m: Symbol) = unboxMethod.valuesIterator contains m
+    def isBox(m: Symbol) = boxMethod.valuesIterator contains m
 
     val refClass = new HashMap[Symbol, Symbol]
     val abbrvTag = new HashMap[Symbol, Char]
@@ -769,13 +764,15 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       Any_equals = newMethod(AnyClass, nme.equals_, anyparam, booltype)
       Any_hashCode = newMethod(AnyClass, nme.hashCode_, Nil, inttype)
       Any_toString = newMethod(AnyClass, nme.toString_, Nil, stringtype)
+      Any_## = newMethod(AnyClass, nme.HASHHASH, Nil, inttype) setFlag FINAL
 
       Any_isInstanceOf = newPolyMethod(
         AnyClass, nme.isInstanceOf_, tparam => booltype) setFlag FINAL
       Any_asInstanceOf = newPolyMethod(
         AnyClass, nme.asInstanceOf_, tparam => tparam.typeConstructor) setFlag FINAL
 
-      // members of class java.lang.{Object, String}
+      // members of class java.lang.{ Object, String }
+      Object_## = newMethod(ObjectClass, nme.HASHHASH, Nil, inttype) setFlag FINAL
       Object_== = newMethod(ObjectClass, nme.EQ, anyrefparam, booltype) setFlag FINAL
       Object_!= = newMethod(ObjectClass, nme.NE, anyrefparam, booltype) setFlag FINAL
       Object_eq = newMethod(ObjectClass, nme.eq, anyrefparam, booltype) setFlag FINAL

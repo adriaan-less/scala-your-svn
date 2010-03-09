@@ -13,6 +13,7 @@ import ast.TreeGen
 import util.{HashSet, Position, NoPosition}
 import util.Statistics._
 import Flags._
+import scala.util.control.ControlThrowable
  
 /* A standard type pattern match:
   case ErrorType =>
@@ -225,6 +226,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
     override def normalize = maybeRewrap(underlying.normalize)
     override def dealias = maybeRewrap(underlying.dealias)
     override def cloneInfo(owner: Symbol) = maybeRewrap(underlying.cloneInfo(owner))
+    override def atOwner(owner: Symbol) = maybeRewrap(underlying.atOwner(owner))
     override def prefixString = underlying.prefixString
     override def isComplete = underlying.isComplete
     override def complete(sym: Symbol) = underlying.complete(sym)
@@ -716,7 +718,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
         if (sym == btssym) return mid
         else if (sym isLess btssym) hi = mid - 1
         else if (btssym isLess sym) lo = mid + 1
-        else throw new Error()
+        else abort()
       }
       -1
     }
@@ -725,6 +727,10 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      *  owned by `owner'. Identity for all other types.
      */
     def cloneInfo(owner: Symbol) = this
+
+    /** Make sure this type is correct as the info of given owner; clone it if not.
+     */
+    def atOwner(owner: Symbol) = this
 
     protected def objectPrefix = "object "
     protected def packagePrefix = "package "
@@ -984,6 +990,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
       incCounter(singletonBaseTypeSeqCount)
       underlying.baseTypeSeq prepend this
     }
+    override def isHigherKinded = false // singleton type classifies objects, thus must be kind *
     override def safeToString: String = prefixString + "type"
 /*
     override def typeOfThis: Type = typeSymbol.typeOfThis
@@ -1100,9 +1107,9 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
         underlyingPeriod = currentPeriod
         if (!isValid(period)) {
           underlyingCache = pre.memberType(sym).resultType;
+          assert(underlyingCache ne this, this)
         }
       }
-      assert(underlyingCache ne this, this)
       underlyingCache
     }
 
@@ -1703,20 +1710,20 @@ A type's typeSymbol should never be inspected directly.
     def normalize0: Type = 
       if (pre eq WildcardType) WildcardType // arises when argument-dependent types are approximated (see def depoly in implicits)
       else if (sym.isAliasType) { // beta-reduce 
-        if (sym.info.typeParams.length == args.length || !isHigherKinded) { 
+        if (sym.info.typeParams.length == args.length || !isHigherKinded) {
           /* !isHigherKinded && sym.info.typeParams.length != args.length only happens when compiling e.g., 
            `val x: Class' with -Xgenerics, while `type Class = java.lang.Class' had already been compiled without -Xgenerics */
           val xform = transform(sym.info.resultType)
           assert(xform ne this, this)
           xform.normalize // cycles have been checked in typeRef
-        } else {
-          PolyType(typeParams, transform(sym.info.resultType).normalize)  // eta-expand
+        } else { // should rarely happen, if at all
+          PolyType(sym.info.typeParams, transform(sym.info.resultType).normalize)  // eta-expand -- for regularity, go through sym.info for typeParams
           // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         }
-      } else if (isHigherKinded) { 
+      } else if (isHigherKinded) {
         // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
-        // @M: initialize needed (see test/files/pos/ticket0137.scala)
-        PolyType(typeParams, typeRef(pre, sym.initialize, dummyArgs))
+        // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
+        PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
         //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
@@ -1902,6 +1909,12 @@ A type's typeSymbol should never be inspected directly.
       copyMethodType(this, vparams, resultType.substSym(params, vparams).cloneInfo(owner))
     }
 
+    override def atOwner(owner: Symbol) = 
+      if ((params exists (_.owner != owner)) || (resultType.atOwner(owner) ne resultType))
+        cloneInfo(owner) 
+      else
+        this
+
     override def kind = "MethodType"
   }
 
@@ -1922,6 +1935,7 @@ A type's typeSymbol should never be inspected directly.
    */
   case class PolyType(override val typeParams: List[Symbol], override val resultType: Type)
        extends Type {
+    // assert(!(typeParams contains NoSymbol), this)
 
     override def paramSectionCount: Int = resultType.paramSectionCount
     override def paramss: List[List[Symbol]] = resultType.paramss
@@ -1959,6 +1973,12 @@ A type's typeSymbol should never be inspected directly.
       val tparams = cloneSymbols(typeParams, owner)
       PolyType(tparams, resultType.substSym(typeParams, tparams).cloneInfo(owner))
     }
+
+    override def atOwner(owner: Symbol) = 
+      if ((typeParams exists (_.owner != owner)) || (resultType.atOwner(owner) ne resultType))
+        cloneInfo(owner) 
+      else
+        this
 
     override def kind = "PolyType"
   }
@@ -2043,6 +2063,9 @@ A type's typeSymbol should never be inspected directly.
       val tparams = cloneSymbols(quantified, owner)
       ExistentialType(tparams, underlying.substSym(quantified, tparams))
     }
+
+    override def atOwner(owner: Symbol) = 
+      if (quantified exists (_.owner != owner)) cloneInfo(owner) else this
 
     override def kind = "ExistentialType"
 
@@ -2551,7 +2574,7 @@ A type's typeSymbol should never be inspected directly.
       case tv@TypeVar(_, constr) => tv.applyArgs(args)
       case ErrorType => tycon
       case WildcardType => tycon // needed for neg/t0226
-      case _ => throw new Error(debugString(tycon))
+      case _ => abort(debugString(tycon))
     }
 
   /** A creator for type parameterizations 
@@ -3092,17 +3115,13 @@ A type's typeSymbol should never be inspected directly.
 
     var capturedPre = emptySymMap
 
-    def stabilize(pre: Type, clazz: Symbol): Type = {
-      capturedPre get clazz match {
-        case Some(qvar) =>
-          qvar
-        case _ =>
+    def stabilize(pre: Type, clazz: Symbol): Type =
+      capturedPre.getOrElse(clazz, {
           val qvar = clazz freshExistential ".type" setInfo singletonBounds(pre)
           capturedPre += (clazz -> qvar)
           capturedParams = qvar :: capturedParams
           qvar
-      }
-    }.tpe
+      }).tpe
 
     /** Return pre.baseType(clazz), or if that's NoType and clazz is a refinement, pre itself.
      *  See bug397.scala for an example where the second alternative is needed.
@@ -3152,9 +3171,7 @@ A type's typeSymbol should never be inspected directly.
             if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) 
             //@M! see test pos/tcpoly_return_overriding.scala why mapOver is necessary
             else {
-              def throwError : Nothing = throw new Error(
-                "" + tp + sym.locationString + " cannot be instantiated from " + pre.widen
-              )
+              def throwError = abort("" + tp + sym.locationString + " cannot be instantiated from " + pre.widen)
                                     
               def instParam(ps: List[Symbol], as: List[Type]): Type = 
                 if (ps.isEmpty) throwError
@@ -3163,7 +3180,7 @@ A type's typeSymbol should never be inspected directly.
                   appliedType(as.head, args mapConserve (this)) // @M: was as.head   
                 else instParam(ps.tail, as.tail);
               val symclazz = sym.owner
-              if (symclazz == clazz && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
+              if (symclazz == clazz && !pre.isInstanceOf[TypeVar] && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
                 pre.baseType(symclazz) match {
                   case TypeRef(_, basesym, baseargs) =>
                     //Console.println("instantiating " + sym + " from " + basesym + " with " + basesym.typeParams + " and " + baseargs+", pre = "+pre+", symclazz = "+symclazz);//DEBUG
@@ -3203,7 +3220,7 @@ A type's typeSymbol should never be inspected directly.
 
     def subst(tp: Type, sym: Symbol, from: List[Symbol], to: List[T]): Type =
       if (from.isEmpty) tp
-      else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(tp, from))
+      // else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(tp, from))
       else if (matches(from.head, sym)) toType(tp, to.head)
       else subst(tp, sym, from.tail, to.tail)
 
@@ -3259,7 +3276,7 @@ A type's typeSymbol should never be inspected directly.
     override def apply(tp: Type): Type = if (from.isEmpty) tp else {
       def subst(sym: Symbol, from: List[Symbol], to: List[Symbol]): Symbol =
         if (from.isEmpty) sym
-        else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(sym, from))
+        // else if (to.isEmpty) error("Unexpected substitution on '%s': from = %s but to == Nil".format(sym, from))
         else if (matches(from.head, sym)) to.head
         else subst(sym, from.tail, to.tail)
       tp match {
@@ -3578,9 +3595,9 @@ A type's typeSymbol should never be inspected directly.
     }
   }
 
-  class MissingAliasException extends Exception
-  val missingAliasException = new MissingAliasException
-  class MissingTypeException extends Exception
+  class MissingAliasControl extends ControlThrowable
+  val missingAliasException = new MissingAliasControl
+  class MissingTypeControl extends ControlThrowable
 
   object adaptToNewRunMap extends TypeMap {
     private def adaptToNewRun(pre: Type, sym: Symbol): Symbol = {
@@ -3592,7 +3609,7 @@ A type's typeSymbol should never be inspected directly.
         var rebind0 = pre.findMember(sym.name, BRIDGE, 0, true)
         if (rebind0 == NoSymbol) {
           if (sym.isAliasType) throw missingAliasException
-          throw new MissingTypeException // For build manager purposes
+          throw new MissingTypeControl // For build manager purposes
           //assert(false, pre+"."+sym+" does no longer exist, phase = "+phase)
         }
         /** The two symbols have the same fully qualified name */
@@ -3637,9 +3654,9 @@ A type's typeSymbol should never be inspected directly.
             if ((pre1 eq pre) && (sym1 eq sym) && (args1 eq args)/* && sym.isExternal*/) tp
             else typeRef(pre1, sym1, args1)
           } catch {
-            case ex: MissingAliasException =>
+            case ex: MissingAliasControl =>
               apply(tp.dealias)
-            case _: MissingTypeException =>
+            case _: MissingTypeControl =>
               NoType
           }
         }
@@ -3915,10 +3932,10 @@ A type's typeSymbol should never be inspected directly.
          tp1.isImplicit == tp2.isImplicit)
       case (PolyType(tparams1, res1), PolyType(tparams2, res2)) => 
         // assert((tparams1 map (_.typeParams.length)) == (tparams2 map (_.typeParams.length)))
-        (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210 
+        (tparams1.length == tparams2.length) && (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210 
           res1 =:= res2.substSym(tparams2, tparams1)
       case (ExistentialType(tparams1, res1), ExistentialType(tparams2, res2)) =>
-        (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210
+        (tparams1.length == tparams2.length) && (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && // @M looks like it might suffer from same problem as #2210
           res1 =:= res2.substSym(tparams2, tparams1)
       case (TypeBounds(lo1, hi1), TypeBounds(lo2, hi2)) =>
         lo1 =:= lo2 && hi1 =:= hi2
@@ -4042,6 +4059,7 @@ A type's typeSymbol should never be inspected directly.
 //            assert((tparams1 map (_.typeParams.length)) == (tparams2 map (_.typeParams.length)))
               // @M looks like it might suffer from same problem as #2210
               return (
+                (tparams1.length == tparams2.length) && // corresponds does not check length of two sequences before checking the predicate
                 (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && 
                 res1 =:= res2.substSym(tparams2, tparams1)
               )
@@ -4052,6 +4070,7 @@ A type's typeSymbol should never be inspected directly.
           case ExistentialType(tparams2, res2) =>
             // @M looks like it might suffer from same problem as #2210
             return (
+              (tparams1.length == tparams2.length) && // corresponds does not check length of two sequences before checking the predicate -- faster & needed to avoid crasher in #2956
               (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && 
               res1 =:= res2.substSym(tparams2, tparams1)
             )
@@ -4771,7 +4790,7 @@ A type's typeSymbol should never be inspected directly.
         res
       case TypeVar(_, constr) => 
         if (constr.instValid) constr.inst
-        else throw new Error("trying to do lub/glb of typevar "+tp)
+        else abort("trying to do lub/glb of typevar "+tp)
       case t => t
     }
     val strippedTypes = ts mapConserve (stripType)
@@ -4830,10 +4849,9 @@ A type's typeSymbol should never be inspected directly.
       case List() => NothingClass.tpe
       case List(t) => t
       case ts @ PolyType(tparams, _) :: _ =>
-        PolyType(
-          (tparams, matchingBounds(ts, tparams).transpose).zipped map
-            ((tparam, bounds) => tparam.cloneSymbol.setInfo(glb(bounds, depth))),
-          lub0(matchingInstTypes(ts, tparams)))
+        val tparams1 = (tparams, matchingBounds(ts, tparams).transpose).zipped map
+          ((tparam, bounds) => tparam.cloneSymbol.setInfo(glb(bounds, depth)))
+        PolyType(tparams1, lub0(matchingInstTypes(ts, tparams1)))
       case ts @ MethodType(params, _) :: rest =>
         MethodType(params, lub0(matchingRestypes(ts, params map (_.tpe))))
       case ts @ TypeBounds(_, _) :: rest =>
@@ -4861,14 +4879,14 @@ A type's typeSymbol should never be inspected directly.
                 val symtypes =
                   (narrowts, syms).zipped map ((t, sym) => t.memberInfo(sym).substThis(t.typeSymbol, lubThisType))
                 if (proto.isTerm) // possible problem: owner of info is still the old one, instead of new refinement class
-                  proto.cloneSymbol(lubRefined.typeSymbol).setInfo(lub(symtypes, decr(depth)))
+                  proto.cloneSymbol(lubRefined.typeSymbol).setInfoOwnerAdjusted(lub(symtypes, decr(depth)))
                 else if (symtypes.tail forall (symtypes.head =:=))
-                  proto.cloneSymbol(lubRefined.typeSymbol).setInfo(symtypes.head)
+                  proto.cloneSymbol(lubRefined.typeSymbol).setInfoOwnerAdjusted(symtypes.head)
                 else {
                   def lubBounds(bnds: List[TypeBounds]): TypeBounds =
                     TypeBounds(glb(bnds map (_.lo), decr(depth)), lub(bnds map (_.hi), decr(depth)))
                   lubRefined.typeSymbol.newAbstractType(proto.pos, proto.name)
-                    .setInfo(lubBounds(symtypes map (_.bounds)))
+                    .setInfoOwnerAdjusted(lubBounds(symtypes map (_.bounds)))
                 }
               }
             }
@@ -4930,10 +4948,9 @@ A type's typeSymbol should never be inspected directly.
       case List() => AnyClass.tpe
       case List(t) => t
       case ts @ PolyType(tparams, _) :: _ =>
-        PolyType(
-          (tparams, matchingBounds(ts, tparams).transpose).zipped map
-          ((tparam, bounds) => tparam.cloneSymbol.setInfo(lub(bounds, depth))),
-          glb0(matchingInstTypes(ts, tparams)))
+        val tparams1 = (tparams, matchingBounds(ts, tparams).transpose).zipped map
+          ((tparam, bounds) => tparam.cloneSymbol.setInfo(lub(bounds, depth)))
+        PolyType(tparams1, glb0(matchingInstTypes(ts, tparams1)))
       case ts @ MethodType(params, _) :: rest =>
         MethodType(params, glb0(matchingRestypes(ts, params map (_.tpe))))
       case ts @ TypeBounds(_, _) :: rest =>
@@ -4967,7 +4984,7 @@ A type's typeSymbol should never be inspected directly.
                 ) yield alt
                 val symtypes = syms map glbThisType.memberInfo
                 assert(!symtypes.isEmpty)
-                proto.cloneSymbol(glbRefined.typeSymbol).setInfo(
+                proto.cloneSymbol(glbRefined.typeSymbol).setInfoOwnerAdjusted(
                   if (proto.isTerm) glb(symtypes, decr(depth))
                   else {
                     def isTypeBound(tp: Type) = tp match {
@@ -5150,15 +5167,15 @@ A type's typeSymbol should never be inspected directly.
 
 // Errors and Diagnostics -----------------------------------------------------
 
-  /** An exception signalling a type error */
-  class TypeError(var pos: Position, val msg: String) extends java.lang.Error(msg) {
+  /** A throwable signalling a type error */
+  class TypeError(var pos: Position, val msg: String) extends Throwable(msg) with ControlThrowable {
     def this(msg: String) = this(NoPosition, msg)
   }
 
-  class NoCommonType(tps: List[Type]) extends java.lang.Error(
-    "lub/glb of incompatible types: " + tps.mkString("", " and ", ""))
+  class NoCommonType(tps: List[Type]) extends Throwable(
+    "lub/glb of incompatible types: " + tps.mkString("", " and ", "")) with ControlThrowable
 
-  /** An exception signalling a malformed type */
+  /** A throwable signalling a malformed type */
   class MalformedType(msg: String) extends TypeError(msg) {
     def this(pre: Type, tp: String) = this("malformed type: " + pre + "#" + tp)
   }

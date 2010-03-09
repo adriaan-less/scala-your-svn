@@ -16,40 +16,38 @@ import scala.tools.nsc.Properties.{ versionMsg, setProp }
 import scala.tools.nsc.util.CommandLineParser
 import scala.tools.nsc.io
 import scala.tools.nsc.interpreter.returning
-import io.{ Path }
+import io.{ Path, Process }
 
 class ConsoleRunner extends DirectRunner {
-
-  case class TestSet(loc: String,
-                     filter: Option[(String, Boolean)],
-                     kind: String,
-                     msg: String)
+  import PathSettings.{ srcDir, testRoot }
+  
+  case class TestSet(kind: String, filter: Path => Boolean, msg: String)
 
   val testSets = {
-    val fileFilter = Some((".scala", true))
+    val pathFilter: Path => Boolean = _ hasExtension "scala"
+
     List(
-      TestSet("pos", fileFilter, "pos",
-              "Testing compiler (on files whose compilation should succeed)"),
-      TestSet("neg", fileFilter, "neg",
-              "Testing compiler (on files whose compilation should fail)"),
-      TestSet("run", fileFilter, "run", "Testing JVM backend"),
-      TestSet("jvm", fileFilter, "jvm", "Testing JVM backend"),
-      TestSet("res", Some((".res", false)), "res",
-              "Testing resident compiler"),
-      TestSet("buildmanager", Some((".nothing", true)), "buildmanager", "Testing Build Manager"),
-      TestSet("shootout", fileFilter, "shootout", "Testing shootout tests"),
-      TestSet("script", fileFilter, "script", "Testing script tests"),
-      TestSet("scalacheck", fileFilter, "scalacheck", "Testing ScalaCheck tests"),
-      TestSet("scalap", fileFilter, "scalap", "Run scalap decompiler tests"))
+      TestSet("pos", pathFilter, "Testing compiler (on files whose compilation should succeed)"),
+      TestSet("neg", pathFilter, "Testing compiler (on files whose compilation should fail)"),
+      TestSet("run", pathFilter, "Testing JVM backend"),
+      TestSet("jvm", pathFilter, "Testing JVM backend"),
+      TestSet("res", x => x.isFile && (x hasExtension "res"), "Testing resident compiler"),              
+      TestSet("buildmanager", _.isDirectory, "Testing Build Manager"),
+      TestSet("shootout", pathFilter, "Testing shootout tests"),
+      TestSet("script", pathFilter, "Testing script tests"),
+      TestSet("scalacheck", pathFilter, "Testing ScalaCheck tests"),
+      TestSet("scalap", pathFilter, "Run scalap decompiler tests")
+    )
   }
 
   var fileManager: ConsoleFileManager = _
 
   private var testFiles: List[File] = List()
   private val errors = PartestDefaults.errorCount
-
-  private val testSetArgMap = testSets map (x => ("--" + x.loc) -> x) toMap
-  private val testSetArgs = testSets map ("--" + _.loc)
+  private val testSetKinds  = testSets map (_.kind)
+  private val testSetArgs   = testSets map ("--" + _.kind)
+  private val testSetArgMap = testSetArgs zip testSets toMap
+  
   def denotesTestSet(arg: String) = testSetArgs contains arg
   def denotesTestFile(arg: String) = (arg endsWith ".scala") || (arg endsWith ".res")
   def denotesTestDir(arg: String) = Path(arg).isDirectory
@@ -61,9 +59,13 @@ class ConsoleRunner extends DirectRunner {
     "--pack", "--all", "--verbose", "--show-diff", "--show-log",
     "--failed", "--version", "--ansi", "--debug"
   ) ::: testSetArgs
+  
+  private val binaryArgs = List(
+    "--grep", "--srcpath", "--buildpath", "--classpath"
+  )
 
   def main(argstr: String) {
-    val parsed = CommandLineParser(argstr) withUnaryArguments unaryArgs
+    val parsed = CommandLineParser(argstr) withUnaryArgs unaryArgs withBinaryArgs binaryArgs
     val args = parsed.residualArgs
     
     /** Early return on no args, version, or invalid args */
@@ -84,12 +86,6 @@ class ConsoleRunner extends DirectRunner {
       else new ConsoleFileManager  // auto detection, see ConsoleFileManager.findLatest
     
     def argNarrowsTests(x: String) = denotesTestSet(x) || denotesTestFile(x) || denotesTestDir(x)
-    val enabledTestSets = {
-      val enabledArgs = testSetArgs filter parsed.isSet
-      
-      if (args.isEmpty && (enabledArgs.isEmpty || (parsed isSet "--all"))) testSets
-      else enabledArgs map testSetArgMap
-    }
 
     NestUI._verbose       = parsed isSet "--verbose"
     fileManager.showDiff  = parsed isSet "--show-diff"
@@ -98,16 +94,35 @@ class ConsoleRunner extends DirectRunner {
     
     if (parsed isSet "--ansi") NestUI initialize NestUI.MANY
     if (parsed isSet "--timeout") fileManager.timeout = parsed("--timeout")
-    if (parsed isSet "--debug") setProp("partest.debug", "true")  
+    if (parsed isSet "--debug") setProp("partest.debug", "true")
     
-    testFiles :::= args map { arg =>
-      val file = new File(arg)
-      if (!file.exists) {
-        NestUI.failure("File \"%s\" not found\n" format arg)
-        System.exit(1)
+    def addTestFile(file: File) = {
+      if (!file.exists)
+        NestUI.failure("Test file '%s' not found, skipping.\n" format file)
+      else {
+        NestUI.verbose("adding test file " + file)
+        testFiles +:= file
       }
+    }
 
-      returning[File](file)(x => NestUI.verbose("adding test file " + x))
+    // If --grep is given we suck in every file it matches.
+    parsed get "--grep" foreach { expr =>
+      val allFiles = srcDir.deepList() filter (_ hasExtension "scala") map (_.toFile) toList
+      val files = allFiles filter (_.slurp() contains expr)
+      
+      if (files.isEmpty) NestUI.failure("--grep string '%s' matched no files." format expr)
+      else NestUI.verbose("--grep string '%s' matched %d file(s)".format(expr, files.size)) 
+
+      files foreach (x => addTestFile(x.jfile))
+    }
+    args foreach (x => addTestFile(new File(x)))
+    
+    // If no file arguments were given, we assume --all
+    val enabledTestSets: List[TestSet] = {
+      val enabledArgs = testSetArgs filter parsed.isSet
+      
+      if (args.isEmpty && !(parsed isSet "--grep") && (enabledArgs.isEmpty || (parsed isSet "--all"))) testSets
+      else enabledArgs map testSetArgMap
     }
     
     val dir =
@@ -120,7 +135,7 @@ class ConsoleRunner extends DirectRunner {
     val vmName = "%s (build %s, %s)".format(javaVmName, javaVmVersion, javaVmInfo)
     val vmOpts = fileManager.JAVA_OPTS
     
-    NestUI.verbose("enabled test sets: " + (enabledTestSets map (_.loc) mkString " "))
+    NestUI.verbose("enabled test sets: " + (enabledTestSets map (_.kind) mkString " "))
 
     List(
       "Scala compiler classes in: " + dir,
@@ -129,7 +144,8 @@ class ConsoleRunner extends DirectRunner {
       "Java binaries in:          " + vmBin,
       "Java runtime is:           " + vmName,
       "Java options are:          " + vmOpts,
-      "Source directory is:       " + fileManager.srcDir.path
+      "Source directory is:       " + srcDir,
+      ""
     ) foreach (x => NestUI outline (x + "\n"))
 
     val start = System.currentTimeMillis
@@ -159,9 +175,9 @@ class ConsoleRunner extends DirectRunner {
   }
 
   def runTests(testSet: TestSet): (Int, Int) = {
-    val TestSet(loc, filter, kind, msg) = testSet
+    val TestSet(kind, filter, msg) = testSet    
 
-    fileManager.getFiles(loc, true, filter) match {
+    fileManager.getFiles(kind, filter) match {
       case Nil    => NestUI.verbose("test dir empty\n") ; (0, 0)
       case files  =>
         NestUI.verbose("test files: "+files)
@@ -174,44 +190,20 @@ class ConsoleRunner extends DirectRunner {
    * @return (success count, failure count)
    */
   def testCheckAll(enabledSets: List[TestSet]): (Int, Int) = {
-    def runTestsFiles = if (!testFiles.isEmpty) {
-      def absName(f: File): String = f.getAbsoluteFile.getCanonicalPath
-
-      def kindOf(f: File): String = {
-        val firstName = absName(f)
-        val len = fileManager.srcDirName.length
-        val filesPos = firstName.indexOf(fileManager.srcDirName)
-        if (filesPos == -1) {
-          NestUI.failure("invalid test file: "+firstName+"\n")
-          Predef.exit(1)
-        } else {
-          val short = firstName.substring(filesPos+len+1, filesPos+len+1+3)
-          val shortKinds = List("pos", "neg", "run", "jvm", "res")
-          if (shortKinds contains short) short
-          else short match {
-            case "sho" => "shootout"
-            case "scr" => "script"
-            case "sca" => "scalacheck"
-            case "bui" => "buildmanager"
-          }
-        }
-      }
-
-      val fstKind = kindOf(testFiles.head)
-      NestUI.verbose("all test files expected to have kind "+fstKind)
-      if (!testFiles.forall(kindOf(_) equals fstKind)) {
-        NestUI.failure("test files have different kinds\n")
-        Predef.exit(1)
-      } else {
+    def kindOf(f: File) = (srcDir relativize Path(f).normalize).segments.head
+        
+    val (valid, invalid) = testFiles partition (x => testSetKinds contains kindOf(x))
+    invalid foreach (x => NestUI.failure("Invalid test file '%s', skipping.\n" format x))
+    
+    val runTestsFileLists =
+      for ((kind, files) <- valid groupBy kindOf toList) yield {
         NestUI.outline("\nTesting individual files\n")
-        resultsToStatistics(runTestsForFiles(testFiles, fstKind))
+        resultsToStatistics(runTestsForFiles(files, kind))
       }
-    } else (0, 0)
 
-    NestUI.verbose("run sets: "+enabledSets)
-
-    val results = List(runTestsFiles) ::: (enabledSets map runTests)
-    results reduceLeft { (p: (Int, Int), q: (Int, Int)) =>
-      (p._1+q._1, p._2+q._2) }
+    NestUI.verbose("Run sets: "+enabledSets)
+    val results = runTestsFileLists ::: (enabledSets map runTests)
+    
+    (results map (_._1) sum, results map (_._2) sum)
   }
 }

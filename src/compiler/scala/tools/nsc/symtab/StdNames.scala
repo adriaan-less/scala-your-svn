@@ -214,6 +214,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val PERCENT = encode("%")
     val EQL = encode("=")
     val USCOREEQL = encode("_=")
+    val HASHHASH = encode("##")
 
     val Nothing = newTermName("Nothing")
     val Null = newTermName("Null")
@@ -289,6 +290,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val getCause = newTermName("getCause")
     val getClass_ = newTermName("getClass")
     val getMethod_ = newTermName("getMethod")
+    val hash_ = newTermName("hash")
     val hashCode_ = newTermName("hashCode")
     val hasNext = newTermName("hasNext")
     val head = newTermName("head")
@@ -371,6 +373,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val NEraw = newTermName("!=")
     val LEraw = newTermName("<=")
     val GEraw = newTermName(">=")
+    val DOLLARraw = newTermName("$")  
 
     // value-conversion methods
     val toByte = newTermName("toByte")
@@ -413,7 +416,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val String       : Name
     val Throwable    : Name
     val NPException  : Name // NullPointerException
-    val NLRException : Name = newTermName("scala.runtime.NonLocalReturnException")
+    val NLRControl   : Name = newTermName("scala.runtime.NonLocalReturnControl")
     val ValueType    : Name
     val Serializable : Name
     val BeanProperty : Name

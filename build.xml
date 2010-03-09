@@ -147,7 +147,7 @@ PROPERTIES
   <property name="lib.dir" value="${basedir}/lib"/>
   <property name="lib-ant.dir" value="${lib.dir}/ant"/>
   <property name="src.dir" value="${basedir}/src"/>
-  <property name="test.dir" value="${basedir}/test"/>
+  <property name="partest.dir" value="${basedir}/test"/>
 
   <!-- Loads custom properties definitions -->
   <property file="${basedir}/build.properties"/>
@@ -161,6 +161,7 @@ PROPERTIES
   <property name="comp.starr.jar" value="${lib.dir}/scala-compiler.jar"/>
   <property name="jline.jar" value="${lib.dir}/jline.jar"/>
   <property name="ant.jar" value="${ant.home}/lib/ant.jar"/>
+  <property name="scalacheck.jar" value="${lib.dir}/ScalaCheck.jar"/>
 
   <!-- Sets location of build folders -->
   <property name="build.dir" value="${basedir}/build"/>
@@ -257,10 +258,10 @@ INITIALISATION
   <!-- Define tasks that can be run with Starr -->
     <path id="starr.classpath">
       <pathelement location="${lib.starr.jar}"/>
-      <pathelement location="${lib.dir}/forkjoin.jar"/>
       <pathelement location="${comp.starr.jar}"/>
       <pathelement location="${lib.dir}/fjbg.jar"/>
       <pathelement location="${lib.dir}/msil.jar"/>
+      <pathelement location="${lib.dir}/forkjoin.jar"/>
       <pathelement location="${ant.jar}"/>
     </path>
     <taskdef resource="scala/tools/ant/sabbus/antlib.xml" classpathref="starr.classpath"/>
@@ -342,12 +343,12 @@ LOCAL REFERENCE BUILD (LOCKER)
       <include name="**/*.scala"/>
       <compilationpath>
         <pathelement location="${build-locker.dir}/classes/library"/>
-        <pathelement location="${lib.dir}/forkjoin.jar"/>
         <pathelement location="${build-locker.dir}/classes/compiler"/>
         <pathelement location="${lib.dir}/fjbg.jar"/>
         <pathelement location="${lib.dir}/msil.jar"/>
-        <pathelement location="${jline.jar}"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${jline.jar}"/>
       </compilationpath>
     </scalacfork>
     <propertyfile file="${build-locker.dir}/classes/compiler/compiler.properties">
@@ -374,10 +375,10 @@ LOCAL REFERENCE BUILD (LOCKER)
     <touch file="${build-locker.dir}/all.complete" verbose="no"/>
     <path id="locker.classpath">
       <pathelement location="${build-locker.dir}/classes/library"/>
-      <pathelement location="${lib.dir}/forkjoin.jar"/>
       <pathelement location="${build-locker.dir}/classes/compiler"/>
       <pathelement location="${lib.dir}/fjbg.jar"/>
       <pathelement location="${lib.dir}/msil.jar"/>
+      <pathelement location="${lib.dir}/forkjoin.jar"/>
       <pathelement location="${ant.jar}"/>
     </path>
   </target>
@@ -570,12 +571,12 @@ QUICK BUILD (QUICK)
       <include name="**/*.scala"/>
       <compilationpath>
         <pathelement location="${build-quick.dir}/classes/library"/>
-        <pathelement location="${forkjoin.jar}"/>
         <pathelement location="${build-quick.dir}/classes/compiler"/>
         <pathelement location="${fjbg.jar}"/>
         <pathelement location="${msil.jar}"/>
-        <pathelement location="${jline.jar}"/>
+        <pathelement location="${forkjoin.jar}"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${jline.jar}"/>
       </compilationpath>
     </scalacfork>
     <propertyfile file="${build-quick.dir}/classes/compiler/compiler.properties">
@@ -616,8 +617,8 @@ QUICK BUILD (QUICK)
       <compilationpath>
         <pathelement location="${build-quick.dir}/classes/library"/>
         <pathelement location="${build-quick.dir}/classes/compiler"/>
-        <pathelement location="${build-quick.dir}/classes/partest"/>
         <pathelement location="${build-quick.dir}/classes/scalap"/>
+        <pathelement location="${build-quick.dir}/classes/partest"/>
         <pathelement location="${ant.jar}"/>
       </compilationpath>
     </scalacfork>
@@ -684,11 +685,11 @@ QUICK BUILD (QUICK)
   <target name="quick.bin" depends="quick.pre-bin" unless="quick.bin.available">
     <path id="quick.bin.classpath">
       <pathelement location="${build-quick.dir}/classes/library"/>
-      <pathelement location="${forkjoin.jar}"/>
       <pathelement location="${build-quick.dir}/classes/compiler"/>
       <pathelement location="${build-quick.dir}/classes/scalap"/>
       <pathelement location="${fjbg.jar}"/>
       <pathelement location="${msil.jar}"/>
+      <pathelement location="${forkjoin.jar}"/>
       <pathelement location="${jline.jar}"/>
     </path>
     <taskdef name="quick-bin" classname="scala.tools.ant.ScalaTool" classpathref="quick.bin.classpath"/>
@@ -729,10 +730,10 @@ QUICK BUILD (QUICK)
   <target name="quick.done" depends="quick.bin">
     <path id="quick.classpath">
       <pathelement location="${build-quick.dir}/classes/library"/>
-      <pathelement location="${forkjoin.jar}"/>
       <pathelement location="${build-quick.dir}/classes/compiler"/>
       <pathelement location="${fjbg.jar}"/>
       <pathelement location="${msil.jar}"/>
+      <pathelement location="${forkjoin.jar}"/>
       <pathelement location="${ant.jar}"/>
     </path>
   </target>
@@ -871,6 +872,12 @@ PACKED QUICK BUILD (PACK)
     <chmod perm="ugo+rx" file="${build-pack.dir}/bin/scaladoc"/>
     <chmod perm="ugo+rx" file="${build-pack.dir}/bin/fsc"/>
     <chmod perm="ugo+rx" file="${build-pack.dir}/bin/scalap"/>
+
+	<mkdir dir="${build-pack.dir}/etc"/>
+	<exec executable="${build-pack.dir}/bin/scala" output="${build-pack.dir}/etc/scala_completion.sh" failifexecutionfails="false" >
+	  <arg line="scala.tools.util.BashCompletion" />
+    </exec>
+
     <touch file="${build-pack.dir}/bin.complete" verbose="no"/>
   </target>
   
@@ -1007,12 +1014,12 @@ BOOTSTRAPPING BUILD (STRAP)
       <include name="**/*.scala"/>
       <compilationpath>
         <pathelement location="${build-strap.dir}/classes/library"/>
-        <pathelement location="${forkjoin.jar}"/>
         <pathelement location="${build-strap.dir}/classes/compiler"/>
         <pathelement location="${fjbg.jar}"/>
         <pathelement location="${msil.jar}"/>
-        <pathelement location="${jline.jar}"/>
+        <pathelement location="${forkjoin.jar}"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${jline.jar}"/>
       </compilationpath>
     </scalacfork>
     <propertyfile file="${build-strap.dir}/classes/compiler/compiler.properties">
@@ -1053,8 +1060,8 @@ BOOTSTRAPPING BUILD (STRAP)
       <compilationpath>
         <pathelement location="${build-strap.dir}/classes/library"/>
         <pathelement location="${build-strap.dir}/classes/compiler"/>
-        <pathelement location="${build-strap.dir}/classes/partest"/>
         <pathelement location="${build-strap.dir}/classes/scalap"/>
+        <pathelement location="${build-strap.dir}/classes/partest"/>
         <pathelement location="${ant.jar}"/>
       </compilationpath>
     </scalacfork>
@@ -1385,16 +1392,23 @@ BOOTRAPING TEST AND TEST SUITE
       <exclude name="*.complete"/>
     </same>
   </target>
+  
+  <!-- this target will run only those tests found in test/debug -->
+  <target name="test.debug">
+    <antcall target="test.suite">
+      <param name="partest.srcdir" value="debug" />
+    </antcall>
+  </target>
 
   <target name="test.run" depends="pack.done">
     <partest showlog="yes" erroronfailed="yes" javacmd="${java.home}/bin/java"
              timeout="1200000" javaccmd="${javac.cmd}"
              scalacopts="${scalac.args.optimise}">
-      <classpath>
+      <compilationpath>
         <path refid="pack.classpath"/>
-        <fileset dir="${test.dir}/files/lib" includes="*.jar"/>
-      </classpath>
-      <runtests  dir="${test.dir}/files">
+        <fileset dir="${partest.dir}/files/lib" includes="*.jar" />
+      </compilationpath>
+      <runtests  dir="${partest.dir}/files">
         <include name="run/**/*.scala"/>
         <include name="jvm/**/*.scala"/>
       </runtests>
@@ -1402,25 +1416,27 @@ BOOTRAPING TEST AND TEST SUITE
   </target>
 
   <target name="test.suite" depends="pack.done">
+    <property name="partest.srcdir" value="files" />
     <partest showlog="yes" erroronfailed="yes" javacmd="${java.home}/bin/java"
-             timeout="2400000" javaccmd="${javac.cmd}"
+             timeout="2400000" javaccmd="${javac.cmd}" 
+             srcdir="${partest.srcdir}"
              scalacopts="${scalac.args.optimise}">
-      <classpath>
+      <compilationpath>
         <path refid="pack.classpath"/>
-        <fileset dir="${test.dir}/files/lib" includes="*.jar"/>
-      </classpath>
-      <postests  dir="${test.dir}/files/pos" includes="*.scala"/>
-      <negtests  dir="${test.dir}/files/neg" includes="*.scala"/>
-      <runtests  dir="${test.dir}/files">
+        <fileset dir="${partest.dir}/files/lib" includes="*.jar" />
+      </compilationpath>
+      <postests  dir="${partest.dir}/${partest.srcdir}/pos" includes="*.scala"/>
+      <negtests  dir="${partest.dir}/${partest.srcdir}/neg" includes="*.scala"/>
+      <runtests  dir="${partest.dir}/${partest.srcdir}">
         <include name="run/**/*.scala"/>
       </runtests>
-      <jvmtests dir="${test.dir}/files/jvm" includes="*.scala"/>
-      <residenttests dir="${test.dir}/files/res" includes="*.res"/>
-      <buildmanagertests dir="${test.dir}/files/buildmanager" includes="*"/>
-      <shootouttests dir="${test.dir}/files/shootout" includes="*.scala"/>
-      <scalaptests dir="${test.dir}/files/scalap" includes="**/*.scala"/>
-	  <!-- <scalachecktests dir="${test.dir}/files/scalacheck" includes="**/*.scala"/> -->
-      <!-- <scripttests dir="${test.dir}/files/script" includes="*.scala"/> -->
+      <jvmtests dir="${partest.dir}/${partest.srcdir}/jvm" includes="*.scala"/>
+	  <scalachecktests dir="${partest.dir}/${partest.srcdir}/scalacheck" includes="**/*.scala"/>
+      <residenttests dir="${partest.dir}/${partest.srcdir}/res" includes="*.res"/>
+      <buildmanagertests dir="${partest.dir}/${partest.srcdir}/buildmanager" includes="*"/>
+      <shootouttests dir="${partest.dir}/${partest.srcdir}/shootout" includes="*.scala"/>
+      <scalaptests dir="${partest.dir}/${partest.srcdir}/scalap" includes="**/*.scala"/>
+      <!-- <scripttests dir="${partest.dir}/${partest.srcdir}/script" includes="*.scala"/> -->
     </partest>
   </target>
 
@@ -1448,6 +1464,10 @@ DISTRIBUTION
     <chmod perm="ugo+rx" file="${dist.dir}/bin/scaladoc"/>
     <chmod perm="ugo+rx" file="${dist.dir}/bin/fsc"/>
     <chmod perm="ugo+rx" file="${dist.dir}/bin/scalap"/>
+    <mkdir dir="${dist.dir}/etc"/>
+    <copy toDir="${dist.dir}/etc">
+      <fileset dir="${build-pack.dir}/etc"/>
+    </copy>
   </target>
 
   <target name="dist.doc" depends="dist.base">
@@ -1577,9 +1597,9 @@ STABLE REFERENCE (STARR)
   <target name="starr.libs" depends="starr.src" if="libs.outdated">
     <copy toDir="${lib.dir}" overwrite="yes">
       <fileset dir="${build-libs.dir}">
-        <include name="forkjoin.jar"/>
         <include name="fjbg.jar"/>
         <include name="msil.jar"/>
+        <include name="forkjoin.jar"/>
       </fileset>
     </copy>
   </target>
@@ -1625,7 +1645,7 @@ POSITIONS
 
   <target name="test.positions" depends="quick.comp">
     <antcall target="test.positions.tests.sub" inheritRefs="true">
-      <param name="test.tests.srcs" value="${test.dir}/files/positions"/>
+      <param name="test.tests.srcs" value="${partest.dir}/files/positions"/>
     </antcall>
     <antcall target="test.positions.sub" inheritRefs="true">
       <param name="test.srcs" value="${src.dir}/compiler"/>
@@ -1649,13 +1669,13 @@ POSITIONS
       <param name="test.srcs" value="${src.dir}/scalap"/>
     </antcall>
     <antcall target="test.positions.tests.sub" inheritRefs="true">
-      <param name="test.tests.srcs" value="${test.dir}/files/pos"/>
+      <param name="test.tests.srcs" value="${partest.dir}/files/pos"/>
     </antcall>
     <antcall target="test.positions.tests.sub" inheritRefs="true">
-      <param name="test.tests.srcs" value="${test.dir}/files/run"/>
+      <param name="test.tests.srcs" value="${partest.dir}/files/run"/>
     </antcall>
     <antcall target="test.positions.tests.sub" inheritRefs="true">
-      <param name="test.tests.srcs" value="${test.dir}/files/neg"/>
+      <param name="test.tests.srcs" value="${partest.dir}/files/neg"/>
     </antcall>
   </target>
   

@@ -90,10 +90,10 @@ trait Namers { self: Analyzer =>
       if (sym.isModule && sym.moduleClass != NoSymbol)
         updatePosFlags(sym.moduleClass, pos, moduleClassFlags(flags))
       if (sym.owner.isPackageClass && 
-          (sym.linkedSym.rawInfo.isInstanceOf[loaders.SymbolLoader] ||
-           sym.linkedSym.rawInfo.isComplete && runId(sym.validTo) != currentRunId))
+          (sym.companionSymbol.rawInfo.isInstanceOf[loaders.SymbolLoader] ||
+           sym.companionSymbol.rawInfo.isComplete && runId(sym.validTo) != currentRunId))
         // pre-set linked symbol to NoType, in case it is not loaded together with this symbol.
-        sym.linkedSym.setInfo(NoType)
+        sym.companionSymbol.setInfo(NoType)
       sym
     }
 
@@ -310,23 +310,26 @@ trait Namers { self: Analyzer =>
         ltype = new PolyTypeCompleter(tparams, ltype, tree, sym, context) //@M
         if (sym.isTerm) skolemize(tparams)
       }
-      def copyIsSynthetic() = sym.owner.info.member(nme.copy).hasFlag(SYNTHETIC)
-      if (sym.name == nme.copy && sym.hasFlag(SYNTHETIC) ||
-          sym.name.startsWith(nme.copy + "$default$") && copyIsSynthetic()){
-        // the 'copy' method of case classes needs a special type completer to make bug0054.scala (and others)
-        // work. the copy method has to take exactly the same parameter types as the primary constructor.
+
+      if (sym.name == nme.copy || sym.name.startsWith(nme.copy + "$default$")) {
+        // it could be a compiler-generated copy method or one of its default getters
         setInfo(sym)(mkTypeCompleter(tree)(copySym => {
-          val constrType = copySym.owner.primaryConstructor.tpe
-          val subst = new SubstSymMap(copySym.owner.typeParams, tparams map (_.symbol))
-          for ((params, cparams) <- tree.asInstanceOf[DefDef].vparamss.zip(constrType.paramss);
-               (param, cparam) <- params.zip(cparams)) {
-            // need to clone the type cparam.tpe??? problem is: we don't have the new owner yet (the new param symbol)
-            param.tpt.setType(subst(cparam.tpe))
+          def copyIsSynthetic() = sym.owner.info.member(nme.copy).hasFlag(SYNTHETIC)
+          if (sym.hasFlag(SYNTHETIC) && (!sym.hasFlag(DEFAULTPARAM) || copyIsSynthetic())) {
+            // the 'copy' method of case classes needs a special type completer to make bug0054.scala (and others)
+            // work. the copy method has to take exactly the same parameter types as the primary constructor.
+            val constrType = copySym.owner.primaryConstructor.tpe
+            val subst = new SubstSymMap(copySym.owner.typeParams, tparams map (_.symbol))
+            for ((params, cparams) <- tree.asInstanceOf[DefDef].vparamss.zip(constrType.paramss);
+                 (param, cparam) <- params.zip(cparams)) {
+              // need to clone the type cparam.tpe??? problem is: we don't have the new owner yet (the new param symbol)
+              param.tpt.setType(subst(cparam.tpe))
+            }
           }
           ltype.complete(sym)
         }))
       } else setInfo(sym)(ltype)
-    }      
+    }
 
     def enterSym(tree: Tree): Context = {
       def finishWith(tparams: List[TypeDef]) { enterSymFinishWith(tree, tparams) }
@@ -723,7 +726,7 @@ trait Namers { self: Analyzer =>
 
       // add the copy method to case classes; this needs to be done here, not in SyntheticMethods, because
       // the namer phase must traverse this copy method to create default getters for its parameters.
-      Namers.this.caseClassOfModuleClass get clazz.linkedModuleOfClass.moduleClass match {
+      Namers.this.caseClassOfModuleClass get clazz.companionModule.moduleClass match {
         case Some(cdef) =>
           def hasCopy(decls: Scope) = {
             decls.iterator exists (_.name == nme.copy)
@@ -985,7 +988,7 @@ trait Namers { self: Analyzer =>
 
             val parentNamer = if (isConstr) {
               val (cdef, nmr) = moduleNamer.getOrElse {
-                val module = meth.owner.linkedModuleOfClass
+                val module = meth.owner.companionModule
                 module.initialize // call type completer (typedTemplate), adds the
                                   // module's templateNamer to classAndNamerOfModule
                 val (cdef, nmr) = classAndNamerOfModule(module)
@@ -1109,30 +1112,42 @@ trait Namers { self: Analyzer =>
       caseClassCopyMeth(cdef) foreach (namer.enterSyntheticSym(_))
     }
 
-    def typeSig(tree: Tree): Type = {
-      val sym: Symbol = tree.symbol
-      // For definitions, transform Annotation trees to AnnotationInfos, assign
-      // them to the sym's annotations. Type annotations: see Typer.typedAnnotated
 
-      // We have to parse definition annotatinos here (not in the typer when traversing
-      // the MemberDef tree): the typer looks at annotations of certain symbols; if
-      // they were added only in typer, depending on the compilation order, they would
-      // be visible or not
-      val annotated = if (sym.isModule) sym.moduleClass else sym
-      // typeSig might be called multiple times, e.g. on a ValDef: val, getter, setter
-      // parse the annotations only once.
-      if (!annotated.isInitialized) tree match {
-        case defn: MemberDef =>
-          val ainfos = defn.mods.annotations filter { _ != null } map { ann =>
-            // need to be lazy, #1782
-            LazyAnnotationInfo(() => typer.typedAnnotation(ann))
-          }
-          if (!ainfos.isEmpty)
-            annotated.setAnnotations(ainfos)
-          if (annotated.isTypeSkolem) 
-            annotated.deSkolemize.setAnnotations(ainfos) 
-        case _ =>
+    def typeSig(tree: Tree): Type = {
+
+      /** For definitions, transform Annotation trees to AnnotationInfos, assign
+       *  them to the sym's annotations. Type annotations: see Typer.typedAnnotated
+       *  We have to parse definition annotatinos here (not in the typer when traversing
+       *  the MemberDef tree): the typer looks at annotations of certain symbols; if
+       *  they were added only in typer, depending on the compilation order, they would
+       *  be visible or not
+       */
+      def annotate(annotated: Symbol) = {
+        // typeSig might be called multiple times, e.g. on a ValDef: val, getter, setter
+        // parse the annotations only once.
+        if (!annotated.isInitialized) tree match {
+          case defn: MemberDef =>
+            val ainfos = defn.mods.annotations filter { _ != null } map { ann =>
+              // need to be lazy, #1782
+              LazyAnnotationInfo(() => typer.typedAnnotation(ann))
+            }
+            if (!ainfos.isEmpty)
+              annotated.setAnnotations(ainfos)
+            if (annotated.isTypeSkolem) 
+              annotated.deSkolemize.setAnnotations(ainfos) 
+          case _ =>
+        }
       }
+
+      val sym: Symbol = tree.symbol
+
+      // @Lukas: I am not sure this is the right way to do things.
+      // We used to only decorate the module class with annotations, which is
+      // clearly wrong. Now we decorate both the class and the object. 
+      // But maybe some annotations are only meant for one of these but not for the other?
+      annotate(sym)
+      if (sym.isModule) annotate(sym.moduleClass)
+
       val result = 
         try {
           tree match {
