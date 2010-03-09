@@ -238,8 +238,8 @@ self: Analyzer =>
      * so we have to approximate (otherwise it is excluded a priori).
      */
     private def depoly(tp: Type): Type = tp match {
-      case PolyType(tparams, restpe) => tparamsToWildcards(restpe.resultApprox, tparams)
-      case _ => tp.resultApprox
+      case PolyType(tparams, restpe) => tparamsToWildcards(ApproximateDependentMap(restpe), tparams)
+      case _ => ApproximateDependentMap(tp)
     }
 
     /** Does type `dtor` dominate type `dted`?
@@ -429,7 +429,7 @@ self: Analyzer =>
 
       incCounter(plausiblyCompatibleImplicits)
 
-      //if (traceImplicits) println("typed impl for "+wildPt+"? "+info.name+":"+depoly(info.tpe)+"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
+      if (traceImplicits) println("typed impl for "+wildPt+"? "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
 
         incCounter(matchingImplicits)
