@@ -15,7 +15,6 @@ import scala.collection.immutable.{Set, ListSet}
 import scala.collection.mutable.{Map, HashMap, HashSet}
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.symtab._
-import scala.tools.nsc.util.{Position, NoPosition}
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 
 import ch.epfl.lamp.fjbg._
@@ -34,7 +33,7 @@ abstract class GenJVM extends SubComponent {
   val phaseName = "jvm"
   
   /** Create a new phase */
-  override def newPhase(p: Phase) = new JvmPhase(p)
+  override def newPhase(p: Phase): Phase = new JvmPhase(p)
 
   /** JVM code generation phase
    */
@@ -73,11 +72,13 @@ abstract class GenJVM extends SubComponent {
    */
   class BytecodeGenerator {
     import JAccessFlags._
+    
+    def debugLevel = settings.debuginfo.indexOfChoice
 
     val MIN_SWITCH_DENSITY = 0.7
     val INNER_CLASSES_FLAGS =
       (ACC_PUBLIC | ACC_PRIVATE | ACC_PROTECTED | ACC_STATIC | ACC_FINAL | ACC_INTERFACE | ACC_ABSTRACT)
-    val StringBuilderClass = definitions.getClass2("scala.StringBuilder", "scala.collection.mutable.StringBuilder").fullNameString
+    val StringBuilderClass = definitions.getClass2("scala.StringBuilder", "scala.collection.mutable.StringBuilder").fullName
     val BoxesRunTime = "scala.runtime.BoxesRunTime"
 
     val StringBuilderType = new JObjectType(StringBuilderClass)
@@ -113,9 +114,9 @@ abstract class GenJVM extends SubComponent {
 
     val fjbgContext = new FJBGContext(49, 0)
 
-    val emitSource = settings.debuginfo.level >= 1
-    val emitLines  = settings.debuginfo.level >= 2
-    val emitVars   = settings.debuginfo.level >= 3
+    val emitSource = debugLevel >= 1
+    val emitLines  = debugLevel >= 2
+    val emitVars   = debugLevel >= 3
 
     /** Write a class to disk, adding the Scala signature (pickled type information) and
      *  inner classes.
@@ -134,7 +135,7 @@ abstract class GenJVM extends SubComponent {
           pickledBytes = pickledBytes + pickle.writeIndex
           jclass.addAttribute(scalaAttr)
           currentRun.symData -= sym
-          currentRun.symData -= sym.linkedSym
+          currentRun.symData -= sym.companionSymbol
           //System.out.println("Generated ScalaSig Attr for " + sym)//debug
         case _ =>
           val markerAttr = getMarkerAttr(jclass)
@@ -184,7 +185,7 @@ abstract class GenJVM extends SubComponent {
         case _ => ()
       }
 
-      parents = parents.removeDuplicates
+      parents = parents.distinct
 
       if (parents.length > 1) {
         ifaces = new Array[String](parents.length - 1)
@@ -206,11 +207,11 @@ abstract class GenJVM extends SubComponent {
         addStaticInit(jclass, c.lookupStaticCtor)
         
         if (isTopLevelModule(c.symbol)) {
-          if (c.symbol.linkedClassOfModule == NoSymbol)
+          if (c.symbol.companionClass == NoSymbol)
             dumpMirrorClass(c.symbol, c.cunit.source.toString);
           else
             log("No mirror class for module with linked class: " +
-                c.symbol.fullNameString)
+                c.symbol.fullName)
         }
       }
       else {
@@ -222,7 +223,7 @@ abstract class GenJVM extends SubComponent {
             !(sym.name.toString contains '$') && (sym hasFlag Flags.MODULE) && !sym.isImplClass && !sym.isNestedClass
           }
         
-        val lmoc = c.symbol.linkedModuleOfClass
+        val lmoc = c.symbol.companionModule
         // add static forwarders if there are no name conflicts; see bugs #363 and #1735
         if (lmoc != NoSymbol && !c.symbol.hasFlag(Flags.INTERFACE)) {
           if (isCandidateForForwarders(lmoc) && !settings.noForwarders.value) {
@@ -333,7 +334,7 @@ abstract class GenJVM extends SubComponent {
       // put some radom value; the actual number is determined at the end
       buf.putShort(0xbaba.toShort)
 
-      for (AnnotationInfo(tp, List(exc), _) <- excs.removeDuplicates if tp.typeSymbol == definitions.ThrowsClass) {
+      for (AnnotationInfo(tp, List(exc), _) <- excs.distinct if tp.typeSymbol == definitions.ThrowsClass) {
         val Literal(const) = exc
         buf.putShort(
           cpool.addClass(
@@ -437,7 +438,7 @@ abstract class GenJVM extends SubComponent {
           && !(sym.isMethod && sym.hasFlag(Flags.LIFTED))
           && !(sym.ownerChain exists (_.isImplClass))) {  // @M don't generate java generics sigs for (members of) implementation classes, as they are monomorphic (TODO: ok?)
         val memberTpe = atPhase(currentRun.erasurePhase)(owner.thisType.memberInfo(sym))
-        // println("addGenericSignature sym: " + sym.fullNameString + " : " + memberTpe + " sym.info: " + sym.info)
+        // println("addGenericSignature sym: " + sym.fullName + " : " + memberTpe + " sym.info: " + sym.info)
         // println("addGenericSignature: "+ (sym.ownerChain map (x => (x.name, x.isImplClass))))
         erasure.javaSig(sym, memberTpe) match {
           case Some(sig) =>
@@ -543,7 +544,7 @@ abstract class GenJVM extends SubComponent {
 
     def genField(f: IField) {
       if (settings.debug.value)
-        log("Adding field: " + f.symbol.fullNameString);
+        log("Adding field: " + f.symbol.fullName);
       var attributes = 0
 
       f.symbol.annotations foreach { a => a match {
@@ -568,7 +569,7 @@ abstract class GenJVM extends SubComponent {
     def genMethod(m: IMethod) {
       if (m.isStaticCtor) return
 
-      log("Generating method " + m.symbol.fullNameString)
+      log("Generating method " + m.symbol.fullName)
       method = m
       endPC.clear
       computeLocalVarsIndex(m)
@@ -831,12 +832,17 @@ abstract class GenJVM extends SubComponent {
        *  for methods defined there - bug #1804 */
       lazy val commonParents = {
         val cps = module.info.baseClasses
-        val mps = module.linkedClassOfModule.info.baseClasses
+        val mps = module.companionClass.info.baseClasses
         cps.filter(mps contains)
       }
-      /* the setter doesn't show up in members so we inspect the name */
+      /* The setter doesn't show up in members so we inspect the name
+       * ... and clearly it helps to know how the name is encoded, see ticket #3004.
+       * This logic is grossly inadequate! Name mangling needs a devotee.
+       */
       def conflictsInCommonParent(name: Name) =
-        commonParents exists { cp => name startsWith (cp.name + "$") }
+        commonParents exists { cp => 
+          (name startsWith (cp.name + "$")) || (name containsName ("$" + cp.name + "$"))
+        }
              
       /** Should method `m' get a forwarder in the mirror class? */
       def shouldForward(m: Symbol): Boolean =
@@ -847,10 +853,10 @@ abstract class GenJVM extends SubComponent {
           && !m.isConstructor
           && !m.isStaticMember
           && !(m.owner == definitions.AnyClass) 
-          && !module.isSubClass(module.linkedClassOfModule)
+          && !module.isSubClass(module.companionClass)
           && !conflictsIn(definitions.ObjectClass, m.name)
           && !conflictsInCommonParent(m.name)
-          && !conflictsIn(module.linkedClassOfModule, m.name)
+          && !conflictsIn(module.companionClass, m.name)
         )
       
       assert(module.isModuleClass)
@@ -1011,7 +1017,7 @@ abstract class GenJVM extends SubComponent {
       varsInBlock.clear
 
       for (instr <- b) {
-        class CompilationError(msg: String) extends Error {
+        class CompilationException(msg: String) extends Exception(msg) {
           override def toString: String = {
             msg + 
             "\nCurrent method: " + method + 
@@ -1021,7 +1027,7 @@ abstract class GenJVM extends SubComponent {
             method.dump
           }
         }
-        def assert(cond: Boolean, msg: String) = if (!cond) throw new CompilationError(msg);
+        def assert(cond: Boolean, msg: String) = if (!cond) throw new CompilationException(msg)
 
         instr match {
           case THIS(clasz) =>
@@ -1137,11 +1143,11 @@ abstract class GenJVM extends SubComponent {
           case BOX(kind) =>
             val boxedType = definitions.boxedClass(kind.toType.typeSymbol)
             val mtype = new JMethodType(javaType(boxedType), Array(javaType(kind)))
-            jcode.emitINVOKESTATIC(BoxesRunTime, "boxTo" + boxedType.cleanNameString, mtype)
+            jcode.emitINVOKESTATIC(BoxesRunTime, "boxTo" + boxedType.decodedName, mtype)
 
           case UNBOX(kind) =>
             val mtype = new JMethodType(javaType(kind), Array(JObjectType.JAVA_LANG_OBJECT))
-            jcode.emitINVOKESTATIC(BoxesRunTime, "unboxTo" + kind.toType.typeSymbol.cleanNameString, mtype)
+            jcode.emitINVOKESTATIC(BoxesRunTime, "unboxTo" + kind.toType.typeSymbol.decodedName, mtype)
 
           case NEW(REFERENCE(cls)) =>
             val className = javaName(cls)
@@ -1710,7 +1716,7 @@ abstract class GenJVM extends SubComponent {
       }
 
       (if (sym.isClass || (sym.isModule && !sym.isMethod))
-        sym.fullNameString('/')
+        sym.fullName('/')
       else
         sym.simpleName.toString.trim()) + suffix
     }
@@ -1770,7 +1776,7 @@ abstract class GenJVM extends SubComponent {
 
     /** Calls to methods in 'sym' need invokeinterface? */
     def needsInterfaceCall(sym: Symbol): Boolean = {
-      log("checking for interface call: " + sym.fullNameString)
+      log("checking for interface call: " + sym.fullName)
       // the following call to 'info' may cause certain symbols to fail loading because we're
       // too late in the compilation chain (aliases to overloaded symbols will not be properly
       // resolved, see scala.Range, method super$++ that fails in UnPickler at LazyTypeRefAndAlias.complete
@@ -1836,7 +1842,7 @@ abstract class GenJVM extends SubComponent {
 
     def assert(cond: Boolean, msg: => String) = if (!cond) {
       method.dump
-      throw new Error(msg + "\nMethod: " + method)
+      abort(msg + "\nMethod: " + method)
     }
 
     def assert(cond: Boolean) { assert(cond, "Assertion failed.") }

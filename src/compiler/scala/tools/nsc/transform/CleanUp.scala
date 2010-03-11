@@ -9,7 +9,6 @@ package transform
 
 import symtab._
 import Flags._
-import scala.tools.nsc.util.Position
 import scala.collection.mutable.{ListBuffer, HashMap}
 
 abstract class CleanUp extends Transform with ast.TreeDSL {
@@ -358,7 +357,7 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
           }
 
           def useValueOperator =            
-            isMaybeBoxed(qualSym) && // may be a boxed value class
+            platform.isMaybeBoxed(qualSym) && // may be a boxed value class
             (getPrimitiveReplacementForStructuralCall isDefinedAt methSym.name) &&
             ((resType :: paramTypes) forall (x => isJavaValueClass(x.typeSymbol))) // issue #1110
           

@@ -14,7 +14,6 @@ import scala.collection.mutable._
 import scala.tools.nsc._
 import scala.tools.nsc.backend.icode._
 import scala.tools.nsc.io._
-import scala.tools.nsc.util.{Position, NoPosition, ClassRep}
 
 import ClassfileConstants._
 import Flags._
@@ -49,19 +48,11 @@ abstract class ICodeReader extends ClassfileParser {
     
     isScalaModule = cls.isModule && !cls.hasFlag(JAVA)
     log("Reading class: " + cls + " isScalaModule?: " + isScalaModule)
-    val name = cls.fullNameString('.') + (if (sym.hasFlag(MODULE)) "$" else "")
-    classPath.findClass(name) match {
-      case Some(ClassRep(bin, _)) =>
-        assert(bin.isDefined, "No classfile for " + cls)
-        classFile = bin.get.asInstanceOf[AbstractFile]
-//      if (isScalaModule)
-//        sym = cls.linkedClassOfModule
-
-//      for (s <- cls.info.members) 
-//        Console.println("" + s + ": " + s.tpe)
-        parse(classFile, sym)
-      case _ =>
-        log("Could not find: " + cls)
+    val name = cls.fullName('.') + (if (sym.hasFlag(MODULE)) "$" else "")
+    
+    classPath.findSourceFile(name) match {
+      case Some(classFile)  => parse(classFile, sym)
+      case _                => log("Could not find: " + cls)
     }
 
     (staticCode, instanceCode)
@@ -159,7 +150,7 @@ abstract class ICodeReader extends ClassfileParser {
   override def parseMethod() {
     val (jflags, sym) = parseMember(false)
     if (sym != NoSymbol) {
-      log("Parsing method " + sym.fullNameString + ": " + sym.tpe);
+      log("Parsing method " + sym.fullName + ": " + sym.tpe);
       this.method = new IMethod(sym);
       this.method.returnType = toTypeKind(sym.tpe.resultType)
       getCode(jflags).addMethod(this.method)
@@ -635,8 +626,13 @@ abstract class ICodeReader extends ClassfileParser {
     }
     if (code.containsNEW) code.resolveNEWs
   }
-
-  /** TODO: move in Definitions and remove obsolete isBox/isUnbox found there. */
+  
+  /** Note: these methods are different from the methods of the same name found
+   *  in Definitions.  These test whether a symbol represents one of the boxTo/unboxTo
+   *  methods found in BoxesRunTime.  The others test whether a symbol represents a
+   *  synthetic method from one of the fake companion classes of the primitive types,
+   *  such as Int.box(5).
+   */
   def isBox(m: Symbol): Boolean = 
     (m.owner == definitions.BoxesRunTimeClass.moduleClass
         && m.name.startsWith("boxTo"))

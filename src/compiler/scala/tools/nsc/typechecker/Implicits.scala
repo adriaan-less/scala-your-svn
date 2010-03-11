@@ -12,7 +12,7 @@ package scala.tools.nsc
 package typechecker
 
 import scala.collection.mutable.{LinkedHashMap, ListBuffer}
-import scala.tools.nsc.util.{ HashSet, Position, Set, NoPosition, SourceFile }
+import scala.tools.nsc.util.{HashSet, Set, SourceFile}
 import symtab.Flags._
 import util.Statistics._
 
@@ -302,10 +302,25 @@ self: Analyzer =>
           if (isView) {
             val found = pt.typeArgs(0)
             val req = pt.typeArgs(1)
-            typeErrorMsg(found, req)+
-            "\nNote that implicit conversions are not applicable because they are ambiguous:\n "+
-            coreMsg+"are possible conversion functions from "+ found+" to "+req
-          } else {
+            
+            /** A nice spot to explain some common situations a little
+             *  less confusingly.
+             */
+            def explanation = {
+              if ((found =:= AnyClass.tpe) && (AnyRefClass.tpe <:< req))
+                "Note: Any is not implicitly converted to AnyRef.  You can safely\n" +
+                "pattern match x: AnyRef or cast x.asInstanceOf[AnyRef] to do so."
+              else if ((found <:< AnyValClass.tpe) && (AnyRefClass.tpe <:< req))
+                "Note: primitive types are not implicitly converted to AnyRef.\n" +
+                "You can safely force boxing by casting x.asInstanceOf[AnyRef]."
+              else
+                "Note that implicit conversions are not applicable because they are ambiguous:\n "+
+                coreMsg+"are possible conversion functions from "+ found+" to "+req
+            }
+            
+            typeErrorMsg(found, req) + "\n" + explanation
+          }
+          else {
             "ambiguous implicit values:\n "+coreMsg + "match expected type "+pt
           })
         }
@@ -465,24 +480,17 @@ self: Analyzer =>
 
               // filter out failures from type inference, don't want to remove them from undetParams!
               // we must be conservative in leaving type params in undetparams
-              val uninstantiated = new ListBuffer[Symbol]
-              val detargs = adjustTypeArgs(undetParams, targs, WildcardType, uninstantiated)  // prototype == WildcardType: want to remove all inferred Nothing's
-              // even if Nothing was inferred correctly, it's okay to ignore it (if it was the only solution, we'll infer it again next time) 
-              val (okParams, okArgs) = (undetParams zip detargs) filter {case (p, a) => !uninstantiated.contains(p)} unzip
-              // TODO: optimise above line(s?) once `zipped filter` works (oh, the irony! this line is needed to get Zipped to type check...)
-
+              val (okParams, okArgs, _) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
               val subst = new TreeTypeSubstituter(okParams, okArgs)
               subst traverse itree2 
 
               // #2421b: since type inference (which may have been performed during implicit search)
               // does not check whether inferred arguments meet the bounds of the corresponding parameter (see note in solvedTypes),
               // must check again here:
-              itree2 match { // roughly equivalent to typed1(itree2, EXPRmode, wildPt), 
-                // since typed1 only forces checking of the outer tree and calls typed on the subtrees
-                // (they have already been type checked, by the typed1(itree...) above, so the subtrees are skipped by typed)
-                // inlining the essential bit here for clarity
-                //TODO: verify that these subtrees don't need re-checking
+              // TODO: I would prefer to just call typed instead of duplicating the code here, but this is probably a hotspot (and you can't just call typed, need to force re-typecheck)
+              itree2 match {
                 case TypeApply(fun, args) => typedTypeApply(itree2, EXPRmode, fun, args)
+                case Apply(TypeApply(fun, args), _) => typedTypeApply(itree2, EXPRmode, fun, args) // t2421c
                 case _ =>
               }
 
@@ -715,7 +723,7 @@ self: Analyzer =>
       val buf = new ListBuffer[List[ImplicitInfo]]
       for ((clazz, pre) <- partMap) {
         if (pre != NoType) {
-          val companion = clazz.linkedModuleOfClass
+          val companion = clazz.companionModule
           companion.moduleClass match {
             case mc: ModuleClassSymbol =>
               buf += (mc.implicitMembers map (im => 
@@ -797,8 +805,12 @@ self: Analyzer =>
                 "classType", tp, 
                 (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
                  else findSubManifest(pre) :: suffix): _*)
-            } else if (sym.isAbstractType) {
-              if (sym.isExistential) 
+            } else {
+              EmptyTree
+/* the following is dropped because it is dangerous
+ *
+             if (sym.isAbstractType) {
+              if (sym.isExistentiallyBound) 
                 EmptyTree // todo: change to existential parameter manifest
               else if (sym.isTypeParameterOrSkolem)
                 EmptyTree  // a manifest should have been found by normal searchImplicit
@@ -818,11 +830,13 @@ self: Analyzer =>
               }
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
+*/
             }
           case RefinedType(parents, decls) =>
             // refinement is not generated yet
             if (parents.length == 1) findManifest(parents.head)
-            else manifestFactoryCall("intersectionType", tp, parents map (findSubManifest(_)): _*)
+            else if (full) manifestFactoryCall("intersectionType", tp, parents map (findSubManifest(_)): _*)
+            else mot(erasure.erasure(tp0))
           case ExistentialType(tparams, result) =>
             existentialAbstraction(tparams, result) match {
               case ExistentialType(_, _) => mot(result)

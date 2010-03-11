@@ -98,7 +98,7 @@ abstract class TreeGen
       mkAttributedQualifier(firstStable.get)
 
     case _ =>
-      throw new Error("bad qualifier: " + tpe)
+      abort("bad qualifier: " + tpe)
   }
 
   /** Builds a reference to given symbol with given stable prefix. */
@@ -192,7 +192,7 @@ abstract class TreeGen
     mkTypeApply(value, tpe, (if (any) Any_asInstanceOf else Object_asInstanceOf))
 
   def mkClassOf(tp: Type): Tree = 
-    Literal(Constant(tp)) setType Predef_classOfType(tp)
+    Literal(Constant(tp)) setType ClassType(tp)
 
   def mkCheckInit(tree: Tree): Tree = {
     val tpe =

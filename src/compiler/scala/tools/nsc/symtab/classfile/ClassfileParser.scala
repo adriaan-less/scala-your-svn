@@ -14,7 +14,6 @@ import java.lang.Integer.toHexString
 import scala.collection.immutable.{Map, ListMap}
 import scala.collection.mutable.{ListBuffer, ArrayBuffer}
 import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.util.{Position, NoPosition, ClassRep}
 import scala.annotation.switch
 
 /** This abstract class implements a class file parser.
@@ -84,11 +83,11 @@ abstract class ClassfileParser {
 */
     this.in = new AbstractFileReader(file)
     if (root.isModule) {
-      this.clazz = root.linkedClassOfModule
+      this.clazz = root.companionClass
       this.staticModule = root
     } else {
       this.clazz = root
-      this.staticModule = root.linkedModuleOfClass
+      this.staticModule = root.companionModule
     }
     this.isScala = false
     this.hasMeta = false
@@ -96,7 +95,8 @@ abstract class ClassfileParser {
       parseHeader
       this.pool = new ConstantPool
       parseClass()
-    } catch {
+    }
+    catch {
       case e: MissingRequirementError => handleMissing(e)
       case e: RuntimeException        => handleError(e)
     }
@@ -244,7 +244,7 @@ abstract class ClassfileParser {
               log("Couldn't find " + name + ": " + tpe + " inside: \n" + ownerTpe)
               f = if (tpe.isInstanceOf[MethodType]) owner.newMethod(owner.pos, name).setInfo(tpe)
                   else owner.newValue(owner.pos, name).setInfo(tpe).setFlag(MUTABLE)
-              log("created fake member " + f.fullNameString)
+              log("created fake member " + f.fullName)
             }
 //            println("\townerTpe.decls: " + ownerTpe.decls)
 //            println("Looking for: " + name + ": " + tpe + " inside: " + ownerTpe.typeSymbol + "\n\tand found: " + ownerTpe.members)
@@ -429,12 +429,12 @@ abstract class ClassfileParser {
         superType :: ifaces
       }
     }
-    
+
     if (c != clazz && externalName.toString.indexOf("$") < 0) {
       if ((clazz eq NoSymbol) && (c ne NoSymbol)) clazz = c
       else throw new IOException("class file '" + in.file + "' contains wrong " + c)
     }
-    
+
     addEnclosingTParams(clazz)
     parseInnerClasses() // also sets the isScala / isScalaRaw / hasMeta flags, see r15956
     // get the class file parser to reuse scopes.
@@ -820,7 +820,7 @@ abstract class ClassfileParser {
           val srcfileLeaf = pool.getName(in.nextChar).toString.trim
           val srcpath = sym.enclosingPackage match {
             case NoSymbol => srcfileLeaf
-            case pkg => pkg.fullNameString(File.separatorChar)+File.separator+srcfileLeaf
+            case pkg => pkg.fullName(File.separatorChar)+File.separator+srcfileLeaf
           }
           srcfile0 = settings.outputDirs.srcFilesFor(in.file, srcpath).find(_.exists)
         case _ =>
@@ -842,7 +842,7 @@ abstract class ClassfileParser {
         case ENUM_TAG   =>
           val t = pool.getType(index)
           val n = pool.getName(in.nextChar)
-          val s = t.typeSymbol.linkedModuleOfClass.info.decls.lookup(n)
+          val s = t.typeSymbol.companionModule.info.decls.lookup(n)
           assert(s != NoSymbol, t)
           Some(LiteralAnnotArg(Constant(s)))
         case ARRAY_TAG  =>
@@ -953,9 +953,8 @@ abstract class ClassfileParser {
     for (entry <- innerClasses.valuesIterator) {
       // create a new class member for immediate inner classes
       if (entry.outerName == externalName) {
-        val file = global.classPath.findClass(entry.externalName.toString) match {
-          case Some(ClassRep(Some(binary: AbstractFile), _)) => binary
-          case _ => throw new AssertionError(entry.externalName)
+        val file = global.classPath.findSourceFile(entry.externalName.toString) getOrElse {
+          throw new AssertionError(entry.externalName)
         }
         enterClassAndModule(entry, new global.loaders.ClassfileLoader(file), entry.jflags)
       }
@@ -1042,7 +1041,7 @@ abstract class ClassfileParser {
         def getMember(sym: Symbol, name: Name): Symbol =
           if (static)
             if (sym == clazz) staticDefs.lookup(name)
-            else sym.linkedModuleOfClass.info.member(name)
+            else sym.companionModule.info.member(name)
           else
             if (sym == clazz) instanceDefs.lookup(name)
             else sym.info.member(name)
@@ -1060,13 +1059,13 @@ abstract class ClassfileParser {
                 atPhase(currentRun.typerPhase)(getMember(sym, innerName.toTypeName))
               else 
                 getMember(sym, innerName.toTypeName)
-            assert(s ne NoSymbol, sym + "." + innerName + " linkedModule: " + sym.linkedModuleOfClass + sym.linkedModuleOfClass.info.members)
+            assert(s ne NoSymbol, sym + "." + innerName + " linkedModule: " + sym.companionModule + sym.companionModule.info.members)
             s
 
           case None =>
             val cls = classNameToSymbol(externalName)
             cls
-            //if (static) cls.linkedClassOfModule else cls
+            //if (static) cls.companionClass else cls
         }
       }
 

@@ -10,7 +10,7 @@ package transform
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 import scala.collection.mutable.{HashMap,ListBuffer}
 import scala.collection.immutable.Set
-import scala.tools.nsc.util.Position
+import scala.util.control.ControlThrowable
 import symtab._
 import Flags._
 
@@ -192,7 +192,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             traverse(st.supertype)
           case TypeRef(pre, sym, args) =>
             if (sym == ArrayClass) args foreach traverse
-            else if (sym.isTypeParameterOrSkolem || sym.isExistential || !args.isEmpty) result = true
+            else if (sym.isTypeParameterOrSkolem || sym.isExistentiallyBound || !args.isEmpty) result = true
             else if (sym.isClass) traverse(rebindInnerClass(pre, sym)) // #2585
             else if (!sym.owner.isPackageClass) traverse(pre)
           case PolyType(_, _) | ExistentialType(_, _) =>
@@ -254,7 +254,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               }
             }
           def classSig: String = 
-            "L"+atPhase(currentRun.icodePhase)(sym.fullNameString + global.genJVM.moduleSuffix(sym)).replace('.', '/')
+            "L"+atPhase(currentRun.icodePhase)(sym.fullName + global.genJVM.moduleSuffix(sym)).replace('.', '/')
           def classSigSuffix: String = 
             "."+sym.name
           if (sym == ArrayClass)
@@ -432,6 +432,24 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
 
   override def newTyper(context: Context) = new Eraser(context)
 
+  /** An extractor object for boxed expressions
+  object Boxed {
+    def unapply(tree: Tree): Option[Tree] = tree match {
+      case LabelDef(name, params, Boxed(rhs)) =>
+        Some(treeCopy.LabelDef(tree, name, params, rhs) setType rhs.tpe)
+      case Select(_, _) if tree.symbol == BoxedUnit_UNIT =>
+        Some(Literal(()) setPos tree.pos setType UnitClass.tpe)
+      case Block(List(unboxed), ret @ Select(_, _)) if ret.symbol == BoxedUnit_UNIT =>
+        Some(if (unboxed.tpe.typeSymbol == UnitClass) tree
+             else Block(List(unboxed), Literal(()) setPos tree.pos setType UnitClass.tpe))
+      case Apply(fn, List(unboxed)) if isBox(fn.symbol) =>
+        Some(unboxed)
+      case _ =>
+        None
+    }
+  }
+   */
+
   /** The modifier typer which retypes with erased types. */
   class Eraser(context: Context) extends Typer(context) {
   
@@ -458,6 +476,11 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
      *  @return     the unboxed tree
      */
     private def unbox(tree: Tree, pt: Type): Tree = tree match {
+/*
+      case Boxed(unboxed) =>
+        println("unbox shorten: "+tree) // this never seems to kick in during build and test; therefore disabled.
+        adaptToType(unboxed, pt)
+ */
       case LabelDef(name, params, rhs) =>
         val rhs1 = unbox(rhs, pt)
         treeCopy.LabelDef(tree, name, params, rhs1) setType rhs1.tpe
@@ -564,7 +587,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
       //Console.println("adaptMember: " + tree);
       tree match {
         case Apply(TypeApply(sel @ Select(qual, name), List(targ)), List()) if tree.symbol == Any_asInstanceOf =>
-          val qual1 = typedQualifier(qual)
+          val qual1 = typedQualifier(qual, NOmode, ObjectClass.tpe) // need to have an expected type, see #3037
           val qualClass = qual1.tpe.typeSymbol
           val targClass = targ.tpe.typeSymbol
 /*
@@ -585,7 +608,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           else if (tree.symbol.owner == AnyClass)
             adaptMember(atPos(tree.pos)(Select(qual, getMember(ObjectClass, name))))
           else {
-            var qual1 = typedQualifier(qual);
+            var qual1 = typedQualifier(qual)
             if ((isValueClass(qual1.tpe.typeSymbol) && !isUnboxedValueMember(tree.symbol)))
               qual1 = box(qual1)
             else if (!isValueClass(qual1.tpe.typeSymbol) && isUnboxedValueMember(tree.symbol))
@@ -634,7 +657,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           Console.println("exception when typing " + tree)
           Console.println(er.msg + " in file " + context.owner.sourceFile)
           er.printStackTrace
-          throw new Error
+          abort()
       }
       def adaptCase(cdef: CaseDef): CaseDef = {
         val body1 = adaptToType(cdef.body, tree1.tpe)
@@ -899,7 +922,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
      *  </ul>
      */
     private val preTransformer = new Transformer {
-      override def transform(tree: Tree): Tree = {
+      override def transform(tree: Tree): Tree = {        
         if (tree.symbol == ArrayClass && !tree.isType) return tree // !!! needed?
         val tree1 = tree match {
           case ClassDef(mods, name, tparams, impl) =>
@@ -944,6 +967,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
                 tree,
                 SelectFromArray(qual, name, erasure(qual.tpe)).copyAttrs(fn),
                 args)
+          
+          case Apply(fn @ Select(qual, _), Nil) if (fn.symbol == Any_## || fn.symbol == Object_##) =>
+            Apply(gen.mkAttributedRef(scalaRuntimeHash), List(qual))
+          
           case Apply(fn, args) =>
             if (fn.symbol == Any_asInstanceOf)
               fn match {
@@ -1033,18 +1060,13 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             tpt.tpe = erasure(tree.symbol.tpe).resultType
             result
           case _ =>
-            case class MyError(count : Int, ex : AssertionError) extends Error(ex.getMessage)
-            try {
-              super.transform(tree1) setType null
-            } catch {
-              case e @ MyError(n, ex) if n > 5 =>  throw e
-              case MyError(n,ex) =>
+            case class LoopControl(count: Int, ex : AssertionError) extends Throwable(ex.getMessage) with ControlThrowable
+            
+            try super.transform(tree1) setType null
+            catch {
+              case LoopControl(n, ex) if n <= 5 =>
                 Console.println(tree1)
-                throw MyError(n + 1, ex)
-//              case ex : AssertionError => 
-//                Console.println(tree1)
-//                throw MyError(0, ex)
-//              case ex => throw ex
+                throw LoopControl(n + 1, ex)
             }
         }
       }

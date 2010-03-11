@@ -1,6 +1,10 @@
 package scala
 
 package object actors {
+
+  // type of Reactors tracked by termination detector
+  private[actors] type TrackedReactor = Reactor[A] forSome { type A >: Null }
+
   @deprecated("use scala.actors.scheduler.ForkJoinScheduler instead")
   type FJTaskScheduler2 = scala.actors.scheduler.ForkJoinScheduler
 
@@ -13,6 +17,10 @@ package object actors {
   @deprecated("this class is going to be removed in a future release")
   type WorkerThread = java.lang.Thread
 
+  @deprecated("use scala.actors.scheduler.SingleThreadedScheduler instead")
+  type SingleThreadedScheduler = scala.actors.scheduler.SingleThreadedScheduler
+
   @deprecated("this value is going to be removed in a future release")
-  val ActorGC = scala.actors.Scheduler.impl.asInstanceOf[scala.actors.scheduler.ThreadPoolScheduler]
+  val ActorGC = scala.actors.Scheduler.impl.asInstanceOf[scala.actors.scheduler.ActorGC]
+
 }

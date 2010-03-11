@@ -7,7 +7,6 @@ package scala.tools.nsc
 package matching
 
 import transform.ExplicitOuter
-import util.Position
 import symtab.Flags
 
 trait Matrix extends MatrixAdditions {
@@ -157,7 +156,7 @@ trait Matrix extends MatrixAdditions {
       def tpe = valsym.tpe
 
       lazy val ident  = ID(lhs)
-      lazy val valDef = tracing("typedVal", typer typedValDef (VAL(lhs) === rhs))
+      lazy val valDef = tracing("typedVal", typer typedValDef (VAL(lhs) === rhs) setPos lhs.pos)
 
       override def toString() = "%s: %s = %s".format(lhs, lhs.info, rhs)
     }

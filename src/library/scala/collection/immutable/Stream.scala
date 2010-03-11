@@ -344,9 +344,9 @@ self =>
   /** Builds a new stream from this stream in which any duplicates (wrt to ==) removed.
    *  Among duplicate elements, only the first one is retained in the result stream
    */
-  override def removeDuplicates: Stream[A] =
+  override def distinct: Stream[A] =
     if (isEmpty) this
-    else new Stream.Cons(head, tail.filter(head !=).removeDuplicates)
+    else new Stream.Cons(head, tail.filter(head !=).distinct)
 
   /** Returns a new sequence of given length containing the elements of this sequence followed by zero
    *  or more occurrences of given elements. 
@@ -420,9 +420,9 @@ object Stream extends SeqFactory[Stream] {
   import scala.collection.{Iterable, Seq, IndexedSeq}
 
   /** A builder for streams
-   *  @note: This builder is lazy only in the sense that it does not go downs the spine
-   *         of traversables that are added as a whole. If more laziness can be achieved,
-   *         this builder should be bypassed.
+   *  @note This builder is lazy only in the sense that it does not go downs the spine
+   *        of traversables that are added as a whole. If more laziness can be achieved,
+   *        this builder should be bypassed.
    */
   class StreamBuilder[A] extends scala.collection.mutable.LazyBuilder[A, Stream[A]] {
     def result: Stream[A] = (for (xs <- parts.iterator; x <- xs.toIterable.iterator) yield x).toStream

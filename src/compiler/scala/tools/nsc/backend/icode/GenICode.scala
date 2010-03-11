@@ -11,7 +11,6 @@ package icode
 
 import scala.collection.mutable.{Map, HashMap, ListBuffer, Buffer, HashSet}
 import scala.tools.nsc.symtab._
-import scala.tools.nsc.util.Position
 import scala.annotation.switch
 import PartialFunction._
 
@@ -27,14 +26,15 @@ abstract class GenICode extends SubComponent  {
   import icodes._
   import icodes.opcodes._
   import definitions.{
-    ArrayClass, ObjectClass, ThrowableClass,
-    Object_equals, Object_isInstanceOf, Object_asInstanceOf,
-    isMaybeBoxed
+    ArrayClass, ObjectClass, ThrowableClass, StringClass, NothingClass, NullClass,
+    Object_equals, Object_isInstanceOf, Object_asInstanceOf, ScalaRunTimeModule,
+    getMember
   }
   import scalaPrimitives.{
     isArrayOp, isComparisonOp, isLogicalOp,
     isUniversalEqualityOp, isReferenceEqualityOp
   }
+  import platform.isMaybeBoxed
 
   val phaseName = "icode"
 
@@ -50,21 +50,14 @@ abstract class GenICode extends SubComponent  {
     var unit: CompilationUnit = _
 
     // We assume definitions are alread initialized
-    val STRING = REFERENCE(definitions.StringClass)
+    val STRING = REFERENCE(StringClass)
 
     // this depends on the backend! should be changed.
     val ANY_REF_CLASS = REFERENCE(ObjectClass)
 
-    val SCALA_ALL    = REFERENCE(definitions.NothingClass)
-    val SCALA_ALLREF = REFERENCE(definitions.NullClass)
+    val SCALA_ALL    = REFERENCE(NothingClass)
+    val SCALA_ALLREF = REFERENCE(NullClass)
     val THROWABLE    = REFERENCE(ThrowableClass)
-    
-    lazy val BoxesRunTime_equals = 
-      if (!forMSIL)
-        definitions.getMember(definitions.BoxesRunTimeClass, nme.equals_)
-      else 
-        definitions.getMember(definitions.getClass("scala.runtime.Comparator").linkedModuleOfClass, nme.equals_)
-
 
     override def run {
       scalaPrimitives.init
@@ -97,13 +90,14 @@ abstract class GenICode extends SubComponent  {
         gen(stats, ctx setPackage pid.name)
 
       case ClassDef(mods, name, _, impl) =>
-        log("Generating class: " + tree.symbol.fullNameString)
+        log("Generating class: " + tree.symbol.fullName)
         val outerClass = ctx.clazz
         ctx setClass (new IClass(tree.symbol) setCompilationUnit unit)
         addClassFields(ctx, tree.symbol);
         classes += (tree.symbol -> ctx.clazz)
         unit.icode += ctx.clazz
         gen(impl, ctx)
+        ctx.clazz.methods = ctx.clazz.methods.reverse // preserve textual order
         ctx setClass outerClass
 
       // !! modules should be eliminated by refcheck... or not?
@@ -215,7 +209,7 @@ abstract class GenICode extends SubComponent  {
             case scalaPrimitives.NOT =>
               ctx1.bb.emit(CALL_PRIMITIVE(Arithmetic(NOT, resKind)), larg.pos)
             case _ =>
-              abort("Unknown unary operation: " + fun.symbol.fullNameString +
+              abort("Unknown unary operation: " + fun.symbol.fullName +
                     " code: " + code)
           }
 
@@ -430,6 +424,8 @@ abstract class GenICode extends SubComponent  {
         genArithmeticOp(tree, ctx, code)
       else if (code == scalaPrimitives.CONCAT)
         (genStringConcat(tree, ctx), STRING)
+      else if (code == scalaPrimitives.HASH)
+        (genScalaHash(receiver, ctx), INT)
       else if (isArrayOp(code))
         genArrayOp(tree, ctx, code, expectedType)
       else if (isLogicalOp(code) || isComparisonOp(code)) {
@@ -454,7 +450,7 @@ abstract class GenICode extends SubComponent  {
         genCoercion(tree, ctx1, code)
         (ctx1, scalaPrimitives.generatedKind(code))
       }
-      else abort("Primitive operation not handled yet: " + sym.fullNameString + "(" +
+      else abort("Primitive operation not handled yet: " + sym.fullName + "(" +
                   fun.symbol.simpleName + ") " + " at: " + (tree.pos))
     }
 
@@ -574,7 +570,7 @@ abstract class GenICode extends SubComponent  {
           val cast = sym match {
             case Object_isInstanceOf  => false
             case Object_asInstanceOf  => true
-            case _                    => abort("Unexpected type application " + fun + "[sym: " + sym.fullNameString + "]" + " in: " + tree)
+            case _                    => abort("Unexpected type application " + fun + "[sym: " + sym.fullName + "]" + " in: " + tree)
           }
 
           val Select(obj, _) = fun
@@ -658,7 +654,7 @@ abstract class GenICode extends SubComponent  {
             case rt @ REFERENCE(cls) =>
               if (settings.debug.value)
                 assert(ctor.owner == cls,
-                       "Symbol " + ctor.owner.fullNameString + " is different than " + tpt)
+                       "Symbol " + ctor.owner.fullName + " is different than " + tpt)
               val nw = NEW(rt)
               ctx.bb.emit(nw, tree.pos)
               ctx.bb.emit(DUP(generatedType))
@@ -675,7 +671,7 @@ abstract class GenICode extends SubComponent  {
 
         case Apply(fun @ _, List(expr)) if (definitions.isBox(fun.symbol)) =>
           if (settings.debug.value)
-            log("BOX : " + fun.symbol.fullNameString);
+            log("BOX : " + fun.symbol.fullName);
           val ctx1 = genLoad(expr, ctx, toTypeKind(expr.tpe))
           val nativeKind = toTypeKind(expr.tpe)
           if (settings.Xdce.value) {
@@ -692,7 +688,7 @@ abstract class GenICode extends SubComponent  {
 
         case Apply(fun @ _, List(expr)) if (definitions.isUnbox(fun.symbol)) =>
           if (settings.debug.value)
-            log("UNBOX : " + fun.symbol.fullNameString)
+            log("UNBOX : " + fun.symbol.fullName)
           val ctx1 = genLoad(expr, ctx, toTypeKind(expr.tpe))
           val boxType = toTypeKind(fun.symbol.owner.linkedClassOfClass.tpe)
           generatedType = boxType
@@ -754,8 +750,8 @@ abstract class GenICode extends SubComponent  {
                 else cm setHostClass qualSym
                   
                 if (settings.debug.value) log(
-                  if (qualSym == ArrayClass) "Stored target type kind " + toTypeKind(qual.tpe) + " for " + sym.fullNameString
-                  else "Set more precise host class for " + sym.fullNameString + " host: " + qualSym
+                  if (qualSym == ArrayClass) "Stored target type kind " + toTypeKind(qual.tpe) + " for " + sym.fullName
+                  else "Set more precise host class for " + sym.fullName + " host: " + qualSym
                 )
               case _ =>
             }
@@ -841,8 +837,7 @@ abstract class GenICode extends SubComponent  {
                 generatedType = l.kind
               } catch {
                 case ex: MatchError => 
-                  throw new Error("symbol " + tree.symbol +
-                                  " does not exist in " + ctx.method)
+                  abort("symbol " + tree.symbol + " does not exist in " + ctx.method)
               }
             }
           }
@@ -1173,6 +1168,19 @@ abstract class GenICode extends SubComponent  {
 
       ctx1
     }
+    
+    /** Generate the scala ## method.
+     */
+    def genScalaHash(tree: Tree, ctx: Context): Context = {
+      val hashMethod = {
+        ctx.bb.emit(LOAD_MODULE(ScalaRunTimeModule))
+        getMember(ScalaRunTimeModule, "hash")
+      }
+      
+      val ctx1 = genLoad(tree, ctx, ANY_REF_CLASS)
+      ctx1.bb.emit(CALL_METHOD(hashMethod, Static(false)))
+      ctx1
+    }
 
     /**
      * Returns a list of trees that each should be concatenated, from
@@ -1360,10 +1368,10 @@ abstract class GenICode extends SubComponent  {
       if (mustUseAnyComparator) {
         // when -optimise is on we call the @inline-version of equals, found in ScalaRunTime
         val equalsMethod =
-          if (!settings.XO.value) BoxesRunTime_equals
+          if (!settings.XO.value) platform.externalEquals
           else {
-            ctx.bb.emit(LOAD_MODULE(definitions.ScalaRunTimeModule))
-            definitions.getMember(definitions.ScalaRunTimeModule, nme.inlinedEquals)
+            ctx.bb.emit(LOAD_MODULE(ScalaRunTimeModule))
+            getMember(ScalaRunTimeModule, nme.inlinedEquals)
           }
 
         val ctx1 = genLoad(l, ctx, ANY_REF_CLASS)
@@ -1643,9 +1651,11 @@ abstract class GenICode extends SubComponent  {
 
     abstract class Cleanup;
     case class MonitorRelease(m: Local) extends Cleanup {
+      override def hashCode = m.hashCode
       override def equals(other: Any) = m == other;
     }
     case class Finalizer(f: Tree) extends Cleanup {
+      override def hashCode = f.hashCode
       override def equals(other: Any) = f == other;
     }
 

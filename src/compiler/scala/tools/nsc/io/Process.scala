@@ -34,7 +34,11 @@ import java.util.concurrent.LinkedBlockingQueue
  
 object Process
 {
-  lazy val javaVmArguments = java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments()
+  def javaVmArguments: List[String] = {
+    import collection.JavaConversions._
+
+    java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().toList
+  }
   lazy val runtime = Runtime.getRuntime()
   
   class Pipe[T](xs: Seq[T], stringify: T => String) {
@@ -82,7 +86,7 @@ object Process
       this
     }
 
-    def withCwd(cwd: File): this.type = {
+    def withCwd(cwd: Path): this.type = {
       if (cwd != null)
         pb directory cwd.jfile
 
@@ -109,7 +113,7 @@ object Process
   def apply(
     command: String,
     env: Map[String, String] = null,
-    cwd: File = null,
+    cwd: Path = null,
     redirect: Boolean = false
   ): Process =
       exec(shell(command), env, cwd)
@@ -122,7 +126,7 @@ object Process
   def exec(
     command: Seq[String],
     env: Map[String, String] = null,
-    cwd: File = null,
+    cwd: Path = null,
     redirect: Boolean = false
   ): Process =
       new ProcessBuilder(command: _*) withEnv env withCwd cwd start

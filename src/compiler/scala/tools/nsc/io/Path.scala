@@ -7,7 +7,7 @@ package io
 
 import java.io.{ 
   FileInputStream, FileOutputStream, BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter, 
-  BufferedInputStream, BufferedOutputStream, File => JFile }
+  BufferedInputStream, BufferedOutputStream, RandomAccessFile, File => JFile }
 import java.net.{ URI, URL }
 import collection.{ Seq, Traversable }
 import PartialFunction._
@@ -30,6 +30,18 @@ import scala.util.Random.nextASCIIString
 
 object Path
 {
+  private val ZipMagicNumber = List[Byte](80, 75, 3, 4)
+  
+  /** If examineFile is true, it will look at the first four bytes of the file
+   *  and see if the magic number indicates it may be a jar or zip.
+   */
+  def isJarOrZip(f: Path): Boolean = isJarOrZip(f, false)
+  def isJarOrZip(f: Path, examineFile: Boolean): Boolean = (
+       (f hasExtension "zip")
+    || (f hasExtension "jar")
+    || (examineFile && f.isFile && (f.toFile.bytes().take(4).toList == ZipMagicNumber))
+  )
+
   // not certain these won't be problematic, but looks good so far
   implicit def string2path(s: String): Path = apply(s)
   implicit def jfile2path(jfile: JFile): Path = apply(jfile)
@@ -49,6 +61,7 @@ object Path
   
   def roots: List[Path] = JFile.listRoots().toList map Path.apply
 
+  def apply(segments: Seq[String]): Path = apply(segments mkString JFile.separator)
   def apply(path: String): Path = apply(new JFile(path))
   def apply(jfile: JFile): Path =
     if (jfile.isFile) new File(jfile)
@@ -63,8 +76,7 @@ import Path._
 /** The Path constructor is private so we can enforce some
  *  semantics regarding how a Path might relate to the world.
  */
-class Path private[io] (val jfile: JFile)
-{
+class Path private[io] (val jfile: JFile) {
   val separator = JFile.separatorChar
   val separatorStr = JFile.separator
 
@@ -92,6 +104,7 @@ class Path private[io] (val jfile: JFile)
   def name: String = jfile.getName()
   def path: String = jfile.getPath()
   def normalize: Path = Path(jfile.getCanonicalPath())
+  def isRootPath: Boolean = roots exists (_ isSame this)
   
   def resolve(other: Path) = if (other.isAbsolute || isEmpty) other else /(other)
   def relativize(other: Path) = {
@@ -113,19 +126,21 @@ class Path private[io] (val jfile: JFile)
   /**
    * @return The path of the parent directory, or root if path is already root
    */
-  def parent: Path = {
-    val p = path match {
-      case "" | "." => ".."
-      case _ if path endsWith ".." => path + separator + ".." // the only solution
-      case _ => jfile.getParent match {
-          case null if isAbsolute => path // it should be a root. BTW, don't need to worry about relative pathed root
-          case null => "."                // a file ot dir under pwd
-          case x => x
-        }
-    }
-    new Directory(new JFile(p))
+  def parent: Directory = path match {
+    case "" | "." => Directory("..")
+    case _        =>
+      // the only solution <-- a comment which could have used elaboration
+      if (segments.nonEmpty && segments.last == "..")
+        (path / "..").toDirectory
+      else jfile.getParent match {
+        case null =>
+          if (isAbsolute) toDirectory // it should be a root. BTW, don't need to worry about relative pathed root
+          else Directory(".")         // a dir under pwd
+        case x    =>
+          Directory(x)
+      }
   }
-  def parents: List[Path] = {
+  def parents: List[Directory] = {
     val p = parent
     if (p isSame this) Nil else p :: p.parents
   }
@@ -134,6 +149,14 @@ class Path private[io] (val jfile: JFile)
     case -1   => ""
     case idx  => name drop (idx + 1)
   }
+  // compares against extension in a CASE INSENSITIVE way.
+  def hasExtension(other: String) = extension.toLowerCase == other.toLowerCase
+  // returns the filename without the extension.
+  def stripExtension: String = name stripSuffix ("." + extension)
+  
+  // conditionally execute
+  def ifFile[T](f: File => T): Option[T] = if (isFile) Some(f(toFile)) else None
+  def ifDirectory[T](f: Directory => T): Option[T] = if (isDirectory) Some(f(toDirectory)) else None
 
   // Boolean tests
   def canRead = jfile.canRead()
@@ -179,6 +202,19 @@ class Path private[io] (val jfile: JFile)
   // deletions
   def delete() = jfile.delete()
   def deleteIfExists() = if (jfile.exists()) delete() else false
+  def truncate() =
+    isFile && {
+      val raf = new RandomAccessFile(jfile, "rw")
+      raf setLength 0
+      raf.close()
+      length == 0
+    }
+  
+  def touch(modTime: Long = System.currentTimeMillis) = {
+    createFile()
+    if (isFile)
+      lastModified = modTime
+  }
 
   // todo
   // def copyTo(target: Path, options ...): Boolean

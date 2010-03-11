@@ -14,7 +14,7 @@ import ch.epfl.lamp.compiler.msil.{Type => MSILType, Attribute => MSILAttribute}
 import scala.collection.mutable.{HashMap, HashSet}
 import scala.compat.Platform.currentTime
 import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.util.{Position, NoPosition, ClassPath, ClassRep, JavaClassPath, MsilClassPath}
+import scala.tools.nsc.util.{ ClassPath, JavaClassPath }
 import classfile.ClassfileParser
 import Flags._
 
@@ -64,7 +64,7 @@ abstract class SymbolLoaders {
         informTime("loaded " + description, start)
         ok = true
         setSource(root)
-        setSource(root.linkedSym) // module -> class, class -> module
+        setSource(root.companionSymbol) // module -> class, class -> module
       } catch {
         case ex: IOException =>
           ok = false
@@ -75,7 +75,7 @@ abstract class SymbolLoaders {
             else "error while loading " + root.name + ", " + msg);
       }
       initRoot(root)
-      if (!root.isPackageClass) initRoot(root.linkedSym)
+      if (!root.isPackageClass) initRoot(root.companionSymbol)
     }
 
     override def load(root: Symbol) { complete(root) }
@@ -110,7 +110,7 @@ abstract class SymbolLoaders {
     def enterClassAndModule(root: Symbol, name: String, completer: SymbolLoader) {
       val owner = if (root.isRoot) definitions.EmptyPackageClass else root
       val className = newTermName(name)
-      assert(owner.info.decls.lookup(name) == NoSymbol, owner.fullNameString + "." + name)
+      assert(owner.info.decls.lookup(name) == NoSymbol, owner.fullName + "." + name)
       val clazz = owner.newClass(NoPosition, name.toTypeName)
       val module = owner.newModule(NoPosition, name)
       clazz setInfo completer
@@ -118,8 +118,8 @@ abstract class SymbolLoaders {
       module.moduleClass setInfo moduleClassLoader
       owner.info.decls enter clazz
       owner.info.decls enter module
-      assert(clazz.linkedModuleOfClass == module, module)
-      assert(module.linkedClassOfModule == clazz, clazz)
+      assert(clazz.companionModule == module, module)
+      assert(module.companionClass == clazz, clazz)
     }
 
     /**
@@ -136,7 +136,7 @@ abstract class SymbolLoaders {
      * (anonymous classes, implementation classes, module classes), their
      * symtab is encoded in the pickle of another class.
      */
-    protected def doLoad(cls: ClassRep[T]): Boolean
+    protected def doLoad(cls: classpath.AnyClassRep): Boolean
 
     protected def newClassLoader(bin: T): SymbolLoader
 
@@ -197,12 +197,11 @@ abstract class SymbolLoaders {
     }
   }
 
-
-  class JavaPackageLoader(classpath: ClassPath[AbstractFile]) extends PackageLoader(classpath) {
+  class JavaPackageLoader(classpath: ClassPath[AbstractFile]) extends PackageLoader(classpath) {    
     protected def needCompile(bin: AbstractFile, src: AbstractFile) =
       (src.lastModified >= bin.lastModified)
 
-    protected def doLoad(cls: ClassRep[AbstractFile]) = true
+    protected def doLoad(cls: classpath.AnyClassRep) = true
 
     protected def newClassLoader(bin: AbstractFile) =
       new ClassfileLoader(bin)
@@ -215,7 +214,7 @@ abstract class SymbolLoaders {
     protected def needCompile(bin: MSILType, src: AbstractFile) =
       false // always use compiled file on .net
 
-    protected def doLoad(cls: ClassRep[MSILType]) = {
+    protected def doLoad(cls: classpath.AnyClassRep) = {
       if (cls.binary.isDefined) {
         val typ = cls.binary.get
         if (typ.IsDefined(clrTypes.SCALA_SYMTAB_ATTR, false)) {

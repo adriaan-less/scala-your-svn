@@ -9,7 +9,6 @@ package transform
 
 import symtab._
 import Flags._
-import scala.tools.nsc.util.{Position,NoPosition}
 import collection.mutable.{ListBuffer, HashMap}
 
 abstract class Mixin extends InfoTransform with ast.TreeDSL {
@@ -148,8 +147,6 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
    *  only once per class. The mixedin flag is used to remember whether late
    *  members have been added to an interface.
    *    - lazy fields don't get a setter.
-   *  
-   *  @param clazz ...
    */
   def addLateInterfaceMembers(clazz: Symbol) {
     if ((treatedClassInfos get clazz) != Some(clazz.info)) {
@@ -176,7 +173,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         setter.setInfo(MethodType(setter.newSyntheticValueParams(List(field.info)), UnitClass.tpe))
         if (needsExpandedSetterName(field)) {
           //println("creating expanded setter from "+field)
-          setter.name = clazz.expandedSetterName(setter.name)
+          setter.name = nme.expandedSetterName(setter.name, clazz)
         }
         setter
       }
@@ -746,7 +743,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
            && !sym.isOuterAccessor)
         
         if (settings.debug.value) {
-          log("needsInitFlag(" + sym.fullNameString + "): " + res)
+          log("needsInitFlag(" + sym.fullName + "): " + res)
           log("\tsym.isGetter: " + sym.isGetter) 
           log("\t!isInitializedToDefault: " + !sym.isInitializedToDefault + sym.hasFlag(DEFAULTINIT) + sym.hasFlag(ACCESSOR) + sym.isTerm)
           log("\t!sym.hasFlag(PARAMACCESSOR): " + !sym.hasFlag(PARAMACCESSOR))
@@ -820,7 +817,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
       def buildFieldPositions(clazz: Symbol) {
         var fields = usedBits(clazz)
         for (f <- clazz.info.decls.iterator if needsInitFlag(f) || f.hasFlag(LAZY)) {
-          if (settings.debug.value) log(f.fullNameString + " -> " + fields)
+          if (settings.debug.value) log(f.fullName + " -> " + fields)
           fieldOffset(f) = fields
           fields += 1
         }

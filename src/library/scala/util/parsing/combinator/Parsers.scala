@@ -48,35 +48,21 @@ import scala.annotation.tailrec
  *    of the input.
  *  </p>
  *
- * @requires Elem the type of elements the provided parsers consume 
- *              (When consuming invidual characters, a parser is typically called a ``scanner'', 
- *               which produces ``tokens'' that are consumed by what is normally called a ``parser''.
- *               Nonetheless, the same principles apply, regardless of the input type.)</p>
- *<p>
- * @provides Input = Reader[Elem] 
- *              The type of input the parsers in this component expect.</p>
- *<p>
- * @provides Parser[+T] extends (Input => ParseResult[T]) 
- *              Essentially, a `Parser[T]' is a function from `Input' to `ParseResult[T]'.</p>
- *<p>
- * @provides ParseResult[+T] is like an `Option[T]', in the sense that it is either
- *              `Success[T]', which consists of some result (:T) (and the rest of the input) or
- *              `Failure[T]', which provides an error message (and the rest of the input).</p>
- *
  * @author Martin Odersky, Iulian Dragos, Adriaan Moors 
  */
 trait Parsers {
-  /** the type of input elements */
+  /** the type of input elements the provided parsers consume (When consuming invidual characters, a parser is typically
+   * called a ``scanner'', which produces ``tokens'' that are consumed by what is normally called a ``parser''.
+   * Nonetheless, the same principles apply, regardless of the input type.) */
   type Elem
 
-  /** The parser input is an abstract reader of input elements */
+  /** The parser input is an abstract reader of input elements, i.e. the type of input the parsers in this component
+   * expect. */
   type Input = Reader[Elem]
 
-  /** A base class for parser results. 
-   *  A result is either successful or not (failure may be fatal, i.e.,
-   *  an Error, or not, i.e., a Failure)
-   *  On success, provides a result of type <code>T</code>. 
-   */
+  /** A base class for parser results. A result is either successful or not (failure may be fatal, i.e., an Error, or
+   * not, i.e., a Failure). On success, provides a result of type `T` which consists of some result (and the rest of
+   * the input). */
   sealed abstract class ParseResult[+T] {
     /** Functional composition of ParseResults
      * 
@@ -592,13 +578,18 @@ trait Parsers {
   def rep1[T](first: => Parser[T], p: => Parser[T]): Parser[List[T]] = Parser { in =>
     val elems = new ListBuffer[T]
 
-    @tailrec def applyp(in0: Input): ParseResult[List[T]] = p(in0) match {
-      case Success(x, rest) => elems += x ; applyp(rest)
-      case _                => Success(elems.toList, in0)
+    def continue(in: Input): ParseResult[List[T]] = {
+      val p0 = p    // avoid repeatedly re-evaluating by-name parser
+      @tailrec def applyp(in0: Input): ParseResult[List[T]] = p0(in0) match {
+        case Success(x, rest) => elems += x ; applyp(rest)
+        case _                => Success(elems.toList, in0)
+      }
+      
+      applyp(in)
     }
 
     first(in) match {
-      case Success(x, rest) => elems += x ; applyp(rest)
+      case Success(x, rest) => elems += x ; continue(rest)
       case ns: NoSuccess    => ns
     }
   }
@@ -616,10 +607,11 @@ trait Parsers {
   def repN[T](num: Int, p: => Parser[T]): Parser[List[T]] = 
     if (num == 0) success(Nil) else Parser { in =>
       val elems = new ListBuffer[T]
+      val p0 = p    // avoid repeatedly re-evaluating by-name parser
       
       @tailrec def applyp(in0: Input): ParseResult[List[T]] =
         if (elems.length == num) Success(elems.toList, in0)
-        else p(in0) match {
+        else p0(in0) match {
           case Success(x, rest)   => elems += x ; applyp(rest)
           case ns: NoSuccess      => return ns
         }

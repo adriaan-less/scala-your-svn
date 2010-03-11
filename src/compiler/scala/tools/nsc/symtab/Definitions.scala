@@ -11,10 +11,10 @@ import scala.collection.mutable.{HashMap, HashSet}
 import scala.tools.nsc.util.{Position, NoPosition}
 import Flags._
 
-trait Definitions {
+trait Definitions extends reflect.generic.StandardDefinitions {
   self: SymbolTable =>
 
-  object definitions {
+  object definitions extends AbsDefinitions {
     def isDefinitionsInitialized = isInitialized
     
     // Working around bug #2133
@@ -30,7 +30,7 @@ trait Definitions {
       val rp=NoSymbol.newValue(NoPosition, nme.ROOTPKG)
         .setFlag(FINAL | MODULE | PACKAGE | JAVA)
         .setInfo(PolyType(List(), RootClass.tpe))
-      RootClass.setSourceModule(rp)
+      RootClass.sourceModule = rp
       rp
     }
     lazy val RootClass: ModuleClassSymbol = NoSymbol.newModuleClass(NoPosition, nme.ROOT.toTypeName)
@@ -103,7 +103,7 @@ trait Definitions {
     // exceptions and other throwables
     lazy val ThrowableClass                 = getClass(sn.Throwable)
     lazy val NullPointerExceptionClass      = getClass(sn.NPException)
-    lazy val NonLocalReturnExceptionClass   = getClass(sn.NLRException)
+    lazy val NonLocalReturnControlClass   = getClass(sn.NLRControl)
     lazy val IndexOutOfBoundsExceptionClass = getClass(sn.IOOBException)
     lazy val UninitializedErrorClass        = getClass("scala.UninitializedFieldError")
     lazy val MatchErrorClass                = getClass("scala.MatchError")
@@ -140,10 +140,6 @@ trait Definitions {
     // fundamental modules
     lazy val PredefModule: Symbol = getModule("scala.Predef")
       def Predef_classOf = getMember(PredefModule, nme.classOf)
-      def Predef_classOfType(classType: Type): Type =
-        if (!ClassClass.unsafeTypeParams.isEmpty && !phase.erasedTypes)
-          appliedType(ClassClass.tpe, List(classType))
-        else ClassClass.tpe
       def Predef_error    = getMember(PredefModule, nme.error)
       def Predef_identity = getMember(PredefModule, nme.identity)
       def Predef_conforms = getMember(PredefModule, nme.conforms)
@@ -155,6 +151,8 @@ trait Definitions {
       def arrayUpdateMethod = getMember(ScalaRunTimeModule, "array_update")
       def arrayLengthMethod = getMember(ScalaRunTimeModule, "array_length")
       def arrayCloneMethod = getMember(ScalaRunTimeModule, "array_clone")
+      def scalaRuntimeHash = getMember(ScalaRunTimeModule, "hash")
+      def scalaRuntimeSameElements = getMember(ScalaRunTimeModule, nme.sameElements)
     
     // classes with special meanings
     lazy val NotNullClass         = getClass("scala.NotNull")
@@ -249,11 +247,11 @@ trait Definitions {
     // Option classes
     lazy val OptionClass: Symbol  = getClass("scala.Option")
     lazy val SomeClass: Symbol    = getClass("scala.Some")
-    lazy val NoneClass: Symbol    = getModule("scala.None")
+    lazy val NoneModule: Symbol    = getModule("scala.None")
 
     def isOptionType(tp: Type)  = cond(tp.normalize) { case TypeRef(_, OptionClass, List(_)) => true }
     def isSomeType(tp: Type)    = cond(tp.normalize) { case TypeRef(_,   SomeClass, List(_)) => true }
-    def isNoneType(tp: Type)    = cond(tp.normalize) { case TypeRef(_,   NoneClass, List(_)) => true }
+    def isNoneType(tp: Type)    = cond(tp.normalize) { case TypeRef(_,   NoneModule, List(_)) => true }
 
     def optionType(tp: Type)    = typeRef(OptionClass.typeConstructor.prefix, OptionClass, List(tp))
     def someType(tp: Type)      = typeRef(SomeClass.typeConstructor.prefix, SomeClass, List(tp))
@@ -291,6 +289,7 @@ trait Definitions {
     lazy val ProductRootClass: Symbol = getClass("scala.Product")
       def Product_productArity = getMember(ProductRootClass, nme.productArity)
       def Product_productElement = getMember(ProductRootClass, nme.productElement)
+      def Product_productElementName = getMember(ProductRootClass, nme.productElementName)
       def Product_productPrefix = getMember(ProductRootClass, nme.productPrefix)
       def Product_canEqual = getMember(ProductRootClass, nme.canEqual_)
       
@@ -349,9 +348,15 @@ trait Definitions {
     def seqType(arg: Type) = typeRef(SeqClass.typeConstructor.prefix, SeqClass, List(arg))
     def arrayType(arg: Type) = typeRef(ArrayClass.typeConstructor.prefix, ArrayClass, List(arg))
 
+    def ClassType(arg: Type) = 
+      if (ClassClass.unsafeTypeParams.isEmpty || phase.erasedTypes) ClassClass.tpe
+      else appliedType(ClassClass.tpe, List(arg))
+
     //
     // .NET backend
     //
+    
+    lazy val ComparatorClass = getClass("scala.runtime.Comparator")    
     // System.ValueType
     lazy val ValueTypeClass: Symbol = getClass(sn.ValueType)
     // System.MulticastDelegate
@@ -385,12 +390,14 @@ trait Definitions {
     var Any_toString    : Symbol = _
     var Any_isInstanceOf: Symbol = _
     var Any_asInstanceOf: Symbol = _
+    var Any_##          : Symbol = _
 
     // members of class java.lang.{Object, String}
     var Object_eq          : Symbol = _
     var Object_ne          : Symbol = _
     var Object_==          : Symbol = _
     var Object_!=          : Symbol = _
+    var Object_##          : Symbol = _
     var Object_synchronized: Symbol = _
     lazy val Object_isInstanceOf = newPolyMethod(
       ObjectClass, "$isInstanceOf",
@@ -423,18 +430,6 @@ trait Definitions {
     lazy val BoxedFloatClass        = getClass("java.lang.Float")
     lazy val BoxedDoubleClass       = getClass("java.lang.Double")
     
-    /** The various ways a boxed primitive might materialize at runtime. */
-    def isMaybeBoxed(sym: Symbol) =
-      if (forMSIL)
-        sym isNonBottomSubClass BoxedNumberClass
-      else {
-        (sym == ObjectClass) ||
-        (sym == SerializableClass) ||
-        (sym == ComparableClass) ||
-        (sym isNonBottomSubClass BoxedNumberClass) ||
-        (sym isNonBottomSubClass BoxedCharacterClass)   
-      }
-    
     lazy val BoxedUnitClass         = getClass("scala.runtime.BoxedUnit")
     lazy val BoxedUnitModule        = getModule("scala.runtime.BoxedUnit")
       def BoxedUnit_UNIT = getMember(BoxedUnitModule, "UNIT")
@@ -443,6 +438,7 @@ trait Definitions {
     // special attributes
     lazy val SerializableAttr: Symbol = getClass("scala.serializable")
     lazy val DeprecatedAttr: Symbol = getClass("scala.deprecated")
+    lazy val MigrationAnnotationClass: Symbol = getClass("scala.annotation.migration")
     lazy val BeanPropertyAttr: Symbol = getClass(sn.BeanProperty)
     lazy val BooleanBeanPropertyAttr: Symbol = getClass(sn.BooleanBeanProperty)
     
@@ -581,24 +577,14 @@ trait Definitions {
     val unboxMethod = new HashMap[Symbol, Symbol] // Type -> Method
     val boxMethod = new HashMap[Symbol, Symbol] // Type -> Method
 
-    def isUnbox(m: Symbol) = (m.name == nme.unbox) && cond(m.tpe) { 
-      case MethodType(_, restpe) => cond(unboxMethod get restpe.typeSymbol) {
-        case Some(`m`)  => true
-      }
-    }
-
-    /** Test whether a method symbol is that of a boxing method. */
-    def isBox(m: Symbol) = (boxMethod.valuesIterator contains m) && cond(m.tpe) {
-      case MethodType(List(arg), _) => cond(boxMethod get arg.tpe.typeSymbol) {
-        case Some(`m`) => true
-      }
-    }
+    def isUnbox(m: Symbol) = unboxMethod.valuesIterator contains m
+    def isBox(m: Symbol) = boxMethod.valuesIterator contains m
 
     val refClass = new HashMap[Symbol, Symbol]
     val abbrvTag = new HashMap[Symbol, Char]
     val numericWidth = new HashMap[Symbol, Int]
 
-    private def newValueClass(name: Name, tag: Char, width: Int): Symbol = {
+    private[symtab] def newValueClass(name: Name, tag: Char, width: Int): Symbol = {
       val boxedName = sn.Boxed(name)
 
       val clazz = newClass(ScalaPackageClass, name, anyvalparam) setFlag (ABSTRACT | FINAL)
@@ -737,6 +723,7 @@ trait Definitions {
       case _ => false
     }
 
+    // todo: reconcile with javaSignature!!!
     def signature(tp: Type): String = {
       def erasure(tp: Type): Type = tp match {
         case st: SubType => erasure(st.supertype)
@@ -744,7 +731,7 @@ trait Definitions {
         case _ => tp
       }
       def flatNameString(sym: Symbol, separator: Char): String =
-        if (sym.owner.isPackageClass) sym.fullNameString('.') + (if (sym.isModuleClass) "$" else "")
+        if (sym.owner.isPackageClass) sym.fullName('.') + (if (sym.isModuleClass) "$" else "")
         else flatNameString(sym.owner, separator) + "$" + sym.simpleName;
       def signature1(etp: Type): String = {
         if (etp.typeSymbol == ArrayClass) "[" + signature1(erasure(etp.normalize.typeArgs.head))
@@ -777,13 +764,15 @@ trait Definitions {
       Any_equals = newMethod(AnyClass, nme.equals_, anyparam, booltype)
       Any_hashCode = newMethod(AnyClass, nme.hashCode_, Nil, inttype)
       Any_toString = newMethod(AnyClass, nme.toString_, Nil, stringtype)
+      Any_## = newMethod(AnyClass, nme.HASHHASH, Nil, inttype) setFlag FINAL
 
       Any_isInstanceOf = newPolyMethod(
         AnyClass, nme.isInstanceOf_, tparam => booltype) setFlag FINAL
       Any_asInstanceOf = newPolyMethod(
         AnyClass, nme.asInstanceOf_, tparam => tparam.typeConstructor) setFlag FINAL
 
-      // members of class java.lang.{Object, String}
+      // members of class java.lang.{ Object, String }
+      Object_## = newMethod(ObjectClass, nme.HASHHASH, Nil, inttype) setFlag FINAL
       Object_== = newMethod(ObjectClass, nme.EQ, anyrefparam, booltype) setFlag FINAL
       Object_!= = newMethod(ObjectClass, nme.NE, anyrefparam, booltype) setFlag FINAL
       Object_eq = newMethod(ObjectClass, nme.eq, anyrefparam, booltype) setFlag FINAL

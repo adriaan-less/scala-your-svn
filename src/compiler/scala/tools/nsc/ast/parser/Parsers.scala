@@ -10,7 +10,7 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.{Position, OffsetPosition, NoPosition, BatchSourceFile}
+import scala.tools.nsc.util.{OffsetPosition, BatchSourceFile}
 import symtab.Flags
 import Tokens._
 
@@ -1104,7 +1104,11 @@ self =>
           }
         } else if (in.token == MATCH) {
           t = atPos(t.pos.startOrPoint, in.skipToken()) {
-            Match(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
+            /** For debugging pattern matcher transition issues */
+            if (settings.Ypmatnaive.value)
+              makeSequencedMatch(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
+            else
+              Match(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
           }
         }
         // in order to allow anonymous functions as statements (as opposed to expressions) inside
@@ -1836,7 +1840,7 @@ self =>
         }
         val nameOffset = in.offset
         val pname = 
-          (if (in.token == USCORE) { // @M! also allow underscore 
+          (if (in.token == USCORE) { // TODO AM: freshName(o2p(in.skipToken()), "_$$"), will need to update test suite
             in.nextToken()
             nme.WILDCARD
           } else ident()).toTypeName
@@ -1892,14 +1896,14 @@ self =>
     /** Import  ::= import ImportExpr {`,' ImportExpr}
      */
     def importClause(): List[Tree] = {
-      accept(IMPORT)
-      commaSeparated(importExpr())
+      val offset = accept(IMPORT)
+      commaSeparated(importExpr(offset))
     }
 
     /**  ImportExpr ::= StableId `.' (Id | `_' | ImportSelectors)
      * XXX: Hook for IDE
      */
-    def importExpr(): Tree = {
+    def importExpr(importOffset: Int): Tree = {
       val start = in.offset
       var t: Tree = null
       if (in.token == THIS) {
@@ -1926,7 +1930,7 @@ self =>
         if (in.token == USCORE) {
           val uscoreOffset = in.offset
           in.nextToken()
-          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, null, -1)))
+          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, nme.WILDCARD, -1)))
         } else if (in.token == LBRACE) {
           Import(t, importSelectors())
         } else {
@@ -1943,7 +1947,7 @@ self =>
             Import(t, List(ImportSelector(name, nameOffset, name, nameOffset)))
           }
         }
-      atPos(start) { loop() }
+      atPos(importOffset, start) { loop() }
     }
       
     /** ImportSelectors ::= `{' {ImportSelector `,'} (ImportSelector | `_') `}'
@@ -2465,11 +2469,15 @@ self =>
       val stats = new ListBuffer[Tree]
       while (in.token != RBRACE && in.token != EOF) {
         if (in.token == PACKAGE) {
-          in.flushDoc
           val start = in.skipToken()
-          stats += {
-            if (in.token == OBJECT) makePackageObject(start, objectDef(in.offset, NoMods))
-            else packaging(start)
+          stats ++= {
+            if (in.token == OBJECT) {
+              joinComment(List(makePackageObject(start, objectDef(in.offset, NoMods))))
+            }
+            else {
+              in.flushDoc
+              List(packaging(start))
+            }
           }
         } else if (in.token == IMPORT) {
           in.flushDoc
@@ -2627,15 +2635,15 @@ self =>
         while (in.token == SEMI) in.nextToken()
         val start = in.offset
         if (in.token == PACKAGE) {
-          in.flushDoc
-          in.nextToken()
+          in.nextToken()   
           if (in.token == OBJECT) {
-            ts += makePackageObject(start, objectDef(in.offset, NoMods))
+            ts ++= joinComment(List(makePackageObject(start, objectDef(in.offset, NoMods))))
             if (in.token != EOF) {
               acceptStatSep()
               ts ++= topStatSeq()
             }
           } else {
+            in.flushDoc
             val pkg = qualId()
             newLineOptWhenFollowedBy(LBRACE)
             if (in.token == EOF) {

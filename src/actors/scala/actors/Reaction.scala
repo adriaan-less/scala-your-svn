@@ -11,10 +11,10 @@
 
 package scala.actors
 
-import scala.util.control.ControlException
+import scala.util.control.ControlThrowable
 import java.lang.{InterruptedException, Runnable}
 
-private[actors] class KillActorException extends Throwable with ControlException
+private[actors] class KillActorControl extends ControlThrowable
 
 /** <p>
  *    The abstract class <code>Reaction</code> associates
@@ -23,9 +23,9 @@ private[actors] class KillActorException extends Throwable with ControlException
  *    <code>java.lang.Runnable</code></a>.
  *  </p>
  *
- *  @deprecated("this class is going to be removed in a future release")
  *  @author Philipp Haller
  */
+@deprecated("This class will be removed in a future release")
 class Reaction(a: Actor, f: PartialFunction[Any, Any], msg: Any) extends ActorTask(a, () => {
   if (f == null)
     a.act()

@@ -9,7 +9,6 @@ import comment._
 import scala.collection._
 
 import symtab.Flags
-import util.Position
 
 /** This trait extracts all required information for documentation from compilation units */
 class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =>
@@ -19,14 +18,14 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
 
   private var droppedPackages = 0
   def templatesCount = templatesCache.size - droppedPackages
-
+  
   /**  */
   def makeModel: Package =
-    makePackage(RootPackage, null) getOrElse { throw new Error("no documentable class found in compilation units") }
+    makePackage(RootPackage, null) getOrElse abort("no documentable class found in compilation units")
 
   object commentator {
 
-    private val factory = new CommentFactory(reporter)
+    val factory = new CommentFactory(reporter)
 
     private val commentCache = mutable.HashMap.empty[(Symbol, TemplateImpl), Comment]
 
@@ -95,8 +94,6 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
     def inDefinitionTemplates =
       if (inTpl == null)
         makePackage(RootPackage, null).toList
-      else if (sym.owner == inTpl.sym)
-        inTpl :: Nil
       else
         makeTemplate(sym.owner) :: (sym.allOverriddenSymbols map { inhSym => makeTemplate(inhSym.owner) })
     def visibility = {
@@ -122,10 +119,18 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
       if (!sym.isModule && (sym hasFlag Flags.FINAL)) fgs += Paragraph(Text("final"))
       fgs.toList
     }
+    def deprecation =
+      if (sym.isDeprecated && sym.deprecationMessage.isDefined)
+        Some(commentator.factory.parseWiki(sym.deprecationMessage.get, NoPosition))
+      else if (sym.isDeprecated)
+        Some(Body(Nil))
+      else if (comment.isDefined)
+        comment.get.deprecated
+      else
+        None
     def inheritedFrom =
       if (inTemplate.sym == this.sym.owner || inTemplate.sym.isPackage) Nil else
         makeTemplate(this.sym.owner) :: (sym.allOverriddenSymbols map { os => makeTemplate(os.owner) })
-    def isDeprecated = sym.isDeprecated
     def resultType = makeType(sym.tpe.finalResultType, inTemplate, sym)
     def isDef = false
     def isVal = false
@@ -150,6 +155,18 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
     override def definitionName = optimize(inDefinitionTemplates.head.qualifiedName + "." + name)
     override def toRoot: List[DocTemplateImpl] = this :: inTpl.toRoot
     def inSource = if (sym.sourceFile != null) Some(sym.sourceFile, sym.pos.line) else None
+    def sourceUrl = {
+      def fixPath(s: String) = s.replaceAll("\\" + java.io.File.separator, "/")
+      val assumedSourceRoot: String = {
+        val fixed = fixPath(settings.sourcepath.value)
+        if (fixed endsWith "/") fixed.dropRight(1) else fixed
+      }
+      if (!settings.docsourceurl.isDefault)
+        inSource map { case (file, _) =>
+          new java.net.URL(settings.docsourceurl.value + "/" + fixPath(file.path).replaceFirst("^" + assumedSourceRoot, ""))
+        }
+      else None
+    }
     def typeParams = if (sym.isClass) sym.typeParams map (makeTypeParam(_, this)) else Nil
     def parentType =
       if (sym.isPackage) None else
@@ -169,8 +186,10 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
       subClassesCache += sc
     }
     def subClasses = subClassesCache.toList
-    protected def memberSyms = sym.info.nonPrivateMembers
-    val members: List[MemberEntity] = memberSyms flatMap (makeMember(_, this))
+    protected lazy val memberSyms =
+       // Only this class's constructors are part of its members, inherited constructors are not.
+      sym.info.nonPrivateMembers.filter(x => (!x.isConstructor || x.owner==sym))
+    val members       = memberSyms flatMap (makeMember(_, this))
     val templates     = members partialMap { case c: DocTemplateEntity => c }
     val methods       = members partialMap { case d: Def => d }
     val values        = members partialMap { case v: Val => v }
@@ -178,7 +197,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
     val aliasTypes    = members partialMap { case t: AliasType => t }
     override def isTemplate = true
     def isDocTemplate = true
-    def companion = sym.linkedSym match {
+    def companion = sym.companionSymbol match {
       case NoSymbol => None
       case comSym => Some(makeDocTemplate(comSym, inTpl))
     }
@@ -229,7 +248,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
             override def qualifiedName = "_root_"
             override def inheritedFrom = Nil
             override def isRootPackage = true
-            override protected def memberSyms =
+            override protected lazy val memberSyms =
               (bSym.info.members ++ EmptyPackage.info.members) filter { s =>
                 s != EmptyPackage && s != RootPackage
               }
@@ -259,7 +278,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
     val bSym = normalizeTemplate(aSym)
     if (bSym.isPackage) inTpl match {
       case inPkg: PackageImpl => makePackage(bSym, inPkg) getOrElse (new NoDocTemplateImpl(bSym, inPkg))
-      case _ => throw new Error("'" + bSym + "' must be in a package")
+      case _ => abort("'" + bSym + "' must be in a package")
     }
     else if ((bSym.sourceFile != null) && bSym.isPublic && !bSym.isLocal) inTpl match {
       case inDTpl: DocTemplateImpl => makeDocTemplate(bSym, inDTpl)
@@ -298,7 +317,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
         def isCaseClass = sym.isClass && sym.hasFlag(Flags.CASE)
       }
     else
-      throw new Error("'" + bSym + "' that isn't a class, trait or object cannot be built as a documentable template")
+      abort("'" + bSym + "' that isn't a class, trait or object cannot be built as a documentable template")
   }
 
   /** */
@@ -356,13 +375,13 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
         })
       else if (bSym.isPackage)
         inTpl match { case inPkg: PackageImpl =>  makePackage(bSym, inPkg) }
-      else if ((bSym.isClass || bSym.isModule) && (bSym.sourceFile != null) && bSym.isPublic && !bSym.isLocal) {
+      else if ((bSym.isClass || bSym.isModule) && bSym.isPublic && !bSym.isLocal) {
         (inTpl.toRoot find (_.sym == bSym )) orElse Some(makeDocTemplate(bSym, inTpl))
       }
       else
         None
     }
-    if (!aSym.isPublic || (aSym hasFlag Flags.SYNTHETIC) || (aSym hasFlag Flags.BRIDGE) || aSym.isLocal || aSym.isModuleClass || aSym.isPackageObject || aSym.isMixinConstructor)
+    if ((!aSym.isPackage && aSym.sourceFile == null) || !aSym.isPublic || (aSym hasFlag Flags.SYNTHETIC) || aSym.isLocal || aSym.isModuleClass || aSym.isPackageObject || aSym.isMixinConstructor)
       Nil
     else {
       val allSyms = useCases(aSym, inTpl.sym) map { case (bSym, bComment, bPos) =>
@@ -401,16 +420,27 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
   }
 
   /** */
-  def makeValueParam(aSym: Symbol, inTpl: => DocTemplateImpl, newName: String): ValueParam = {
+  def makeValueParam(aSym: Symbol, inTpl: => DocTemplateImpl, newName: String): ValueParam =
     new ParameterImpl(aSym, inTpl) with ValueParam {
       override val name = newName
       def isTypeParam = false
       def isValueParam = true
-      def resultType = {
+      def defaultValue =
+        if (aSym.hasFlag(Flags.DEFAULTPARAM))
+          // units.filter should return only one element
+          (currentRun.units filter (_.source.file == aSym.sourceFile)).toList match {
+            case List(unit) =>
+              (unit.body find (_.symbol == aSym)) match {
+                case Some(ValDef(_,_,_,rhs)) => Some(rhs.toString)
+                case _ => None
+              }
+            case _ => None
+          }
+        else None
+      def resultType =
         makeType(sym.tpe, inTpl, sym)
-      }
+      def isImplicit = aSym.hasFlag(Flags.IMPLICIT)
     }
-  }
 
   /** */
   def makeType(aType: Type, seeInTpl: => TemplateImpl, dclSym: Symbol): TypeEntity = {
@@ -452,7 +482,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
           nameBuffer append ')'
         case TypeRef(pre, aSym, targs) =>
           val bSym = normalizeTemplate(aSym)
-          if (bSym.isTypeMember)
+          if (bSym.isNonClassType)
             nameBuffer append bSym.name
           else {
             val tpl = makeTemplate(bSym)

@@ -328,7 +328,7 @@ trait Iterator[+A] { self =>
   }
 
   /** Concatenates this iterator with another.
-   *  @that   the other iterator
+   *  @param   that   the other iterator
    *  @return  a new iterator that first yields the values produced by this
    *  iterator followed by the values produced by iterator `that`.
    *  @usecase def ++(that: => Iterator[A]): Iterator[A]
@@ -937,6 +937,8 @@ trait Iterator[+A] { self =>
       if (!filled)
         fill()
       
+      if (!filled)
+        throw new NoSuchElementException("next on empty iterator")
       filled = false
       buffer.toList
     }      
@@ -1121,6 +1123,17 @@ trait Iterator[+A] { self =>
     res.toList
   }
 
+  /** Traverses this iterator and returns all produced values in a set.
+   *  $willNotTerminateInf
+   *
+   *  @return  a set which contains all values produced by this iterator.
+   */
+  def toSet[B >: A]: immutable.Set[B] = {
+    val res = new ListBuffer[B]
+    while (hasNext) res += next
+    res.toSet
+  }
+
   /** Lazily wraps a Stream around this iterator so its values are memoized.
    *
    *  @return  a Stream which can repeatedly produce all the values
@@ -1138,6 +1151,20 @@ trait Iterator[+A] { self =>
     val buffer = new ArrayBuffer[A]
     this copyToBuffer buffer
     buffer 
+  }
+  
+  /** Traverses this iterator and returns all produced values in a map.
+   *  $willNotTerminateInf
+   *  @see    TraversableLike.toMap
+   *
+   *  @return  a map containing all elements of this iterator.
+   */
+  def toMap[T, U](implicit ev: A <:< (T, U)): immutable.Map[T, U] = {
+    val b = immutable.Map.newBuilder[T, U]
+    while (hasNext)
+      b += next
+
+    b.result
   }
   
   /** Tests if another iterator produces the same valeus as this one.
@@ -1263,7 +1290,7 @@ trait Iterator[+A] { self =>
    *  @param  xs    the array to fill.
    *  @param  start the starting index.
    *  @param  sz    the maximum number of elements to be read.
-   *  @pre          the array must be large enough to hold `sz` elements.
+   *  @note          the array must be large enough to hold `sz` elements.
    */
   @deprecated("use copyToArray instead")
   def readInto[B >: A](xs: Array[B], start: Int, sz: Int) {

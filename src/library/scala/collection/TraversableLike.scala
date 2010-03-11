@@ -676,7 +676,7 @@ self =>
    *  @tparam   B     The type over which the ordering is defined.   
    *  @return   the largest element of this $coll with respect to the ordering `cmp`.
    *
-   *  @usecase def min: A
+   *  @usecase def max: A
    *  @return   the largest element of this $coll. 
    */
   def max[B >: A](implicit cmp: Ordering[B]): A = {
@@ -1039,7 +1039,7 @@ self =>
    *               `end`. Inside, the string representations (w.r.t. the method `toString`)
    *               of all elements of this $coll are separated by the string `sep`.
    *
-   *  @ex  `List(1, 2, 3).mkString("(", "; ", ")") = "(1; 2; 3)"`
+   *  @example  `List(1, 2, 3).mkString("(", "; ", ")") = "(1; 2; 3)"`
    */
   def mkString(start: String, sep: String, end: String): String =
     addString(new StringBuilder(), start, sep, end).toString
@@ -1051,7 +1051,7 @@ self =>
    *               the string representations (w.r.t. the method `toString`)
    *               of all elements of this $coll are separated by the string `sep`.
    *
-   *  @ex  `List(1, 2, 3).mkString("|") = "1|2|3"`
+   *  @example  `List(1, 2, 3).mkString("|") = "1|2|3"`
    */
   def mkString(sep: String): String =
     addString(new StringBuilder(), sep).toString
@@ -1106,7 +1106,7 @@ self =>
   def addString(b: StringBuilder): StringBuilder = addString(b, "")
 
   /** Converts this $coll to a string
-   *  @returns  a string representation of this collection. By default this
+   *  @return   a string representation of this collection. By default this
    *            string consists of the `stringPrefix` of this $coll,
    *            followed by all elements separated by commas and enclosed in parentheses.
    */
