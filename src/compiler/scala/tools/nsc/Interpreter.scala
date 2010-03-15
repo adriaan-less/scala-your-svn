@@ -964,7 +964,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
           val rawType = atNextPhase(resObjSym.info.member(name).tpe)
           // the types are all =>T; remove the =>
           val cleanedType = rawType match { 
-            case compiler.PolyType(Nil, rt) => rt
+            case compiler.NullaryMethodType(rt) => rt
             case rawType => rawType
           }
 

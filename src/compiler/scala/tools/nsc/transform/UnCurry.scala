@@ -63,10 +63,12 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
           assert(false, "unexpected curried method types with intervening exitential") 
           tp0
-        case PolyType(List(), restpe) => // nullary method type
+        case NullaryMethodType(restpe) =>
           apply(MethodType(List(), restpe))
         case PolyType(tparams, restpe) => // polymorphic nullary method type, since it didn't occur in a higher-kinded position
-          PolyType(tparams, apply(MethodType(List(), restpe)))
+        // TODO: it's a type function if tp0.typeSymbolDirect.isAnonymousTypeFunction
+        // TODO: when NullaryMethodTypes land, this becomes `typeFun(tparams, apply(restpe))` -- or maybe the case can go away entirely?
+          typeFun(tparams, apply(MethodType(List(), restpe)))
         case TypeRef(pre, ByNameParamClass, List(arg)) =>
           apply(functionType(List(), arg))
         case TypeRef(pre, RepeatedParamClass, args) =>
@@ -84,7 +86,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
 //   - `[tpars]() tref` (PolyType(tpars, MethodType(List(), tref)) 
 //         a nullary method types uncurry to a method with an empty argument list
 //   - `[tpars] tref`   (PolyType(tpars, tref))
-//         a proper type function -- see mapOverArgs: can only occur in args of TypeRef (right?))
+//         a proper type function -- see mapOverArgs: can only occur in args of TypeRef (right? -- no, 
+  // in principle the sym of a typeref could be an anonymous type function symbol))
 // the issue comes up when a partial type application gets normalised to a polytype, like `[A] Function1[X, A]`
 // should not apply the uncurry transform to such a type
 // see #2594 for an example
@@ -96,7 +99,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         arg match {
           // is this a higher-kinded position? (TODO: confirm this is the only case)
           case PolyType(tparams, restpe) if tparam.typeParams.nonEmpty =>  // higher-kinded type param
-            PolyType(tparams, apply(restpe)) // could not be a nullary method type
+            typeFun(tparams, apply(restpe)) // could not be a nullary method type
           case _ =>
             this(arg)
         }

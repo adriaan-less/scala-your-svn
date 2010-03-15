@@ -797,7 +797,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     val res = tpe match {
       case PolyType(targs, ClassInfoType(base, decls, clazz)) =>
         val parents = base map specializedType
-        PolyType(targs, ClassInfoType(parents, new Scope(specializeClass(clazz, typeEnv(clazz))), clazz))
+        typeFun(targs, ClassInfoType(parents, new Scope(specializeClass(clazz, typeEnv(clazz))), clazz))
       
       case ClassInfoType(base, decls, clazz) if !clazz.isPackageClass =>
         val parents = base map specializedType

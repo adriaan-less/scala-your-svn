@@ -802,7 +802,7 @@ trait Typers { self: Analyzer =>
       case OverloadedType(pre, alts) if ((mode & FUNmode) == 0) => // (1)
         inferExprAlternative(tree, pt)
         adapt(tree, mode, pt, original)
-      case PolyType(List(), restpe) => // (2)
+      case NullaryMethodType(restpe) => // (2)
         adapt(tree setType restpe, mode, pt, original)
       case TypeRef(_, sym, List(arg))
       if ((mode & EXPRmode) != 0 && sym == ByNameParamClass) => // (2)
@@ -1762,7 +1762,7 @@ trait Typers { self: Analyzer =>
                 case tpt: Tree =>
                   val alias = enclClass.newAliasType(useCase.pos, name)
                   val tparams = cloneSymbols(tpt.tpe.typeSymbol.typeParams, alias)
-                  alias setInfo polyType(tparams, appliedType(tpt.tpe, tparams map (_.tpe)))
+                  alias setInfo typeFun(tparams, appliedType(tpt.tpe, tparams map (_.tpe)))
                   context.scope.enter(alias)
                 case _ =>
               }
@@ -2949,7 +2949,7 @@ trait Typers { self: Analyzer =>
           // as we don't know which alternative to choose... here we do
           map2Conserve(args, tparams) { 
             //@M! the polytype denotes the expected kind
-            (arg, tparam) => typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+            (arg, tparam) => typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
           }          
         } else // @M: there's probably something wrong when args.length != tparams.length... (triggered by bug #320)
          // Martin, I'm using fake trees, because, if you use args or arg.map(typedType), 
@@ -3235,7 +3235,7 @@ trait Typers { self: Analyzer =>
           val expr2 = Function(List(), expr1) setPos expr1.pos
           new ChangeOwnerTraverser(context.owner, expr2.symbol).traverse(expr2)
           typed1(expr2, mode, pt)
-        case PolyType(List(), restpe) =>
+        case NullaryMethodType(restpe) =>
           val expr2 = Function(List(), expr1) setPos expr1.pos
           new ChangeOwnerTraverser(context.owner, expr2.symbol).traverse(expr2)
           typed1(expr2, mode, pt)
@@ -3736,7 +3736,7 @@ trait Typers { self: Analyzer =>
                 // if symbol hasn't been fully loaded, can't check kind-arity
               else map2Conserve(args, tparams) { 
                 (arg, tparam) => 
-                  typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+                  typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
                   //@M! the polytype denotes the expected kind
               }
             val argtypes = args1 map (_.tpe)
@@ -3954,7 +3954,7 @@ trait Typers { self: Analyzer =>
           // @M maybe the well-kindedness check should be done when checking the type arguments conform to the type parameters' bounds?          
           val args1 = if(args.length == tparams.length) map2Conserve(args, tparams) { 
                         //@M! the polytype denotes the expected kind
-                        (arg, tparam) => typedHigherKindedType(arg, mode, polyType(tparam.typeParams, AnyClass.tpe)) 
+                        (arg, tparam) => typedHigherKindedType(arg, mode, typeFun(tparam.typeParams, AnyClass.tpe)) 
                       } else { 
                       //@M  this branch is correctly hit for an overloaded polymorphic type. It also has to handle erroneous cases.
                       // Until the right alternative for an overloaded method is known, be very liberal, 

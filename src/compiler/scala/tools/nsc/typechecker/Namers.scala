@@ -553,7 +553,7 @@ trait Namers { self: Analyzer =>
     def getterTypeCompleter(vd: ValDef) = mkTypeCompleter(vd) { sym =>
       if (settings.debug.value) log("defining " + sym)
       val tp = typeSig(vd)
-      sym.setInfo(PolyType(List(), tp))
+      sym.setInfo(NullaryMethodType(tp))
       if (settings.debug.value) log("defined " + sym)
       validate(sym)
     }
@@ -750,7 +750,7 @@ trait Namers { self: Analyzer =>
     }
 
     private def classSig(tparams: List[TypeDef], impl: Template): Type = 
-      polyType(typer.reenterTypeParams(tparams), templateSig(impl))
+      typeFun(typer.reenterTypeParams(tparams), templateSig(impl))
 
     private def methodSig(mods: Modifiers, tparams: List[TypeDef],
                           vparamss: List[List[ValDef]], tpt: Tree, rhs: Tree): Type = {
@@ -850,7 +850,7 @@ trait Namers { self: Analyzer =>
       def thisMethodType(restpe: Type) = 
         polyType(
           tparamSyms, // deSkolemized symbols 
-          if (vparamSymss.isEmpty) PolyType(List(), restpe)
+          if (vparamSymss.isEmpty) NullaryMethodType(restpe)
           // vparamss refer (if they do) to skolemized tparams
           else checkDependencies((vparamSymss :\ restpe) (makeMethodType)))
 
@@ -893,7 +893,7 @@ trait Namers { self: Analyzer =>
             resultPt = resultPt.resultType
           }
           resultPt match {
-            case PolyType(List(), rtpe) => resultPt = rtpe
+            case NullaryMethodType(rtpe) => resultPt = rtpe
             case MethodType(List(), rtpe) => resultPt = rtpe
             case _ => 
           }
@@ -1077,7 +1077,7 @@ trait Namers { self: Analyzer =>
       if (tpsym.owner.isRefinementClass &&  // only needed in refinements
           !tpsym.allOverriddenSymbols.forall{verifyOverriding(_)})
 	      ErrorType 
-      else polyType(tparamSyms, tp)   
+      else typeFun(tparamSyms, tp)   
     }
 
     /** Given a case class

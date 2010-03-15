@@ -959,7 +959,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      */
     def existentialBound: Type = 
       if (this.isClass) 
-         polyType(this.typeParams, TypeBounds(NothingClass.tpe, this.classBound))
+         typeFun(this.typeParams, TypeBounds(NothingClass.tpe, this.classBound))
       else if (this.isAbstractType) 
          this.info
       else if (this.isTerm) 

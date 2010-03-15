@@ -1312,7 +1312,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      */
     override def normalize = {
       if (isHigherKinded)
-        PolyType(
+        typeFun(
           typeParams, 
           RefinedType(
             parents map {
@@ -1930,6 +1930,24 @@ A type's typeSymbol should never be inspected directly.
 
   object MethodType extends MethodTypeExtractor
 
+  object NullaryMethodType {
+    /** Creator for nullary method types.
+
+      @note: for now, this returns a PolyType with an empty type-parameter list, 
+         but this will eventually change to a NullaryMethodType
+    */
+    def apply(resTpe: Type): Type = PolyType(List(), resTpe)
+      
+    /** Extractor for nullary method types.
+  
+       @note: to ease transition to NullaryMethodType (instead of PolyType with empty tparam list)
+     */
+    def unapply(tp: Type): Option[(Type)] = tp match {
+      case PolyType(List(), restpe) => Some((restpe))
+      case _ => None
+    }
+  }
+  
   class JavaMethodType(ps: List[Symbol], rt: Type) extends MethodType(ps, rt) {
     override def isJava = true
   }
@@ -1969,8 +1987,8 @@ A type's typeSymbol should never be inspected directly.
      *  wrap lo&hi in polytypes to bind variables
      */
     override def bounds: TypeBounds = 
-      TypeBounds(PolyType(typeParams, resultType.bounds.lo), 
-                 PolyType(typeParams, resultType.bounds.hi))
+      TypeBounds(typeFun(typeParams, resultType.bounds.lo), 
+                 typeFun(typeParams, resultType.bounds.hi))
 
     override def isHigherKinded = !typeParams.isEmpty
     
@@ -2567,7 +2585,7 @@ A type's typeSymbol should never be inspected directly.
     if (tparams.isEmpty) tpe 
     else 
       typeFun(tparams, tpe match { // TODO: when NullarMethodTypes land, this becomes simply `typeFun(tparams, tpe)`
-        case PolyType(List(), tpe1) => tpe1 // tpe was a nullary method type, squash together with type params
+        case NullaryMethodType(tpe1) => tpe1 // tpe was a nullary method type, squash together with type params
         case _ => tpe
       })
 
@@ -4389,9 +4407,9 @@ A type's typeSymbol should never be inspected directly.
           case _ =>
             false
         }
-      case pt2 @ PolyType(List(), _) =>
+      case pt2 @ NullaryMethodType(_) =>
         tp1 match {
-          case pt1 @ PolyType(List(), _) =>
+          case pt1 @ NullaryMethodType(_) =>
             // other polytypes were already checked in isHKSubType
             pt1.resultType <:< pt2.resultType
           case _ =>
@@ -4503,7 +4521,7 @@ A type's typeSymbol should never be inspected directly.
             matchingParams(params1, params2, mt1.isJava, mt2.isJava) && 
             matchesType(res1, res2, alwaysMatchSimple) &&
             mt1.isImplicit == mt2.isImplicit
-          case PolyType(List(), res2) => 
+          case NullaryMethodType(res2) => 
             if (params1.isEmpty) matchesType(res1, res2, alwaysMatchSimple)
             else matchesType(tp1, res2, alwaysMatchSimple)
           case ExistentialType(_, res2) =>
@@ -4549,9 +4567,9 @@ A type's typeSymbol should never be inspected directly.
         tp1.isImplicit == tp2.isImplicit
       case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
         matchesQuantified(tparams1, tparams2, res1, res2)
-      case (PolyType(List(), rtp1), MethodType(List(), rtp2)) => 
+      case (NullaryMethodType(rtp1), MethodType(List(), rtp2)) => 
         matchesType(rtp1, rtp2, alwaysMatchSimple)
-      case (MethodType(List(), rtp1), PolyType(List(), rtp2)) => 
+      case (MethodType(List(), rtp1), NullaryMethodType(rtp2)) => 
         matchesType(rtp1, rtp2, alwaysMatchSimple)
       case (ExistentialType(tparams1, res1), ExistentialType(tparams2, res2)) =>
         matchesQuantified(tparams1, tparams2, res1, res2)
@@ -4559,9 +4577,9 @@ A type's typeSymbol should never be inspected directly.
         matchesType(res1, tp2, alwaysMatchSimple)
       case (_, ExistentialType(_, res2)) if alwaysMatchSimple =>
         matchesType(tp1, res2, alwaysMatchSimple)
-      case (PolyType(List(), rtp1), _) => 
+      case (NullaryMethodType(rtp1), _) => 
         matchesType(rtp1, tp2, alwaysMatchSimple)
-      case (_, PolyType(List(), rtp2)) => 
+      case (_, NullaryMethodType(rtp2)) => 
         matchesType(tp1, rtp2, alwaysMatchSimple)
       case (MethodType(_, _), _) => false
       case (PolyType(_, _), _)   => false

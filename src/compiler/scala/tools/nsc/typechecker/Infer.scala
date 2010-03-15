@@ -184,7 +184,7 @@ trait Infer {
     case mt @ MethodType(params, restpe) if (!restpe.isDependent) =>
       if (mt.isImplicit) normalize(restpe)
       else functionType(params map (_.tpe), normalize(restpe))
-    case PolyType(List(), restpe) => // nullary method type
+    case NullaryMethodType(restpe) => // nullary method type
       normalize(restpe)
     case ExistentialType(tparams, qtpe) =>
       ExistentialType(tparams, normalize(qtpe))
@@ -470,7 +470,7 @@ trait Infer {
           case _ =>
             tp <:< pt
         }
-      case PolyType(List(), restpe) => // nullary method type
+      case NullaryMethodType(restpe) => // nullary method type
         normSubType(restpe, pt)
       case ExistentialType(tparams, qtpe) =>
         normalize(tp) <:< pt
@@ -741,7 +741,7 @@ trait Infer {
     }
 
     private[typechecker] def followApply(tp: Type): Type = tp match {
-      case PolyType(List(), restp) => 
+      case NullaryMethodType(restp) => 
         val restp1 = followApply(restp)
         if (restp1 eq restp) tp else restp1
       case _ =>

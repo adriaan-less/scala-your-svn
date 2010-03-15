@@ -501,16 +501,16 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { extractor =
           if (!defs.isEmpty) {
             nameBuffer append " {...}" // TODO: actually print the refinement
           }
+        /* Eval-by-name types */
+        case NullaryMethodType(result) =>
+          nameBuffer append '⇒'
+          appendType0(result)
         /* Polymorphic types */
-        case PolyType(tparams, result) if (!tparams.isEmpty) =>
+        case PolyType(tparams, result) => // assert(tparams nonEmpty) -- follows from previous case (or, when NullaryMethodTypes are implemented, the invariant of PolyType)
           appendType0(result)
           nameBuffer append '['
           appendTypes0(tparams map (_.tpe), ", ") // TODO: actually print the polytype's symbols (not just types)
           nameBuffer append ']'
-        /* Eval-by-name types */
-        case PolyType(tparams, result) if (tparams.isEmpty) =>
-          nameBuffer append '⇒'
-          appendType0(result)
         case tpen =>
           nameBuffer append tpen.toString
       }

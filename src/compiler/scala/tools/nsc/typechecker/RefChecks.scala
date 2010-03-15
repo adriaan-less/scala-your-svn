@@ -55,7 +55,7 @@ abstract class RefChecks extends InfoTransform {
   def transformInfo(sym: Symbol, tp: Type): Type =
     if (sym.isModule && !sym.isStatic) {
       sym setFlag (lateMETHOD | STABLE)
-      PolyType(List(), tp)
+      NullaryMethodType(tp)
     } else tp
 
   val toJavaRepeatedParam = new TypeMap {
@@ -222,12 +222,12 @@ abstract class RefChecks extends InfoTransform {
       }
 
       def overridesType(tp1: Type, tp2: Type): Boolean = (tp1.normalize, tp2.normalize) match {
-        case (MethodType(List(), rtp1), PolyType(List(), rtp2)) => 
+        case (MethodType(List(), rtp1), NullaryMethodType(rtp2)) => 
           rtp1 <:< rtp2
-        case (PolyType(List(), rtp1), MethodType(List(), rtp2)) => 
+        case (NullaryMethodType(rtp1), MethodType(List(), rtp2)) => 
           rtp1 <:< rtp2
         case (TypeRef(_, sym, _),  _) if (sym.isModuleClass) => 
-          overridesType(PolyType(List(), tp1), tp2)
+          overridesType(NullaryMethodType(tp1), tp2)
         case _ => 
           tp1 <:< tp2
       }
@@ -813,7 +813,7 @@ abstract class RefChecks extends InfoTransform {
           if (!sym.allOverriddenSymbols.isEmpty) {
             val factory = sym.owner.newMethod(sym.pos, sym.name)
               .setFlag(sym.flags | STABLE).resetFlag(MODULE)
-              .setInfo(PolyType(List(), sym.moduleClass.tpe))
+              .setInfo(NullaryMethodType(sym.moduleClass.tpe))
             sym.owner.info.decls.enter(factory)
             val ddef = 
               atPhase(phase.next) {

@@ -162,7 +162,7 @@ abstract class TypeParser {
 	    val flags = translateAttributes(getter);
 	    val owner: Symbol = if (getter.IsStatic) statics else clazz;
 	    val methodSym = owner.newMethod(NoPosition, name).setFlag(flags)
-	    val mtype: Type = if (gparamsLength == 0) PolyType(List(), propType)
+	    val mtype: Type = if (gparamsLength == 0) NullaryMethodType(propType)
                               else methodType(getter, getter.ReturnType)(methodSym)
         methodSym.setInfo(mtype);
 	    methodSym.setFlag(Flags.ACCESSOR);
