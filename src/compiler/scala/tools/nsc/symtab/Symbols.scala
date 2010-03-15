@@ -430,6 +430,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     final def isAnonymousClass = isClass && (originalName startsWith nme.ANON_CLASS_NAME) // todo: find out why we can't use containsName here.
     final def isAnonymousFunction = hasFlag(SYNTHETIC) && (name containsName nme.ANON_FUN_NAME)
+    final def isAnonymousTypeFunction = hasFlag(SYNTHETIC) && (name containsName nme.ANON_TYPE_FUN_NAME)
 
     final def isClassOfModule = isModuleClass || isClass && nme.isLocalName(name)
     final def isPackageObject = isModule && name == nme.PACKAGEkw && owner.isPackageClass

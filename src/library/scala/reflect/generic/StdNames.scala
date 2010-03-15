@@ -11,6 +11,7 @@ trait StdNames { self: Universe =>
 
     val ANON_CLASS_NAME    = newTermName("$anon")
     val ANON_FUN_NAME      = newTermName("$anonfun")
+    val ANON_TYPE_FUN_NAME = newTermName("$anontpfun")
     val EMPTY_PACKAGE_NAME = newTermName("<empty>")
     val IMPORT             = newTermName("<import>")
     val REFINE_CLASS_NAME  = newTermName("<refinement>")

@@ -92,7 +92,8 @@ abstract class Pickler extends SubComponent {
       (isRootSym(sym) ||
        sym.isRefinementClass ||
        sym.isAbstractType && sym.hasFlag(EXISTENTIAL) || // existential param
-       (sym hasFlag PARAM) || 
+       (sym hasFlag PARAM) ||
+       sym.isAnonymousTypeFunction ||
        isLocal(sym.owner))
 
     private def staticAnnotations(annots: List[AnnotationInfo]) =

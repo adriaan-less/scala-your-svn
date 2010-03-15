@@ -1717,13 +1717,13 @@ A type's typeSymbol should never be inspected directly.
           assert(xform ne this, this)
           xform.normalize // cycles have been checked in typeRef
         } else { // should rarely happen, if at all
-          PolyType(sym.info.typeParams, transform(sym.info.resultType).normalize)  // eta-expand -- for regularity, go through sym.info for typeParams
+          typeFunAnon(sym.info.typeParams, transform(sym.info.resultType).normalize)  // eta-expand -- for regularity, go through sym.info for typeParams
           // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         }
       } else if (isHigherKinded) {
         // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
-        PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
+        typeFunAnon(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
         //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
@@ -1934,14 +1934,13 @@ A type's typeSymbol should never be inspected directly.
     override def isJava = true
   }
 
-  /** A class representing a polymorphic type or, if tparams.length == 0,
-   *  a parameterless method type.
-   *  (@M: note that polymorphic nullary methods have non-empty tparams, 
+  /** A class representing a type function or a polymorphic value, as well as (for now)
+   * a (possibly polymorphic) nullary method type (i.e., the type of a method without an argument list, but possibly with type parameters)
+   *
+   * @note: polymorphic nullary methods have non-empty tparams, 
    *   e.g., isInstanceOf or def makeList[T] = new List[T].
-   *   Ideally, there would be a NullaryMethodType, but since the only polymorphic values are methods, it's not that problematic.
-   *   More pressingly, we should add a TypeFunction type for anonymous type constructors -- for now, PolyType is used in:
-   *     - normalize: for eta-expansion of type aliases
-   *     - abstractTypeSig )
+   *   We will eventually introduce NullaryMethodType, so that a PolyType represents a type function or a polymorphic value (these are still collapsed), 
+   *   but not the type of a method without an argument list
    */
   case class PolyType(override val typeParams: List[Symbol], override val resultType: Type)
        extends Type {
@@ -1965,7 +1964,7 @@ A type's typeSymbol should never be inspected directly.
     override def isVolatile = resultType.isVolatile
     override def finalResultType: Type = resultType.finalResultType
 
-    /** @M: abstractTypeSig now wraps a TypeBounds in a PolyType 
+    /** @M: typeDefSig wraps a TypeBounds in a PolyType 
      *  to represent a higher-kinded type parameter
      *  wrap lo&hi in polytypes to bind variables
      */
@@ -2276,8 +2275,7 @@ A type's typeSymbol should never be inspected directly.
     override def normalize: Type = 
       if  (constr.instValid) constr.inst
       else if (isHigherKinded) {  // get here when checking higher-order subtyping of the typevar by itself (TODO: check whether this ever happens?)
-        // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
-        PolyType(params, applyArgs(params map (_.typeConstructor)))
+        typeFun(params, applyArgs(params map (_.typeConstructor)))
       } else {
         super.normalize
       }
@@ -2563,16 +2561,40 @@ A type's typeSymbol should never be inspected directly.
       case _ => abort(debugString(tycon))
     }
 
-  /** A creator for type parameterizations 
-   *  If tparams is empty, simply returns result type 
+  /** A creator for type parameterizations that strips empty type parameter lists.
    */
   def polyType(tparams: List[Symbol], tpe: Type): Type = 
     if (tparams.isEmpty) tpe 
     else 
-      PolyType(tparams, tpe match {
-        case PolyType(List(), tpe1) => tpe1
+      typeFun(tparams, tpe match { // TODO: when NullarMethodTypes land, this becomes simply `typeFun(tparams, tpe)`
+        case PolyType(List(), tpe1) => tpe1 // tpe was a nullary method type, squash together with type params
         case _ => tpe
       })
+
+  /** A creator for anonymous type functions, where the symbol for the type function still needs to be created 
+   */
+  def typeFunAnon(tps: List[Symbol], body: Type): Type = {
+    // symbol that represents an anonymous type function
+    // owner of its type params -- similar to value-level anonymous functions ANON_FUN_NAME
+    val outer = body.typeSymbol.owner.enclClass
+    val synthOwner = outer.newAliasType(nme.ANON_TYPE_FUN_NAME).setFlag(SYNTHETIC).setInfo(NoType)
+    outer.info.decls.enter(synthOwner)
+
+    val tps1 = cloneSymbols(tps, synthOwner)
+
+    // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+    val tpfun = typeFun(tps1, body substSym (tps, tps1))
+    synthOwner.setInfo(tpfun)
+    tpfun
+  }
+  
+  /** A creator for a type functions, assuming the type parameters tps already have the right owner 
+     (the type symbol that represents the anonymous type function)
+   */
+  def typeFun(tps: List[Symbol], body: Type): Type = {
+    // assert(tps nonEmpty)
+    PolyType(tps, body)
+  }
 
   /** A creator for existential types. This generates:
    *  
