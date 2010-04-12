@@ -19,8 +19,8 @@ import annotation.tailrec
 /** A class for immutable linked lists representing ordered collections
  *  of elements of type. 
  *
- * This class comes with two implementing case classes `scala.Nil`
- * and `scala.::` that implement the abstract members `isEmpty`,
+ * This class comes with two implementing case classes `scala.Nil` 
+ * and `scala.::` that implement the abstract members `isEmpty`, 
  * `head` and `tail`.
  *
  *  @author  Martin Odersky and others
@@ -433,7 +433,10 @@ final case class ::[B](private var hd: B, private[scala] var tl: List[B]) extend
   }
 }
 
-/** $factoryInfo */
+/** $factoryInfo
+ *  @define coll list
+ *  @define Coll List
+ */
 object List extends SeqFactory[List] {
   
   import scala.collection.{Iterable, Seq, IndexedSeq}
