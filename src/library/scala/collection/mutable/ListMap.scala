@@ -15,7 +15,7 @@ package mutable
 import generic._
 
 /** A simple mutable map backed by a list.
- *
+ * 
  *  @tparam A    the type of the keys contained in this list map.
  *  @tparam B    the type of the values assigned to keys in this list map.
  *  
@@ -59,8 +59,8 @@ class ListMap[A, B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
 }
 
 /** $factoryInfo
- *  @define Coll ListMap
- *  @define coll list map
+ *  @define Coll mutable.ListMap
+ *  @define coll mutable list map
  */
 object ListMap extends MutableMapFactory[ListMap] {
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), ListMap[A, B]] = new MapCanBuildFrom[A, B]
