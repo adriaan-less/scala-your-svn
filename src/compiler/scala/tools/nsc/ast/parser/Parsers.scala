@@ -1008,7 +1008,8 @@ self =>
           val thenp = expr()
           val elsep = if (in.token == ELSE) { in.nextToken(); expr() }
                       else Literal(())
-          If(cond, thenp, elsep) 
+          //If(cond, thenp, elsep) 
+          makeIfThenElse(cond, thenp, elsep) 
         }
       case TRY =>
         atPos(in.skipToken()) {
@@ -1033,17 +1034,17 @@ self =>
           val cond = condExpr()
           newLinesOpt()
           val body = expr()
-          makeWhile(lname, cond, body) 
+          makeWhileDo(cond, body) 
         }
       case DO =>
         val start = in.offset
         atPos(in.skipToken()) {
-          val lname: Name = freshName(o2p(start), "doWhile$")
+//          val lname: Name = freshName(o2p(start), "doWhile$")
           val body = expr()
           if (isStatSep) in.nextToken()
           accept(WHILE)
           val cond = condExpr()
-          makeDoWhile(lname, body, cond) 
+          makeDoWhile(body, cond) 
         }
       case FOR =>
         atPos(in.skipToken()) {
@@ -2052,11 +2053,14 @@ self =>
       val rhs =
         if (tp.isEmpty || in.token == EQUALS) {
           accept(EQUALS)
-          if (!tp.isEmpty && newmods.hasFlag(Flags.MUTABLE) && 
-              (lhs.toList forall (_.isInstanceOf[Ident])) && in.token == USCORE) {
+          if (!tp.isEmpty && (newmods hasFlag Flags.MUTABLE) && 
+              (lhs.toList forall (_.isInstanceOf[Ident])) && in.token == USCORE) 
+          {
             in.nextToken()
             newmods = newmods | Flags.DEFAULTINIT
             EmptyTree
+          } else if (newmods hasFlag Flags.MUTABLE) {
+            Apply(Ident(nme.newVar), List(expr()))
           } else {
             expr()
           }

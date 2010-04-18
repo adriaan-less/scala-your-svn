@@ -217,20 +217,32 @@ abstract class TreeBuilder {
   def makeIntersectionTypeTree(tps: List[Tree]): Tree =
     if (tps.tail.isEmpty) tps.head
     else CompoundTypeTree(Template(tps, emptyValDef, Nil))
-
-  /** Create tree representing a while loop */
-  def makeWhile(lname: Name, cond: Tree, body: Tree): Tree = {
-    val continu = atPos(o2p(body.pos.endOrPoint)) { Apply(Ident(lname), Nil) }
-    val rhs = If(cond, Block(List(body), continu), Literal(()))
-    LabelDef(lname, Nil, rhs)
-  }
-
+/*
   /** Create tree representing a do-while loop */
   def makeDoWhile(lname: Name, body: Tree, cond: Tree): Tree = {
     val continu = Apply(Ident(lname), Nil)
     val rhs = Block(List(body), If(cond, continu, Literal(())))
     LabelDef(lname, Nil, rhs)
   }
+
+  /** Create tree representing a while loop */
+  def makeWhileDo(lname: Name, cond: Tree, body: Tree): Tree = {
+    val continu = atPos(o2p(body.pos.endOrPoint)) { Apply(Ident(lname), Nil) }
+    val rhs = If(cond, Block(List(body), continu), Literal(()))
+    LabelDef(lname, Nil, rhs)
+  }
+*/
+  /** Create tree representing a while loop */
+  def makeWhileDo(cond: Tree, body: Tree): Tree =
+    Apply(Ident(nme.whileDo), List(cond, body))
+
+  /** Create tree representing a do-while loop */
+  def makeDoWhile(body: Tree, cond: Tree): Tree =
+    Apply(Ident(nme.doWhile), List(body, cond))
+
+  /** Create tree representing a do-while loop */
+  def makeIfThenElse(cond: Tree, thenp: Tree, elsep: Tree): Tree =
+    Apply(Ident(nme.ifThenElse), List(cond, thenp, elsep))
 
   /** Create block of statements `stats'  */
   def makeBlock(stats: List[Tree]): Tree =

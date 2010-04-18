@@ -3153,19 +3153,14 @@ trait Typers { self: Analyzer =>
 
       def typedIf(cond: Tree, thenp: Tree, elsep: Tree) = {
         val cond1 = checkDead(typed(cond, EXPRmode | BYVALmode, BooleanClass.tpe))
-        if (elsep.isEmpty) { // in the future, should be unecessary
-          val thenp1 = typed(thenp, UnitClass.tpe)
-          treeCopy.If(tree, cond1, thenp1, elsep) setType thenp1.tpe
-        } else { 
-          var thenp1 = typed(thenp, pt)
-          var elsep1 = typed(elsep, pt)
-          val (owntype, needAdapt) = ptOrLub(List(thenp1.tpe, elsep1.tpe))
-          if (needAdapt) { //isNumericValueType(owntype)) {
-            thenp1 = adapt(thenp1, mode, owntype)
-            elsep1 = adapt(elsep1, mode, owntype)
-          }
-          treeCopy.If(tree, cond1, thenp1, elsep1) setType owntype
+        var thenp1 = typed(thenp, pt)
+        var elsep1 = typed(elsep, pt)
+        val (owntype, needAdapt) = ptOrLub(List(thenp1.tpe, elsep1.tpe))
+        if (needAdapt) { //isNumericValueType(owntype)) {
+          thenp1 = adapt(thenp1, mode, owntype)
+          elsep1 = adapt(elsep1, mode, owntype)
         }
+        treeCopy.If(tree, cond1, thenp1, elsep1) setType owntype
       }
 
       def typedReturn(expr: Tree) = {
@@ -3342,16 +3337,30 @@ trait Typers { self: Analyzer =>
                 case mt: MethodType => mt.isImplicit
                 case _ => false
               }
+              def removeFunUndets() =
+                context.undetparams = context.undetparams filter { 
+                  case tv: TypeVar => tv.origin.typeSymbol.owner != fun1.symbol
+                  case _ => false
+                }
               val res = 
-                if (phase.id <= currentRun.typerPhase.id &&
+                if (fun1.symbol == Predef_ifThenElse) {
+                  removeFunUndets()
+                  val List(cond, t, e) = args
+                  typedIf(cond, t, e)
+                } else if (fun1.symbol == Predef_newVar) {
+                  removeFunUndets()
+                  val List(init) = args
+                  typed1(init, mode, pt)
+                } else if (phase.id <= currentRun.typerPhase.id &&
                     fun2.isInstanceOf[Select] && 
                     !isImplicitMethod(fun2.tpe) &&
                     ((fun2.symbol eq null) || !fun2.symbol.isConstructor) &&
-                    (mode & (EXPRmode | SNDTRYmode)) == EXPRmode) {
-                      tryTypedApply(fun2, args)
-                    } else {
-                      doTypedApply(tree, fun2, args, mode, pt)
-                    }
+                    (mode & (EXPRmode | SNDTRYmode)) == EXPRmode) 
+                {
+                  tryTypedApply(fun2, args)
+                } else {
+                  doTypedApply(tree, fun2, args, mode, pt)
+                }
             /*
               if (fun2.hasSymbol && fun2.symbol.isConstructor && (mode & EXPRmode) != 0) {
                 res.tpe = res.tpe.notNull

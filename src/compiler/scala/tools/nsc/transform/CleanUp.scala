@@ -9,6 +9,7 @@ package transform
 
 import symtab._
 import Flags._
+import util.OffsetPosition
 import scala.collection.mutable.{ListBuffer, HashMap}
 
 abstract class CleanUp extends Transform with ast.TreeDSL {
@@ -635,6 +636,31 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
         val ntree = typedWithPos(symapp.pos)(REF(staticFieldSym))
         
         super.transform(ntree)
+      case Apply(fn, List(arg1, arg2)) =>
+        def atEnd(pos: Position) = pos match {
+          case p: OffsetPosition => new OffsetPosition(p.source, p.endOrPoint)
+          case _ => pos
+        }
+        def append(body: Tree, last: Tree) = body match {
+          case Block(stats, expr) =>
+            if (treeInfo.isPureExpr(expr)) Block(stats, last)
+            else Block(stats ::: List(expr), last)
+          case _ =>
+            Block(List(body), last)
+        }
+        def continu(lname: Name) =
+          atPos(atEnd(arg2.pos))(Apply(Ident(lname), Nil))
+        def labelDef(lname: Name, rhs: Tree) = 
+          typedWithPos(tree.pos)(LabelDef(lname, List(), rhs))
+        super.transform(
+          if (fn.symbol == Predef_whileDo) {
+            val lname = unit.fresh.newName("while$")
+            labelDef(lname, If(arg1, append(arg2, continu(lname)), Literal(())))
+          } else if (fn.symbol == Predef_doWhile) {
+            val lname = unit.fresh.newName("doWhile$")
+            labelDef(lname, append(arg1, If(arg2, continu(lname), Literal(()))))
+          } else tree
+        )
       case _ =>
         super.transform(tree)
     }

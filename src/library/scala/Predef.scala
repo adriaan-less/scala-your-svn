@@ -299,6 +299,13 @@ object Predef extends LowPriorityImplicits {
     def subSequence(start: Int, end: Int): CharSequence = arrayToCharSequence(xs.slice(start, end))
     override def toString: String = xs.mkString("")
   }
+
+  // Standard Embeddings -----------------------------------------------------------
+
+  def __whileDo(cond: Boolean, body: Unit): Unit = throw new UnsupportedOperationException("__whileDo")
+  def __doWhile(body: Unit, cond: Boolean): Unit = throw new UnsupportedOperationException("__doWhile")
+  def __ifThenElse[T](cond: => Boolean, thenp: => T, elsep: => T): T = throw new UnsupportedOperationException("__ifThenElse")
+  def __newVar[T](init: T): T = throw new UnsupportedOperationException("__newVar")
   
   // Type Constraints --------------------------------------------------------------
 
