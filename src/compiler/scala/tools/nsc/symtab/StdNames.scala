@@ -286,6 +286,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val hashCode_ = newTermName("hashCode")
     val hasNext = newTermName("hasNext")
     val head = newTermName("head")
+    val ifThenElse = newTermName("ifThenElse")
     val invoke_ = newTermName("invoke")
     val isArray = newTermName("isArray")
     val isInstanceOf_ = newTermName("isInstanceOf")

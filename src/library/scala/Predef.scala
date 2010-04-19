@@ -55,6 +55,15 @@ object Predef extends LowPriorityImplicits {
 
   @inline def locally[T](x: T): T = x
 
+  // reification --------------------------------------------------------
+  @inline def ifThenElse[T](cond: Boolean, thn: => T, els: => T): T 
+    = if(cond) thn else els // this `if` will not be reified
+      // reification does not allow recursive references (the result of reifying something inside a method must not use that method)
+        // this check is performed in refchecks
+      // on recursive reference, the enclosing scope is searched
+      // if no reification method is found, no reification is performed
+      // inlining happens after reification
+
   // errors and asserts -------------------------------------------------
 
   def error(message: String): Nothing = throw new RuntimeException(message)

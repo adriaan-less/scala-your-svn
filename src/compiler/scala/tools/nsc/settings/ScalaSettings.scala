@@ -136,6 +136,7 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val Ypmatnaive    = BooleanSetting    ("-Ypmat-naive", "Desugar matches as naively as possible..")
   val Ytailrec      = BooleanSetting    ("-Ytailrecommend", "Alert methods which would be tail-recursive if private or final.")
   val Yjenkins      = BooleanSetting    ("-Yjenkins-hashCodes", "Use jenkins hash algorithm for case class generated hashCodes.")
+  // val YreifyControl = BooleanSetting    ("-Yreify-control", "Reify control structure (if/then/else, while,...)")
 
   // Warnings
   val Ywarnfatal    = BooleanSetting    ("-Yfatal-warnings", "Fail the compilation if there are any warnings.")

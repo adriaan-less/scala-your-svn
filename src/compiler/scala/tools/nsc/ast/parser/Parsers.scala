@@ -158,12 +158,15 @@ self =>
 
     private var lastErrorOffset : Int = -1
 
-    object treeBuilder extends TreeBuilder {
+    object treeBuilder extends TreeBuilder with ReifyingTreeBuilder {
       val global: self.global.type = self.global
       def freshName(prefix: String): Name = Parser.this.freshName(prefix)
       def o2p(offset: Int) = Parser.this.o2p(offset)
       def r2p(start: Int, point: Int, end: Int) = Parser.this.r2p(start, point, end)
     }
+    // val treeBuilder: TreeBuilder = 
+    //   if(settings.YreifyControl.value) new ParserTreeBuilder with ReifyingTreeBuilder 
+    //   else new ParserTreeBuilder{}
     import treeBuilder.{global => _, _}
 
     /** The types of the context bounds of type parameters of the surrounding class
@@ -1008,7 +1011,7 @@ self =>
           val thenp = expr()
           val elsep = if (in.token == ELSE) { in.nextToken(); expr() }
                       else Literal(())
-          If(cond, thenp, elsep) 
+          makeIf(cond, thenp, elsep) 
         }
       case TRY =>
         atPos(in.skipToken()) {

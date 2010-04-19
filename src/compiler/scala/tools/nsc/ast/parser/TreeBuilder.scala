@@ -205,6 +205,11 @@ abstract class TreeBuilder {
       }
     }
 
+  /** A type tree corresponding to (possibly unary) intersection type */
+  def makeIntersectionTypeTree(tps: List[Tree]): Tree =
+    if (tps.tail.isEmpty) tps.head
+    else CompoundTypeTree(Template(tps, emptyValDef, Nil))
+
   /** Create a tree representing an assignment &lt;lhs = rhs&gt; */
   def makeAssign(lhs: Tree, rhs: Tree): Tree = lhs match {
     case Apply(fn, args) => 
@@ -213,10 +218,9 @@ abstract class TreeBuilder {
       Assign(lhs, rhs)
   }
 
-  /** A type tree corresponding to (possibly unary) intersection type */
-  def makeIntersectionTypeTree(tps: List[Tree]): Tree =
-    if (tps.tail.isEmpty) tps.head
-    else CompoundTypeTree(Template(tps, emptyValDef, Nil))
+  /** Create tree representing an if expression */
+  def makeIf(cond: Tree, thenp: Tree, elsep: Tree): Tree =
+    If(cond, thenp, elsep) 
 
   /** Create tree representing a while loop */
   def makeWhile(lname: Name, cond: Tree, body: Tree): Tree = {
@@ -557,4 +561,36 @@ abstract class TreeBuilder {
       vparamss ::: List(contextBounds map makeEvidenceParam)
   }
 
+}
+
+trait ReifyingTreeBuilder extends TreeBuilder {
+  import global._
+
+  /** Create tree representing an if expression */
+  override def makeIf(cond: Tree, thenp: Tree, elsep: Tree) =
+    Apply(Ident(nme.ifThenElse), List(cond, thenp, elsep)) 
+    
+//If(cond, thenp, elsep) 
+
+  // /** Create a tree representing an assignment &lt;lhs = rhs&gt; */
+  // def makeAssign(lhs: Tree, rhs: Tree): Tree = lhs match {
+  //   case Apply(fn, args) => 
+  //     Apply(atPos(fn.pos) { Select(fn, nme.update) }, args ::: List(rhs)) 
+  //   case _ => 
+  //     Assign(lhs, rhs)
+  // }
+  // 
+  // /** Create tree representing a while loop */
+  // def makeWhile(lname: Name, cond: Tree, body: Tree): Tree = {
+  //   val continu = atPos(o2p(body.pos.endOrPoint)) { Apply(Ident(lname), Nil) }
+  //   val rhs = If(cond, Block(List(body), continu), Literal(()))
+  //   LabelDef(lname, Nil, rhs)
+  // }
+  // 
+  // /** Create tree representing a do-while loop */
+  // def makeDoWhile(lname: Name, body: Tree, cond: Tree): Tree = {
+  //   val continu = Apply(Ident(lname), Nil)
+  //   val rhs = Block(List(body), If(cond, continu, Literal(())))
+  //   LabelDef(lname, Nil, rhs)
+  // }
 }

@@ -995,6 +995,23 @@ abstract class RefChecks extends InfoTransform {
       }
     }
 
+    object Reification {
+      val encounteredDefs = new HashSet[Symbol]
+      def enterDef(sym: Symbol) = if(isReificationName(sym.name)) encounteredDefs += sym
+      def exitDef(sym: Symbol) = encounteredDefs -= sym
+
+      def isReificationName(n: Name): Boolean = n == nme.ifThenElse
+
+      // object UndoRecursiveCall {
+      //   def unapply(t: Apply): Option[(Tree)] = {println(t)
+      //     t match {
+      //         case Apply(TypeApply(ite@Select(_, nme.ifThenElse), _), List(c, t, e)) 
+      //           if {println("ite, c, t, e"+(ite.symbol, c, t, e, encounteredDefs contains ite.symbol)); encounteredDefs contains ite.symbol} => // have we come across the definition of the symbol `m` on our way to the tree we're transforming currently?
+      //             Some(typed(If(c, t, e))) // tree resulting from undoing the reification
+      //     }}
+      // }
+    }
+    
     private def transformApply(tree: Apply): Tree = tree match {
       case Apply(
         Select(qual, nme.filter), 
@@ -1005,6 +1022,11 @@ abstract class RefChecks extends InfoTransform {
             isIrrefutable(pat1, tpt.tpe) && (qual.tpe <:< tree.tpe)) =>
             
           qual
+
+      // case Reification.UndoRecursiveCall(undone) => undone
+      case Apply(TypeApply(ite@Select(_, nme.ifThenElse), _), List(c, t, e)) 
+        if Reification.encounteredDefs contains ite.symbol => // have we come across the definition of the symbol `m` on our way to the tree we're transforming currently?
+          typed(If(c, t, e)) // tree resulting from undoing the reification
 
       case Apply(Select(New(tpt), name), args) 
       if (tpt.tpe.typeSymbol == ArrayClass && args.length >= 2) =>
@@ -1078,13 +1100,14 @@ abstract class RefChecks extends InfoTransform {
         case _ => tree
       }
     }
-    
+
     override def transform(tree: Tree): Tree = {
       val savedLocalTyper = localTyper
       val savedCurrentApplication = currentApplication
-      try {
-        val sym = tree.symbol
+      val sym = tree.symbol
+      if(tree.isDef) Reification.enterDef(sym)
       
+      try {        
         // Apply RefChecks to annotations. Makes sure the annotations conform to
         // type bounds (bug #935), issues deprecation warnings for symbols used
         // inside annotations.
@@ -1179,6 +1202,7 @@ abstract class RefChecks extends InfoTransform {
           unit.error(tree.pos, ex.getMessage())
           tree
       } finally {
+        if(tree.isDef) Reification.exitDef(sym)
         localTyper = savedLocalTyper
         currentApplication = savedCurrentApplication
       }        
