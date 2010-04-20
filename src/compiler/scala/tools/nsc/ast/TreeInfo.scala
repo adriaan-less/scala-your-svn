@@ -46,12 +46,12 @@ abstract class TreeInfo {
   /** Is tree legal as a member definition of an interface?
    */
   def isInterfaceMember(tree: Tree): Boolean = tree match {
-    case EmptyTree                     => true
-    case Import(_, _)                  => true
-    case TypeDef(_, _, _, _)           => true
-    case DefDef(mods, _, _, _, _, __)  => mods.hasFlag(DEFERRED)
-    case ValDef(mods, _, _, _)         => mods.hasFlag(DEFERRED)
-    case DocDef(_, definition)         => isInterfaceMember(definition)
+    case EmptyTree                    => true
+    case Import(_, _)                 => true
+    case TypeDef(_, _, _, _)          => true
+    case DefDef(mods, _, _, _, _, _)  => mods.hasFlag(DEFERRED)
+    case ValDef(mods, _, _, _)        => mods.hasFlag(DEFERRED)
+    case DocDef(_, definition)        => isInterfaceMember(definition)
     case _ => false
   }
 

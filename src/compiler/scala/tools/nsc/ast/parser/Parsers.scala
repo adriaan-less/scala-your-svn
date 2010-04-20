@@ -1060,7 +1060,7 @@ self =>
         }
       case RETURN =>
         atPos(in.skipToken()) {
-          Return(if (isExprIntro) expr() else Literal(()))
+          makeReturn(if (isExprIntro) expr() else Literal(()))
         }
       case THROW =>
         atPos(in.skipToken()) { 
@@ -2060,7 +2060,7 @@ self =>
             newmods = newmods | Flags.DEFAULTINIT
             EmptyTree
           } else if (newmods hasFlag Flags.MUTABLE) {
-            Apply(Ident(nme.newVar), List(expr()))
+            makeNewVar(expr())
           } else {
             expr()
           }

@@ -653,10 +653,10 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
         def labelDef(lname: Name, rhs: Tree) = 
           typedWithPos(tree.pos)(LabelDef(lname, List(), rhs))
         super.transform(
-          if (fn.symbol == Predef_whileDo) {
+          if (fn.symbol == EmbeddedControls_whileDo) {
             val lname = unit.fresh.newName("while$")
             labelDef(lname, If(arg1, append(arg2, continu(lname)), Literal(())))
-          } else if (fn.symbol == Predef_doWhile) {
+          } else if (fn.symbol == EmbeddedControls_doWhile) {
             val lname = unit.fresh.newName("doWhile$")
             labelDef(lname, append(arg1, If(arg2, continu(lname), Literal(()))))
           } else tree

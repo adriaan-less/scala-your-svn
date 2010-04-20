@@ -3343,14 +3343,19 @@ trait Typers { self: Analyzer =>
                   case _ => false
                 }
               val res = 
-                if (fun1.symbol == Predef_ifThenElse) {
+                if (fun1.symbol == EmbeddedControls_ifThenElse) {
                   removeFunUndets()
                   val List(cond, t, e) = args
                   typedIf(cond, t, e)
-                } else if (fun1.symbol == Predef_newVar) {
+                } else if (fun1.symbol == EmbeddedControls_newVar) {
                   removeFunUndets()
                   val List(init) = args
                   typed1(init, mode, pt)
+                } else if (fun1.symbol == EmbeddedControls_return) {
+                  // need to do a case where it's called __return but  not in StandardControl
+                  // also check conformance to enclosing method's result type there.
+                  val List(expr) = args
+                  typedReturn(expr)
                 } else if (phase.id <= currentRun.typerPhase.id &&
                     fun2.isInstanceOf[Select] && 
                     !isImplicitMethod(fun2.tpe) &&

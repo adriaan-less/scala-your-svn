@@ -136,6 +136,12 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val StringClass          = getClass(sn.String)
     lazy val ClassClass           = getClass(sn.Class)
       def Class_getMethod = getMember(ClassClass, nme.getMethod_)
+    lazy val EmbeddedControlsClass  = getClass("scala.EmbeddedControls")
+      lazy val EmbeddedControls_ifThenElse = getMember(EmbeddedControlsClass, nme._ifThenElse)
+      lazy val EmbeddedControls_whileDo = getMember(EmbeddedControlsClass, nme._whileDo)
+      lazy val EmbeddedControls_doWhile = getMember(EmbeddedControlsClass, nme._doWhile)
+      lazy val EmbeddedControls_newVar = getMember(EmbeddedControlsClass, nme._newVar)
+      lazy val EmbeddedControls_return = getMember(EmbeddedControlsClass, nme._return)
 
     // fundamental modules
     lazy val PredefModule: Symbol = getModule("scala.Predef")
@@ -143,10 +149,6 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def Predef_error    = getMember(PredefModule, nme.error)
       def Predef_identity = getMember(PredefModule, nme.identity)
       def Predef_conforms = getMember(PredefModule, nme.conforms)
-      lazy val Predef_ifThenElse = getMember(PredefModule, nme.ifThenElse)
-      lazy val Predef_whileDo = getMember(PredefModule, nme.whileDo)
-      lazy val Predef_doWhile = getMember(PredefModule, nme.doWhile)
-      lazy val Predef_newVar = getMember(PredefModule, nme.newVar)
     lazy val ConsoleModule: Symbol = getModule("scala.Console")
     lazy val ScalaRunTimeModule: Symbol = getModule("scala.runtime.ScalaRunTime")
     lazy val SymbolModule: Symbol = getModule("scala.Symbol") 
