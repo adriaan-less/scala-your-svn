@@ -1281,7 +1281,7 @@ self =>
               case _ =>
                 stripParens(t)
             }
-            Apply(sel, argumentExprs())
+            makeApply(sel, argumentExprs())
           }
           simpleExprRest(app, true)
         case USCORE =>

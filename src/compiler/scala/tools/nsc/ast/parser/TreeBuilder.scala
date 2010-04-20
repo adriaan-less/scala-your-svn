@@ -237,6 +237,18 @@ abstract class TreeBuilder {
   /** Create tree representing a return statement */
   def makeReturn(expr: Tree): Tree = 
     Apply(Ident(nme._return), List(expr))
+  
+  /** Create a tree making an application node; treating == specially
+   */
+  def makeApply(sel: Tree, exprs: List[Tree]) = sel match {
+    case Select(qual, nme.EQ) =>
+      val List(rhs) = exprs
+      Apply(Ident(nme._equal), List(qual, rhs))
+    case Select(qual, nme.EQraw) =>
+      throw new Error()
+    case _ =>
+      Apply(sel, exprs)
+  }
 
   /** Create block of statements `stats'  */
   def makeBlock(stats: List[Tree]): Tree =

@@ -43,5 +43,9 @@ trait EmbeddedControls {
 
   def __return(expr: Any): Nothing = 
     throw new UnsupportedOperationException("__return")
+
+  def __equal(expr1: Any, expr2: Any): Boolean = 
+    throw new UnsupportedOperationException("__equal")
+
 }
 

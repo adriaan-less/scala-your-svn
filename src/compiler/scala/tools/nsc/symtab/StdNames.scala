@@ -336,6 +336,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val zip = newTermName("zip")
 
     val _doWhile = newTermName("__doWhile")
+    val _equal = newTermName("__equal")
     val _ifThenElse = newTermName("__ifThenElse")
     val _newVar = newTermName("__newVar")
     val _return = newTermName("__return")

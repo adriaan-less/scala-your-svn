@@ -5158,12 +5158,17 @@ A type's typeSymbol should never be inspected directly.
 // Errors and Diagnostics -----------------------------------------------------
 
   /** A throwable signalling a type error */
-  class TypeError(var pos: Position, val msg: String) extends Throwable(msg) with ControlThrowable {
+  class TypeError(var pos: Position, val msg: String) extends Throwable(msg) {
+    override def fillInStackTrace(): Throwable = 
+      if (settings.debug.value) super.fillInStackTrace() else this
     def this(msg: String) = this(NoPosition, msg)
   }
 
   class NoCommonType(tps: List[Type]) extends Throwable(
-    "lub/glb of incompatible types: " + tps.mkString("", " and ", "")) with ControlThrowable
+    "lub/glb of incompatible types: " + tps.mkString("", " and ", "")) {
+    override def fillInStackTrace(): Throwable = 
+      if (settings.debug.value) super.fillInStackTrace() else this
+  }
 
   /** A throwable signalling a malformed type */
   class MalformedType(msg: String) extends TypeError(msg) {
