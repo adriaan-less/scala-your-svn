@@ -154,7 +154,7 @@ abstract class TreeBuilder {
   def makeBinop(isExpr: Boolean, left: Tree, op: Name, right: Tree, opPos: Position): Tree = {
     def mkNamed(args: List[Tree]) =
       if (isExpr) args map {
-        case a @ Assign(id @ Ident(name), rhs) =>
+        case a @ LiftedAssign(id @ Ident(name), rhs) =>
           atPos(a.pos) { AssignOrNamedArg(id, rhs) }
         case e => e
       } else args

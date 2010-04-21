@@ -106,6 +106,15 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
 
 // ---- values and creators ---------------------------------------
 
+  object LiftedAssign {
+    def unapply(t: Tree): Option[(Tree, Tree)] = t match {
+      case Assign(lhs, rhs) => Some((lhs, rhs))
+      case Apply(Ident(nme._assign), List(lhs, rhs)) => Some((lhs, rhs))
+      case _ => None
+    }
+  }
+
+
   /** @param sym       the class symbol
    *  @return          the implementation template
    */

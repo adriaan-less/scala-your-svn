@@ -133,7 +133,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
 
   import compiler.{ Traverser, CompilationUnit, Symbol, Name, Type }
   import compiler.{ 
-    Tree, TermTree, ValOrDefDef, ValDef, DefDef, Assign, ClassDef,
+    Tree, TermTree, ValOrDefDef, ValDef, DefDef, LiftedAssign, ClassDef,
     ModuleDef, Ident, Select, TypeDef, Import, MemberDef, DocDef,
     ImportSelector, EmptyTree, NoType }
   import compiler.{ nme, newTermName, newTypeName }
@@ -557,15 +557,15 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
     new Request(line, lineName, trees)
 
   private def chooseHandler(member: Tree): MemberHandler = member match {
-    case member: DefDef               => new DefHandler(member)
-    case member: ValDef               => new ValHandler(member)
-    case member@Assign(Ident(_), _)   => new AssignHandler(member)
-    case member: ModuleDef            => new ModuleHandler(member)
-    case member: ClassDef             => new ClassHandler(member)
-    case member: TypeDef              => new TypeAliasHandler(member)
-    case member: Import               => new ImportHandler(member)
-    case DocDef(_, documented)        => chooseHandler(documented)
-    case member                       => new GenericHandler(member)
+    case member: DefDef                             => new DefHandler(member)
+    case member: ValDef                             => new ValHandler(member)
+    case member@LiftedAssign(lhs@Ident(_), rhs)     => new AssignHandler(member, lhs, rhs)
+    case member: ModuleDef                          => new ModuleHandler(member)
+    case member: ClassDef                           => new ClassHandler(member)
+    case member: TypeDef                            => new TypeAliasHandler(member)
+    case member: Import                             => new ImportHandler(member)
+    case DocDef(_, documented)                      => chooseHandler(documented)
+    case member                                     => new GenericHandler(member)
   }
   
   private def requestFromLine(line: String, synthetic: Boolean): Either[IR.Result, Request] = {
@@ -581,7 +581,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
     // Treat a single bare expression specially. This is necessary due to it being hard to
     // modify code at a textual level, and it being hard to submit an AST to the compiler.
     if (trees.size == 1) trees.head match {
-      case _:Assign                         => // we don't want to include assignments
+      case LiftedAssign(_,_)                => // we don't want to include assignments
       case _:TermTree | _:Ident | _:Select  => // ... but do want these as valdefs.
         return requestFromLine("val %s =\n%s".format(varName, line), synthetic)
       case _                                =>
@@ -750,8 +750,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
       if (mods.isPublic) code print codegenln(name, ": ", req.typeOf(name))
   }
 
-  private class AssignHandler(member: Assign) extends MemberHandler(member) {
-    val lhs = member.lhs.asInstanceOf[Ident] // an unfortunate limitation
+  private class AssignHandler(member: Tree, lhs: Ident, rhs: Tree) extends MemberHandler(member) {
     val helperName = newTermName(synthVarNameCreator())
     override def generatesValue = Some(helperName)
 
@@ -1043,10 +1042,10 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
   def mostRecentVar: String =
     if (mostRecentlyHandledTree.isEmpty) ""
     else mostRecentlyHandledTree.get match {
-      case x: ValOrDefDef           => x.name
-      case Assign(Ident(name), _)   => name
-      case ModuleDef(_, name, _)    => name
-      case _                        => onull(varNameCreator.mostRecent)
+      case x: ValOrDefDef                 => x.name
+      case LiftedAssign(Ident(name), _)   => name
+      case ModuleDef(_, name, _)          => name
+      case _                              => onull(varNameCreator.mostRecent)
     }
   
   private def requestForName(name: Name): Option[Request] =
