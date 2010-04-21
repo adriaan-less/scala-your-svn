@@ -1297,10 +1297,18 @@ self =>
       *                 | [nl] BlockExpr
      */
     def argumentExprs(): List[Tree] = {
+      object IsAssign {
+        def unapply(t: Tree): Option[(Tree, Tree)] = t match {
+          case Assign(lhs, rhs) => Some((lhs, rhs))
+          case Apply(Ident(nme._assign), List(lhs, rhs)) => Some((lhs, rhs))
+          case _ => None
+        }
+      }
+      
       def args(): List[Tree] = commaSeparated {
         val maybeNamed = isIdent
         expr() match {
-          case a @ Assign(id, rhs) if maybeNamed =>
+          case a @ IsAssign(id, rhs) if maybeNamed =>
             atPos(a.pos) { AssignOrNamedArg(id, rhs) }
           case e => e
         }
@@ -1308,10 +1316,11 @@ self =>
 
       // if arg has the form "x$1 => a = x$1" it's treated as "a = x$1" with x$1
       // in placeholderParams. This allows e.g. "val f: Int => Int = foo(a = 1, b = _)"
+      
       def convertArg(arg: Tree): Tree = arg match {
         case Function(
           List(vd @ ValDef(mods, pname1, ptype1, EmptyTree)),
-          Assign(Ident(aname), rhs)) if (mods hasFlag Flags.SYNTHETIC) =>
+          IsAssign(Ident(aname), rhs)) if (mods hasFlag Flags.SYNTHETIC) =>
           rhs match {
             case Ident(`pname1`) | Typed(Ident(`pname1`), _) =>
               placeholderParams = vd :: placeholderParams
