@@ -3362,9 +3362,6 @@ trait Typers { self: Analyzer =>
                   // also need to check conformance to enclosing method's result type.
                   val List(expr) = args
                   typedReturn(expr)
-                } else if (fun1.symbol == EmbeddedControls_equal) {
-                  val List(lhs, rhs) = args
-                  typedApply(Select(lhs, nme.EQ) setPos lhs.pos, List(rhs))
                 } else if (fun1.symbol == EmbeddedControls_assign) {
                   val List(lhs, rhs) = args
                   typedAssign(lhs, rhs)
@@ -3389,6 +3386,9 @@ trait Typers { self: Analyzer =>
                 // (calling typed1 more than once for the same tree)
                 if (checked ne res) typed { atPos(tree.pos)(checked) }
                 else res
+              } else if (fun2.symbol == EmbeddedControls_equal) {
+                val List(lhs, rhs) = args
+                typedApply(Select(lhs, nme.EQ) setPos lhs.pos, List(rhs))
               } else res
               /* Would like to do the following instead, but curiously this fails; todo: investigate
               if (fun2.symbol.name == nme.apply && fun2.symbol.owner == ArrayClass) 

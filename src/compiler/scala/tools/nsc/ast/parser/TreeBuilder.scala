@@ -164,7 +164,7 @@ abstract class TreeBuilder {
     }
     if (isExpr) {
       if (treeInfo.isLeftAssoc(op)) {
-        Apply(atPos(left.pos union opPos) { Select(stripParens(left), op.encode) }, arguments)
+        makeApply(atPos(left.pos union opPos) { Select(stripParens(left), op.encode) }, arguments)
       } else {
         val x = freshName()
         Block(
@@ -244,8 +244,6 @@ abstract class TreeBuilder {
     case Select(qual, nme.EQ) =>
       val List(rhs) = exprs
       Apply(Ident(nme._equal), List(qual, rhs))
-    case Select(qual, nme.EQraw) =>
-      throw new Error()
     case _ =>
       Apply(sel, exprs)
   }
@@ -268,7 +266,7 @@ abstract class TreeBuilder {
         case None =>
           atPos(rhs.pos) {
             Apply(
-              Select(rhs, nme.filter),
+              Select(rhs, nme.withFilter),
               List(
                 makeVisitor(
                   List(
