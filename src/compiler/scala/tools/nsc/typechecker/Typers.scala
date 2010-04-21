@@ -3358,13 +3358,16 @@ trait Typers { self: Analyzer =>
                   val List(init) = args
                   typed1(init, mode, pt)
                 } else if (fun1.symbol == EmbeddedControls_return) {
-                  // need to do a case where it's called __return but  not in StandardControl
-                  // also check conformance to enclosing method's result type there.
+                  // TODO: methods called __return but not identical to the one in EmbeddedControls
+                  // also need to check conformance to enclosing method's result type.
                   val List(expr) = args
                   typedReturn(expr)
                 } else if (fun1.symbol == EmbeddedControls_equal) {
                   val List(lhs, rhs) = args
                   typedApply(Select(lhs, nme.EQ) setPos lhs.pos, List(rhs))
+                } else if (fun1.symbol == EmbeddedControls_assign) {
+                  val List(lhs, rhs) = args
+                  typedAssign(lhs, rhs)
                 } else if (phase.id <= currentRun.typerPhase.id &&
                     fun2.isInstanceOf[Select] && 
                     !isImplicitMethod(fun2.tpe) &&

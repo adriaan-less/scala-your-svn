@@ -41,6 +41,9 @@ trait EmbeddedControls {
   def __newVar[T](init: T): T = 
     throw new UnsupportedOperationException("__newVar")
 
+  def __assign[T](lhs: T, rhs: T): Unit = 
+    throw new UnsupportedOperationException("__assign")
+
   def __return(expr: Any): Nothing = 
     throw new UnsupportedOperationException("__return")
 

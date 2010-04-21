@@ -210,7 +210,7 @@ abstract class TreeBuilder {
     case Apply(fn, args) => 
       Apply(atPos(fn.pos) { Select(fn, nme.update) }, args ::: List(rhs)) 
     case _ => 
-      Assign(lhs, rhs)
+      Assign(lhs, rhs) //Apply(Ident(nme._assign), List(lhs, rhs))
   }
 
   /** A type tree corresponding to (possibly unary) intersection type */
