@@ -1,0 +1,4 @@
+local-object2.scala:11: error: capability of right-hand side is not shared
+    O.x = Some(this)
+              ^
+one error found

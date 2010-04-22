@@ -1,0 +1,4 @@
+local-inherit-shared.scala:7: error: extended type must be local or immutable
+class LogFile(parent: String, child: String) extends SuperFile(parent, child) {
+      ^
+one error found

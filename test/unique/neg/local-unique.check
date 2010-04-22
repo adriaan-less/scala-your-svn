@@ -1,0 +1,4 @@
+local-unique.scala:9: error: parameter must not be unique in transient type
+  def m(x: D @unique) {
+      ^
+one error found

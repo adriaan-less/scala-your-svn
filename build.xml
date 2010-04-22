@@ -789,6 +789,129 @@ QUICK BUILD (QUICK)
     <delete dir="${build-quick.dir}" includeemptydirs="yes" quiet="yes" failonerror="no"/>
   </target>
 
+  <target name="build.pre-unique-plugin" depends="quick.comp">
+    <uptodate property="unique-plugin.available" targetfile="${build-quick.dir}/unique-plugin.complete">
+      <srcfiles dir="${src.dir}/unique/plugin"/>
+    </uptodate>
+  </target>
+
+  <target name="build.unique-plugin" depends="build.pre-unique-plugin" unless="unique-plugin.available">
+    <mkdir dir="${build-quick.dir}/classes/unique-plugin"/>
+    <scalacfork
+      destdir="${build-quick.dir}/classes/unique-plugin"
+      compilerpathref="locker.classpath"
+      params="${scalac.args.quick}"
+      srcdir="${src.dir}/unique/plugin"
+      jvmargs="${scalacfork.jvmargs}">
+      <include name="**/*.scala"/>
+      <compilationpath>
+        <pathelement location="${build-quick.dir}/classes/library"/>
+        <pathelement location="${build-quick.dir}/classes/compiler"/>
+      </compilationpath>
+    </scalacfork>
+    <touch file="${build-quick.dir}/unique-plugin.complete" verbose="no"/>
+  </target>
+
+  <target name="build.pre-unique-library" depends="build.unique-plugin">
+    <uptodate property="unique-library.available" targetfile="${build-quick.dir}/unique-library.complete">
+      <srcfiles dir="${src.dir}/unique/library"/>
+    </uptodate>
+  </target>
+
+  <target name="build.unique-library" depends="build.pre-unique-library" unless="unique-library.available">
+    <mkdir dir="${build-quick.dir}/classes/unique-library"/>
+    <scalacfork
+      destdir="${build-quick.dir}/classes/unique-library"
+      compilerpathref="locker.classpath"
+      params="${scalac.args.quick}"
+      srcdir="${src.dir}/unique/library"
+      jvmargs="${scalacfork.jvmargs}">
+      <include name="**/*.scala"/>
+      <compilationpath>
+        <pathelement location="${build-quick.dir}/classes/library"/>
+      </compilationpath>
+    </scalacfork>
+    <touch file="${build-quick.dir}/unique-library.complete" verbose="no"/>
+  </target>
+
+  <target name="pack.unique-plugin" depends="build.unique-library">
+    <mkdir dir="${build-quick.dir}/misc/scala-devel/plugins"/>
+    <jar destfile="${build-quick.dir}/misc/scala-devel/plugins/unique-plugin.jar">
+      <fileset dir="${build-quick.dir}/classes/unique-plugin"/>
+      <fileset file="${src.dir}/unique/plugin/scalac-plugin.xml"/>
+    </jar>
+  </target>
+
+  <target name="pack.unique-library" depends="pack.unique-plugin">
+    <jar destfile="${build-quick.dir}/misc/scala-devel/plugins/unique-library.jar">
+      <fileset dir="${build-quick.dir}/classes/unique-library"/>
+    </jar>
+  </target>
+
+  <target name="test.unique-plugin" depends="pack.done">
+    <property name="partest.srcdir" value="files" />
+    <partest showlog="yes" erroronfailed="yes" javacmd="${java.home}/bin/java"
+             timeout="60000" javaccmd="${javac.cmd}"
+             srcdir="${partest.srcdir}"
+             scalacopts="-Xplugin:${build-quick.dir}/misc/scala-devel/plugins/unique-plugin.jar">
+      <compilationpath>
+        <path refid="pack.classpath"/>
+        <pathelement location="${build-quick.dir}/misc/scala-devel/plugins/unique-plugin.jar"/>
+        <pathelement location="${build-quick.dir}/misc/scala-devel/plugins/unique-library.jar"/>
+        <fileset dir="${partest.dir}/files/lib" includes="*.jar" />
+      </compilationpath>
+      <classpath>
+        <path refid="pack.classpath"/>
+        <pathelement location="${build-quick.dir}/misc/scala-devel/plugins/unique-plugin.jar"/>
+        <pathelement location="${build-quick.dir}/misc/scala-devel/plugins/unique-library.jar"/>
+      </classpath>
+      <postests dir="test/unique/pos" includes="*.scala"/>
+      <negtests dir="test/unique/neg" includes="*.scala"/>
+    </partest>
+  </target>
+
+<!--
+  <target name="test.suite" depends="pack.done">
+    <property name="partest.srcdir" value="files" />
+    <partest showlog="yes" erroronfailed="yes" javacmd="${java.home}/bin/java"
+             timeout="2400000" javaccmd="${javac.cmd}" 
+             srcdir="${partest.srcdir}"
+             scalacopts="${scalac.args.optimise}">
+      <compilationpath>
+        <path refid="pack.classpath"/>
+        <fileset dir="${partest.dir}/files/lib" includes="*.jar" />
+      </compilationpath>
+      <postests  dir="${partest.dir}/${partest.srcdir}/pos" includes="*.scala"/>
+      <negtests  dir="${partest.dir}/${partest.srcdir}/neg" includes="*.scala"/>
+      <runtests  dir="${partest.dir}/${partest.srcdir}">
+        <include name="run/**/*.scala"/>
+      </runtests>
+      <jvmtests dir="${partest.dir}/${partest.srcdir}/jvm" includes="*.scala"/>
+	  <scalachecktests dir="${partest.dir}/${partest.srcdir}/scalacheck" includes="**/*.scala"/>
+      <residenttests dir="${partest.dir}/${partest.srcdir}/res" includes="*.res"/>
+      <buildmanagertests dir="${partest.dir}/${partest.srcdir}/buildmanager" includes="*"/>
+      <shootouttests dir="${partest.dir}/${partest.srcdir}/shootout" includes="*.scala"/>
+      <scalaptests dir="${partest.dir}/${partest.srcdir}/scalap" includes="**/*.scala"/>
+      <scripttests dir="${partest.dir}/${partest.srcdir}/script" includes="*.scala"/>
+    </partest>
+  </target>
+//-->
+
+  <target name="unique-plugin.clean">
+    <delete file="${build-quick.dir}/misc/scala-devel/plugins/unique-plugin.jar"
+            quiet="yes" failonerror="no"/>
+    <delete file="${build-quick.dir}/misc/scala-devel/plugins/unique-library.jar"
+            quiet="yes" failonerror="no"/>
+    <delete dir="${build-quick.dir}/classes/unique-plugin" includeemptydirs="yes"
+            quiet="yes" failonerror="no"/>
+    <delete dir="${build-quick.dir}/classes/unique-library" includeemptydirs="yes"
+            quiet="yes" failonerror="no"/>
+    <delete file="${build-quick.dir}/unique-plugin.complete"
+            quiet="yes" failonerror="no"/>
+    <delete file="${build-quick.dir}/unique-library.complete"
+            quiet="yes" failonerror="no"/>
+  </target>
+
 <!-- ===========================================================================
 PACKED QUICK BUILD (PACK)
 ============================================================================ -->

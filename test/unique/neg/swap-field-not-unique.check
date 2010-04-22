@@ -1,0 +1,4 @@
+swap-field-not-unique.scala:10: error: field must be unique
+    swap(this.f, x)
+        ^
+one error found

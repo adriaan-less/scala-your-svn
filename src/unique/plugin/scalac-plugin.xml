@@ -1,0 +1,4 @@
+<plugin>
+  <name>unique</name>
+  <classname>annotation.checker.UniquePlugin</classname>
+</plugin>

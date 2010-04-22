@@ -1,0 +1,4 @@
+assign-unique-val.scala:15: error: unique value expected
+  val s: Message @unique = O.msg
+                             ^
+one error found

@@ -1,0 +1,4 @@
+notlocal2.scala:14: error: x.f is not guarded [guardsConform1]
+    f = x.f
+          ^
+one error found

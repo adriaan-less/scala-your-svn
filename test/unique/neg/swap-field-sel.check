@@ -1,0 +1,4 @@
+swap-field-sel.scala:9: error: first parameter of swap must be a field selection
+    swap(x, y)
+        ^
+one error found

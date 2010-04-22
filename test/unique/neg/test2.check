@@ -1,0 +1,7 @@
+test2.scala:10: error: not all required capabilities available
+    consume(d)
+           ^
+test2.scala:8: error: method does not return capability of value d
+  def m1(d: D@transient) {
+      ^
+two errors found

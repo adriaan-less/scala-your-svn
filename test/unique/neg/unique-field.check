@@ -1,0 +1,4 @@
+unique-field.scala:10: error: cannot assign to unique field
+    f = x
+      ^
+one error found

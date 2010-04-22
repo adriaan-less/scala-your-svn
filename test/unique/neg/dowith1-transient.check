@@ -1,0 +1,4 @@
+dowith1-transient.scala:20: error: capability of right-hand side is not shared
+    leaky = f
+            ^
+one error found

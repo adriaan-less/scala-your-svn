@@ -1,0 +1,7 @@
+test3.scala:10: error: shared capability may not be consumed
+      send(m)
+          ^
+test3.scala:11: error: shared capability may not be consumed
+      send(m)
+          ^
+two errors found

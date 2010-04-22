@@ -1,0 +1,4 @@
+share.scala:8: error: capability unavailable
+    share(x)
+         ^
+one error found

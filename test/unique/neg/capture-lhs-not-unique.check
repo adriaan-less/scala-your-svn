@@ -1,0 +1,4 @@
+capture-lhs-not-unique.scala:8: error: first argument of capture must be unique
+    capture(y, x)
+           ^
+one error found

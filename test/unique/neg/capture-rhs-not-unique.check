@@ -1,0 +1,4 @@
+capture-rhs-not-unique.scala:11: error: capability of first argument not available
+    capture(x, y)
+           ^
+one error found

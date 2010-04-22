@@ -1,0 +1,4 @@
+swap-rhs-not-unique.scala:10: error: method does not return capability of value x
+  def m(x: C @transient) {
+      ^
+one error found

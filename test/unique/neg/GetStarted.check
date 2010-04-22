@@ -1,0 +1,4 @@
+GetStarted.scala:10: error: not all required capabilities available
+    consume(c)
+           ^
+one error found

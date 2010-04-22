@@ -1,0 +1,4 @@
+D_2.scala:13: error: not all required capabilities available
+    val res: C @unique = c1.m(c2)
+                             ^
+one error found

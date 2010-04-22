@@ -1,0 +1,4 @@
+dowith2-transient.scala:18: error: closure consumes capability of its parameter
+  doWithX("test.xml", { f =>
+                          ^
+one error found

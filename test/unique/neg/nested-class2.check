@@ -1,0 +1,4 @@
+nested-class2.scala:16: error: unique value expected
+    val d: D @unique = new D
+                       ^
+one error found

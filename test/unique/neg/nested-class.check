@@ -1,0 +1,4 @@
+nested-class.scala:14: error: expected unique result
+  def m(): D @unique = {
+      ^
+one error found

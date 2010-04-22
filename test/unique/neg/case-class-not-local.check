@@ -1,0 +1,4 @@
+case-class-not-local.scala:11: error: parameter type must be transient
+@transient case class RunTests(kind: String, d: D)
+                                             ^
+one error found

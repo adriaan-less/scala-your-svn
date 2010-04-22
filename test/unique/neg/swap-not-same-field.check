@@ -1,0 +1,4 @@
+swap-not-same-field.scala:13: error: must select twice the same field in a swap
+    val drop = { val tmp = this.f; this.g = null; tmp }
+               ^
+one error found
