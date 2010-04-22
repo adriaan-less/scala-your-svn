@@ -496,11 +496,47 @@ self: Analyzer =>
                 case _ =>
               }
 
-              val result = new SearchResult(itree2, subst)
-              incCounter(foundImplicits)
-              if (traceImplicits) println("RESULT = "+result)
-              // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
-              result
+              // #3340
+              object MethodTypeWithImplicits {
+                def unapply(tp: Type): Option[(List[Symbol])] = tp match {
+                  case mt@MethodType(params, res) => if(mt.isImplicit) Some(params) else unapply(res)
+                  case _ => None
+                }
+              }
+
+              // println("2ndorder: "+(itree2, itree2.tpe match {case MethodTypeWithImplicits(ps) => ps.toString case t => t.toString}))
+              val secondOrderImplicitsSatisfiable = itree2.tpe match { // TODO: the inferImplicit below will be performed again later -- should be avoided
+                case MethodTypeWithImplicits(params) =>
+                  // TODO lift out <this part> of applyImplicitArgs
+                  val argResultsBuff = new ListBuffer[SearchResult]()
+                  val c2 = context.makeSilent(true)
+                  c2.implicitsEnabled = true
+                  // apply the substitutions (undet type param -> type) that were determined
+                  // by implicit resolution of implicit arguments on the left of this argument
+                  for(param <- params) {
+                    var paramTp = param.tpe
+                    for(ar <- argResultsBuff)
+                      paramTp = paramTp.subst(ar.subst.from, ar.subst.to)
+
+                    argResultsBuff += inferImplicit(itree2, paramTp, true, false, c2) // TODO: this might loop
+                  }
+                  // </this part>
+
+                  argResultsBuff.toList.zip(params) forall {
+                    case (arg, param) => //println("apsfd:"+(arg, param, arg != SearchFailure, param.hasFlag(DEFAULTPARAM)))
+                      arg != SearchFailure || param.hasFlag(DEFAULTPARAM)
+                  }
+                case _ => true // there are no second-order implicits
+              }
+
+              // println("sois: "+secondOrderImplicitsSatisfiable)
+              if(secondOrderImplicitsSatisfiable){
+                val result = new SearchResult(itree2, subst)
+                incCounter(foundImplicits)
+                if (traceImplicits) println("RESULT = "+result)
+                // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
+                result
+              } else SearchFailure
             } else {
               printTyping("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undetParams, tvars))
 
