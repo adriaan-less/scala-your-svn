@@ -242,7 +242,7 @@ abstract class TreeBuilder {
    */
   def makeApply(sel: Tree, exprs: List[Tree]) = sel match {
     case Select(qual, nme.EQ) =>
-      Apply(Ident(nme._equal), qual :: exprs) // XXX AM: exprs.length may be > 1 as in ((ten span (_ <= 5)) == (firstFive, secondFive)) from test/run/colltest1
+      Apply(Ident(nme._equal), qual :: List(makeTupleTerm(exprs, true))) // tuple multiple arguments on the right of ==
     case _ =>
       Apply(sel, exprs)
   }
