@@ -712,7 +712,7 @@ trait Typers { self: Analyzer =>
       case _  =>
         if (phase.next.erasedTypes) qual.tpe.member(name)
         else qual.tpe.nonLocalMember(name)
-    }      
+    }
 
     def silent[T](op: Typer => T, 
                   reportAmbiguousErrors: Boolean = context.reportAmbiguousErrors, 
@@ -3333,7 +3333,108 @@ trait Typers { self: Analyzer =>
         }
       }
     
-      def typedApply(fun: Tree, args: List[Tree]): Tree = {
+      def typedApply(fun: Tree, args: List[Tree]): Tree = fun match {
+        case Select(qual, name) if ((mode & EXPRmode) != 0) && 
+              !treeInfo.isSelfOrSuperConstrCall(fun) && fun.symbol == NoSymbol && !phase.erasedTypes =>
+
+          val extname = "__ext__" + name
+          //println("trying " + mode.toHexString + "/" + fun.symbol + ": " + Apply(fun, args) + " ---> " + Apply(Ident(extname), qual::args))
+
+          val ealts = silent(_.typed(Ident(extname).setPos(fun.pos), funMode(mode), WildcardType), false, tree) match {
+            case ext: Tree =>
+              //println("found ident: " + ext)
+              // do not make an external method accessible through the operator within its own body (HACK ?)
+              ext.symbol.alternatives.filter(s => s.isMethod && s != context.enclMethod.tree.symbol)
+            case _ =>
+              Nil
+          }
+          //println("found external alternatives: " + ealts)
+
+          if (!ealts.isEmpty) {
+            val qual1 = silent(t => checkDead(t.typedQualifier(qual, funMode(mode))), false, tree) match {
+              case qual1: Tree => qual1
+              case ex: TypeError => 
+                reportTypeError(fun.pos, ex)
+                return setError(tree)
+            }    // <--- t0218.scala
+            val fun1 = treeCopy.Select(fun, qual1, name)
+
+            val ms = member(qual1, name)
+            //println("found member: " + ms)
+            val dalts = ms.alternatives.filter(_.isMethod)
+            //println("found declared alternatives: " + dalts)
+
+            if (!dalts.isEmpty) {
+              // both declared and external methods: temporarily add declared methods
+              // to EmbeddedControls, if lookup selects any of those => do default
+              val sentinels = for (msym <- dalts) yield {
+                val sentinel = EmbeddedControlsClass.newMethod("__ext__" + name).setPos(msym.pos)
+
+                val params1 = msym.tpe.params
+                val resultType = msym.tpe.resultType
+                //var receiverType = qual1.tpe // this should really be the owner of msym
+                val receiverTypePoly = msym.owner.tpe
+                val receiverTypeParams = receiverTypePoly.typeParams.map(p => sentinel.newTypeParameter(p.pos, p.name))
+                val methodTypeParams = msym.tpe.typeParams.map(p => sentinel.newTypeParameter(p.pos, p.name))
+                val typeParams = methodTypeParams ::: receiverTypeParams
+                val receiverType = if (receiverTypeParams.isEmpty) receiverTypePoly
+                  else typeRef(receiverTypePoly.prefix, msym.owner, receiverTypeParams.map(_.tpe))
+              
+                val params2 = sentinel.newSyntheticValueParam(receiverType) :: sentinel.newSyntheticValueParams(params1.map(_.tpe))
+                if (typeParams.isEmpty)
+                  sentinel.setInfo(MethodType(params2, resultType))
+                else
+                  sentinel.setInfo(PolyType(typeParams, MethodType(params2, resultType)))
+                EmbeddedControlsClass.info.decls.enter(sentinel)
+              }
+          
+              //println("created sentinel methods: " + sentinels)
+
+              val r = silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args).setPos(tree.pos), mode, pt), true, tree) // ambiguity is an error
+              for (s <- sentinels) {
+                EmbeddedControlsClass.info.decls.unlink(s)
+                s.setInfo(NoType)
+                s.updateInfo(NoType)
+              }
+              r match {
+                case res: Tree if sentinels.contains(res.symbol) =>
+                  // picked declared one --> do default (could short-circuit, but better be safe for now)
+                  //println("picked sentinel method: " + res)
+                  typedApply1(fun1, args)
+                case res: Tree =>
+                  // picked external one
+                  //println("picked external method: " + res)
+                  res
+                case ex: TypeError =>
+                  // neither declared nor external methods match --> do default, look for implicits
+                  //println("exception typing fun/xxx " + ": " + ex)
+                  typedApply1(fun1, args)
+              }
+
+            } else {
+              // no declared methods but has external ones
+              silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args), mode, pt), false, tree) match { // ambiguity is an error
+                case res: Tree =>
+                  // picked external method
+                  //println("picked external method: " + res)
+                  res
+                case ex: TypeError =>
+                  // no external method matches --> do default, look for implicits
+                  //println("exception typing xxx " + ": " + ex)
+                  typedApply1(fun1, args)
+              }
+            }
+
+          } else {
+            // might have declared methods but no external methods --> do default
+            typedApply1(fun, args)
+          }
+
+        case _ =>
+          typedApply1(fun, args)
+      }
+        
+      def typedApply1(fun: Tree, args: List[Tree]): Tree = {
         val stableApplication = (fun.symbol ne null) && fun.symbol.isMethod && fun.symbol.isStable
         if (stableApplication && (mode & PATTERNmode) != 0) {
           // treat stable function applications f() as expressions.
