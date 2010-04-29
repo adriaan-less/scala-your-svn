@@ -6,19 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
+package scala.collection
+package generic
 
+import mutable.{ Builder, AddingBuilder }
 
-package scala.concurrent
-
-/** The <code>AsyncInvokable</code> trait...
- *  
- *  @author Philipp Haller
- */
-trait AsyncInvokable[-T, +R] {
-
-  type Future[+S] <: () => S
-
-  def !!(task: T): Future[R]
-
+abstract class ImmutableSetFactory[CC[X] <: immutable.Set[X] with SetLike[X, CC[X]]]
+  extends SetFactory[CC] {
+    
+  def newBuilder[A]: Builder[A, CC[A]] = new AddingBuilder[A, CC[A]](empty[A])
 }
