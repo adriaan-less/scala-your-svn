@@ -539,9 +539,17 @@ self: Analyzer =>
           case _ => true
         }
       }
-      def comesBefore(sym: Symbol, owner: Symbol) =
+      def comesBefore(sym: Symbol, owner: Symbol) = {
+        println("before?"+(sym, owner, sym.pos.pointOrElse(0) < owner.pos.pointOrElse(Integer.MAX_VALUE), !(owner.ownerChain contains sym)))
         sym.pos.pointOrElse(0) < owner.pos.pointOrElse(Integer.MAX_VALUE) &&
         !(owner.ownerChain contains sym)
+      }
+
+      println("isValid: "+(sym, sym.isInitialized,
+      sym.sourceFile == null,
+      (sym.sourceFile ne context.unit.source.file),
+      hasExplicitResultType(sym),
+      comesBefore(sym, context.owner)))
 
       sym.isInitialized ||
       sym.sourceFile == null ||
