@@ -520,7 +520,7 @@ self: Analyzer =>
      *   - the symbol's type is initialized
      *   - the symbol comes from a classfile
      *   - the symbol comes from a different sourcefile than the current one
-     *   - the symbol's definition comes before, and does not contain the closest enclosing definition,
+     *   - the symbol and the accessed symbol's definitions come before, and do not contain the closest enclosing definition, // see #3373
      *   - the symbol's definition is a val, var, or def with an explicit result type
      *  The aim of this method is to prevent premature cyclic reference errors
      *  by computing the types of only those implicits for which one of these 
@@ -540,16 +540,14 @@ self: Analyzer =>
         }
       }
       def comesBefore(sym: Symbol, owner: Symbol) = {
-        println("before?"+(sym, owner, sym.pos.pointOrElse(0) < owner.pos.pointOrElse(Integer.MAX_VALUE), !(owner.ownerChain contains sym)))
-        sym.pos.pointOrElse(0) < owner.pos.pointOrElse(Integer.MAX_VALUE) &&
-        !(owner.ownerChain contains sym)
+        val ownerPos = owner.pos.pointOrElse(Integer.MAX_VALUE)
+        sym.pos.pointOrElse(0) < ownerPos &&
+          if(sym isGetterOrSetter) {
+            val symAcc = sym.accessed // #3373
+            symAcc.pos.pointOrElse(0) < ownerPos &&
+            !(owner.ownerChain exists (o => (o eq sym) || (o eq symAcc))) // probably faster to iterate only once, don't feel like duplicating hasTransOwner for this case
+          } else !(owner hasTransOwner sym) // faster than owner.ownerChain contains sym
       }
-
-      println("isValid: "+(sym, sym.isInitialized,
-      sym.sourceFile == null,
-      (sym.sourceFile ne context.unit.source.file),
-      hasExplicitResultType(sym),
-      comesBefore(sym, context.owner)))
 
       sym.isInitialized ||
       sym.sourceFile == null ||
