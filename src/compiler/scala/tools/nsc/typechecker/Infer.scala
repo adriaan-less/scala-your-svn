@@ -21,7 +21,7 @@ trait Infer {
   import global._
   import definitions._
 
-  private final val inferInfo = false //@MDEBUG
+  private final val inferInfo = true
 
 /* -- Type parameter inference utility functions --------------------------- */
 
@@ -639,10 +639,11 @@ trait Infer {
         println("solve "+tvars+" "+(tvars map (_.constr)))
       val targs = solvedTypes(tvars, tparams, tparams map varianceInTypes(formals), 
                               false, lubDepth(formals) max lubDepth(argtpes))
-//      val res =
+      val res =
       adjustTypeArgs(tparams, targs, restpe)
-//      println("meth type args "+", tparams = "+tparams+", formals = "+formals+", restpe = "+restpe+", argtpes = "+argtpes+", underlying = "+(argtpes map (_.widen))+", pt = "+pt+", uninstantiated = "+uninstantiated.toList+", result = "+res) //DEBUG
-//      res
+      if (inferInfo)
+        println("meth type args "+", tparams = "+tparams+", formals = "+formals+", restpe = "+restpe+", argtpes = "+argtpes+", underlying = "+(argtpes map (_.widen))+", pt = "+pt+", result = "+res) //DEBUG
+      res
     }
 
     private[typechecker] def followApply(tp: Type): Type = tp match {
@@ -1209,9 +1210,14 @@ trait Infer {
           val restpe = fn.tpe.resultType(argtpes)
           val (okparams, okargs, leftUndet) = methTypeArgs(undetparams, formals, restpe, argtpes, pt)
           checkBounds(fn.pos, NoPrefix, NoSymbol, okparams, okargs, "inferred ")
+          println("okargs="+ okargs+ "fn= "+ fn)
           val treeSubst = new TreeTypeSubstituter(okparams, okargs)
           treeSubst.traverse(fn)
           treeSubst.traverseTrees(args)
+          if (inferInfo)
+            println("inferred method instance "+fn+"\n"+
+                    "  args = "+args+"\n"+
+                    "  leftUndet = "+leftUndet)
           leftUndet
         } catch {
           case ex: NoInstance =>

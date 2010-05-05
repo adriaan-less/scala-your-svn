@@ -784,7 +784,7 @@ trait Typers { self: Analyzer =>
         adapt(tree setType tr.normalize.skolemizeExistential(context.owner, tree), mode, pt, original)
       case et @ ExistentialType(_, _) if ((mode & (EXPRmode | LHSmode)) == EXPRmode) =>
         adapt(tree setType et.skolemizeExistential(context.owner, tree), mode, pt, original)
-      case PolyType(tparams, restpe) if ((mode & (TAPPmode | PATTERNmode | HKmode)) == 0) => // (3)
+      case typeFun@PolyType(tparams, restpe) if ((mode & (TAPPmode | PATTERNmode | HKmode)) == 0) => // (3)
         // assert((mode & HKmode) == 0) //@M a PolyType in HKmode represents an anonymous type function,
         // we're in HKmode since a higher-kinded type is expected --> hence, don't implicitly apply it to type params!
         // ticket #2197 triggered turning the assert into a guard
@@ -793,11 +793,16 @@ trait Typers { self: Analyzer =>
           // -- are we sure we want to expand aliases this early?
           // -- what caused this change in behaviour??
         val tparams1 = cloneSymbols(tparams)
-        val tree1 = if (tree.isType) tree 
-                    else TypeApply(tree, tparams1 map (tparam => 
-                      TypeTree(tparam.tpeHK) setPos tree.pos.focus)) setPos tree.pos //@M/tcpolyinfer: changed tparam.tpe to tparam.tpeHK
-        context.undetparams = context.undetparams ::: tparams1
-        adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
+        val applied = appliedType(typeFun, tparams1 map (_.tpeHK)) // peel off the type abstraction
+        context.undetparams = context.undetparams ::: tparams1 // put peeled params in in undetparams
+        
+        val tree1 = tree match {
+          case New(tpt@TypeTree()) => tpt setType applied; tree // also setType one level deeper for New
+          case _  if tree.isType => tree 
+          case _ => TypeApply(tree, tparams1 map (tparam => TypeTree(tparam.tpeHK) setPos tree.pos.focus)) //@M/tcpolyinfer: changed tparam.tpe to tparam.tpeHK 
+        }
+        
+        adapt(tree1 setType applied setPos tree.pos, mode, pt, original)
       case mt: MethodType if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
           // println("adapt IMT: "+(context.undetparams, pt)) //@MDEBUG
@@ -4156,7 +4161,8 @@ trait Typers { self: Analyzer =>
     def typedTypeConstructor(tree: Tree, mode: Int): Tree = {
       val result = typed(tree, typeMode(mode) | FUNmode, WildcardType)
 
-      val restpe = result.tpe.normalize // normalize to get rid of type aliases for the following check (#1241)
+      println("TTC: "+(result, result.tpe, result.tpe.dealias, result.tpe.typeArgs.isEmpty))
+      val restpe = result.tpe.dealias // dealias to get rid of type aliases for the following check (#1241)
       if (!phase.erasedTypes && restpe.isInstanceOf[TypeRef] && !restpe.prefix.isStable) {
         error(tree.pos, restpe.prefix+" is not a legal prefix for a constructor")
       }
@@ -4171,7 +4177,7 @@ trait Typers { self: Analyzer =>
         // loaded and completed, so that ScalaObject is unpickled while AnyRef is not
         // yet defined )
         result setType(restpe)
-      } else { // must not normalize: type application must be (bounds-)checked (during RefChecks), see #2208
+      } else { // must not dealias: type application must be (bounds-)checked (during RefChecks), see #2208
         // during uncurry (after refchecks), all types are normalized
         result
       }

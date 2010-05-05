@@ -1728,7 +1728,7 @@ A type's typeSymbol should never be inspected directly.
           val xform = transform(sym.info.resultType)
           assert(xform ne this, this)
           xform.normalize // cycles have been checked in typeRef
-        } else { // should rarely happen, if at all
+        } else {
           PolyType(sym.info.typeParams, transform(sym.info.resultType).normalize)  // eta-expand -- for regularity, go through sym.info for typeParams
           // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
         }
@@ -2558,13 +2558,14 @@ A type's typeSymbol should never be inspected directly.
   }
   
   /** A creator for type applications */
-  def appliedType(tycon: Type, args: List[Type]): Type =  
+  def appliedType(tycon: Type, args: List[Type]): Type =
     if (args.isEmpty) tycon //@M! `if (args.isEmpty) tycon' is crucial (otherwise we create new types in phases after typer and then they don't get adapted (??))
     else tycon match { 
       case TypeRef(pre, sym, _) => 
         val args1 = if(sym == NothingClass || sym == AnyClass) List() else args //@M drop type args to Any/Nothing
         typeRef(pre, sym, args1)
-      case PolyType(tparams, restpe) => restpe.instantiateTypeParams(tparams, args)
+      case PolyType(tparams, restpe) => 
+        restpe.instantiateTypeParams(tparams, args)
       case ExistentialType(tparams, restpe) => ExistentialType(tparams, appliedType(restpe, args))
       case st: SingletonType => appliedType(st.widen, args) // @M TODO: what to do? see bug1
       case RefinedType(parents, decls) => RefinedType(parents map (appliedType(_, args)), decls) // MO to AM: please check
