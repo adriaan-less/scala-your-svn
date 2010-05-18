@@ -667,10 +667,12 @@ self: Analyzer =>
     
     /** The parts of a type is the smallest set of types that contains
      *    - the type itself
-     *    - the parts of its immediate components (prefix and argument)
+     *    - the parts of its immediate components (prefix and argument) 
      *    - the parts of its base types
-     *    - for alias types and abstract types, we take instead the parts
-     *    - of their upper bounds.
+     *    - for alias types and abstract types, we take instead the parts of their upper bounds. 
+     *       // TODO BUG: the spec treats abstract types & aliases differently:
+     *          • if T is a singleton type p.type, the parts of the type of p , 
+     *          • if T is a type projection S#U , the parts of S as well as T itself, 
      *  @return For those parts that refer to classes with companion objects that
      *  can be accessed with unambiguous stable prefixes, the implicits infos
      *  which are members of these companion objects.
@@ -737,7 +739,7 @@ self: Analyzer =>
           }
         }
       }
-      //println("companion implicits of "+tp+" = "+buf.toList) // DEBUG
+      // println("companion implicits of "+tp+" = "+buf.toList) // DEBUG
       buf.toList
     }
           
