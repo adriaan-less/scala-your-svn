@@ -471,8 +471,12 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     def migrationMessage    = getAnnotationArg(MigrationAnnotationClass, 2) collect {
       case Literal(const) => const.stringValue
       case x              => x.toString           // should not be necessary, but better than silently ignoring an issue
-    }
+    }    
     def elisionLevel        = getAnnotationArg(ElidableMethodClass, 0) collect { case Literal(Constant(x: Int)) => x }
+    def implicitNotFoundMsg = getAnnotationArg(ImplicitNotFoundClass, 0) collect {
+      case Literal(const) => const.stringValue
+      case x              => x.toString
+    }
 
     /** Does this symbol denote a wrapper object of the interpreter or its class? */
     final def isInterpreterWrapper = 
