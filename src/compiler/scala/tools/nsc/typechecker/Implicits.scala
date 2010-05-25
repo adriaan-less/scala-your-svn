@@ -907,5 +907,38 @@ self: Analyzer =>
     }
   }
 
+  object ImplicitNotFoundMsg {
+    def unapply(sym: Symbol): Option[(Message)] = sym.implicitNotFoundMsg map (m => (new Message(sym, m)))
+    class Message(sym: Symbol, msg: String) {
+      // http://dcsobral.blogspot.com/2010/01/string-interpolation-in-scala-with.html
+      private def interpolate(text: String, vars: Map[String, String]) = { import scala.util.matching.Regex
+        """\$\{([^}]+)\}""".r.replaceAllIn(text, (_: Regex.Match) match { 
+          case Regex.Groups(v) => vars.getOrElse(v, "") 
+        })}
+
+      private lazy val typeParamNames: List[String] = sym.typeParams.map(_.decodedName)
+
+      def format(typeArgs: List[String]) = 
+        interpolate(msg, Map((typeParamNames zip typeArgs): _*)) // TODO: give access to the name and type of the implicit argument, etc?
+
+      // TODO: broken
+      // check the message's syntax: should be a string literal that may contain occurences of the string "${X}",
+      // where `X` refers to a type parameter of `sym`
+      lazy val validate: Option[String] = { import scala.util.matching.Regex; import collection.breakOut
+        // is there a shorter way to avoid the intermediate toList?
+        // val builder = Set.newBuilder[String]
+        // """\$\{([^}]+)\}""".r.findAllIn(msg).matchData foreach (builder += _.group(1))
+        // val refs = builder.result()
+        val refs = Set("""\$\{([^}]+)\}""".r.findAllIn(msg).matchData.map(_.group(1)).toList : _*)
+        val decls = Set(typeParamNames : _*)
+        (refs &~ decls) match {
+          case s if s isEmpty => None
+          case unboundNames => Some("The references to type parameters "+ unboundNames.mkString(", ") +" in the message of the @implicitNotFound annotation are not defined by "+ sym +".")
+        }
+      }
+
+    }
+  }
+
   private val DivergentImplicit = new Exception()
 }

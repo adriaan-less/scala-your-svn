@@ -188,21 +188,13 @@ trait Typers { self: Analyzer =>
         }
 
         def errorMessage(paramName: Name, paramTp: Type) =
-          (for(msg <- paramTp.typeSymbol.implicitNotFoundMsg) yield {
-            val sym = paramTp.typeSymbol
-            val typeParArgs = Map((sym.typeParams.map(_.decodedName) zip paramTp.typeArgs.map(_.toString)): _*)
-
-            // http://dcsobral.blogspot.com/2010/01/string-interpolation-in-scala-with.html
-            def interpolate(text: String, vars: Map[String, String]) = { import scala.util.matching.Regex
-              """\$\{([^}]+)\}""".r.replaceAllIn(text, (_: Regex.Match) match { 
-                case Regex.Groups(v) => vars.getOrElse(v, "") 
-              })}
-
-            interpolate(msg, typeParArgs) // TODO: give access to paramName (and paramTp?)
-          }) getOrElse {
-            "could not find implicit value for "+
-               (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
-                else "parameter "+paramName+": ")+paramTp  
+          paramTp.typeSymbol match {
+            case ImplicitNotFoundMsg(msg) =>
+              msg.format(paramTp.typeArgs map (_.toString))
+            case _ =>
+              "could not find implicit value for "+
+                 (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
+                  else "parameter "+paramName+": ")+paramTp  
           }
         
         val argResults = argResultsBuff.toList
