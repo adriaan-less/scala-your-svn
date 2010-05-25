@@ -579,14 +579,14 @@ self: Analyzer =>
       // instead of calling nonImplicitSynonymInScope in tryImplicit,
       // we could prime `shadowed` before calling addAppInfos using:
       //   for(sym <- context.scope; if !sym.isImplicit) shadowed addEntry sym.name
-      def nonImplicitSynonymInScope(name: Name) = {
-        val defEntry = context.scope.lookupEntry(name)
-        (defEntry ne null) &&
-        reallyExists(defEntry.sym) &&
-        !defEntry.sym.isImplicit // the implicit ones are handled by the `shadowed` set above
-        // also, subsumes the test that defEntry.sym ne info.sym
-        // (the `info` that's in scope at the call to nonImplicitSynonymInScope in tryImplicit)
-      }
+      // def nonImplicitSynonymInScope(name: Name) = {
+      //   val defEntry = context.scope.lookupEntry(name)
+      //   (defEntry ne null) &&
+      //   reallyExists(defEntry.sym) &&
+      //   !defEntry.sym.isImplicit // the implicit ones are handled by the `shadowed` set above
+      //   // also, subsumes the test that defEntry.sym ne info.sym
+      //   // (the `info` that's in scope at the call to nonImplicitSynonymInScope in tryImplicit)
+      // }
 
       /** Is `sym' the standard conforms method in Predef?
        *  Note: DON't replace this by sym == Predef_conforms, as Predef_conforms is a `def'
@@ -609,7 +609,7 @@ self: Analyzer =>
       def tryImplicit(info: ImplicitInfo): SearchResult = {
         incCounter(triedImplicits)
         if (info.isCyclicOrErroneous ||
-            (isLocal && (shadowed.contains(info.name) || nonImplicitSynonymInScope(info.name))) ||
+            (isLocal && (shadowed.contains(info.name) /*|| nonImplicitSynonymInScope(info.name)*/)) ||
             (isView && isConformsMethod(info.sym)) ||
             //@M this condition prevents no-op conversions, which are a problem (besides efficiency),
             // one example is removeNames in NamesDefaults, which relies on the type checker failing in case of ambiguity between an assignment/named arg
@@ -631,6 +631,8 @@ self: Analyzer =>
           for (i <- is) shadowed addEntry i.name
         applicable
       }
+
+      for(sym <- context.scope; if !sym.isImplicit) shadowed addEntry sym.name
 
       var applicable = Map[ImplicitInfo, SearchResult]()
       for (is <- iss) applicable = addAppInfos(is, applicable)
