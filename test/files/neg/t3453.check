@@ -1,0 +1,6 @@
+t3453.scala:16: error: type mismatch;
+ found   : A
+ required: B
+        new A
+        ^
+one error found
