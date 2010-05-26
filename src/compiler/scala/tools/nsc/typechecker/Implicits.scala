@@ -575,10 +575,8 @@ self: Analyzer =>
       // in addition to the implicit symbols that may shadow the implicit with name `name`,
       // this method tests whether there's a non-implicit symbol with name `name` in scope
       // inspired by logic in typedIdent
-      // Martin, do you think the following alternative implementation would be faster?
-      // instead of calling nonImplicitSynonymInScope in tryImplicit,
-      // we could prime `shadowed` before calling addAppInfos using:
-      //   for(sym <- context.scope; if !sym.isImplicit) shadowed addEntry sym.name
+      // rudimentary benchmarking using the compiler build show that 
+      // it's faster to add the names for which this method returns true to `shadowed`
       // def nonImplicitSynonymInScope(name: Name) = {
       //   val defEntry = context.scope.lookupEntry(name)
       //   (defEntry ne null) &&
@@ -609,7 +607,7 @@ self: Analyzer =>
       def tryImplicit(info: ImplicitInfo): SearchResult = {
         incCounter(triedImplicits)
         if (info.isCyclicOrErroneous ||
-            (isLocal && (shadowed.contains(info.name) /*|| nonImplicitSynonymInScope(info.name)*/)) ||
+            (isLocal && shadowed.contains(info.name)) ||
             (isView && isConformsMethod(info.sym)) ||
             //@M this condition prevents no-op conversions, which are a problem (besides efficiency),
             // one example is removeNames in NamesDefaults, which relies on the type checker failing in case of ambiguity between an assignment/named arg
@@ -632,6 +630,9 @@ self: Analyzer =>
         applicable
       }
 
+      // #3453
+      // in addition to the *implicit* symbols that may shadow the implicit with name `name` (added to shadowed by addAppInfos)
+      // add names of non-implicit symbols that are in scope (accessible without prefix)
       for(sym <- context.scope; if !sym.isImplicit) shadowed addEntry sym.name
 
       var applicable = Map[ImplicitInfo, SearchResult]()
