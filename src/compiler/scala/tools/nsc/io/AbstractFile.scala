@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
 package scala.tools.nsc
@@ -20,8 +19,6 @@ import scala.collection.mutable.ArrayBuffer
  */
 object AbstractFile
 {
-  def isJarOrZip(f: Path) = cond(f.extension) { case "zip" | "jar" => true }
-  
   /** Returns "getFile(new File(path))". */
   def getFile(path: String): AbstractFile = getFile(Path(path))
   def getFile(path: Path): AbstractFile = getFile(path.toFile)
@@ -46,7 +43,7 @@ object AbstractFile
    */
   def getDirectory(file: File): AbstractFile =
     if (file.isDirectory) new PlainFile(file)
-    else if (file.isFile && isJarOrZip(file)) ZipArchive fromFile file
+    else if (file.isFile && Path.isJarOrZip(file)) ZipArchive fromFile file
     else null
 
   /**
@@ -58,7 +55,7 @@ object AbstractFile
    * @return     ...
    */
   def getURL(url: URL): AbstractFile =
-    Option(url) partialMap { case url: URL if isJarOrZip(url.getPath) => ZipArchive fromURL url } orNull
+    Option(url) collect { case url: URL if Path.isJarOrZip(url.getPath) => ZipArchive fromURL url } orNull
 }
 
 /**
@@ -92,6 +89,9 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
 
   /** Returns the path of this abstract file. */
   def path: String
+  
+  /** Checks extension case insensitively. */
+  def hasExtension(other: String) = Path(path) hasExtension other
 
   /** The absolute file, if this is a relative file. */
   def absolute: AbstractFile
@@ -101,12 +101,18 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
   
   /** Returns the underlying File if any and null otherwise. */
   def file: JFile
-  def sfile = File(file) // XXX
+  def sfile = Option(file) map (x => File(x)) // XXX
+  
+  /** An underlying source, if known.  Mostly, a zip/jar file. */
+  def underlyingSource: Option[AbstractFile] = None
 
   /** Does this abstract file denote an existing file? */
   def exists: Boolean =
     if (file ne null) file.exists
     else true
+
+  /** Does this abstract file represent something which can contain classfiles? */
+  def isClassContainer = isDirectory || (sfile exists (Path isJarOrZip _))
 
   /** Create a file on disk, if one does not exist already. */
   def create: Unit
@@ -224,8 +230,8 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
    * creating an empty file if it does not already existing.
    */
   def fileNamed(name: String): AbstractFile = {
-    assert(isDirectory)
-    Option(lookupName(name, false)) getOrElse new PlainFile((sfile / name).createFile())
+    assert(isDirectory, "Tried to find '%s' in '%s' but it is not a directory".format(name, path))
+    Option(lookupName(name, false)) getOrElse new PlainFile((sfile.get / name).createFile())
   }
   
   /**
@@ -233,9 +239,12 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
    * does not already exist.
    */
   def subdirectoryNamed(name: String): AbstractFile = {
-    assert (isDirectory)
-    Option(lookupName(name, true)) getOrElse new PlainFile((sfile / name).createDirectory())
+    assert (isDirectory, "Tried to find '%s' in '%s' but it is not a directory".format(name, path))
+    Option(lookupName(name, true)) getOrElse new PlainFile((sfile.get / name).createDirectory())
   }
+  
+  protected def unsupported(): Nothing = unsupported(null)
+  protected def unsupported(msg: String): Nothing = throw new UnsupportedOperationException(msg)
   
   /** Returns the path of this abstract file. */
   override def toString() = path

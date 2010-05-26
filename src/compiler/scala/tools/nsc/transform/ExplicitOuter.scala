@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -63,7 +62,7 @@ abstract class ExplicitOuter extends InfoTransform
   }
 
   def outerAccessor(clazz: Symbol): Symbol = {
-    val firstTry = clazz.info.decl(clazz expandedName nme.OUTER)
+    val firstTry = clazz.info.decl(nme.expandedName(nme.OUTER, clazz))
     if (firstTry != NoSymbol && firstTry.outerSource == clazz) firstTry
     else clazz.info.decls find (_.outerSource == clazz) getOrElse NoSymbol
    }
@@ -84,7 +83,7 @@ abstract class ExplicitOuter extends InfoTransform
    *      <p>
    *        Add an outer accessor <code>$outer$$C</code> to every inner class
    *        with fully qualified name <code>C</code> that is not an interface.
-   *        The outer accesssor is abstract for traits, concrete for other
+   *        The outer accessor is abstract for traits, concrete for other
    *        classes.
    *      </p>
    *      <p>
@@ -105,12 +104,9 @@ abstract class ExplicitOuter extends InfoTransform
   def transformInfo(sym: Symbol, tp: Type): Type = tp match {
     case MethodType(params, restpe1) =>
       val restpe = transformInfo(sym, restpe1)
-      if (sym.owner.isTrait && ((sym hasFlag SUPERACCESSOR) || sym.isModule)) { // 5 
+      if (sym.owner.isTrait && ((sym hasFlag (ACCESSOR | SUPERACCESSOR)) || sym.isModule)) { // 5 
         sym.makeNotPrivate(sym.owner)
       }
-      // moved form the term transformer
-      if (sym.owner.isTrait && (sym hasFlag (ACCESSOR | SUPERACCESSOR)))
-        sym.makeNotPrivate(sym.owner); //(2)
       if (sym.owner.isTrait && (sym hasFlag PROTECTED)) sym setFlag notPROTECTED // 6
       if (sym.isClassConstructor && isInner(sym.owner)) { // 1
         val p = sym.newValueParameter(sym.pos, "arg" + nme.OUTER)
@@ -154,7 +150,14 @@ abstract class ExplicitOuter extends InfoTransform
       if (restp eq restp1) tp else PolyType(tparams, restp1)
 
     case _ =>
-        tp
+      // Local fields of traits need to be unconditionally unprivatized.
+      // Reason: Those fields might need to be unprivatized if referenced by an inner class.
+      // On the other hand, mixing in the trait into a separately compiled
+      // class needs to have a common naming scheme, independently of whether
+      // the field was accessed from an inner class or not. See #2946
+      if (sym.owner.isTrait && (sym hasFlag LOCAL) && (sym.getter(sym.owner) == NoSymbol))
+        sym.makeNotPrivate(sym.owner)
+      tp
   }
 
   /** A base class for transformers that maintain <code>outerParam</code>
@@ -320,7 +323,9 @@ abstract class ExplicitOuter extends InfoTransform
       val path = 
         if (mixinClass.owner.isTerm) THIS(mixinClass.owner.enclClass)
         else gen.mkAttributedQualifier(currentClass.thisType baseType mixinClass prefix)
-      val rhs = ExplicitOuterTransformer.this.transform(path)
+      // Need to cast for nested outer refs in presence of self-types. See ticket #3274.
+      val rhs = gen.mkAsInstanceOf(ExplicitOuterTransformer.this.transform(path), 
+          outerAcc.info.resultType)
       
       // @S: atPos not good enough because of nested atPos in DefDef method, which gives position from wrong class!
       rhs setPos currentClass.pos
@@ -350,8 +355,7 @@ abstract class ExplicitOuter extends InfoTransform
         
         localTyper typed (DEF(method) === {
           new ChangeOwnerTraverser(currentOwner, method) traverse guard
-          new TreeSymSubstituter(vs, method.paramss.head) traverse guard
-          guard
+          new TreeSymSubstituter(vs, method.paramss.head) transform (guard)
         })
       }
       

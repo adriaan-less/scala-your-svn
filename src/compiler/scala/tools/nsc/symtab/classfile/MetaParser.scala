@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -11,7 +10,6 @@ package classfile
 import java.util.{StringTokenizer, NoSuchElementException}
 
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.{Position,NoPosition}
 
 abstract class MetaParser{
 

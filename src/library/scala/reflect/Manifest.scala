@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.reflect
@@ -27,18 +26,33 @@ import scala.collection.immutable.{List, Nil}
   * </p>
   */
 @serializable
-trait Manifest[T] extends ClassManifest[T] {
+trait Manifest[T] extends ClassManifest[T] with Equals {
   override def typeArguments: List[Manifest[_]] = List()
 
   override def arrayManifest: Manifest[Array[T]] = 
     Manifest.classType[Array[T]](arrayClass[T](erasure))
+
+  override def canEqual(that: Any): Boolean = that match {
+    case _: Manifest[_]   => true
+    case _                => false
+  }
+  override def equals(that: Any): Boolean = that match {
+    case m: Manifest[_] if m canEqual this  => (this <:< m) && (m <:< this)
+    case _                                  => false
+  }
+  override def hashCode = this.erasure.##  
 }
 
 @serializable
-trait AnyValManifest[T] extends Manifest[T] {
+trait AnyValManifest[T] extends Manifest[T] with Equals {
   import Manifest.{ Any, AnyVal }
   override def <:<(that: ClassManifest[_]): Boolean = (that eq this) || (that eq Any) || (that eq AnyVal)
+  override def canEqual(other: Any) = other match {
+    case _: AnyValManifest[_] => true
+    case _                    => false
+  }
   override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+  override def hashCode = System.identityHashCode(this)
 }
 
 /** <ps>
@@ -137,6 +151,7 @@ object Manifest {
     override def toString = "Any"
     override def <:<(that: ClassManifest[_]): Boolean = (that eq this)
     override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode = System.identityHashCode(this)
     private def readResolve(): Any = Manifest.Any
   }
 
@@ -144,6 +159,7 @@ object Manifest {
     override def toString = "Object"
     override def <:<(that: ClassManifest[_]): Boolean = (that eq this) || (that eq Any)
     override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode = System.identityHashCode(this)
     private def readResolve(): Any = Manifest.Object
   }
 
@@ -151,6 +167,7 @@ object Manifest {
     override def toString = "AnyVal"
     override def <:<(that: ClassManifest[_]): Boolean = (that eq this) || (that eq Any)
     override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode = System.identityHashCode(this)
     private def readResolve(): Any = Manifest.AnyVal
   }
 
@@ -159,6 +176,7 @@ object Manifest {
     override def <:<(that: ClassManifest[_]): Boolean =
       (that ne null) && (that ne Nothing) && !(that <:< AnyVal)
     override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode = System.identityHashCode(this)
     private def readResolve(): Any = Manifest.Null
   }
 
@@ -166,6 +184,7 @@ object Manifest {
     override def toString = "Nothing"
     override def <:<(that: ClassManifest[_]): Boolean = (that ne null)
     override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode = System.identityHashCode(this)
     private def readResolve(): Any = Manifest.Nothing
   }
 
@@ -225,16 +244,15 @@ object Manifest {
       override def toString = prefix.toString+"#"+name+argString
     }
 
-  /** Manifest for the abstract type `prefix # name'. `upperBound' is not
-    * strictly necessary as it could be obtained by reflection. It was
-    * added so that erasure can be calculated without reflection.
-    * todo: remove after next bootstrap
+  /** Manifest for the unknown type `_ >: L <: U' in an existential.
     */
-  def abstractType[T](prefix: Manifest[_], name: String, upperbound: ClassManifest[_], args: Manifest[_]*): Manifest[T] =
+  def wildcardType[T](lowerBound: Manifest[_], upperBound: Manifest[_]): Manifest[T] =
     new (Manifest[T] @serializable) {
-      def erasure = upperbound.erasure
-      override val typeArguments = args.toList
-      override def toString = prefix.toString+"#"+name+argString
+      def erasure = upperBound.erasure
+      override def toString = 
+        "_" +
+        (if (lowerBound eq Nothing) "" else " >: "+lowerBound) + 
+        (if (upperBound eq Nothing) "" else " <: "+upperBound)
     }
 
   /** Manifest for the intersection type `parents_0 with ... with parents_n'. */

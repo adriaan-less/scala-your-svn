@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -21,13 +20,6 @@ class Unparsed(data: String) extends Atom[String](data)
 {
   if (null == data)
     throw new IllegalArgumentException("tried to construct Unparsed with null")
-
-  /** XXX another hashCode fail */
-  final override def equals(x: Any) = x match {
-    case s:String   => s == data
-    case s:Atom[_]  => data == s.data
-    case _ => false
-  }
 
   /** returns text, with some characters escaped according to XML spec */
   override def buildString(sb: StringBuilder) = sb append data

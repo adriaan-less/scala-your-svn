@@ -6,10 +6,8 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
-import collection.mutable.StringBuilder
 
 /** an XML node for processing instructions (PI)
  *
@@ -36,5 +34,5 @@ case class ProcInstr(target: String, proctext: String) extends SpecialNode
    *  to this stringbuffer.
    */
   override def buildString(sb: StringBuilder) =
-    sb append "<?%s%s?>".format(target, (if (proctext.isEmpty) "" else " " + proctext))
+    sb append "<?%s%s?>".format(target, (if (proctext == "") "" else " " + proctext))
 }

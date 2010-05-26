@@ -2,11 +2,12 @@ import scala.actors.Reactor
 
 object Test {
   case class Stop()
-  case class Get(from: Reactor)
+  case class Get(from: Reactor[Any])
   case class Put(x: Int)
 
-  class UnboundedBuffer extends Reactor {
+  class UnboundedBuffer extends Reactor[Any] {
     def act() {
+      try {
       react {
         case Stop() =>
         case Get(from) =>
@@ -17,11 +18,16 @@ object Test {
               act()
           }
       }
+      } catch {
+        case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+          e.printStackTrace()
+      }
     }
   }
 
-  class Producer(buf: UnboundedBuffer, n: Int, delay: Long, parent: Reactor) extends Reactor {
+  class Producer(buf: UnboundedBuffer, n: Int, delay: Long, parent: Reactor[Any]) extends Reactor[Any] {
     def act() {
+      try {
       var i = 0
       while (i < n) {
         i += 1
@@ -29,13 +35,18 @@ object Test {
         buf ! Put(42)
       }
       parent ! Stop()
+      } catch {
+        case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+          e.printStackTrace()
+      }
     }
   }
 
-  class Consumer(buf: UnboundedBuffer, n: Int, delay: Long, parent: Reactor) extends Reactor {
+  class Consumer(buf: UnboundedBuffer, n: Int, delay: Long, parent: Reactor[Any]) extends Reactor[Any] {
     val step = n / 10
     var i = 0
     def act() {
+      try {
       if (i < n) {
         i += 1
         if (delay > 0) Thread.sleep(delay)
@@ -49,12 +60,17 @@ object Test {
       } else {
         parent ! Stop()
       }
+      } catch {
+        case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+          e.printStackTrace()
+      }
     }
   }
 
   def main(args: Array[String]) {
-    val parent = new Reactor {
+    val parent = new Reactor[Any] {
       def act() {
+        try {
         val buffer = new UnboundedBuffer
         buffer.start()
         val producer = new Producer(buffer, 10000, 0, this)
@@ -67,6 +83,10 @@ object Test {
               case Stop() =>
                 buffer ! Stop()
             }
+        }
+        } catch {
+          case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+            e.printStackTrace()
         }
       }
     }

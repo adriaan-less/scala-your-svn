@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -16,9 +15,9 @@ import script._
 
 
 /** This class is typically used as a mixin. It adds a subscription
- *  mechanism to the <code>Map</code> class into which this abstract
- *  class is mixed in. Class <code>ObservableMap</code> publishes
- *  events of the type <code>Message</code>.
+ *  mechanism to the `Map` class into which this abstract
+ *  class is mixed in. Class `ObservableMap` publishes
+ *  events of the type `Message`.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky

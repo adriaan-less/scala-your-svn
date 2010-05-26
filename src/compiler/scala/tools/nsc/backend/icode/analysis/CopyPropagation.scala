@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
@@ -184,14 +183,14 @@ abstract class CopyPropagation {
           if (exceptional) exceptionHandlerStack
           else {
 //            if (a.stack.length != b.stack.length)
-//              throw new LubError(a, b, "Invalid stacks in states: ");
+//              throw new LubException(a, b, "Invalid stacks in states: ");
             (a.stack, b.stack).zipped map { (v1, v2) => 
               if (v1 == v2) v1 else Unknown 
             }
           }
       
 /*        if (a.stack.length != b.stack.length)
-          throw new LubError(a, b, "Invalid stacks in states: ");
+          throw new LubException(a, b, "Invalid stacks in states: ");
         val resStack = List.map2(a.stack, b.stack) { (v1, v2) => 
           if (v1 == v2) v1 else Unknown 
         }
@@ -528,7 +527,7 @@ abstract class CopyPropagation {
     final def invalidateRecords(state: copyLattice.State) {
       def shouldRetain(sym: Symbol): Boolean = {
         if (sym.hasFlag(symtab.Flags.MUTABLE))
-          log("dropping binding for " + sym.fullNameString)
+          log("dropping binding for " + sym.fullName)
         !sym.hasFlag(symtab.Flags.MUTABLE)
       }
       state.stack = state.stack map { v => v match {
@@ -575,7 +574,7 @@ abstract class CopyPropagation {
       // this relies on having the same order in paramAccessors and
       // the arguments on the stack. It should be the same!
       for ((p, i) <- paramAccessors.zipWithIndex) {
-//        assert(p.tpe == paramTypes(i), "In: " + ctor.fullNameString
+//        assert(p.tpe == paramTypes(i), "In: " + ctor.fullName
 //               + " having acc: " + (paramAccessors map (_.tpe))+ " vs. params" + paramTypes
 //               + "\n\t failed at pos " + i + " with " + p.tpe + " == " + paramTypes(i))
         if (p.tpe == paramTypes(i))

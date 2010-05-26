@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: InputChannel.scala 18844 2009-09-30 20:28:49Z phaller $
 
 package scala.actors
 
@@ -15,7 +14,7 @@ package scala.actors
  *
  * @author Philipp Haller
  */
-private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[Msg] {
+private[actors] class ReactChannel[Msg](receiver: ReplyReactor) extends InputChannel[Msg] {
 
   private case class SendToReactor(channel: ReactChannel[Msg], msg: Msg)
 

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 //todo: allow infix type patterns
 
 
@@ -10,7 +9,7 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.{Position, OffsetPosition, NoPosition, BatchSourceFile}
+import util.{ OffsetPosition, BatchSourceFile }
 import symtab.Flags
 import Tokens._
 
@@ -63,6 +62,13 @@ self =>
   class UnitParser(val unit: global.CompilationUnit, patches: List[BracePatch]) extends Parser {
 
     def this(unit: global.CompilationUnit) = this(unit, List())
+    
+    /** The parse starting point depends on whether the source file is self-contained:
+     *  if not, the AST will be supplemented.
+     */
+    def parseStartRule =
+      if (unit.source.isSelfContained) () => compilationUnit()
+      else () => scriptBody()
 
     val in = new UnitScanner(unit, patches)
     in.init()
@@ -169,13 +175,65 @@ self =>
     /** The types of the context bounds of type parameters of the surrounding class
      */
     var classContextBounds: List[Tree] = Nil
+    
+    def parseStartRule: () => Tree
 
-    /** this is the general parse method
+    /** This is the general parse entry point.
      */
     def parse(): Tree = {
-      val t = compilationUnit()
+      val t = parseStartRule()
       accept(EOF)
       t
+    }
+    
+    /** This is the parse entry point for code which is not self-contained, e.g.
+     *  a script which is a series of template statements.  They will be
+     *  swaddled in Trees until the AST is equivalent to the one returned
+     *  by compilationUnit().
+     */
+    def scriptBody(): Tree = {
+      val stmts = templateStatSeq(false)._2
+      accept(EOF)
+      
+      /** Here we are building an AST representing the following source fiction,
+       *  where <moduleName> is from -Xscript (defaults to "Main") and <stmts> are
+       *  the result of parsing the script file.
+       *
+       *  object <moduleName> {
+       *    def main(argv: Array[String]): Unit = {
+       *      val args = argv
+       *      new AnyRef {
+       *        <stmts>
+       *      }
+       *    }
+       *  }
+       */
+      import definitions._
+
+      def emptyPkg    = atPos(0, 0, 0) { Ident(nme.EMPTY_PACKAGE_NAME) }
+      def emptyInit   = DefDef(
+        NoMods,
+        nme.CONSTRUCTOR,
+        Nil,
+        List(Nil),
+        TypeTree(),
+        Block(List(Apply(Select(Super("", ""), nme.CONSTRUCTOR), Nil)), Literal(Constant(())))
+      )
+
+      // def main
+      def mainParamType = AppliedTypeTree(Ident("Array".toTypeName), List(Ident("String".toTypeName)))
+      def mainParameter = List(ValDef(Modifiers(Flags.PARAM), "argv", mainParamType, EmptyTree))
+      def mainSetArgv   = List(ValDef(NoMods, "args", TypeTree(), Ident("argv")))
+      def mainNew       = makeNew(Nil, emptyValDef, stmts, List(Nil), NoPosition, NoPosition)
+      def mainDef       = DefDef(NoMods, "main", Nil, List(mainParameter), scalaDot(nme.Unit.toTypeName), Block(mainSetArgv, mainNew))
+
+      // object Main
+      def moduleName  = ScriptRunner scriptMain settings
+      def moduleBody  = Template(List(scalaScalaObjectConstr), emptyValDef, List(emptyInit, mainDef))
+      def moduleDef   = ModuleDef(NoMods, moduleName, moduleBody)
+      
+      // package <empty> { ... }
+      makePackaging(0, emptyPkg, List(moduleDef))
     }
 
 /* --------------- PLACEHOLDERS ------------------------------------------- */
@@ -350,8 +408,11 @@ self =>
 
     /** Check that type parameter is not by name T* */
     def checkNotByName(t: Tree) = t match {
-      case AppliedTypeTree(Select(_, n), _) if (n == nme.BYNAME_PARAM_CLASS_NAME.toTypeName) =>
-        syntaxError(t.pos, "no by-name parameter type allowed here", false)
+      case AppliedTypeTree(Select(_, n), _) =>
+        if (n == nme.BYNAME_PARAM_CLASS_NAME.toTypeName) 
+          syntaxError(t.pos, "no by-name parameter type allowed here", false)
+        else if (n == nme.REPEATED_PARAM_CLASS_NAME.toTypeName)
+          syntaxError(t.pos, "no * parameter type allowed here", false)
       case _ =>
     }
 
@@ -1104,7 +1165,11 @@ self =>
           }
         } else if (in.token == MATCH) {
           t = atPos(t.pos.startOrPoint, in.skipToken()) {
-            Match(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
+            /** For debugging pattern matcher transition issues */
+            if (settings.Ypmatnaive.value)
+              makeSequencedMatch(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
+            else
+              Match(stripParens(t), surround(LBRACE, RBRACE)(caseClauses(), Nil))
           }
         }
         // in order to allow anonymous functions as statements (as opposed to expressions) inside
@@ -1480,7 +1545,9 @@ self =>
     def pattern3(seqOK: Boolean): Tree = {
       val base = opstack
       var top = simplePattern(seqOK)
-      if (seqOK && isIdent && in.name == STAR)
+      // See ticket #3189 for the motivation for the null check.
+      // TODO: dredge out the remnants of regexp patterns.
+      if (seqOK && isIdent && in.name == STAR && in.prev.name != null)
         return atPos(top.pos.startOrPoint, in.skipToken())(Star(stripParens(top)))
           
       while (isIdent && in.name != BAR) {
@@ -1569,7 +1636,7 @@ self =>
 
 /* -------- MODIFIERS and ANNOTATIONS ------------------------------------------- */    
 
-    /** Drop `private' modifier when follwed by a qualifier.
+    /** Drop `private' modifier when followed by a qualifier.
      *  Conract `abstract' and `override' to ABSOVERRIDE
      */
     private def normalize(mods: Modifiers): Modifiers = 
@@ -1714,8 +1781,10 @@ self =>
           mods = modifiers() | Flags.PARAMACCESSOR
           if (mods.hasFlag(Flags.LAZY)) syntaxError("lazy modifier not allowed here. Use call-by-name parameters instead", false)
           if (in.token == VAL) {
+            mods = mods withPosition (in.token, tokenRange(in))
             in.nextToken() 
           } else if (in.token == VAR) { 
+            mods = mods withPosition (in.token, tokenRange(in))
             mods |= Flags.MUTABLE
             in.nextToken() 
           } else if (!caseParam) {
@@ -1739,6 +1808,10 @@ self =>
                   in.offset, 
                   (if (mods.hasFlag(Flags.MUTABLE)) "`var'" else "`val'") +
                   " parameters may not be call-by-name", false)
+              else if (implicitmod != 0)
+                syntaxError(
+                  in.offset, 
+                  "implicit parameters may not be call-by-name", false)
               else bynamemod = Flags.BYNAMEPARAM
             }
             paramType()
@@ -1836,7 +1909,7 @@ self =>
         }
         val nameOffset = in.offset
         val pname = 
-          (if (in.token == USCORE) { // @M! also allow underscore 
+          (if (in.token == USCORE) { // TODO AM: freshName(o2p(in.skipToken()), "_$$"), will need to update test suite
             in.nextToken()
             nme.WILDCARD
           } else ident()).toTypeName
@@ -1892,8 +1965,14 @@ self =>
     /** Import  ::= import ImportExpr {`,' ImportExpr}
      */
     def importClause(): List[Tree] = {
-      accept(IMPORT)
-      commaSeparated(importExpr())
+      val offset = accept(IMPORT)
+      commaSeparated(importExpr()) match {
+        case Nil => Nil
+        case t :: rest => 
+          // The first import should start at the position of the keyword.
+          t.setPos(t.pos.withStart(offset))
+          t :: rest
+      }
     }
 
     /**  ImportExpr ::= StableId `.' (Id | `_' | ImportSelectors)
@@ -1926,7 +2005,7 @@ self =>
         if (in.token == USCORE) {
           val uscoreOffset = in.offset
           in.nextToken()
-          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, null, -1)))
+          Import(t, List(ImportSelector(nme.WILDCARD, uscoreOffset, nme.WILDCARD, -1)))
         } else if (in.token == LBRACE) {
           Import(t, importSelectors())
         } else {
@@ -2405,7 +2484,7 @@ self =>
         (emptyValDef, List())
       }
     }
-
+    
     /** Refinement ::= [nl] `{' RefineStat {semi RefineStat} `}'
      */
     def refinement(): List[Tree] = {
@@ -2465,11 +2544,15 @@ self =>
       val stats = new ListBuffer[Tree]
       while (in.token != RBRACE && in.token != EOF) {
         if (in.token == PACKAGE) {
-          in.flushDoc
           val start = in.skipToken()
-          stats += {
-            if (in.token == OBJECT) makePackageObject(start, objectDef(in.offset, NoMods))
-            else packaging(start)
+          stats ++= {
+            if (in.token == OBJECT) {
+              joinComment(List(makePackageObject(start, objectDef(in.offset, NoMods))))
+            }
+            else {
+              in.flushDoc
+              List(packaging(start))
+            }
           }
         } else if (in.token == IMPORT) {
           in.flushDoc
@@ -2613,7 +2696,8 @@ self =>
         } else if (isStatSep) {
           in.nextToken()
         } else {
-          syntaxErrorOrIncomplete("illegal start of statement", true)
+          val addendum = if (isModifier) " (no modifiers allowed here)" else ""
+          syntaxErrorOrIncomplete("illegal start of statement" + addendum, true)
         }
       }
       stats.toList
@@ -2627,15 +2711,15 @@ self =>
         while (in.token == SEMI) in.nextToken()
         val start = in.offset
         if (in.token == PACKAGE) {
-          in.flushDoc
-          in.nextToken()
+          in.nextToken()   
           if (in.token == OBJECT) {
-            ts += makePackageObject(start, objectDef(in.offset, NoMods))
+            ts ++= joinComment(List(makePackageObject(start, objectDef(in.offset, NoMods))))
             if (in.token != EOF) {
               acceptStatSep()
               ts ++= topStatSeq()
             }
           } else {
+            in.flushDoc
             val pkg = qualId()
             newLineOptWhenFollowedBy(LBRACE)
             if (in.token == EOF) {

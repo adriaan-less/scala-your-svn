@@ -3,7 +3,6 @@
  * @author  Lex Spoon
  */
 
-// $Id$
 
 package scala.tools.nsc
 
@@ -15,8 +14,7 @@ import util.ScalaClassLoader
  *  @author  Lex Spoon
  *  @version 1.1, 2007/7/13
  */
-object ObjectRunner
-{
+object ObjectRunner {
   /** Check whether a class with the specified name
    *  exists on the specified class path. */
   def classExists(urls: List[URL], objectName: String): Boolean =

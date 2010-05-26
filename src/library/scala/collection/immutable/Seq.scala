@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,10 +14,12 @@ package immutable
 import generic._
 import mutable.Builder
 
-/** A subtrait of collection.Seq which represents sequences
- *  that cannot be mutated.
+/** A subtrait of `collection.Seq` which represents sequences
+ *  that are guaranteed immutable.
  *
- *  @since 2.8
+ *  $seqInfo
+ *  @define Coll immutable.Seq
+ *  @define coll immutable sequence
  */
 trait Seq[+A] extends Iterable[A] 
                       with scala.collection.Seq[A] 
@@ -27,10 +28,12 @@ trait Seq[+A] extends Iterable[A]
   override def companion: GenericCompanion[Seq] = Seq
 }
 
-/**
- * @since 2.8
+/** $factoryInfo
+ *  @define Coll immutable.Seq
+ *  @define coll immutable sequence
  */
 object Seq extends SeqFactory[Seq] {
+  /** genericCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, Seq[A]] = new mutable.ListBuffer
 }

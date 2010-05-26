@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.compat
@@ -47,7 +46,7 @@ object Platform {
   @inline
   def getClassForName(name: String): Class[_] = java.lang.Class.forName(name)
 
-  val EOL = System.getProperty("line.separator", "\n")
+  val EOL = util.Properties.lineSeparator
 
   @inline
   def currentTime: Long = System.currentTimeMillis()

@@ -6,13 +6,12 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 package factory
 
-import scala.xml.parsing.ValidatingMarkupHandler
+import parsing.ValidatingMarkupHandler
 
 /**
  *  @author Burak Emir

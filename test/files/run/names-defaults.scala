@@ -135,6 +135,10 @@ object Test extends Application {
   println(bn4())
   println(bn4(a = 0))
 
+  class t2929(x: => Int = 1) {
+    def foo = x
+  }
+  println((new t2929()).foo)
 
   // constructors
   val a1 = new A(b = "dlkfj")(d = 102)
@@ -252,6 +256,9 @@ object Test extends Application {
   def test11[T[P]](x: T[T[List[T[X forSome { type X }]]]] = List(1,2)) = x
   // (cannot call f using the default, List(1,2) doesn't match the param type)
 
+  def multinest = { def bar(x: Int = 1) = { def bar(x: Int = 2) = x; bar() + x }; bar() }
+  println(multinest)
+
 
   // #2290
   def spawn(a: Int, b: => Unit) = { () }
@@ -288,6 +295,56 @@ object Test extends Application {
     class A[T](f: String = "ski!")
     class C extends A
   }
+
+  object t3178 {
+    def foo(x: String) = x
+    def foo(x: Int) = x
+    def bar(foo: Int) = foo
+    bar(foo = 1)
+  }
+
+
+  // #3207
+  trait P3207[T] {
+    class Inner(val f: T => Unit = (x: T) => println(x))
+  }
+
+  object Test3207_1 {
+    val p = new P3207[Int] {}
+    val q = new p.Inner() {
+      def g = 0
+    }
+  }
+
+  object Test3207_2 {
+    val p = new P3207[Int] {
+      val inner = new Inner() {
+        def g = 0
+      }
+    }
+  }
+
+  // #3344
+  def m3344_1 = { case class C(x: Int); C(1).copy(2).x }
+  m3344_1
+  def m3344_2 = { class C(val x: Int = 1); new C().x }
+  m3344_2
+
+  // #3338
+  object t3338 {
+    class Container {
+      class GenericClass[T](arg: String = "")
+    }
+
+    object Container extends Container
+
+    class Test {
+      val a = new Container.GenericClass()
+    }
+  }
+  (new t3338.Test).a
+
+
 
   // DEFINITIONS
   def test1(a: Int, b: String) = println(a +": "+ b)

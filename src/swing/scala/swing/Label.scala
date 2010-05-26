@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -20,7 +19,8 @@ import scala.swing.Swing._
  * @see javax.swing.JLabel
  */
 class Label(text0: String, icon0: Icon, align: Alignment.Value) extends Component {
-  override lazy val peer: JLabel = new JLabel(text0, toNullIcon(icon0), align.id) with SuperMixin
+  override lazy val peer: JLabel = 
+    new JLabel(text0, toNullIcon(icon0), align.id) with SuperMixin
   
   def this() = this("", EmptyIcon, Alignment.Center)
   def this(s: String) = this(s, EmptyIcon, Alignment.Center)

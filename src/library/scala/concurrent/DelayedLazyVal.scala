@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.concurrent
 
@@ -27,8 +26,14 @@ import ops.future
  *  @version 2.8
  */
 class DelayedLazyVal[T](f: () => T, body: => Unit) {
-  @volatile private[this] var isDone = false
+  @volatile private[this] var _isDone = false
   private[this] lazy val complete = f()
+
+  /** Whether the computation is complete.
+   *
+   *  @return true if the computation is complete.
+   */
+  def isDone = _isDone
   
   /** The current result of f(), or the final result if complete.
    *
@@ -38,6 +43,6 @@ class DelayedLazyVal[T](f: () => T, body: => Unit) {
   
   future {
     body
-    isDone = true
+    _isDone = true
   }
 }

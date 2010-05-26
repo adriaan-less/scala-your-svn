@@ -41,15 +41,16 @@ trait MemberEntity extends Entity {
   def toRoot: List[MemberEntity]
   def inDefinitionTemplates: List[TemplateEntity]
   def definitionName: String
-  def visibility: Option[Paragraph]
+  def visibility: Visibility
   def flags: List[Paragraph]
+  def deprecation: Option[Body]
   def inheritedFrom: List[TemplateEntity]
-  def isDeprecated: Boolean
-  def deprecationMessage: Option[String]
   def resultType: TypeEntity
   def isDef: Boolean
   def isVal: Boolean
+  def isLazyVal: Boolean
   def isVar: Boolean
+  def isImplicit: Boolean
   def isConstructor: Boolean
   def isAliasType: Boolean
   def isAbstractType: Boolean
@@ -61,8 +62,10 @@ trait MemberEntity extends Entity {
 trait DocTemplateEntity extends TemplateEntity with MemberEntity {
   def toRoot: List[DocTemplateEntity]
   def inSource: Option[(io.AbstractFile, Int)]
+  def sourceUrl: Option[java.net.URL]
   def typeParams: List[TypeParam]
   def parentType: Option[TypeEntity]
+  def parentTemplates: List[TemplateEntity]
   def linearization: List[TemplateEntity]
   def subClasses: List[DocTemplateEntity]
   def members: List[MemberEntity]
@@ -72,6 +75,21 @@ trait DocTemplateEntity extends TemplateEntity with MemberEntity {
   def abstractTypes: List[AbstractType]
   def aliasTypes: List[AliasType]
   def companion: Option[DocTemplateEntity]
+  // temporary implementation: to be removed
+  def findMember(str: String): Option[DocTemplateEntity] = {
+    val root = toRoot.last
+    val path = if (str.length > 0) str.split("\\.") else Array[String]()
+    var i = 0;
+    var found: DocTemplateEntity = root
+    while(i < path.length && found != null) {
+      found = found.members.find(_.name == path(i)) match {
+        case Some(doc:DocTemplateEntity) => doc
+        case _ => null
+      }
+      i += 1
+    }
+    Option(found)
+  }
 }
 
 /** A ''documentable'' trait. */
@@ -96,6 +114,9 @@ trait Package extends Object {
   def packages: List[Package]
 }
 
+/** A package represent the root of Entities hierarchy */
+trait RootPackage extends Package 
+
 trait NonTemplateMemberEntity extends MemberEntity {
   def isUseCase: Boolean
 }
@@ -111,7 +132,7 @@ trait Constructor extends NonTemplateMemberEntity {
   def valueParams : List[List[ValueParam]]
 }
 
-/** A value (`val`) or variable (`var`) of a ''documentable'' class, trait or object. */
+/** A value (`val`), lazy val (`lazy val`) or variable (`var`) of a ''documentable'' class, trait or object. */
 trait Val extends NonTemplateMemberEntity
 
 /** An abstract type of a ''documentable'' class, trait or object. */
@@ -144,4 +165,36 @@ trait TypeParam extends ParameterEntity {
 trait ValueParam extends ParameterEntity {
   def resultType: TypeEntity
   def defaultValue: Option[String]
+  def isImplicit: Boolean
+}
+
+/** An type that represents visibility of members. */
+sealed trait Visibility {
+  def isProtected: Boolean = false
+  def isPublic: Boolean = false
+}
+
+/** The visibility of `private[this]` members. */
+case class PrivateInInstance extends Visibility
+
+/** The visibility of `protected[this]` members. */
+case class ProtectedInInstance extends Visibility {
+  override def isProtected = true
+}
+
+/** The visibility of `private[owner]` members. An unqualified private members is encoded with `owner` equal to the
+  * members's `inTemplate`. */
+case class PrivateInTemplate(owner: TemplateEntity) extends Visibility
+
+/** The visibility of `protected[owner]` members. An unqualified protected members is encoded with `owner` equal to the
+  * members's `inTemplate`.
+  * Note that whilst the member is visible in any template owned by `owner`, it is only visible in subclasses of the
+  * member's `inTemplate`. */
+case class ProtectedInTemplate(owner: TemplateEntity) extends Visibility {
+  override def isProtected = true
+}
+
+/** The visibility of public members. */
+case class Public extends Visibility {
+  override def isPublic = true
 }
