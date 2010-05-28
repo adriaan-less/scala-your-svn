@@ -1,6 +1,5 @@
 /* NSC -- new Scala compiler -- Copyright 2007-2010 LAMP/EPFL */
 
-// $Id$
 
 package scala.tools.nsc
 package doc
@@ -52,11 +51,10 @@ class DocFactory(val reporter: Reporter, val settings: doc.Settings) { processor
     compiler.addSourceless
     assert(settings.docformat.value == "html")
     if (!reporter.hasErrors) {
-      val modelFactory = (new model.ModelFactory(compiler, settings))
-      val htmlFactory = (new html.HtmlFactory(reporter, settings))
+      val modelFactory = (new model.ModelFactory(compiler, settings) with model.comment.CommentFactory)
       val docModel = modelFactory.makeModel
       println("model contains " + modelFactory.templatesCount + " documentable templates")
-      htmlFactory generate docModel
+      (new html.HtmlFactory(docModel)) generate docModel
     }
   }
   

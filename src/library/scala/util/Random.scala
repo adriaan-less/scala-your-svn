@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.util
@@ -89,15 +88,13 @@ class Random(val self: java.util.Random) {
     List.fill(length)(safeChar()).mkString
   }
   
-  /** Returns a pseudorandomly generated String drawing upon
-   *  only ASCII characters between 33 and 126.
+  /** Returns the next pseudorandom, uniformly distributed value
+   *  from the ASCII range 33-126.
    */
-  def nextASCIIString(length: Int) = {
-    val (min, max) = (33, 126)
-    def nextDigit = nextInt(max - min) + min
-
-    new String(Array.fill(length)(nextDigit.toByte), "ASCII")
-  }    
+  def nextPrintableChar(): Char = {
+    val (low, high) = (33, 126)
+    (self.nextInt(high - low) + low).toChar
+  }
 
   def setSeed(seed: Long) { self.setSeed(seed) }
 }
@@ -107,19 +104,28 @@ class Random(val self: java.util.Random) {
  *
  *  @since 2.8
  */
-object Random extends Random
-{
-  import collection.Traversable
+object Random extends Random {
   import collection.mutable.ArrayBuffer
   import collection.generic.CanBuildFrom
   
+  /** Returns a Stream of pseudorandomly chosen alphanumeric characters,
+   *  equally chosen from A-Z, a-z, and 0-9.
+   * 
+   *  @since 2.8
+   */
+  def alphanumeric: Stream[Char] = {
+    def isAlphaNum(c: Char) = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+
+    Stream continually nextPrintableChar filter isAlphaNum
+  }
+
   /** Returns a new collection of the same type in a randomly chosen order.
    * 
-   *  @param  coll    the Traversable to shuffle
-   *  @return         the shuffled Traversable
+   *  @param  coll    the TraversableOnce to shuffle
+   *  @return         the shuffled TraversableOnce
    */
-  def shuffle[T, CC[X] <: Traversable[X]](coll: CC[T])(implicit bf: CanBuildFrom[CC[T], T, CC[T]]): CC[T] = {
-    val buf = new ArrayBuffer[T] ++= coll
+  def shuffle[T, CC[X] <: TraversableOnce[X]](xs: CC[T])(implicit bf: CanBuildFrom[CC[T], T, CC[T]]): CC[T] = {
+    val buf = new ArrayBuffer[T] ++= xs
         
     def swap(i1: Int, i2: Int) {
       val tmp = buf(i1)
@@ -132,6 +138,6 @@ object Random extends Random
       swap(n - 1, k)
     }
     
-    bf(coll) ++= buf result
+    bf(xs) ++= buf result
   }
 }

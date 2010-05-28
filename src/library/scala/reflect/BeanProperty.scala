@@ -6,10 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.reflect
+
+import annotation.target._
 
 /** <p>
  *    When attached to a field, this annotation adds a setter and a getter
@@ -29,4 +30,5 @@ package scala.reflect
  *    <code>scala.reflect.BooleanBeanProperty</code> annotation instead.
  *  </p>
  */
+@field
 class BeanProperty extends StaticAnnotation

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -37,7 +36,7 @@ object MainTokenMetric {
   def process(args: Array[String]) {
     val settings = new Settings(error)
     reporter = new ConsoleReporter(settings)
-    val command = new CompilerCommand(args.toList, settings, error, false)
+    val command = new CompilerCommand(args.toList, settings)
     try {
       val compiler = new Global(command.settings, reporter)
       tokenMetric(compiler, command.files)

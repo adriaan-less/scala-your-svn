@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -381,7 +380,7 @@ abstract class RefChecks extends InfoTransform {
           }
         }
       }
-
+      
       val opc = new overridingPairs.Cursor(clazz)
       while (opc.hasNext) {
         //Console.println(opc.overriding/* + ":" + opc.overriding.tpe*/ + " in "+opc.overriding.fullName + " overrides " + opc.overridden/* + ":" + opc.overridden.tpe*/ + " in "+opc.overridden.fullName + "/"+ opc.overridden.hasFlag(DEFERRED));//debug
@@ -393,12 +392,22 @@ abstract class RefChecks extends InfoTransform {
 
       // 2. Check that only abstract classes have deferred members
       if (clazz.isClass && !clazz.isTrait) {
+        def isClazzAbstract = clazz hasFlag ABSTRACT
+        val abstractErrors = new ListBuffer[String]
+        def abstractErrorMessage =
+          // a little formatting polish
+          if (abstractErrors.size <= 2) abstractErrors mkString " "
+          else abstractErrors.tail.mkString(abstractErrors.head + ":\n", "\n", "")
+         
         def abstractClassError(mustBeMixin: Boolean, msg: String) {
-          unit.error(clazz.pos,
-            (if (clazz.isAnonymousClass || clazz.isModuleClass) "object creation impossible"
-             else if (mustBeMixin) clazz.toString() + " needs to be a mixin"
-             else clazz.toString() + " needs to be abstract") + ", since " + msg);
-          clazz.setFlag(ABSTRACT)
+          def prelude = (
+            if (clazz.isAnonymousClass || clazz.isModuleClass) "object creation impossible"
+            else if (mustBeMixin) clazz + " needs to be a mixin"
+            else clazz + " needs to be abstract"
+          ) + ", since"
+          
+          if (abstractErrors.isEmpty) abstractErrors ++= List(prelude, msg)
+          else abstractErrors += msg
         }
 
         def javaErasedOverridingSym(sym: Symbol): Symbol = 
@@ -415,7 +424,7 @@ abstract class RefChecks extends InfoTransform {
           ((member hasFlag JAVA) && javaErasedOverridingSym(member) != NoSymbol)
 
         for (member <- clazz.tpe.nonPrivateMembersAdmitting(VBRIDGE))
-          if (member.isDeferred && !(clazz hasFlag ABSTRACT) && !ignoreDeferred(member)) {
+          if (member.isDeferred && !isClazzAbstract && !ignoreDeferred(member)) {
             abstractClassError(
               false, infoString(member) + " is not defined" + analyzer.varNotice(member))
           } else if ((member hasFlag ABSOVERRIDE) && member.isIncompleteIn(clazz)) {
@@ -449,7 +458,11 @@ abstract class RefChecks extends InfoTransform {
           if (!parents.isEmpty && parents.head.typeSymbol.hasFlag(ABSTRACT)) 
             checkNoAbstractDecls(parents.head.typeSymbol)
         }
-        if (!(clazz hasFlag ABSTRACT)) checkNoAbstractDecls(clazz)
+        if (abstractErrors.isEmpty && !isClazzAbstract)
+          checkNoAbstractDecls(clazz)
+        
+        if (abstractErrors.nonEmpty)
+          unit.error(clazz.pos, abstractErrorMessage)
       }
 
       /** Returns whether there is a symbol declared in class `inclazz`
@@ -593,7 +606,8 @@ abstract class RefChecks extends InfoTransform {
           case SingleType(pre, sym) =>
             validateVariance(pre, variance)
           case TypeRef(pre, sym, args) =>
-            if (sym.isAliasType && relativeVariance(sym) == AnyVariance)
+//            println("validate "+sym+" at "+relativeVariance(sym))
+            if (sym.isAliasType/* && relativeVariance(sym) == AnyVariance*/)
               validateVariance(tp.normalize, variance)
             else if (sym.variance != NoVariance) {
               val v = relativeVariance(sym)
@@ -851,7 +865,7 @@ abstract class RefChecks extends InfoTransform {
           val ownerTransformer = new ChangeOwnerTraverser(vsym, lazyDefSym)
           val lazyDef = atPos(tree.pos)(
               DefDef(lazyDefSym, ownerTransformer( 
-                if (tree.symbol.owner.isTrait // for traits, this is further tranformed in mixins
+                if (tree.symbol.owner.isTrait // for traits, this is further transformed in mixins
                     || hasUnitType) rhs 
                 else Block(List(
                        Assign(gen.mkAttributedRef(vsym), rhs)),
@@ -929,9 +943,10 @@ abstract class RefChecks extends InfoTransform {
     /** Similar to deprecation: check if the symbol is marked with @migration
      *  indicating it has changed semantics between versions.
      */
-    private def checkMigration(sym: Symbol, pos: Position) =
+    private def checkMigration(sym: Symbol, pos: Position) = {
       for (msg <- sym.migrationMessage)
-        unit.warning(pos, "%s%s has changed semantics:\n %s".format(sym, sym.locationString, msg))
+        unit.warning(pos, "%s%s has changed semantics:\n%s".format(sym, sym.locationString, msg))
+    }
     
     /** Check that a deprecated val or def does not override a
       * concrete, non-deprecated method.  If it does, then
@@ -970,17 +985,20 @@ abstract class RefChecks extends InfoTransform {
     private def checkAnnotations(tpes: List[Type], pos: Position) = tpes foreach (tp => checkTypeRef(tp, pos))
     private def doTypeTraversal(tree: Tree)(f: Type => Unit) = if (!inPattern) tree.tpe foreach f
 
-    private def applyRefchecksToAnnotations(tree: Tree) = tree match {
-      case m: MemberDef =>
-        checkAnnotations(m.symbol.annotations map (_.atp), tree.pos)
-        transformTrees(m.symbol.annotations.flatMap(_.args))
-      case TypeTree() => doTypeTraversal(tree) {
-        case AnnotatedType(annots, _, _) =>
-          checkAnnotations(annots map (_.atp), tree.pos)
-          transformTrees(annots.flatMap(_.args))
+    private def applyRefchecksToAnnotations(tree: Tree) = {
+      def applyChecks(annots: List[AnnotationInfo]) = {
+        checkAnnotations(annots map (_.atp), tree.pos)
+        transformTrees(annots flatMap (_.args))
+      }
+
+      tree match {
+        case m: MemberDef => applyChecks(m.symbol.annotations)
+        case TypeTree()   => doTypeTraversal(tree) {
+          case AnnotatedType(annots, _, _)  => applyChecks(annots)
+          case _ =>
+        }
         case _ =>
       }
-      case _ =>
     }
     
     private def transformCaseApply(tree: Tree, ifNot: => Unit) = {

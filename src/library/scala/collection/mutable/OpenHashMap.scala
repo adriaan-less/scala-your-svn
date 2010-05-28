@@ -6,16 +6,19 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
-/**
- * @since 2.7
+
+/** 
+ *  @define Coll OpenHashMap
+ *  @define coll open hash map
+ *  
+ *  @since 2.7
  */
-object OpenHashMap{
+object OpenHashMap {
   def apply[K, V](elems : (K, V)*) = {
     val dict = new OpenHashMap[K, V];
     elems.foreach({case (x, y) => dict(x) = y});
@@ -42,21 +45,33 @@ object OpenHashMap{
   private[mutable] def nextPowerOfTwo(i : Int) = highestOneBit(i) << 1; 
 }
 
-/**
- * A mutable hash map based on an open hashing scheme. The precise scheme is undefined,
- * but it should make a reasonable effort to ensure that an insert with consecutive hash
- * codes is not unneccessarily penalised. In particular, mappings of consecutive integer
- * keys should work without significant performance loss.
- *
- * @author David MacIver
- * @since  2.7
+/** A mutable hash map based on an open hashing scheme. The precise scheme is undefined,
+ *  but it should make a reasonable effort to ensure that an insert with consecutive hash
+ *  codes is not unneccessarily penalised. In particular, mappings of consecutive integer
+ *  keys should work without significant performance loss.
+ *  
+ *  @tparam Key          type of the keys in this map.
+ *  @tparam Value        type of the values in this map.
+ *  @param initialSize   the initial size of the internal hash table.
+ *  
+ *  @author David MacIver
+ *  @since  2.7
+ *  
+ *  @define Coll OpenHashMap
+ *  @define coll open hash map
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-class OpenHashMap[Key, Value](initialSize : Int) extends Map[Key, Value]
-  with MapLike[Key, Value, OpenHashMap[Key, Value]] {
+class OpenHashMap[Key, Value](initialSize : Int)
+extends Map[Key, Value]
+   with MapLike[Key, Value, OpenHashMap[Key, Value]] {
 
   import OpenHashMap.OpenEntry
   type Entry = OpenEntry[Key, Value]
 
+  /**
+   * A default constructor creates a hashmap with initial size 8.
+   */
   def this() = this(8);
 
   override def empty: OpenHashMap[Key, Value] = OpenHashMap.empty[Key, Value]
@@ -73,9 +88,10 @@ class OpenHashMap[Key, Value](initialSize : Int) extends Map[Key, Value]
 
   override def size = _size;
   private[this] def size_=(s : Int) = _size = s;
-
+  
+  /** Returns a mangled hash code of the provided key. */
   protected def hashOf(key : Key) = {
-    var h = key.hashCode;
+    var h = key.##
     h ^= ((h >>> 20) ^ (h >>> 12));
     h ^ (h >>> 7) ^ (h >>> 4);
   }
@@ -170,9 +186,10 @@ class OpenHashMap[Key, Value](initialSize : Int) extends Map[Key, Value]
     None;
   }
  
-  /**
-   * An iterator over the elements of this map. Use of this iterator follows the same
-   * contract for concurrent modification as the foreach method.
+  /** An iterator over the elements of this map. Use of this iterator follows the same
+   *  contract for concurrent modification as the foreach method.
+   *  
+   *  @return   the iterator
    */ 
   def iterator = new Iterator[(Key, Value)]{
     var index = 0;
@@ -200,19 +217,20 @@ class OpenHashMap[Key, Value](initialSize : Int) extends Map[Key, Value]
   }
 
   /**
-   * Loop over the key, value mappings of this map.
-   *
-   * The behaviour of modifying the map during an iteration is as follows: 
-   *
-   * <ul>
-   *  <li>Deleting a mapping is always permitted.</li>
-   *  <li>Changing the value of mapping which is already present is permitted.</li>
-   *  <li>Anything else is not permitted. It will usually, but not always, throw an exception.</li>
-   * </ul>
-   *
-   * @param  f The function to apply to each key, value mapping.
+   *  Loop over the key, value mappings of this map.
+   *  
+   *  The behaviour of modifying the map during an iteration is as follows: 
+   *  
+   *   <ul>
+   *    <li>Deleting a mapping is always permitted.</li>
+   *    <li>Changing the value of mapping which is already present is permitted.</li>
+   *    <li>Anything else is not permitted. It will usually, but not always, throw an exception.</li>
+   *   </ul>
+   * 
+   *  @tparam U  The return type of the specified function `f`, return result of which is ignored.
+   *  @param f   The function to apply to each key, value mapping.
    */ 
-  override def foreach[U](f : ((Key, Value)) =>  U){
+  override def foreach[U](f : ((Key, Value)) => U) {
     val startModCount = modCount;
     foreachUndeletedEntry(entry => {
       if (modCount != startModCount) error("Concurrent Modification")
@@ -223,6 +241,7 @@ class OpenHashMap[Key, Value](initialSize : Int) extends Map[Key, Value]
   private[this] def foreachUndeletedEntry(f : Entry => Unit){
     table.foreach(entry => if (entry != null && entry.value != None) f(entry));
   }
+  
   override def transform(f : (Key, Value) => Value) = {
     foreachUndeletedEntry(entry => entry.value = Some(f(entry.key, entry.value.get)));
     this

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -54,7 +53,11 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
     private def checkPackedConforms(tree: Tree, pt: Type): Tree = {
       if (tree.tpe exists (_.typeSymbol.isExistentialSkolem)) {
         val packed = localTyper.packedType(tree, NoSymbol)
-        if (!(packed <:< pt)) localTyper.infer.typeError(tree.pos, packed, pt)
+        if (!(packed <:< pt)) {
+          val errorContext = localTyper.context.make(localTyper.context.tree)
+          errorContext.reportGeneralErrors = true
+          analyzer.newTyper(errorContext).infer.typeError(tree.pos, packed, pt)
+        }
       }
       tree
     }
@@ -182,16 +185,17 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
           mayNeedProtectedAccessor(sel, args, false)
       
         case sel @ Select(qual @ This(_), name) =>
-           if ((sym hasFlag PARAMACCESSOR) && (sym.alias != NoSymbol)) {
+           if ((sym hasFlag PARAMACCESSOR)
+               && (sym.alias != NoSymbol)) {
             val result = localTyper.typed {
-              Select(
-                Super(qual.symbol, nme.EMPTY.toTypeName/*qual.symbol.info.parents.head.symbol.name*/) setPos qual.pos,
-                sym.alias) setPos tree.pos
+                Select(
+                  Super(qual.symbol, nme.EMPTY.toTypeName/*qual.symbol.info.parents.head.symbol.name*/) setPos qual.pos,
+                  sym.alias) setPos tree.pos
             }
             if (settings.debug.value) 
               Console.println("alias replacement: " + tree + " ==> " + result);//debug
-            transformSuperSelect(result)
-          } 
+            localTyper.typed(gen.maybeMkAsInstanceOf(transformSuperSelect(result), sym.tpe, sym.alias.tpe, true))
+          }
           else mayNeedProtectedAccessor(sel, List(EmptyTree), false)
 
         case Select(sup @ Super(_, mix), name) =>

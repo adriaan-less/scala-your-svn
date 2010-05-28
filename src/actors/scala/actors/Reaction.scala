@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.actors
@@ -26,12 +25,8 @@ private[actors] class KillActorControl extends ControlThrowable
  *  @author Philipp Haller
  */
 @deprecated("This class will be removed in a future release")
-class Reaction(a: Actor, f: PartialFunction[Any, Any], msg: Any) extends ActorTask(a, () => {
-  if (f == null)
-    a.act()
-  else
-    f(msg)
-}) {
+class Reaction(a: Actor, f: PartialFunction[Any, Any], msg: Any)
+extends ActorTask(a, if (f == null) (() => a.act()) else null, f, msg) {
 
   def this(a: Actor) = this(a, null, null)
 

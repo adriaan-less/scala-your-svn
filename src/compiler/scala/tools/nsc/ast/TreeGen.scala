@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -31,10 +30,13 @@ abstract class TreeGen
   
   private def isRootOrEmptyPackageClass(s: Symbol) = s.isRoot || s.isEmptyPackageClass
   
-  def scalaFunctionConstr(argtpes: List[Tree], restpe: Tree): Tree = 
-    AppliedTypeTree(
-      scalaDot(newTypeName("Function"+argtpes.length)),
-      argtpes ::: List(restpe))
+  def scalaFunctionConstr(argtpes: List[Tree], restpe: Tree, abstractFun: Boolean = false): Tree = {
+    val cls = if (abstractFun)
+      mkAttributedRef(AbstractFunctionClass(argtpes.length))
+    else
+      mkAttributedRef(FunctionClass(argtpes.length))
+    AppliedTypeTree(cls, argtpes ::: List(restpe))
+  }
 
   /** Builds a reference to value whose type is given stable prefix.
    *  The type must be suitable for this.  For example, it
@@ -191,8 +193,21 @@ abstract class TreeGen
   def mkAsInstanceOf(value: Tree, tpe: Type, any: Boolean = true): Tree =
     mkTypeApply(value, tpe, (if (any) Any_asInstanceOf else Object_asInstanceOf))
 
+  /** Cast `tree' to 'pt', unless tpe is a subtype of pt, or pt is Unit.  */
+  def maybeMkAsInstanceOf(tree: Tree, pt: Type, tpe: Type, beforeRefChecks: Boolean = false): Tree =
+    if ((pt == UnitClass.tpe) || (tpe <:< pt)) {
+      log("no need to cast from " + tpe + " to " + pt)
+      tree
+    } else
+      atPos(tree.pos) {
+        if (beforeRefChecks)
+          TypeApply(mkAttributedSelect(tree, Any_asInstanceOf), List(TypeTree(pt)))
+        else
+          mkAsInstanceOf(tree, pt)
+      }
+
   def mkClassOf(tp: Type): Tree = 
-    Literal(Constant(tp)) setType ClassType(tp)
+    Literal(Constant(tp)) setType ConstantType(Constant(tp))// ClassType(tp)
 
   def mkCheckInit(tree: Tree): Tree = {
     val tpe =
@@ -329,6 +344,17 @@ abstract class TreeGen
       else
         TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
     Apply(meth, List(tree))
+  }
+
+  /** Try to convert Select(qual, name) to a SelectFromTypeTree.
+   */
+  def convertToSelectFromType(qual: Tree, name: Name): Tree = {
+    def selFromType(qual1: Tree) = SelectFromTypeTree(qual1 setPos qual.pos, name)
+    qual match {
+      case Select(qual1, name) => selFromType(Select(qual1, name.toTypeName))
+      case Ident(name) => selFromType(Ident(name.toTypeName))
+      case _ => EmptyTree
+    }
   }
 
   /** Used in situations where you need to access value of an expression several times

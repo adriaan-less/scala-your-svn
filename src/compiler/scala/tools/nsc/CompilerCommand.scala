@@ -2,25 +2,16 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
 import java.io.IOException
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.ArgumentsExpander
+import io.File
 
 /** A class representing command line info for scalac */
-class CompilerCommand(
-  arguments: List[String],
-  val settings: Settings,
-  error: String => Unit,
-  interactive: Boolean,
-  shouldProcessArguments: Boolean)
-{
-  def this(arguments: List[String], settings: Settings, error: String => Unit, interactive: Boolean) =
-    this(arguments, settings, error, interactive, true)
-
+class CompilerCommand(arguments: List[String], val settings: Settings) {
+  def this(arguments: List[String], error: String => Unit) = this(arguments, new Settings(error))
   type Setting = Settings#Setting
 
   /** file extensions of files that the compiler can process */
@@ -69,20 +60,34 @@ class CompilerCommand(
       case Some((test, getMessage)) => getMessage(compiler)
       case None => ""
     }
-
-  // CompilerCommand needs processArguments called at the end of its constructor,
-  // as does its subclass GenericRunnerCommand, but it cannot be called twice as it
-  // accumulates arguments.  The fact that it's called from within the constructors
-  // makes initialization order an obstacle to simplicity.
-  val (ok: Boolean, files: List[String]) = 
-    if (shouldProcessArguments) {
-      // expand out @filename to the contents of that filename
-      val expandedArguments = arguments flatMap {
-        case x if x startsWith "@"  => ArgumentsExpander expandArg x
-        case x                      => List(x)
-      }
+  
+  /**
+   * Expands all arguments starting with @ to the contents of the
+   * file named like each argument.
+   */
+  def expandArg(arg: String): List[String] = {
+    def stripComment(s: String) = s takeWhile (_ != '#')
+    val file = File(arg stripPrefix "@")
+    if (!file.exists)
+      throw new java.io.FileNotFoundException("argument file %s could not be found" format file.name)
     
-      settings.processArguments(expandedArguments, true)
+    settings splitParams (file.lines() map stripComment mkString " ")
+  }
+  
+  // override this if you don't want arguments processed here
+  def shouldProcessArguments: Boolean = true
+  
+  def processArguments: (Boolean, List[String]) = {
+    // expand out @filename to the contents of that filename
+    val expandedArguments = arguments flatMap {
+      case x if x startsWith "@"  => expandArg(x)
+      case x                      => List(x)
     }
+  
+    settings.processArguments(expandedArguments, true)
+  }
+  
+  val (ok, files) = 
+    if (shouldProcessArguments) processArguments
     else (true, Nil)
 }

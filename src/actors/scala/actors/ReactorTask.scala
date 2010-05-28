@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -21,21 +20,26 @@ import scala.concurrent.forkjoin.RecursiveAction
  *
  *  @author Philipp Haller
  */
-private[actors] class ReactorTask[T >: Null <: TrackedReactor](var reactor: T, var fun: () => Any)
+private[actors] class ReactorTask[Msg >: Null](var reactor: Reactor[Msg],
+                                               var fun: () => Any,
+                                               var handler: PartialFunction[Msg, Any],
+                                               var msg: Msg)
   extends RecursiveAction with Callable[Unit] with Runnable {
 
   def run() {
     try {
       beginExecution()
       try {
-        try {
+        if (fun eq null)
+          handler(msg)
+        else
           fun()
-        } catch {
-          case e: Exception if (reactor.exceptionHandler.isDefinedAt(e)) =>
-            reactor.exceptionHandler(e)
-        }
       } catch {
         case _: KillActorControl =>
+          // do nothing
+
+        case e: Exception if reactor.exceptionHandler.isDefinedAt(e) =>
+          reactor.exceptionHandler(e)
       }
       reactor.kill()
     }
@@ -43,15 +47,17 @@ private[actors] class ReactorTask[T >: Null <: TrackedReactor](var reactor: T, v
       case _: SuspendActorControl =>
         // do nothing (continuation is already saved)
 
-      case e: Exception =>
-        Debug.info(reactor+": caught "+e)
-        Debug.doInfo { e.printStackTrace() }
-        reactor.terminated()
+      case e: Throwable =>
         terminateExecution(e)
+        reactor.terminated()
+        if (!e.isInstanceOf[Exception])
+          throw e
     } finally {
       suspendExecution()
       this.reactor = null
       this.fun = null
+      this.handler = null
+      this.msg = null
     }
   }
 
@@ -63,6 +69,9 @@ private[actors] class ReactorTask[T >: Null <: TrackedReactor](var reactor: T, v
 
   protected def suspendExecution() {}
 
-  protected def terminateExecution(e: Exception) {}
+  protected def terminateExecution(e: Throwable) {
+    Console.err.println(reactor+": caught "+e)
+    e.printStackTrace()
+  }
 
 }

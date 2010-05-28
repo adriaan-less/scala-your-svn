@@ -6,14 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
-/** The J2ME version of the library defined this trait with a <code>clone</code>
- *  method to substitute for the lack of <code>Object.clone</code> there.
+/** The J2ME version of the library defined this trait with a `clone`
+ *  method to substitute for the lack of `Object.clone` there.
  *
  *  @since 2.6
  */

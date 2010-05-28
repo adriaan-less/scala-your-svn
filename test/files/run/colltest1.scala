@@ -2,8 +2,7 @@ import collection._
 
 object Test extends Application {
 
-  def orderedTraversableTest(empty: Traversable[Int]) 
-  {
+  def orderedTraversableTest(empty: Traversable[Int]) {
     println("new test starting with "+empty)
     assert(empty.isEmpty)
     val ten = empty ++ List(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
@@ -113,6 +112,9 @@ object Test extends Application {
     assert(ten.endsWith(List(9, 10)))
     assert(ten.endsWith(List()))
     assert(ten.indexOfSlice(List(3, 4, 5)) == 2, ten.indexOfSlice(List(3, 4, 5)))
+    assert(ten.lastIndexOfSlice(List(8, 9, 10)) == 7)
+    assert(ten.lastIndexOfSlice(List(1, 2, 3)) == 0)
+    assert(ten.lastIndexOfSlice(List(9, 10, 11)) == -1)
     assert(ten contains 1)
     assert(ten contains 10)
     assert(!(ten contains 0))
@@ -170,7 +172,7 @@ object Test extends Application {
     m += (("D" -> "D"), ("E" -> "E"), ("F" -> "F"))
     m ++= List(("G" -> "G"), ("H" -> "H"), ("I" -> "I"))
     m ++= ('J' to 'Z') map (x => (x.toString -> x.toString))
-    println(m)
+    println(m.toList.sorted)
     assert(!m.isEmpty)
     assert(m.keySet forall (k => (m get k) == Some(k))) 
     assert(m.keySet forall (k => (m apply k) == k)) 
@@ -185,7 +187,7 @@ object Test extends Application {
     assert(mm.isEmpty, mm)
     def m3 = empty ++ m1
     assert(m1 == m3)
-    println(m3)
+    println(m3.toList.sorted)
     val m4 = m3 filterNot { case (k, v) => k != "A" }
     assert(m4.size == 1, m4)
   }

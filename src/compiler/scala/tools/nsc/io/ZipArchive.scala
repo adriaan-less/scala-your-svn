@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
 package scala.tools.nsc
@@ -14,7 +13,6 @@ import java.io.{ File => JFile, IOException, InputStream, BufferedInputStream, B
 import java.util.zip.{ ZipEntry, ZipFile, ZipInputStream }
 import PartialFunction._
 
-import scala.collection.Traversable
 import scala.collection.mutable.{ Map, HashMap }
 import scala.collection.JavaConversions.asIterator
 
@@ -237,10 +235,9 @@ final class ZipArchive(file: File, val archive: ZipFile) extends PlainFile(file)
   }
   
   private def zipTraversableFromZipFile(z: ZipFile): ZipTrav =
-    new Traversable[ZipEntry] {
-      def zis: ZipInputStream = null  // not valid for this type
-      val itStream = asIterator(z.entries()).toStream
-      def foreach[U](f: ZipEntry => U) = itStream foreach f
+    new Iterable[ZipEntry] {
+      def zis: ZipInputStream = null    // not valid for this type
+      def iterator = asIterator(z.entries())
     }
 }
 

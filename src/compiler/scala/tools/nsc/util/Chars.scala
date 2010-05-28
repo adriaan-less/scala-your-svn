@@ -33,6 +33,17 @@ object Chars {
     else
       -1
   }
+  
+  /** Convert a character to a backslash-u escape */
+  def char2uescape(c: Char): String = {
+    var rest = c.toInt
+    val buf = new StringBuilder
+    for (i <- 1 to 4) {
+      buf ++= (rest % 16).toHexString
+      rest = rest / 16
+    }
+    "\\u" + buf.toString.reverse
+  }
 
   /** Is character a line break? */
   @inline def isLineBreakChar(c: Char) = (c: @switch) match {
@@ -50,16 +61,11 @@ object Chars {
     
   /** Can character start an alphanumeric Scala identifier? */
   def isIdentifierStart(c: Char): Boolean =
-    ('A' <= c && c <= 'Z') ||
-    ('a' <= c && c <= 'a') ||
-    (c == '_') || (c == '$') ||
-    Character.isUnicodeIdentifierStart(c)
-  
+    (c == '_') || (c == '$') || Character.isUnicodeIdentifierStart(c)
+
   /** Can character form part of an alphanumeric Scala identifier? */
   def isIdentifierPart(c: Char) =
-    isIdentifierStart(c) || 
-    ('0' <= c && c <= '9') ||
-    Character.isUnicodeIdentifierPart(c)
+    (c == '$') || Character.isUnicodeIdentifierPart(c)
 
   /** Is character a math or other symbol in Unicode?  */
   def isSpecial(c: Char) = {

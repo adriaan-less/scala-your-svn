@@ -6,19 +6,22 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package mutable
 
 import script._
 
-/** This class should be used as a mixin. It synchronizes the <code>Set</code>
+/** This class should be used as a mixin. It synchronizes the `Set`
  *  functions of the class into which it is mixed in.
- *
+ *  
+ *  @tparam A    type of the elements contained in this synchronized set.
+ *  
  *  @author  Matthias Zenger
  *  @version 1.0, 08/07/2003
  *  @since   1
+ *  @define Coll SynchronizedSet
+ *  @define coll synchronized set
  */
 trait SynchronizedSet[A] extends Set[A] {
   import scala.collection.Traversable
@@ -39,24 +42,16 @@ trait SynchronizedSet[A] extends Set[A] {
     super.+=(elem)
   }
 
-  override def ++=(that: Traversable[A]): this.type = synchronized[this.type] {
-    super.++=(that)
-  }
-
-  override def ++=(it: Iterator[A]): this.type = synchronized[this.type] {
-    super.++=(it)
+  override def ++=(xs: TraversableOnce[A]): this.type = synchronized[this.type] {
+    super.++=(xs)
   }
 
   abstract override def -=(elem: A): this.type = synchronized[this.type] {
     super.-=(elem)
   }
 
-  override def --=(that: Traversable[A]): this.type = synchronized[this.type] {
-    super.--=(that)
-  }
-
-  override def --=(it: Iterator[A]): this.type = synchronized[this.type] {
-    super.--=(it)
+  override def --=(xs: TraversableOnce[A]): this.type = synchronized[this.type] {
+    super.--=(xs)
   }
 
   override def update(elem: A, included: Boolean): Unit = synchronized {
@@ -103,7 +98,7 @@ trait SynchronizedSet[A] extends Set[A] {
     super.<<(cmd)
   }
 
-  override def clone(): Set[A] = synchronized {
+  override def clone(): Self = synchronized {
     super.clone()
   }
 }

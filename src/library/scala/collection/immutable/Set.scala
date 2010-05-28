@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,23 +13,16 @@ package immutable
 
 import generic._
 
-/** <p>
- *    A generic trait for immutable sets. Concrete set implementations have
- *    to provide functionality for the abstract methods in <code>Set</code>:
- *  </p>
- *  <pre>
- *    <b>def</b> contains(elem: A): Boolean
- *    <b>def</b> iterator: Iterator[A]
- *    <b>def</b> + (elem: A): Self
- *    <b>def</b> - (elem: A): Self</pre>
- *  <p>
- *    where <code>Self</code> is the type of the set.
- *  </p>
- *
+/** A generic trait for immutable sets.
+ *  
+ *  $setnote
+ *  
  *  @author Matthias Zenger
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
  */
 trait Set[A] extends Iterable[A] 
                 with scala.collection.Set[A] 
@@ -39,7 +31,12 @@ trait Set[A] extends Iterable[A]
   override def companion: GenericCompanion[Set] = Set
 }
 
-object Set extends SetFactory[Set] {
+/** $factoryInfo
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
+ */
+object Set extends ImmutableSetFactory[Set] {
+  /** $setCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
   override def empty[A]: Set[A] = EmptySet.asInstanceOf[Set[A]]
 

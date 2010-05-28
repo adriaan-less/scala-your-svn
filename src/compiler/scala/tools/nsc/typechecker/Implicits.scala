@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 //todo: rewrite or disllow new T where T is a mixin (currently: <init> not a member of T)
 //todo: use inherited type info also for vars and values
@@ -127,8 +126,7 @@ self: Analyzer =>
       case _ => false
     }
 
-    override def hashCode = 
-      name.hashCode + pre.hashCode + sym.hashCode
+    override def hashCode = name.## + pre.## + sym.##
 
     override def toString = "ImplicitInfo(" + name + "," + pre + "," + sym + ")"
   }
@@ -249,7 +247,7 @@ self: Analyzer =>
      *     by replacing variables by their upper bounds,
      *   - all remaining free type parameters in the type are replaced by WildcardType.
      *  The _complexity_ of a stripped core type corresponds roughly to the number of
-     *  nodes in its ast, except that singleton types are widened befoe taking the complexity.
+     *  nodes in its ast, except that singleton types are widened before taking the complexity.
      *  Two types overlap if they have the same type symbol, or
      *  if one or both are intersection types with a pair of overlapiing parent types.
      */
@@ -386,7 +384,7 @@ self: Analyzer =>
        *  or method type whose result type has a method whose name and type
        *  correspond to the HasMethodMatching type,
        *  or otherwise if `tp' is compatible with `pt'.
-       *  This methid is performance critical: 5-8% of typechecking time.
+       *  This method is performance critical: 5-8% of typechecking time.
        */
       def matchesPt(tp: Type, pt: Type, undet: List[Symbol]) = {
         val start = startTimer(matchesPtNanos)
@@ -520,10 +518,10 @@ self: Analyzer =>
      *   - the symbol's type is initialized
      *   - the symbol comes from a classfile
      *   - the symbol comes from a different sourcefile than the current one
-     *   - the symbol's definition comes before, and does not contain the closest enclosing definition,
+     *   - the symbol and the accessed symbol's definitions come before, and do not contain the closest enclosing definition, // see #3373
      *   - the symbol's definition is a val, var, or def with an explicit result type
      *  The aim of this method is to prevent premature cyclic reference errors
-     *  by computing the types of only those implicitis for which one of these 
+     *  by computing the types of only those implicits for which one of these 
      *  conditions is true.
      */
     def isValid(sym: Symbol) = {
@@ -539,9 +537,15 @@ self: Analyzer =>
           case _ => true
         }
       }
-      def comesBefore(sym: Symbol, owner: Symbol) =
-        sym.pos.pointOrElse(0) < owner.pos.pointOrElse(Integer.MAX_VALUE) &&
-        !(owner.ownerChain contains sym)
+      def comesBefore(sym: Symbol, owner: Symbol) = {
+        val ownerPos = owner.pos.pointOrElse(Integer.MAX_VALUE)
+        sym.pos.pointOrElse(0) < ownerPos && (
+          if(sym isGetterOrSetter) {
+            val symAcc = sym.accessed // #3373
+            symAcc.pos.pointOrElse(0) < ownerPos &&
+            !(owner.ownerChain exists (o => (o eq sym) || (o eq symAcc))) // probably faster to iterate only once, don't feel like duplicating hasTransOwner for this case
+          } else !(owner hasTransOwner sym)) // faster than owner.ownerChain contains sym
+      }
 
       sym.isInitialized ||
       sym.sourceFile == null ||
@@ -567,6 +571,19 @@ self: Analyzer =>
       /** A set containing names that are shadowed by implicit infos */
       lazy val shadowed = new HashSet[Name]("shadowed", 512)
 
+      // #3453
+      // in addition to the implicit symbols that may shadow the implicit with name `name`,
+      // this method tests whether there's a non-implicit symbol with name `name` in scope
+      // inspired by logic in typedIdent
+      def nonImplicitSynonymInScope(name: Name) = {
+        val defEntry = context.scope.lookupEntry(name)
+        (defEntry ne null) &&
+        reallyExists(defEntry.sym) &&
+        !defEntry.sym.isImplicit // the implicit ones are handled by the `shadowed` set above
+        // also, subsumes the test that defEntry.sym ne info.sym
+        // (the `info` that's in scope at the call to nonImplicitSynonymInScope in tryImplicit)
+      }
+
       /** Is `sym' the standard conforms method in Predef?
        *  Note: DON't replace this by sym == Predef_conforms, as Predef_conforms is a `def'
        *  which does a member lookup (it can't be a lazy val because we might reload Predef
@@ -588,7 +605,7 @@ self: Analyzer =>
       def tryImplicit(info: ImplicitInfo): SearchResult = {
         incCounter(triedImplicits)
         if (info.isCyclicOrErroneous ||
-            (isLocal && shadowed.contains(info.name)) || 
+            (isLocal && (shadowed.contains(info.name) || nonImplicitSynonymInScope(info.name))) ||
             (isView && isConformsMethod(info.sym)) ||
             //@M this condition prevents no-op conversions, which are a problem (besides efficiency),
             // one example is removeNames in NamesDefaults, which relies on the type checker failing in case of ambiguity between an assignment/named arg
@@ -610,6 +627,11 @@ self: Analyzer =>
           for (i <- is) shadowed addEntry i.name
         applicable
       }
+
+      // #3453 -- alternative fix, seems not to be faster than encoding the set as the boolean predicate nonImplicitSynonymInScope
+      // in addition to the *implicit* symbols that may shadow the implicit with name `name` (added to shadowed by addAppInfos)
+      // add names of non-implicit symbols that are in scope (accessible without prefix)
+      // for(sym <- context.scope; if !sym.isImplicit) shadowed addEntry sym.name
 
       var applicable = Map[ImplicitInfo, SearchResult]()
       for (is <- iss) applicable = addAppInfos(is, applicable)
@@ -639,9 +661,9 @@ self: Analyzer =>
       val applicable = applicableInfos(implicitInfoss, isLocal, invalidImplicits)
 
       if (applicable.isEmpty && !invalidImplicits.isEmpty) {
-        infer.setAddendum(tree.pos, () => 
+        setAddendum(tree.pos, () => 
           "\n Note: implicit "+invalidImplicits.head+" is not applicable here"+
-          "\n because it comes after the application point and it lacks an explicit result type")
+          " because it comes after the application point and it lacks an explicit result type")
       }
 
       val start = startCounter(subtypeImprovCount)
@@ -797,51 +819,37 @@ self: Analyzer =>
               findSingletonManifest(sym.name.toString)
             } else if (sym == ObjectClass || sym == AnyRefClass) {
               findSingletonManifest("Object")
+            } else if (sym == RepeatedParamClass || sym == ByNameParamClass) {
+              EmptyTree
             } else if (sym == ArrayClass && args.length == 1) {
-              manifestFactoryCall("arrayType", args.head, findSubManifest(args.head))
+              manifestFactoryCall("arrayType", args.head, findManifest(args.head))
             } else if (sym.isClass) {
-              val suffix = gen.mkClassOf(tp1) :: (args map findSubManifest)
+              val classarg0 = gen.mkClassOf(tp1) 
+              val classarg = tp match {
+                case ExistentialType(_, _) => 
+                  TypeApply(Select(classarg0, Any_asInstanceOf), 
+                            List(TypeTree(appliedType(ClassClass.typeConstructor, List(tp)))))
+                case _ => 
+                  classarg0
+              }
+              val suffix = classarg :: (args map findSubManifest)
               manifestFactoryCall(
-                "classType", tp, 
+                "classType", tp,
                 (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
                  else findSubManifest(pre) :: suffix): _*)
-            } else {
-              EmptyTree
-/* the following is dropped because it is dangerous
- *
-             if (sym.isAbstractType) {
-              if (sym.isExistentiallyBound) 
-                EmptyTree // todo: change to existential parameter manifest
-              else if (sym.isTypeParameterOrSkolem)
-                EmptyTree  // a manifest should have been found by normal searchImplicit
-              else {
-                // The following is tricky! We want to find the parameterized version of
-                // what will become the erasure of the upper bound.
-                // But there is a case where the erasure is not a superclass of the current type:
-                // Any erases to Object. So an abstract type having Any as upper bound will not see
-                // Object as a baseType. That's why we do the basetype trick only when we must,
-                // i.e. when the baseclass is parameterized.
-                var era = erasure.erasure(tp1)
-                if (era.typeSymbol.typeParams.nonEmpty)
-                  era = tp1.baseType(era.typeSymbol)
-                manifestFactoryCall(
-                  "abstractType", tp,
-                  findSubManifest(pre) :: Literal(sym.name.toString) :: gen.mkClassOf(era) :: (args map findSubManifest): _*)
-              }
+            } else if (sym.isExistentiallyBound && full) {
+              manifestFactoryCall("wildcardType", tp,
+                                  findManifest(tp.bounds.lo), findManifest(tp.bounds.hi))
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
-*/
             }
           case RefinedType(parents, decls) =>
             // refinement is not generated yet
             if (parents.length == 1) findManifest(parents.head)
             else if (full) manifestFactoryCall("intersectionType", tp, parents map (findSubManifest(_)): _*)
-            else mot(erasure.erasure(tp0))
+            else mot(erasure.erasure.intersectionDominator(parents))
           case ExistentialType(tparams, result) =>
-            existentialAbstraction(tparams, result) match {
-              case ExistentialType(_, _) => mot(result)
-              case t => mot(t)
-            }
+            mot(tp1.skolemizeExistential)
           case _ =>
             EmptyTree
         }
@@ -911,7 +919,7 @@ self: Analyzer =>
     def allImplicits: List[SearchResult] = {
       val invalidImplicits = new ListBuffer[Symbol]
       def search(iss: List[List[ImplicitInfo]], isLocal: Boolean) = 
-        applicableInfos(iss, isLocal, invalidImplicits).valuesIterator.toList
+        applicableInfos(iss, isLocal, invalidImplicits).values.toList
       search(context.implicitss, true) ::: search(implicitsOfExpectedType, false)
     }
   }

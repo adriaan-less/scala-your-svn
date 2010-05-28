@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package object scala {
@@ -25,6 +24,8 @@ package object scala {
   type NoSuchElementException          = java.util.NoSuchElementException
   type NumberFormatException           = java.lang.NumberFormatException
   type AbstractMethodError             = java.lang.AbstractMethodError
+  
+  type TraversableOnce[+A] = scala.collection.TraversableOnce[A]
 
   type Traversable[+A] = scala.collection.Traversable[A]
   val Traversable = scala.collection.Traversable

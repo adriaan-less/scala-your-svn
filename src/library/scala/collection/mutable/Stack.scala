@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -19,11 +18,19 @@ import annotation.migration
 
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
- *
+ *  
+ *  @tparam A    type of the elements contained in this stack.
+ *  
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @define Coll Stack
+ *  @define coll stack
+ *  @define orderDependent
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 @serializable @cloneable
 class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with Cloneable[Stack[A]] {
@@ -57,31 +64,18 @@ class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with
    */
   def push(elem1: A, elem2: A, elems: A*): this.type = this.push(elem1).push(elem2).pushAll(elems)
    
-  /** Push all elements provided by the given iterator object onto
-   *  the stack. The last element returned by the iterator
+  /** Push all elements in the given traversable object onto
+   *  the stack. The last element in the traversable object
    *  will be on top of the new stack.
    *
-   *  @param   elems      the iterator object.
+   *  @param xs the traversable object.
    *  @return the stack with the new elements on top.
    */
-  def pushAll(elems: Iterator[A]): this.type = { for (elem <- elems) { push(elem); () }; this }
-  
-  /** Push all elements provided by the given iterable object onto
-   *  the stack. The last element returned by the traversable object
-   *  will be on top of the new stack.
-   *
-   *  @param   elems      the iterable object.
-   *  @return the stack with the new elements on top.
-   */
-  def pushAll(elems: scala.collection.Traversable[A]): this.type = { for (elem <- elems) { push(elem); () }; this }
+  def pushAll(xs: TraversableOnce[A]): this.type = { xs foreach push ; this }
 
   @deprecated("use pushAll")
   @migration(2, 8, "Stack ++= now pushes arguments on the stack from left to right.")
-  def ++=(it: Iterator[A]): this.type = pushAll(it)
-  
-  @deprecated("use pushAll")
-  @migration(2, 8, "Stack ++= now pushes arguments on the stack from left to right.")
-  def ++=(it: scala.collection.Iterable[A]): this.type = pushAll(it)
+  def ++=(xs: TraversableOnce[A]): this.type = pushAll(xs)
 
   /** Returns the top element of the stack. This method will not remove
    *  the element from the stack. An error is signaled if there is no
@@ -136,4 +130,9 @@ class Stack[A] private (var elems: List[A]) extends scala.collection.Seq[A] with
    *  @return  a stack with the same elements.
    */
   override def clone(): Stack[A] = new Stack[A](elems)
+}
+
+// !!! TODO - integrate
+object Stack {
+  def apply[A](xs: A*): Stack[A] = new Stack[A] ++= xs
 }

@@ -2,7 +2,6 @@
  * Copyright 2002-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package reporters
@@ -31,7 +30,8 @@ abstract class Reporter {
   }
 
   var cancelled: Boolean = false
-  def hasErrors: Boolean = ERROR.count != 0 || cancelled
+  def hasErrors: Boolean = ERROR.count > 0 || cancelled
+  def hasWarnings: Boolean = WARNING.count > 0
 
   /** Flush all output */
   def flush() { }

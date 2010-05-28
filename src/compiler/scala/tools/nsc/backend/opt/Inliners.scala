@@ -3,7 +3,6 @@
  * @author  Iulian Dragos
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.opt
@@ -104,7 +103,7 @@ abstract class Inliners extends SubComponent {
        }
        val instrAfter  = block.toList.drop(instrBefore.length + 1);
 
-       assert(!instrAfter.isEmpty, "CALL_METHOD cannot be the last instrcution in block!");
+       assert(!instrAfter.isEmpty, "CALL_METHOD cannot be the last instruction in block!");
 
        // store the '$this' into the special local
        val inlinedThis = new Local(caller.symbol.newVariable(instr.pos, freshName("$inlThis")), REFERENCE(definitions.ObjectClass), false);
@@ -443,7 +442,16 @@ abstract class Inliners extends SubComponent {
       usesNonPublics.get(callee) match {
         case Some(b) =>
           callsNonPublic = b
-        case None => 
+        case None =>
+          // Avoiding crashing the compiler if there are open blocks.
+          callee.code.blocks filterNot (_.closed) foreach { b =>
+            currentIClazz.cunit.warning(callee.symbol.pos,
+              "Encountered open block in isSafeToInline: this indicates a bug in the optimizer!\n" +
+              "  caller = " + caller + ", callee = " + callee
+            )
+            return false
+          }
+          
           breakable {
             for (b <- callee.code.blocks; i <- b)
               i match {
@@ -523,7 +531,7 @@ abstract class Inliners extends SubComponent {
        var score = 0
        if (callee.code.blocks.length <= SMALL_METHOD_SIZE) score = score + 1
        if (caller.code.blocks.length <= SMALL_METHOD_SIZE 
-           && ((caller.code.blocks.length + callee.code.blocks.length) > SMALL_METHOD_SIZE)) {
+           && ((caller.code.blocks.length + callee.code.blocks.length - 1) > SMALL_METHOD_SIZE)) {
          score -= 1
          if (settings.debug.value)
            log("shouldInline: score decreased to " + score + " because small " + caller + " would become large")

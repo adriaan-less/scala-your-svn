@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast.parser
@@ -19,6 +18,8 @@ abstract class SyntaxAnalyzer extends SubComponent with Parsers with MarkupParse
 
   class ParserPhase(prev: scala.tools.nsc.Phase) extends StdPhase(prev) {
     override val checkable = false
+    override val keepsTypeParams = false
+
     def apply(unit: global.CompilationUnit) {
       global.informProgress("parsing " + unit)
       unit.body =     

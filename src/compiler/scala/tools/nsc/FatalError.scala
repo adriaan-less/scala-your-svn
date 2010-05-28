@@ -2,13 +2,12 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
 import scala.util.control.ControlThrowable
 
-case class FatalError(msg: String) extends Throwable(msg) with ControlThrowable
+case class FatalError(msg: String) extends Throwable(msg)
 
 class MissingRequirementError(val req: String) extends FatalError(req + " not found.")
 
