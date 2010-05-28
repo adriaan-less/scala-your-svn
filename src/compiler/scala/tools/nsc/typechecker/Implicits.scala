@@ -467,39 +467,21 @@ self: Analyzer =>
 
           if (itree2.tpe.isError) SearchFailure
           else if (hasMatchingSymbol(itree1)) {
-            val tvars = undetParams map freshVar
-            if (matchesPt(itree2.tpe, pt.instantiateTypeParams(undetParams, tvars), undetParams)) {
-              if (traceImplicits) println("tvars = "+tvars+"/"+(tvars map (_.constr)))
-              val targs = solvedTypes(tvars, undetParams, undetParams map varianceInType(pt),
-                                      false, lubDepth(List(itree2.tpe, pt)))
-
-              // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
-              checkBounds(itree2.pos, NoPrefix, NoSymbol, undetParams, targs, "inferred ")
-
-              // filter out failures from type inference, don't want to remove them from undetParams!
-              // we must be conservative in leaving type params in undetparams
-              val (okParams, okArgs, _) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
-              val subst = new TreeTypeSubstituter(okParams, okArgs)
-              subst traverse itree2 
-
-              // #2421b: since type inference (which may have been performed during implicit search)
-              // does not check whether inferred arguments meet the bounds of the corresponding parameter (see note in solvedTypes),
-              // must check again here:
-              // TODO: I would prefer to just call typed instead of duplicating the code here, but this is probably a hotspot (and you can't just call typed, need to force re-typecheck)
-              itree2 match {
-                case TypeApply(fun, args) => typedTypeApply(itree2, EXPRmode, fun, args)
-                case Apply(TypeApply(fun, args), _) => typedTypeApply(itree2, EXPRmode, fun, args) // t2421c
-                case _ =>
+            // inferChecked does type inference, splices inferred type args into itree2,
+            // checks inferred type args meet corresponding bounds,
+            // and re-types the mutated itree2
+            inferChecked(itree2, undetParams, pt){tvars => // check plausible or fail with some exceptional result
+              if(matchesPt(itree2.tpe, pt.instantiateTypeParams(undetParams, tvars), undetParams)) None
+              else {
+                if (traceImplicits) println("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undetParams, tvars))
+                Some(SearchFailure)
               }
-
+            }{ // if plausible, continue with mutated itree2
               val result = new SearchResult(itree2, subst)
               incCounter(foundImplicits)
               if (traceImplicits) println("RESULT = "+result)
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
-            } else {
-              if (traceImplicits) println("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undetParams, tvars))
-              SearchFailure
             }
           } else if (settings.XlogImplicits.value) 
             fail("candidate implicit "+info.sym+info.sym.locationString+

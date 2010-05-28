@@ -644,6 +644,42 @@ trait Infer {
 //      res
     }
 
+    // for now, only used in typedImplicit0
+    // group together the typical pattern of solving types, checking bounds, substituting adjusted type args, 
+    // and re-typechecking the tree in which type params have been substituted
+    def inferChecked[Res](tree: Tree, undetParams: List[Symbol], pt: Type)(checkPlausible: List[TypeVar] => Option[Res])(contOk: => Res): Res = {
+      val tvars = undetParams map freshVar
+
+      checkPlausible(tvars) getOrElse {
+        val targs = solvedTypes(tvars, undetParams, undetParams map varianceInType(pt),
+                                false, lubDepth(List(tree.tpe, pt)))
+
+        // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
+        checkBounds(tree.pos, NoPrefix, NoSymbol, undetParams, targs, "inferred ")
+
+        // filter out failures from type inference, don't want to remove them from undetParams!
+        // we must be conservative in leaving type params in undetparams
+        val (okParams, okArgs, _) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
+        val subst = new TreeTypeSubstituter(okParams, okArgs)
+        subst traverse tree 
+
+        // #2421b: since type inference does not check whether inferred arguments meet the bounds of the corresponding parameter (see note in solvedTypes),
+        // must check again here:
+        // TODO: I would prefer to just call typed instead of duplicating the code here, but this is probably a hotspot (and you can't just call typed, need to force re-typecheck)
+        tree match {
+          case TypeApply(fun, args) => typedTypeApply(tree, EXPRmode, fun, args)
+          case Apply(TypeApply(fun, args), _) => typedTypeApply(tree, EXPRmode, fun, args) // t2421c
+          case _ =>
+        }
+
+        contOk
+      }
+    }
+
+
+
+
+
     private[typechecker] def followApply(tp: Type): Type = tp match {
       case PolyType(List(), restp) => 
         val restp1 = followApply(restp)
