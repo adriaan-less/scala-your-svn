@@ -525,42 +525,36 @@ trait Infer {
      *  - it occurs in an invariant/contravariant position in `restpe`
      *  - `restpe == WildcardType`
      *
-     * Retracted parameters are collected in `uninstantiated`.
-     *
      * Rewrite for repeated param types:  Map T* entries to Seq[T].
-     *  @return (okTparams, okArgs, leftUndet)
-     *           * okTparams, okArgs: lists of tparam symbols and their inferred types
+     *
+     *  @return (targs, leftUndet)
+     *           * targs: `targs(i)` is the type inferred for `tparams(i)` unless `leftUndet contains tparams(i)`:
+     *                    then, `targs(i)` simply refers to `tparams(i)`, so that substitution is the identity .
      *           * leftUndet  a list of remaining uninstantiated type parameters after inference
      *                           (type parameters mapped by the constraint solver to `scala.Nothing'
-     *                           and not covariant in <code>restpe</code> are taken to be
-     *                           uninstantiated. Maps all those type arguments to their
-     *                           corresponding type parameters).
+     *                           and not covariant in <code>restpe</code> are taken to be uninstantiated)
      */
-    def adjustTypeArgs(tparams: List[Symbol], targs: List[Type], restpe: Type = WildcardType): (List[Symbol], List[Type], List[Symbol]) = {
+    def adjustTypeArgs(tparams: List[Symbol], targs: List[Type], restpe: Type = WildcardType): (List[Type], List[Symbol]) = {
       @inline def notCovariantIn(tparam: Symbol, restpe: Type) =
         (varianceInType(restpe)(tparam) & COVARIANT) == 0  // tparam occurred non-covariantly (in invariant or contravariant position)
 
       val leftUndet = new ListBuffer[Symbol]
-      val okParams = new ListBuffer[Symbol]
-      val okArgs = new ListBuffer[Type]
+      val targsAdjusted = new ListBuffer[Type]
 
       (tparams, targs).zipped foreach { (tparam, targ) =>
-        if (targ.typeSymbol == NothingClass && 
-            (isWildcard(restpe) || notCovariantIn(tparam, restpe))) {
-          leftUndet += tparam
-          // don't add anything to okArgs, it'll be filtered out later anyway
-          // used `tparam.tpeHK` as dummy before
-        } else {
-          okParams += tparam
-          okArgs += (
+        targsAdjusted += (
+          if (targ.typeSymbol == NothingClass && 
+              (isWildcard(restpe) || notCovariantIn(tparam, restpe))) {
+            leftUndet += tparam
+            tparam.tpeHK // substitution of tparam to targ will be no-op
+          } else {
             if      (targ.typeSymbol == RepeatedParamClass)     targ.baseType(SeqClass)
             else if (targ.typeSymbol == JavaRepeatedParamClass) targ.baseType(ArrayClass)
             else targ.widen
-          )
-        }
+          })
       }
 
-      (okParams.toList, okArgs.toList, leftUndet.toList)
+      (targsAdjusted.toList, leftUndet.toList)
     }
     
     /** Return inferred type arguments, given type parameters, formal parameters,
@@ -576,18 +570,13 @@ trait Infer {
     *  @param   restp           the result type of the method
     *  @param   argtpes         the argument types of the application
     *  @param   pt              the expected return type of the application
-    *  @return (okTparams, okArgs, leftUndet)
-    *           * okTparams, okArgs: lists of tparam symbols and their inferred types
+    *  @return (targs, leftUndet)
+    *           * targs: lists of inferred types for tparams, adjusted by adjustTypeArgs (see the explanation of its result type)
     *           * leftUndet  a list of remaining uninstantiated type parameters after inference
-    *                           (type parameters mapped by the constraint solver to `scala.Nothing' 
-    *                           and not covariant in <code>restpe</code> are taken to be
-    *                           uninstantiated. Maps all those type arguments to their
-    *                           corresponding type parameters).
-
     *  @throws                  NoInstance
     */
     def methTypeArgs(tparams: List[Symbol], formals: List[Type], restpe: Type, 
-                     argtpes: List[Type], pt: Type): (List[Type], (List[Symbol], List[Type], List[Symbol])) = { // AM: yes, this result type is evil
+                     argtpes: List[Type], pt: Type): (List[Type], List[Symbol]) = {
       val tvars = tparams map freshVar
       if (inferInfo) 
         println("methTypeArgs tparams = "+tparams+
@@ -639,7 +628,7 @@ trait Infer {
       val targs = solvedTypes(tvars, tparams, tparams map varianceInTypes(formals), 
                               false, lubDepth(formals) max lubDepth(argtpes))
 //      val res =
-      (targs, adjustTypeArgs(tparams, targs, restpe))
+      adjustTypeArgs(tparams, targs, restpe)
 //      println("meth type args "+", tparams = "+tparams+", formals = "+formals+", restpe = "+restpe+", argtpes = "+argtpes+", underlying = "+(argtpes map (_.widen))+", pt = "+pt+", uninstantiated = "+uninstantiated.toList+", result = "+res) //DEBUG
 //      res
     }
@@ -761,10 +750,10 @@ trait Infer {
               isCompatibleArgs(argtpes, formals) && isWeaklyCompatible(restpe, pt)
             } else {
               try {
-                val (_, (okparams, okargs, leftUndet)) = methTypeArgs(undetparams, formals, restpe, argtpes, pt)
+                val (targs, leftUndet) = methTypeArgs(undetparams, formals, restpe, argtpes, pt)
                 // #2665: must use weak conformance, not regular one (follow the monomorphic case above)
-                (exprTypeArgs(leftUndet, restpe.instantiateTypeParams(okparams, okargs), pt, isWeaklyCompatible) ne null) && 
-                isWithinBounds(NoPrefix, NoSymbol, okparams, okargs)
+                (exprTypeArgs(leftUndet, restpe.instantiateTypeParams(undetparams, targs), pt, isWeaklyCompatible) ne null) && 
+                isWithinBounds(NoPrefix, NoSymbol, undetparams, targs)
               } catch {
                 case ex: NoInstance => false
               }
@@ -1155,13 +1144,13 @@ trait Infer {
                 "  tparams = "+tparams+"\n"+
                 "  pt = "+pt)
       val targs = exprTypeArgs(tparams, tree.tpe, pt)
-      val (okParams, okArgs, leftUndet) = // TODO AM: is this pattern match too expensive? should we push it down into the else of the if below?
-        if (keepNothings || (targs eq null)) (tparams, targs, List()) //@M: adjustTypeArgs fails if targs==null, neg/t0226
+      val (targs1, leftUndet) = // TODO AM: is this pattern match too expensive? should we push it down into the else of the if below?
+        if (keepNothings || (targs eq null)) (targs, List()) //@M: adjustTypeArgs fails if targs==null, neg/t0226
         else adjustTypeArgs(tparams, targs)
 
-      if (inferInfo) println("inferred expr instance for "+ tree +" --> (okParams, okArgs, leftUndet)= "+(okParams, okArgs, leftUndet))
+      if (inferInfo) println("inferred expr instance for "+ tree +" --> (params, targs, leftUndet)= "+(tparams, targs1, leftUndet))
 
-      substExpr(tree, okParams, okArgs, pt)
+      substExpr(tree, tparams, targs1, pt)
       leftUndet
     }
 
@@ -1207,9 +1196,9 @@ trait Infer {
           val formals = formalTypes(params0 map (_.tpe), args.length)
           val argtpes = actualTypes(args map (_.tpe.deconst), formals.length)
           val restpe = fn.tpe.resultType(argtpes)
-          val (allargs, (okparams, okargs, leftUndet)) = methTypeArgs(undetparams, formals, restpe, argtpes, pt)
-          checkBounds(fn.pos, NoPrefix, NoSymbol, undetparams, allargs, "inferred ")
-          val treeSubst = new TreeTypeSubstituter(okparams, okargs)
+          val (targs, leftUndet) = methTypeArgs(undetparams, formals, restpe, argtpes, pt)
+          checkBounds(fn.pos, NoPrefix, NoSymbol, undetparams, targs, "inferred ")
+          val treeSubst = new TreeTypeSubstituter(undetparams, targs)
           treeSubst.traverse(fn)
           treeSubst.traverseTrees(args)
           leftUndet

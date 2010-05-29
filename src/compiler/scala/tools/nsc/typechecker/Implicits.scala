@@ -473,13 +473,14 @@ self: Analyzer =>
               val targs = solvedTypes(tvars, undetParams, undetParams map varianceInType(pt),
                                       false, lubDepth(List(itree2.tpe, pt)))
 
-              // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
-              checkBounds(itree2.pos, NoPrefix, NoSymbol, undetParams, targs, "inferred ")
-
               // filter out failures from type inference, don't want to remove them from undetParams!
               // we must be conservative in leaving type params in undetparams
-              val (okParams, okArgs, _) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
-              val subst = new TreeTypeSubstituter(okParams, okArgs)
+              val (targsAdjusted, leftUndet) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
+
+              // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
+              checkBounds(itree2.pos, NoPrefix, NoSymbol, undetParams, targsAdjusted, "inferred ")
+
+              val subst = new TreeTypeSubstituter(undetParams, targsAdjusted)
               subst traverse itree2 
 
               // #2421b: since type inference (which may have been performed during implicit search)
