@@ -591,6 +591,9 @@ trait Trees { self: Universe =>
   abstract class AbsTypeTree extends TypTree {
     override def symbol = if (tpe == null) null else tpe.typeSymbol
     override def isEmpty = (tpe eq null) || tpe == NoType
+    val tparams: List[Symbol]
+    val targs: List[Type]
+    def deferBoundsCheck(tparams: List[Symbol], targs: List[Type]): this.type
   }
 
   /** A tree that has an annotation attached to it. Only used for annotated types and

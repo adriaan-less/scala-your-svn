@@ -307,6 +307,14 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       wasEmpty = isEmpty
       setType(tp)
     }
+
+    var tparams: List[Symbol] = _ // TODO: quick hack to see if this works
+    var targs: List[Type] = _
+    def deferBoundsCheck(tparams: List[Symbol], targs: List[Type]): this.type = {
+      this.tparams = tparams
+      this.targs = targs
+      this
+    }
   }
 
   object TypeTree extends TypeTreeExtractor

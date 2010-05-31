@@ -3657,11 +3657,13 @@ trait Typers { self: Analyzer =>
                   //@M! the polytype denotes the expected kind
               }
             val argtypes = args1 map (_.tpe)
-            checkBounds(tpt.pos, NoPrefix, NoSymbol, tparams, argtypes, "") // #2416
+
             val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isNonClassType) 
-                             // @M! added the latter condition
-                             appliedType(tpt1.tpe, argtypes) 
-                          else tpt1.tpe.instantiateTypeParams(tparams, argtypes)
+                            appliedType(tpt1.tpe, argtypes) 
+                          else 
+                            tpt1.tpe.instantiateTypeParams(tparams, argtypes)
+            // val owntype = appliedType(tpt1.tpe, argtypes) // TODO: I think we can simplify like this
+
             (args, tparams).zipped map { (arg, tparam) => arg match {
               // note: can't use args1 in selector, because Bind's got replaced 
               case Bind(_, _) => 
@@ -3672,7 +3674,7 @@ trait Typers { self: Analyzer =>
                       glb(List(arg.symbol.info.bounds.hi, tparam.info.bounds.hi.subst(tparams, argtypes))))
               case _ =>
             }}
-            TypeTree(owntype) setOriginal(tree) // setPos tree.pos
+            TypeTree(owntype) deferBoundsCheck(tparams, argtypes) setOriginal(tree) // setPos tree.pos
           } else if (tparams.length == 0) {
             errorTree(tree, tpt1.tpe+" does not take type parameters")
           } else {

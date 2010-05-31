@@ -1127,7 +1127,9 @@ abstract class RefChecks extends InfoTransform {
             if (bridges.nonEmpty) treeCopy.Template(tree, parents, self, body ::: bridges)
             else tree
 
-          case TypeTree() => 
+          case tpt@TypeTree() => 
+            checkBounds(tpt.pos, NoPrefix, NoSymbol, tpt.tparams, tpt.targs, "") // #2416
+
             val existentialParams = new ListBuffer[Symbol]
             doTypeTraversal(tree) { // check all bounds, except those that are
                               // existential type parameters
