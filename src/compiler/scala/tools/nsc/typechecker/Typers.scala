@@ -2904,7 +2904,9 @@ trait Typers { self: Analyzer =>
       case _ =>
         errorTree(tree, treeSymTypeMsg(fun)+" does not take type parameters.")
     }
-      
+
+    private[this] var typingIndent: String = ""
+
     /**
      *  @param tree ...
      *  @param mode ...
@@ -4015,7 +4017,7 @@ trait Typers { self: Analyzer =>
      *  @return     ...
      */
      def typed(tree: Tree, mode: Int, pt: Type): Tree = {
-      
+      if (printTypings) typingIndent += "  "
       def dropExistential(tp: Type): Type = tp match {
         case ExistentialType(tparams, tpe) => 
           if (settings.debug.value) println("drop ex "+tree+" "+tp)
@@ -4041,15 +4043,15 @@ trait Typers { self: Analyzer =>
           tree.tpe = null
           if (tree.hasSymbol) tree.symbol = NoSymbol
         }
-        if (printTypings) println("typing "+tree+", pt = "+pt+", undetparams = "+context.undetparams+", implicits-enabled = "+context.implicitsEnabled+", silent = "+context.reportGeneralErrors) //DEBUG
+        if (printTypings) println(typingIndent+"typing "+tree+", pt = "+pt+", undetparams = "+context.undetparams+", implicits-enabled = "+context.implicitsEnabled+", silent = "+context.reportGeneralErrors) //DEBUG
 
         var tree1 = if (tree.tpe ne null) tree else typed1(tree, mode, dropExistential(pt))
-        if (printTypings) println("typed "+tree1+":"+tree1.tpe+(if (isSingleType(tree1.tpe)) " with underlying "+tree1.tpe.widen else "")+", undetparams = "+context.undetparams+", pt = "+pt) //DEBUG
+        if (printTypings) println(typingIndent+"typed "+tree1+":"+tree1.tpe+(if (isSingleType(tree1.tpe)) " with underlying "+tree1.tpe.widen else "")+", undetparams = "+context.undetparams+", pt = "+pt) //DEBUG
        
         tree1.tpe = addAnnotations(tree1, tree1.tpe)
 
         val result = if (tree1.isEmpty) tree1 else adapt(tree1, mode, pt, tree)
-        if (printTypings) println("adapted "+tree1+":"+tree1.tpe.widen+" to "+pt+", "+context.undetparams) //DEBUG
+        if (printTypings) println(typingIndent+"adapted "+tree1+":"+tree1.tpe.widen+" to "+pt+", "+context.undetparams) //DEBUG
 //      for (t <- tree1.tpe) assert(t != WildcardType)
 //      if ((mode & TYPEmode) != 0) println("type: "+tree1+" has type "+tree1.tpe)
         if (phase.id <= currentRun.typerPhase.id) signalDone(context.asInstanceOf[analyzer.Context], tree, result)
@@ -4057,7 +4059,7 @@ trait Typers { self: Analyzer =>
       } catch {
         case ex: TypeError =>
           tree.tpe = null
-          if (printTypings) println("caught "+ex+" in typed: "+tree) //DEBUG
+          if (printTypings) println(typingIndent+"caught "+ex+" in typed: "+tree) //DEBUG
           reportTypeError(tree.pos, ex)
           setError(tree)
         case ex: Exception =>
@@ -4069,6 +4071,7 @@ trait Typers { self: Analyzer =>
           throw ex
       }
       finally {
+        if (printTypings) typingIndent = typingIndent.substring(0, typingIndent.length() - 2);
         if (Statistics.enabled) {
           val t = currentTime()
           microsByType(pendingTreeTypes.head) += ((t - typerTime) / 1000).toInt
