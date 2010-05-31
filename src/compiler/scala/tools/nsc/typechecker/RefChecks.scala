@@ -1128,7 +1128,7 @@ abstract class RefChecks extends InfoTransform {
             else tree
 
           case tpt@TypeTree() => 
-            checkBounds(tpt.pos, NoPrefix, NoSymbol, tpt.tparams, tpt.targs, "") // #2416
+            checkBounds(NoPrefix, NoSymbol, tpt.tparams, tpt.targs, tpt.pos) // #2416
 
             val existentialParams = new ListBuffer[Symbol]
             doTypeTraversal(tree) { // check all bounds, except those that are
