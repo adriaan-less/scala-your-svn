@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 
 package scala.tools.nsc
@@ -355,7 +354,7 @@ trait Opcodes { self: ICodes =>
           0
         else 1
         
-      /** object idenity is equality for CALL_METHODs. Needed for
+      /** object identity is equality for CALL_METHODs. Needed for
        *  being able to store such instructions into maps, when more
        *  than one CALL_METHOD to the same method might exist.
        */

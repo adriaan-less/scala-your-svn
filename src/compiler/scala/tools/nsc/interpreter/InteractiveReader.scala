@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Stepan Koltsov
  */
-// $Id$
 
 package scala.tools.nsc
 package interpreter
@@ -23,7 +22,7 @@ trait InteractiveReader {
     catching(handler) { readOneLine(prompt) }
   }
   
-  // overide if history is available
+  // override if history is available
   def history: Option[History] = None
   def historyList = history map (_.asList) getOrElse Nil
   

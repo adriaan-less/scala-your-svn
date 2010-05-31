@@ -6,24 +6,37 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package generic
 
-import mutable.{Builder, AddingBuilder}
+import mutable.Builder
 
-/** A template for companion objects of <code>Set</code> and subclasses
- *  thereof.
+/** A template for companion objects of `Set` and subclasses thereof.
  *
- *  @since 2.8
+ *  @define coll set
+ *  @define Coll Set
+ *  @define factoryInfo
+ *    This object provides a set of operations needed to create `$Coll` values.
+ *    @author Martin Odersky
+ *    @version 2.8
+ *    @since 2.8
+ *  @define canBuildFromInfo
+ *    The standard `CanBuildFrom` instance for `$Coll` objects.
+ *    @see CanBuildFrom
+ *  @define setCanBuildFromInfo
+ *    The standard `CanBuildFrom` instance for `$Coll` objects.
+ *    @see CanBuildFrom
+ *    @see GenericCanBuildFrom
  */
 abstract class SetFactory[CC[X] <: Set[X] with SetLike[X, CC[X]]]
   extends GenericCompanion[CC] {
+    
+  def newBuilder[A]: Builder[A, CC[A]]
 
-  def newBuilder[A]: Builder[A, CC[A]] = new AddingBuilder[A, CC[A]](empty[A])
-
+  /** $setCanBuildFromInfo
+   */
   def setCanBuildFrom[A] = new CanBuildFrom[CC[_], A, CC[A]] {
     def apply(from: CC[_]) = newBuilder[A]
     def apply() = newBuilder[A]

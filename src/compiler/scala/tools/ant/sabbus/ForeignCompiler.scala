@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.ant.sabbus
 
@@ -32,7 +31,7 @@ class ForeignCompiler {
   
   private lazy val nsc: Global = {
     try {
-      val command = new CompilerCommand(args.toList, settings, error, false)
+      val command = new CompilerCommand(args.toList, settings)
       new Global(command.settings, reporter)
     }
     catch {
@@ -42,7 +41,7 @@ class ForeignCompiler {
   }
   
   def compile(files: Array[File]): Int = {
-    val command = new CompilerCommand(files.toList.map(_.toString), settings, error, true)
+    val command = new CompilerCommand(files.toList map (_.toString), settings)
     (new nsc.Run) compile command.files
     reporter.ERROR.count << 16 | reporter.WARNING.count
   }

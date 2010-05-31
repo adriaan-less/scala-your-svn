@@ -5,7 +5,6 @@
 **
 */
 
-// $Id$
 
 package scala.tools.scalap
 package scalax
@@ -55,7 +54,7 @@ object ScalaSigAttributeParsers extends ByteCodeReader  {
   val symtab = nat >> entry.times
   val scalaSig = nat ~ nat ~ symtab ^~~^ ScalaSig
 
-  val utf8 = read(_ toUTF8String)
+  val utf8 = read(x => x.toUTF8StringAndBytes.string)
   val longValue = read(_ toLong)
 }
 

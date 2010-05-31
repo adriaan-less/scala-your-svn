@@ -3,7 +3,7 @@ package interactive
 
 import ast.Trees
 import symtab.Positions
-import scala.tools.nsc.util.{SourceFile, Position, RangePosition, OffsetPosition, NoPosition, WorkScheduler}
+import scala.tools.nsc.util.{SourceFile, Position, RangePosition, NoPosition, WorkScheduler}
 import scala.collection.mutable.ListBuffer
 
 /** Handling range positions
@@ -103,7 +103,7 @@ self: scala.tools.nsc.Global =>
 
   /** Ensure that given tree has no positions that overlap with
    *  any of the positions of `others`. This is done by
-   *  shortening the range or assinging TransparentPositions
+   *  shortening the range or assigning TransparentPositions
    *  to some of the nodes in `tree`.
    */
   override def ensureNonOverlapping(tree: Tree, others: List[Tree]) {

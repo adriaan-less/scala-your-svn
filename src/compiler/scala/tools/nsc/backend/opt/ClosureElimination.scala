@@ -3,7 +3,6 @@
  * @author  Iulian Dragos
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.opt;
@@ -37,7 +36,7 @@ abstract class ClosureElimination extends SubComponent {
   }
 
   /** 
-   * Remove references to the environemnt through fields of a closure object. 
+   * Remove references to the environment through fields of a closure object. 
    * This has to be run after an 'apply' method has been inlined, but it still 
    * references the closure object.
    *
@@ -110,11 +109,7 @@ abstract class ClosureElimination extends SubComponent {
             case LOAD_LOCAL(l) if (info.bindings.isDefinedAt(LocalVar(l))) =>
               val t = info.getBinding(l)
               t match {
-                case Deref(LocalVar(v)) => 
-                  bb.replaceInstruction(i, valueToInstruction(t));
-                  log("replaced " + i + " with " + t)
-
-                case Deref(This) =>
+                case Deref(LocalVar(_)) | Deref(This) | Const(_) =>
                   bb.replaceInstruction(i, valueToInstruction(t));
                   log("replaced " + i + " with " + t)
 

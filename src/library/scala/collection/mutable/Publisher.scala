@@ -6,19 +6,20 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
 
-/** <code>Publisher[A,This]</code> objects publish events of type <code>A</code>
+/** `Publisher[A,This]` objects publish events of type `A`
  *  to all registered subscribers. When subscribing, a subscriber may specify
  *  a filter which can be used to constrain the number of events sent to the
  *  subscriber. Subscribers may suspend their subscription, or reactivate a
- *  suspended subscription. Class <code>Publisher</code> is typically used
- *  as a mixin. The abstract type <code>Pub</code> models the type of the publisher itself.
+ *  suspended subscription. Class `Publisher` is typically used
+ *  as a mixin. The abstract type `Pub` models the type of the publisher itself.
+ *  
+ *  @tparam Evt      type of the published event.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
@@ -47,7 +48,7 @@ trait Publisher[Evt] {
   def removeSubscriptions() { filters.clear }
 
   protected def publish(event: Evt) {
-    filters.keysIterator.foreach(sub =>
+    filters.keys.foreach(sub =>
       if (!suspended.contains(sub) &&
           filters.entryExists(sub, p => p(event)))
         sub.notify(self, event)

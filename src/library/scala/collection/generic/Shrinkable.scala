@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package generic
@@ -47,14 +46,7 @@ trait Shrinkable[-A] {
    *  @param iter  the iterator producing the elements to remove.
    *  @return the $coll itself
    */
-  def --=(iter: Iterator[A]): this.type = { iter foreach -=; this }
-
-  /** Removes all elements contained in a traversable collection from this $coll.
-   *
-   *  @param iter  the collection containing the elements to remove.
-   *  @return the $coll itself
-   */
-  def --=(iter: Traversable[A]): this.type = { iter foreach -=; this }
+  def --=(xs: TraversableOnce[A]): this.type = { xs foreach -= ; this }
 }
   
 

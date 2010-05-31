@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -100,13 +99,13 @@ trait Unapplies extends ast.TreeDSL
   }
 
   def copyUntyped[T <: Tree](tree: T): T =
-    returning[T](UnTyper traverse _)(tree.duplicate)
+    returning[T](tree.duplicate)(UnTyper traverse _)
 
-  def copyUntypedInvariant(td: TypeDef): TypeDef =
-    returning[TypeDef](UnTyper traverse _)(
-      treeCopy.TypeDef(td, td.mods &~ (COVARIANT | CONTRAVARIANT), td.name,
-                       td.tparams, td.rhs).duplicate
-    )
+  def copyUntypedInvariant(td: TypeDef): TypeDef = {
+    val copy = treeCopy.TypeDef(td, td.mods &~ (COVARIANT | CONTRAVARIANT), td.name, td.tparams, td.rhs)
+    
+    returning[TypeDef](copy.duplicate)(UnTyper traverse _)
+  }
 
   private def classType(cdef: ClassDef, tparams: List[TypeDef]): Tree = {
     val tycon = REF(cdef.symbol)
@@ -134,9 +133,9 @@ trait Unapplies extends ast.TreeDSL
   /** The module corresponding to a case class; without any member definitions
    */
   def caseModuleDef(cdef: ClassDef): ModuleDef = {
-    def inheritFromFun1 = !(cdef.mods hasFlag ABSTRACT) && cdef.tparams.isEmpty && constrParamss(cdef).length == 1
-    def createFun1      = gen.scalaFunctionConstr(constrParamss(cdef).head map (_.tpt), toIdent(cdef))
-    def parents         = if (inheritFromFun1) List(createFun1) else Nil
+    def inheritFromFun = !(cdef.mods hasFlag ABSTRACT) && cdef.tparams.isEmpty && constrParamss(cdef).length == 1
+    def createFun      = gen.scalaFunctionConstr(constrParamss(cdef).head map (_.tpt), toIdent(cdef), abstractFun = true)
+    def parents        = if (inheritFromFun) List(createFun) else Nil
         
     companionModuleDef(cdef, parents ::: List(gen.scalaScalaObjectConstr))
   }

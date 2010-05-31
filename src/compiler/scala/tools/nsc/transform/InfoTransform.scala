@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -23,7 +22,7 @@ trait InfoTransform extends Transform {
     new Phase(prev)
 
   protected def changesBaseClasses = true
-  protected def keepsTypeParams = false
+  protected def keepsTypeParams = true
 
   class Phase(prev: scala.tools.nsc.Phase) extends super.Phase(prev) {
     override val keepsTypeParams = InfoTransform.this.keepsTypeParams

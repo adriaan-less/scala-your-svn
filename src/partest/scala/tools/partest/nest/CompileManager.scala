@@ -18,11 +18,8 @@ import java.io.{ File, BufferedReader, PrintWriter, FileReader, Writer, FileWrit
 import File.pathSeparator
 
 class ExtConsoleReporter(override val settings: Settings, reader: BufferedReader, var writer: PrintWriter)
-extends ConsoleReporter(settings, reader, writer) {
-  
+extends ConsoleReporter(settings, reader, writer) { 
   def this(settings: Settings) = this(settings, Console.in, new PrintWriter(new FileWriter("/dev/null")))
-  
-  def hasWarnings: Boolean = WARNING.count != 0
 }
 
 abstract class SimpleCompiler {
@@ -43,6 +40,7 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
 
   def newSettings(out: Option[String]) = {
     val settings = new TestSettings(fileManager)
+    settings.usejavacp.value = true
     settings.deprecation.value = true
     settings.nowarnings.value = false
     settings.encoding.value = "ISO-8859-1"    // XXX why?
@@ -83,7 +81,7 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
     
     NestUI.verbose("scalac options: "+allOpts)
     
-    val command = new CompilerCommand(args, testSettings, _ => (), false)
+    val command = new CompilerCommand(args, testSettings)
     val global = newGlobal(command.settings, logWriter)
     val testRep: ExtConsoleReporter = global.reporter.asInstanceOf[ExtConsoleReporter]
     

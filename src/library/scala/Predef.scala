@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -14,6 +13,8 @@ package scala
 import collection.immutable.StringOps
 import collection.mutable.ArrayOps
 import collection.generic.CanBuildFrom
+import annotation.elidable
+import annotation.elidable.ASSERTION
 
 /** The <code>Predef</code> object provides definitions that are
  *  accessible in all Scala compilation units without explicit
@@ -53,22 +54,6 @@ object Predef extends LowPriorityImplicits {
 
   @inline def locally[T](x: T): T = x
 
-  // hashcode -----------------------------------------------------------
- 
-  @inline def hash(x: Any): Int = 
-    if (x.isInstanceOf[Number]) runtime.BoxesRunTime.hashFromNumber(x.asInstanceOf[Number])
-    else x.hashCode
-
-  @inline def hash(x: Number): Int = 
-    runtime.BoxesRunTime.hashFromNumber(x)
-
-  @inline def hash(x: java.lang.Long): Int = {
-    val iv = x.intValue
-    if (iv == x.longValue) iv else x.hashCode
-  }
-
-  @inline def hash(x: Int): Int = x
-
   // errors and asserts -------------------------------------------------
 
   def error(message: String): Nothing = throw new RuntimeException(message)
@@ -79,39 +64,83 @@ object Predef extends LowPriorityImplicits {
     java.lang.System.exit(status)
     throw new Throwable()
   }
-  
-  import annotation.elidable
-  import annotation.elidable.ASSERTION
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  Calls to this method will not be generated if -Xelide-below
+   *  is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   */
   @elidable(ASSERTION)
   def assert(assertion: Boolean) {
     if (!assertion)
       throw new java.lang.AssertionError("assertion failed")
   }
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  Calls to this method will not be generated if -Xelide-below
+   *  is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   *  @param msg a String to include in the failure message
+   */
   @elidable(ASSERTION)
   def assert(assertion: Boolean, message: => Any) {
     if (!assertion)
       throw new java.lang.AssertionError("assertion failed: "+ message)
   }
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  This method differs from assert only in the intent expressed:
+   *  assert contains a predicate which needs to be proven, while
+   *  assume contains an axiom for a static checker.  Calls to this method
+   *  will not be generated if -Xelide-below is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   */
   @elidable(ASSERTION)
   def assume(assumption: Boolean) {
     if (!assumption)
       throw new java.lang.AssertionError("assumption failed")
   }
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  This method differs from assert only in the intent expressed:
+   *  assert contains a predicate which needs to be proven, while
+   *  assume contains an axiom for a static checker.  Calls to this method
+   *  will not be generated if -Xelide-below is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   *  @param msg a String to include in the failure message
+   */
   @elidable(ASSERTION)
   def assume(assumption: Boolean, message: => Any) {
     if (!assumption)
       throw new java.lang.AssertionError("assumption failed: "+ message)
   }
 
+  /** Tests an expression, throwing an IllegalArgumentException if false.
+   *  This method is similar to assert, but blames the caller of the method
+   *  for violating the condition.
+   *
+   *  @param p   the expression to test
+   */
   def require(requirement: Boolean) {
     if (!requirement)
       throw new IllegalArgumentException("requirement failed")
   }
 
+  /** Tests an expression, throwing an IllegalArgumentException if false.
+   *  This method is similar to assert, but blames the caller of the method
+   *  for violating the condition.
+   *
+   *  @param p   the expression to test
+   *  @param msg a String to include in the failure message
+   */
   def require(requirement: Boolean, message: => Any) {
     if (!requirement)
       throw new IllegalArgumentException("requirement failed: "+ message)
@@ -291,7 +320,7 @@ object Predef extends LowPriorityImplicits {
     implicit def conformsOrViewsAs[A <% B, B]: A <%< B = new (A <%< B) {def apply(x: A) = x}
   }
  
-  /** A type for which there is aways an implicit value.
+  /** A type for which there is always an implicit value.
    *  @see fallbackCanBuildFrom in Array.scala
    */
   class DummyImplicit

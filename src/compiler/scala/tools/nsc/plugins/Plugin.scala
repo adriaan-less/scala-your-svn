@@ -2,7 +2,6 @@
  * Copyright 2007-2010 LAMP/EPFL
  * @author Lex Spoon
  */
-// $Id$
 
 package scala.tools.nsc
 package plugins
@@ -131,13 +130,13 @@ object Plugin {
     dirs: List[Path], 
     ignoring: List[String]): List[AnyClass] =
   {
-    val alljars = jars ::: (for {
+    val alljars = (jars ::: (for {
       dir <- dirs if dir.isDirectory
       entry <- dir.toDirectory.files.toList sortBy (_.name)
       if entry.extension == "jar"
       pdesc <- loadDescription(entry)
       if !(ignoring contains pdesc.name)
-    } yield entry)
+    } yield entry)).distinct
  
     val loader = loaderFor(alljars)
     alljars map (loadFrom(_, loader)) flatten

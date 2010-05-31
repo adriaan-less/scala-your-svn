@@ -3,7 +3,6 @@
  * @author  Iulian Dragos
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.opt
@@ -130,7 +129,7 @@ abstract class DeadCodeElimination extends SubComponent {
     }
 
     /** Mark useful instructions. Instructions in the worklist are each inspected and their
-     *  dependecies are marked useful too, and added to the worklist.
+     *  dependencies are marked useful too, and added to the worklist.
      */
     def mark {
 //      log("Starting with worklist: " + worklist)

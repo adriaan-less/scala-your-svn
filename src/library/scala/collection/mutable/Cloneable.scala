@@ -6,15 +6,16 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
 /** A trait for cloneable collections.
- *
- * @since 2.8
+ *  
+ *  @since 2.8
+ *  
+ *  @tparam A    Type of the elements contained in the collection, covariant and with reference types as upperbound.
  */
 @cloneable
 trait Cloneable[+A <: AnyRef]  {

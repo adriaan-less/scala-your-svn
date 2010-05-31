@@ -6,20 +6,23 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
 
-/** This is a synchronized version of the <code>Queue[T]</code> class. It
+/** This is a synchronized version of the `Queue[T]` class. It
  *  implements a data structure that allows one to insert and retrieve
  *  elements in a first-in-first-out (FIFO) manner.
- *
+ *  
+ *  @tparam A     type of elements contained in this synchronized queue.
+ *  
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
  *  @since   1
+ *  @define Coll SynchronizedQueue
+ *  @define coll synchronized queue
  */
 class SynchronizedQueue[A] extends Queue[A] {
   import scala.collection.Traversable
@@ -36,21 +39,13 @@ class SynchronizedQueue[A] extends Queue[A] {
    */
   override def +=(elem: A): this.type = synchronized[this.type] { super.+=(elem) }
 
-  /** Adds all elements provided by an <code>Iterable</code> object
+  /** Adds all elements provided by a `TraversableOnce` object
    *  at the end of the queue. The elements are prepended in the order they
    *  are given out by the iterator.
    *
-   *  @param  iter        an iterable object
+   *  @param  xs        a traversable object
    */
-  override def ++=(iter: Traversable[A]): this.type = synchronized[this.type] { super.++=(iter) }
-
-  /** Adds all elements provided by an iterator
-   *  at the end of the queue. The elements are prepended in the order they
-   *  are given out by the iterator.
-   *
-   *  @param  it        an iterator
-   */
-  override def ++=(it: Iterator[A]): this.type = synchronized[this.type] { super.++=(it) }
+  override def ++=(xs: TraversableOnce[A]): this.type = synchronized[this.type] { super.++=(xs) }
 
   /** Adds all elements to the queue.
    *

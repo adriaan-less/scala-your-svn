@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -132,6 +131,8 @@ object Ordering extends LowPriorityOrderingImplicits {
     override def gteq(x: T, y: T): Boolean = !cmp(x, y)
     override def lteq(x: T, y: T): Boolean = !cmp(y, x)
   }
+  
+  def by[T, S: Ordering](f: T => S): Ordering[T] = fromLessThan((x, y) => implicitly[Ordering[S]].lt(f(x), f(y)))
   
   trait UnitOrdering extends Ordering[Unit] {
     def compare(x: Unit, y: Unit) = 0
