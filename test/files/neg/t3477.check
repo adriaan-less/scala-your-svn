@@ -1,4 +1,0 @@
-t3477.scala:6: error: inferred type arguments [K,Int,Int] do not conform to method f's type parameter bounds [K,K1 >: K,V]
-  (new J3).f(Map[Int, Int]())
-           ^
-one error found
