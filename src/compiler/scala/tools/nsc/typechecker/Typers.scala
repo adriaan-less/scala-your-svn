@@ -3644,9 +3644,9 @@ trait Typers { self: Analyzer =>
         } else if (!tpt1.hasSymbol) {
           errorTree(tree, tpt1.tpe+" does not take type parameters")
         } else {
-          val tparams = tpt1.symbol.typeParams 
+          val tparams = tpt1.symbol.typeParams
           if (tparams.length == args.length) {
-          // @M: kind-arity checking is done here and in adapt, full kind-checking is in checkKindBounds (in Infer)
+            // @M: kind-arity checking is done here and in adapt, full kind-checking is in checkKindBounds (in Infer)
             val args1 = 
               if(!tpt1.symbol.rawInfo.isComplete)
                 args mapConserve (typedHigherKindedType(_, mode))
@@ -3657,6 +3657,7 @@ trait Typers { self: Analyzer =>
                   //@M! the polytype denotes the expected kind
               }
             val argtypes = args1 map (_.tpe)
+            checkBounds(tpt.pos, NoPrefix, NoSymbol, tparams, argtypes, "") // #2416
             val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isNonClassType) 
                              // @M! added the latter condition
                              appliedType(tpt1.tpe, argtypes) 
