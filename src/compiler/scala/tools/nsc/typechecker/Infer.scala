@@ -542,7 +542,7 @@ trait Infer {
 
       (tparams, targs).zipped foreach { (tparam, targ) =>
         if (targ.typeSymbol == NothingClass && 
-            (isWildcard(restpe) || notCovariantIn(tparam, restpe))) {
+            (restpe.isWildcard || notCovariantIn(tparam, restpe))) {
           leftUndet += tparam
           // don't add anything to okArgs, it'll be filtered out later anyway
           // used `tparam.tpeHK` as dummy before
