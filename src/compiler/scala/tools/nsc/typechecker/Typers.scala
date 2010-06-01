@@ -3658,11 +3658,19 @@ trait Typers { self: Analyzer =>
               }
             val argtypes = args1 map (_.tpe)
 
-            val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isNonClassType) 
-                            appliedType(tpt1.tpe, argtypes) 
-                          else 
-                            tpt1.tpe.instantiateTypeParams(tparams, argtypes)
-            // val owntype = appliedType(tpt1.tpe, argtypes) // TODO: I think we can simplify like this
+            val (owntype, betaReduced) = (appliedType(tpt1.tpe, argtypes), tpt1.tpe.isInstanceOf[PolyType])
+
+            assert((tpt1.symbol.isClass || tpt1.symbol.isNonClassType), "class nor nonclass?? "+ tpt1 +" "+ tpt1.tpe)
+
+            // def applicationBetaReduces(tycon: Type): Boolean =  
+            //   tycon match { 
+            //     case PolyType(_, _) => true
+            //     case ExistentialType(_, restpe) => applicationBetaReduces(restpe)
+            //     case st: SingletonType => applicationBetaReduces(st.widen)
+            //     case RefinedType(parents, _) => parents exists (applicationBetaReduces(_))
+            //     case TypeBounds(lo, hi) => applicationBetaReduces(lo) || applicationBetaReduces(hi)
+            //     case _ => false
+            //   }
 
             (args, tparams).zipped map { (arg, tparam) => arg match {
               // note: can't use args1 in selector, because Bind's got replaced 
@@ -3675,9 +3683,9 @@ trait Typers { self: Analyzer =>
               case _ =>
             }}
             val res = TypeTree(owntype) setOriginal(tree) // setPos tree.pos
-            if(owntype.typeArgs nonEmpty) res
-            else res deferBoundsCheck(tparams, argtypes) // won't be able to check the type application in refchecks
-            // because it was beta-reduced here, but that doesn't mean the bounds were met
+            if(!betaReduced) res // can check the type application later
+            else res deferBoundsCheck(tparams, argtypes) // won't be able to check the beta reduction (type application) in refchecks
+            // since it has been performed here and only its result remains
           } else if (tparams.length == 0) {
             errorTree(tree, tpt1.tpe+" does not take type parameters")
           } else {
