@@ -3674,7 +3674,10 @@ trait Typers { self: Analyzer =>
                       glb(List(arg.symbol.info.bounds.hi, tparam.info.bounds.hi.subst(tparams, argtypes))))
               case _ =>
             }}
-            TypeTree(owntype) deferBoundsCheck(tparams, argtypes) setOriginal(tree) // setPos tree.pos
+            val res = TypeTree(owntype) setOriginal(tree) // setPos tree.pos
+            if(owntype.typeArgs nonEmpty) res
+            else res deferBoundsCheck(tparams, argtypes) // won't be able to check the type application in refchecks
+            // because it was beta-reduced here, but that doesn't mean the bounds were met
           } else if (tparams.length == 0) {
             errorTree(tree, tpt1.tpe+" does not take type parameters")
           } else {
