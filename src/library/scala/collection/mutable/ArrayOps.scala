@@ -51,16 +51,9 @@ abstract class ArrayOps[T] extends ArrayLike[T, Array[T]] {
    *  @param asArray   A function that converts elements of this array to rows - arrays of type `U`.
    *  @return          An array obtained by concatenating rows of this array.
    */
-  def flatten[U, To](implicit asTrav: T => Traversable[U]): Array[U] = {
-    val minSize = foldl(0){(acc, el) => el match {
-      case is: IndexedSeq[_] => l + is.length // only compute length if it can be done in O(1)
-      case _ => l // approximate (compute lower bound for size)
-    }}
-    
-    val b = rowBuilder[U] // reflect class object from native array representation, 
-    // if T = Array[U] uses ArrayBuilder
-    // fallback: generic builder
-    b.sizeHint(minSize) // no effect if builder already has capacity minSize
+  def flatten[U, To](implicit asTrav: T => collection.Traversable[U]): Array[U] = {
+    val b = newBuilder[U]
+    b.sizeHint(map{case is: IndexedSeq[_] => is.size case _ => 0} sum)
     for (xs <- this)
       b ++= asTrav(xs)
     b.result
