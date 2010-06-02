@@ -6,13 +6,9 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 
 package scala.xml
 package dtd
-
-import collection.Seq
 
 /** An XML node for document type declaration.
  *

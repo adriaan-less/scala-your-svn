@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -18,14 +17,14 @@ package scala.actors
  */
 @serializable @SerialVersionUID(7124278808020037465L)
 @deprecated("this class is going to be removed in a future release")
-class MessageQueueElement(msg: Any, session: OutputChannel[Any], next: MessageQueueElement) extends MQueueElement(msg, session, next) {
+class MessageQueueElement(msg: Any, session: OutputChannel[Any], next: MessageQueueElement) extends MQueueElement[Any](msg, session, next) {
   def this() = this(null, null, null)
   def this(msg: Any, session: OutputChannel[Any]) = this(msg, session, null)
 }
 
-private[actors] class MQueueElement(val msg: Any, val session: OutputChannel[Any], var next: MQueueElement) {
+private[actors] class MQueueElement[Msg >: Null](val msg: Msg, val session: OutputChannel[Any], var next: MQueueElement[Msg]) {
   def this() = this(null, null, null)
-  def this(msg: Any, session: OutputChannel[Any]) = this(msg, session, null)
+  def this(msg: Msg, session: OutputChannel[Any]) = this(msg, session, null)
 }
 
 /**
@@ -38,11 +37,11 @@ private[actors] class MQueueElement(val msg: Any, val session: OutputChannel[Any
  */
 @serializable @SerialVersionUID(2168935872884095767L)
 @deprecated("this class is going to be removed in a future release")
-class MessageQueue(label: String) extends MQueue(label)
+class MessageQueue(label: String) extends MQueue[Any](label)
 
-private[actors] class MQueue(protected val label: String) {
-  protected var first: MQueueElement = null
-  protected var last: MQueueElement = null  // last eq null iff list is empty
+private[actors] class MQueue[Msg >: Null](protected val label: String) {
+  protected var first: MQueueElement[Msg] = null
+  protected var last: MQueueElement[Msg] = null  // last eq null iff list is empty
   private var _size = 0
   
   def size = _size
@@ -52,7 +51,7 @@ private[actors] class MQueue(protected val label: String) {
     _size += diff
   }
 
-  def append(msg: Any, session: OutputChannel[Any]) {
+  def append(msg: Msg, session: OutputChannel[Any]) {
     changeSize(1) // size always increases by 1
     val el = new MQueueElement(msg, session)
 
@@ -62,7 +61,16 @@ private[actors] class MQueue(protected val label: String) {
     last = el
   }
 
-  def foreach(f: (Any, OutputChannel[Any]) => Unit) {
+  def append(el: MQueueElement[Msg]) {
+    changeSize(1) // size always increases by 1
+
+    if (isEmpty) first = el
+    else last.next = el
+    
+    last = el
+  }
+
+  def foreach(f: (Msg, OutputChannel[Any]) => Unit) {
     var curr = first
     while (curr != null) {
       f(curr.msg, curr.session)
@@ -70,7 +78,26 @@ private[actors] class MQueue(protected val label: String) {
     }
   }
 
-  def foldLeft[B](z: B)(f: (B, Any) => B): B = {
+  def foreachAppend(target: MQueue[Msg]) {
+    var curr = first
+    while (curr != null) {
+      target.append(curr)
+      curr = curr.next
+    }
+  }
+
+  def foreachDequeue(target: MQueue[Msg]) {
+    var curr = first
+    while (curr != null) {
+      target.append(curr)
+      curr = curr.next
+    }
+    first = null
+    last = null
+    _size = 0
+  }
+
+  def foldLeft[B](z: B)(f: (B, Msg) => B): B = {
     var acc = z
     var curr = first
     while (curr != null) {
@@ -83,10 +110,10 @@ private[actors] class MQueue(protected val label: String) {
   /** Returns the n-th message that satisfies the predicate <code>p</code>
    *  without removing it.
    */
-  def get(n: Int)(p: Any => Boolean): Option[Any] = {
+  def get(n: Int)(p: Msg => Boolean): Option[Msg] = {
     var pos = 0
     
-    def test(msg: Any): Boolean =
+    def test(msg: Msg): Boolean =
       p(msg) && (pos == n || { pos += 1; false })
       
     var curr = first
@@ -99,23 +126,60 @@ private[actors] class MQueue(protected val label: String) {
 
   /** Removes the n-th message that satisfies the predicate <code>p</code>.
    */
-  def remove(n: Int)(p: (Any, OutputChannel[Any]) => Boolean): Option[(Any, OutputChannel[Any])] =
+  def remove(n: Int)(p: (Msg, OutputChannel[Any]) => Boolean): Option[(Msg, OutputChannel[Any])] =
     removeInternal(n)(p) map (x => (x.msg, x.session))
     
   /** Extracts the first message that satisfies the predicate <code>p</code>
    *  or <code>null</code> if <code>p</code> fails for all of them.
    */
-  def extractFirst(p: (Any, OutputChannel[Any]) => Boolean): MQueueElement =
+  def extractFirst(p: (Msg, OutputChannel[Any]) => Boolean): MQueueElement[Msg] =
     removeInternal(0)(p) orNull
 
-  private def removeInternal(n: Int)(p: (Any, OutputChannel[Any]) => Boolean): Option[MQueueElement] = {
+  def extractFirst(pf: PartialFunction[Msg, Any]): MQueueElement[Msg] = {
+    if (isEmpty)    // early return
+      return null
+    
+    // special handling if returning the head
+    if (pf.isDefinedAt(first.msg)) {
+      val res = first
+      first = first.next
+      if (res eq last)
+        last = null
+      
+      changeSize(-1)
+      res
+    }
+    else {
+      var curr = first.next   // init to element #2
+      var prev = first
+      
+      while (curr != null) {
+        if (pf.isDefinedAt(curr.msg)) {
+          prev.next = curr.next
+          if (curr eq last)
+            last = prev
+
+          changeSize(-1)
+          return curr // early return
+        }
+        else {
+          prev = curr
+          curr = curr.next
+        }
+      }
+      // not found
+      null
+    }
+  }
+
+  private def removeInternal(n: Int)(p: (Msg, OutputChannel[Any]) => Boolean): Option[MQueueElement[Msg]] = {
     var pos = 0
 
-    def foundMsg(x: MQueueElement) = {        
+    def foundMsg(x: MQueueElement[Msg]) = {        
       changeSize(-1)
       Some(x)
     }
-    def test(msg: Any, session: OutputChannel[Any]): Boolean =
+    def test(msg: Msg, session: OutputChannel[Any]): Boolean =
       p(msg, session) && (pos == n || { pos += 1 ; false })
 
     if (isEmpty)    // early return
@@ -155,7 +219,7 @@ private[actors] class MQueue(protected val label: String) {
 
 /** Debugging trait.
  */
-private[actors] trait MessageQueueTracer extends MQueue
+private[actors] trait MessageQueueTracer extends MQueue[Any]
 {
   private val queueNumber = MessageQueueTracer.getQueueNumber
 
@@ -173,7 +237,7 @@ private[actors] trait MessageQueueTracer extends MQueue
     printQueue("REMOVE %s" format res)
     res
   }
-  override def extractFirst(p: (Any, OutputChannel[Any]) => Boolean): MQueueElement = {
+  override def extractFirst(p: (Any, OutputChannel[Any]) => Boolean): MQueueElement[Any] = {
     val res = super.extractFirst(p)
     printQueue("EXTRACT_FIRST %s" format res)
     res
@@ -188,7 +252,7 @@ private[actors] trait MessageQueueTracer extends MQueue
   override def toString() = "%s:%d".format(label, queueNumber)
 }
 
-object MessageQueueTracer {
+private[actors] object MessageQueueTracer {
   // for tracing purposes
   private var queueNumberAssigner = 0
   private def getQueueNumber = synchronized {

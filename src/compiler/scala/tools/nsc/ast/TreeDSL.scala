@@ -7,6 +7,8 @@
 package scala.tools.nsc
 package ast
 
+import PartialFunction._
+
 /** A DSL for generating scala code.  The goal is that the
  *  code generating code should look a lot like the code it
  *  generates.
@@ -18,21 +20,19 @@ trait TreeDSL {
   import global._
   import definitions._
   import gen.{ scalaDot }
-  import PartialFunction._
   
   object CODE {    
     // Add a null check to a Tree => Tree function
     def nullSafe[T](f: Tree => Tree, ifNull: Tree): Tree => Tree =
       tree => IF (tree MEMBER_== NULL) THEN ifNull ELSE f(tree)
     
-    // Applies a function to a value and then returns the value.
-    def returning[T](f: T => Unit)(x: T): T = { f(x) ; x }
-    
     // strip bindings to find what lies beneath
     final def unbind(x: Tree): Tree = x match {
       case Bind(_, y) => unbind(y)
       case y          => y
     }
+
+    def returning[T](x: T)(f: T => Unit): T = util.returning(x)(f)
     
     object LIT extends (Any => Literal) {
       def apply(x: Any)   = Literal(Constant(x))
@@ -88,9 +88,12 @@ trait TreeDSL {
       def ANY_>=  (other: Tree)     = fn(target, nme.GE, other)
       def ANY_<=  (other: Tree)     = fn(target, nme.LE, other)
       def OBJ_!=  (other: Tree)     = fn(target, Object_ne, other)
+      def OBJ_EQ  (other: Tree)     = fn(target, nme.eq, other)
+      def OBJ_NE  (other: Tree)     = fn(target, nme.ne, other)
       
       def INT_|   (other: Tree)     = fn(target, getMember(IntClass, nme.OR), other)
       def INT_&   (other: Tree)     = fn(target, getMember(IntClass, nme.AND), other)
+      def INT_>=  (other: Tree)     = fn(target, getMember(IntClass, nme.GE), other)
       def INT_==  (other: Tree)     = fn(target, getMember(IntClass, nme.EQ), other)
       def INT_!=  (other: Tree)     = fn(target, getMember(IntClass, nme.NE), other)
       
@@ -175,7 +178,10 @@ trait TreeDSL {
         if (target.tpe.typeSymbol == SomeClass) TRUE   // is Some[_]
         else NOT(ID(target) DOT nme.isEmpty)           // is Option[_]
       
-      def GET() = fn(ID(target), nme.get)
+      def IS_NULL() = REF(target) ANY_EQ NULL
+      def NOT_NULL() = REF(target) ANY_NE NULL
+      
+      def GET() = fn(REF(target), nme.get)
       
       // name of nth indexed argument to a method (first parameter list), defaults to 1st
       def ARG(idx: Int = 0) = Ident(target.paramss.head(idx))
@@ -184,10 +190,11 @@ trait TreeDSL {
     }
     
     /** Top level accessible. */
-    def THROW(sym: Symbol, msg: Tree = null) = {
-      val arg: List[Tree] = if (msg == null) Nil else List(msg.TOSTRING())
-      Throw(New(TypeTree(sym.tpe), List(arg)))
-    }
+    def MATCHERROR(arg: Tree) = Throw(New(TypeTree(MatchErrorClass.tpe), List(List(arg))))
+    /** !!! should generalize null guard from match error here. */
+    def THROW(sym: Symbol): Throw = Throw(New(TypeTree(sym.tpe), List(Nil)))
+    def THROW(sym: Symbol, msg: Tree): Throw = Throw(New(TypeTree(sym.tpe), List(List(msg.TOSTRING()))))
+    
     def NEW(tpe: Tree, args: Tree*)   = New(tpe, List(args.toList))
     def NEW(sym: Symbol, args: Tree*) = 
       if (args.isEmpty) New(TypeTree(sym.tpe))

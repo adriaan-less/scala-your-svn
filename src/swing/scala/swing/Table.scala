@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -15,7 +14,7 @@ import event._
 import javax.swing._
 import javax.swing.table._
 import javax.swing.event._
-import scala.collection.mutable.{Set, IndexedSeq}
+import scala.collection.mutable
 
 object Table {
   object AutoResizeMode extends Enumeration {
@@ -110,7 +109,7 @@ object Table {
  * @see javax.swing.JTable
  */
 class Table extends Component with Scrollable.Wrapper {
-  override lazy val peer: JTable = new JTable with Table.JTableMixin {
+  override lazy val peer: JTable = new JTable with Table.JTableMixin with SuperMixin {
     def tableWrapper = Table.this
     override def getCellRenderer(r: Int, c: Int) = new TableCellRenderer {
       def getTableCellRendererComponent(table: JTable, value: AnyRef, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int) = 
@@ -124,7 +123,7 @@ class Table extends Component with Scrollable.Wrapper {
   // TODO: use IndexedSeq[_ <: IndexedSeq[Any]], see ticket #2005
   def this(rowData: Array[Array[Any]], columnNames: Seq[_]) = {
     this()
-    peer.setModel(new AbstractTableModel {
+    model = new AbstractTableModel {
       override def getColumnName(column: Int) = columnNames(column).toString
       def getRowCount() = rowData.length
       def getColumnCount() = columnNames.length
@@ -134,7 +133,7 @@ class Table extends Component with Scrollable.Wrapper {
         rowData(row)(col) = value
         fireTableCellUpdated(row, col)
       }
-    })
+    }
   }
   def this(rows: Int, columns: Int) = {
     this()
@@ -155,6 +154,7 @@ class Table extends Component with Scrollable.Wrapper {
   def model = peer.getModel()
   def model_=(x: TableModel) = {
     peer.setModel(x)
+    model.removeTableModelListener(modelListener)
     model.addTableModelListener(modelListener)
   }
   
@@ -173,7 +173,7 @@ class Table extends Component with Scrollable.Wrapper {
     
   object selection extends Publisher {
     // TODO: could be a sorted set
-    protected abstract class SelectionSet[A](a: =>Seq[A]) extends scala.collection.mutable.Set[A] { 
+    protected abstract class SelectionSet[A](a: =>Seq[A]) extends mutable.Set[A] { 
       def -=(n: A): this.type 
       def +=(n: A): this.type
       def contains(n: A) = a.contains(n)
@@ -197,7 +197,7 @@ class Table extends Component with Scrollable.Wrapper {
       def anchorIndex: Int = peer.getColumnModel.getSelectionModel.getAnchorSelectionIndex
     }
 
-    def cells: Set[(Int, Int)] = 
+    def cells: mutable.Set[(Int, Int)] = 
       new SelectionSet[(Int, Int)]((for(r <- selection.rows; c <- selection.columns) yield (r,c)).toSeq) { outer =>
         def -=(n: (Int, Int)) = { 
           peer.removeRowSelectionInterval(n._1,n._1)
@@ -312,5 +312,4 @@ class Table extends Component with Scrollable.Wrapper {
       }
     )
   }
-  model.addTableModelListener(modelListener)
 }

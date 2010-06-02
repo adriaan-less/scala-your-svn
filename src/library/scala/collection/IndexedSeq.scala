@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,18 +13,8 @@ package scala.collection
 import generic._
 import mutable.Builder
 
-/** <p>
- *    Sequences that support O(1) element access and O(1) length computation.
- *  </p>
- *  <p>
- *    This class does not add any methods to <code>Sequence</code> but
- *    overrides several methods with optimized implementations.
- *  </p>
- *
- *  @author Sean McDirmid
- *  @author Martin Odersky
- *  @version 2.8
- *  @since   2.8
+/** A base trait for indexed sequences.
+ *  $indexedSeqInfo
  */
 trait IndexedSeq[+A] extends Seq[A] 
                     with GenericTraversableTemplate[A, IndexedSeq]
@@ -33,6 +22,11 @@ trait IndexedSeq[+A] extends Seq[A]
   override def companion: GenericCompanion[IndexedSeq] = IndexedSeq
 }
 
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ *  @define coll indexed sequence
+ *  @define Coll IndexedSeq
+ */
 object IndexedSeq extends SeqFactory[IndexedSeq] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, IndexedSeq[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, IndexedSeq[A]] = immutable.IndexedSeq.newBuilder[A]

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -20,7 +19,7 @@ package scala
  */
 trait Product extends Equals {
 
-  /** for a product <code>A(x_1,...,x_k)</code>, returns <code>x_(n+1)</code>
+  /** For a product <code>A(x_1,...,x_k)</code>, returns <code>x_(n+1)</code>
    *  for <code>0 &lt;= n &lt; k</code>
    *
    *  @param  n the index of the element to return

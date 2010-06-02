@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -66,6 +65,7 @@ class TextComponent extends Component with Publisher {
   def editable_=(x: Boolean) = peer.setEditable(x)
   def cut() { peer.cut() }
   def copy() { peer.copy() }
+  def paste() { peer.paste() }
   def selected: String = peer.getSelectedText
   
   def selectAll() { peer.selectAll() }

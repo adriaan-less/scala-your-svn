@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -86,10 +85,11 @@ trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBui
 
   /** Converts this $coll of traversable collections into
    *  a $coll in which all element collections are concatenated.
-   *  @B the type of the elements of each traversable collection. 
-   *  @asTraversable an implicit conversion which asserts that the element type of this
-   *          $coll is a `Traversable`.
-   *  @return a new $coll reuslting from concatenating all element ${coll}s.
+   *  @tparam B the type of the elements of each traversable collection. 
+   *  @param asTraversable an implicit conversion which asserts that the element type of this
+   *         $coll is a `Traversable`.
+   *  @return a new $coll resulting from concatenating all element ${coll}s.
+   *  @usecase def flatten[B]: $Coll[B]
    */
   def flatten[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): CC[B] = {
     val b = genericBuilder[B]
@@ -99,14 +99,15 @@ trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBui
   }
 
   /** Transposes this $coll of traversable collections into
-   *  @B the type of the elements of each traversable collection. 
-   *  @asTraversable an implicit conversion which asserts that the element type of this
+   *  a $coll of ${coll}s.
+   *  @tparam B the type of the elements of each traversable collection.
+   *  @param  asTraversable an implicit conversion which asserts that the element type of this
    *          $coll is a `Traversable`.
    *  @return a two-dimensional $coll of ${coll}s which has as ''n''th row
    *          the ''n''th column of this $coll. 
    */
   def transpose[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): CC[CC[B] @uncheckedVariance] = {
-    val bs: IndexedSeq[Builder[B, CC[B]]] = asTraversable(head).map(_ => genericBuilder[B]).toIndexedSeq 
+    val bs: IndexedSeq[Builder[B, CC[B]]] = IndexedSeq.fill(asTraversable(head).size)(genericBuilder[B])
     for (xs <- this) {
       var i = 0
       for (x <- asTraversable(xs)) {

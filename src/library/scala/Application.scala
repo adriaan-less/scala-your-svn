@@ -6,12 +6,10 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
-import java.lang.System.getProperty
 import scala.compat.Platform.currentTime
 
 /** <p>
@@ -84,7 +82,7 @@ trait Application {
    *  @param args the arguments passed to the main method
    */
   def main(args: Array[String]) {
-    if (getProperty("scala.time") ne null) {
+    if (util.Properties.propIsSet("scala.time")) {
       val total = currentTime - executionStart
       Console.println("[total " + total + "ms]")
     }

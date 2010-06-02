@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -24,7 +23,7 @@ object MenuBar {
  * @see javax.swing.JMenuBar
  */
 class MenuBar extends Component with SequentialContainer.Wrapper {
-  override lazy val peer: JMenuBar = new JMenuBar
+  override lazy val peer: JMenuBar = new JMenuBar with SuperMixin
   
   def menus: Seq[Menu] = contents.filter(_.isInstanceOf[Menu]).map(_.asInstanceOf[Menu])
   

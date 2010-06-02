@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -83,7 +82,7 @@ object Console {
 
   /** Set the default output stream.
    *
-   *  @param@ out the new output stream.
+   *  @param out the new output stream.
    */
   def setOut(out: OutputStream): Unit =
     setOut(new PrintStream(out))

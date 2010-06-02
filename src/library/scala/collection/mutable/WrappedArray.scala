@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -16,11 +15,19 @@ import scala.reflect.ClassManifest
 import scala.collection.generic._
 
 /**
- *  <p>A class representing <code>Array[T]</code></p>
+ *  A class representing `Array[T]`.
+ *  
+ *  @tparam T    type of the elements in this wrapped array.
  *
  *  @author  Martin Odersky, Stephane Micheloud
  *  @version 1.0
  *  @since 2.8
+ *  @define Coll WrappedArray
+ *  @define coll wrapped array
+ *  @define orderDependent 
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 abstract class WrappedArray[T] extends IndexedSeq[T] with ArrayLike[T, WrappedArray[T]] {
 
@@ -40,8 +47,18 @@ abstract class WrappedArray[T] extends IndexedSeq[T] with ArrayLike[T, WrappedAr
   def update(index: Int, elem: T): Unit
 
   /** The underlying array */
-  def array: Array[T]                                                                                                   
+  def array: Array[T]                       
+
+  override def toArray[U >: T : ClassManifest]: Array[U] =
+    if (implicitly[ClassManifest[U]].erasure eq array.getClass.getComponentType)
+      array.asInstanceOf[Array[U]]
+    else 
+      super.toArray[U]
+                                                                            
   override def stringPrefix = "WrappedArray"
+  
+  /** Clones this object, including the underlying Array. */
+  override def clone: WrappedArray[T] = WrappedArray make array.clone()
  
   /** Creates new builder for this collection ==> move to subclasses
    */
@@ -49,8 +66,9 @@ abstract class WrappedArray[T] extends IndexedSeq[T] with ArrayLike[T, WrappedAr
     new WrappedArrayBuilder[T](elemManifest)
 }
 
-object WrappedArray {
-
+/** A companion object used to create instances of `WrappedArray`.
+ */
+object WrappedArray {  
   def make[T](x: AnyRef): WrappedArray[T] = x match {
     case x: Array[AnyRef] => wrapRefArray[AnyRef](x).asInstanceOf[WrappedArray[T]]
     case x: Array[Int] => wrapIntArray(x).asInstanceOf[WrappedArray[T]]

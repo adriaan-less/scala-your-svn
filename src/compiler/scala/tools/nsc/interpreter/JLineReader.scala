@@ -2,41 +2,29 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Stepan Koltsov
  */
-// $Id$
 
 package scala.tools.nsc
 package interpreter
 
 import java.io.File
-import jline.{ History, ConsoleReader, ArgumentCompletor }
+import jline.{ ConsoleReader, ArgumentCompletor, History => JHistory }
 
 /** Reads from the console using JLine */
 class JLineReader(interpreter: Interpreter) extends InteractiveReader {
   def this() = this(null)
+  
+  override lazy val history = Some(History(consoleReader))
+  override lazy val completion = Option(interpreter) map (x => new Completion(x))
+  
   val consoleReader = {
-    val history = try {
-      new jline.History(new File(System.getProperty("user.home"), ".scala_history"))
-    } catch {
-      // do not store history if error
-      case _ => new jline.History()
-    }
     val r = new jline.ConsoleReader()
-    r setHistory history
-    r setBellEnabled false
-    
-    if (interpreter != null) {
-      // have to specify all delimiters for completion to work nicely
-      val delims = new ArgumentCompletor.AbstractArgumentDelimiter {
-        val delimChars = "(){}[],`;'\" \t".toArray
-        def isDelimiterChar(s: String, pos: Int) = delimChars contains s.charAt(pos)
-      }
-      val comp = new ArgumentCompletor(new Completion(interpreter), delims)
-      comp setStrict false
-      r addCompletor comp
-      // XXX make this use a setting
+    r setHistory (History().jhistory)
+    r setBellEnabled false 
+    completion foreach { c =>
+      r addCompletor c.jline
       r setAutoprintThreshhold 250
     }
-       
+
     r
   }
   

@@ -2,14 +2,12 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
 
 import symtab.Flags._
 import scala.collection.mutable.{HashMap, HashSet}
-import scala.tools.nsc.util.Position
 
 /*<export>*/
 /** - uncurry all symbol and tree types (@see UnCurryPhase)
@@ -61,11 +59,9 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
       tp match {
         case MethodType(params, MethodType(params1, restpe)) =>
           apply(MethodType(params ::: params1, restpe))
-        case MethodType(formals, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
-          assert(false, "unexpected curried method types with intervening exitential") 
+        case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
+          assert(false, "unexpected curried method types with intervening existential") 
           tp0
-        case mt: ImplicitMethodType =>
-          apply(MethodType(mt.params, mt.resultType))
         case PolyType(List(), restpe) => // nullary method type
           apply(MethodType(List(), restpe))
         case PolyType(tparams, restpe) => // polymorphic nullary method type, since it didn't occur in a higher-kinded position
@@ -175,7 +171,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         throw ex
     }
 
-    /* Is tree a reference `x' to a call by name parameter that neeeds to be converted to 
+    /* Is tree a reference `x' to a call by name parameter that needs to be converted to 
      * x.apply()? Note that this is not the case if `x' is used as an argument to another
      * call by name parameter.
      */
@@ -189,8 +185,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
      *  additional parameter sections of a case class are skipped.
      */
     def uncurryTreeType(tp: Type): Type = tp match {
-      case MethodType(formals, MethodType(formals1, restpe)) if (inPattern) =>
-        uncurryTreeType(MethodType(formals, restpe))
+      case MethodType(params, MethodType(params1, restpe)) if (inPattern) =>
+        uncurryTreeType(MethodType(params, restpe))
       case _ =>
         uncurry(tp)
     }
@@ -199,7 +195,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
 
     /** The type of a non-local return expression with given argument type */
     private def nonLocalReturnExceptionType(argtype: Type) =
-      appliedType(NonLocalReturnExceptionClass.typeConstructor, List(argtype))
+      appliedType(NonLocalReturnControlClass.typeConstructor, List(argtype))
 
     /** A hashmap from method symbols to non-local return keys */
     private val nonLocalReturnKeys = new HashMap[Symbol, Symbol]
@@ -217,9 +213,9 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     /** Generate a non-local return throw with given return expression from given method.
      *  I.e. for the method's non-local return key, generate:
      *
-     *    throw new NonLocalReturnException(key, expr)
+     *    throw new NonLocalReturnControl(key, expr)
      *  todo: maybe clone a pre-existing exception instead?
-     *  (but what to do about excaptions that miss their targets?)
+     *  (but what to do about exceptions that miss their targets?)
      */
     private def nonLocalReturnThrow(expr: Tree, meth: Symbol) =
       localTyper.typed {
@@ -236,7 +232,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
      *    try { 
      *      body 
      *    } catch {
-     *      case ex: NonLocalReturnException[_] => 
+     *      case ex: NonLocalReturnControl[_] => 
      *        if (ex.key().eq(key)) ex.value()
      *        else throw ex
      *    }
@@ -248,7 +244,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         val ex = meth.newValue(body.pos, nme.ex) setInfo extpe
         val pat = Bind(ex, 
                        Typed(Ident(nme.WILDCARD), 
-                             AppliedTypeTree(Ident(NonLocalReturnExceptionClass),
+                             AppliedTypeTree(Ident(NonLocalReturnControlClass),
                                              List(Bind(nme.WILDCARD.toTypeName,
                                                        EmptyTree)))))
         val rhs =
@@ -407,8 +403,15 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
                     Select(predef, "wrap"+elemtp.typeSymbol.name+"Array")
                   else
                     TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
-                val adaptedTree = // need to cast to Array[elemtp], as arrays are not covariant
-                  gen.mkCast(tree, arrayType(elemtp))
+                val pt = arrayType(elemtp)
+                val adaptedTree = // might need to cast to Array[elemtp], as arrays are not covariant
+                  if (tree.tpe <:< pt) tree
+                  else gen.mkCast(
+                    if (elemtp.typeSymbol == AnyClass && isValueClass(tree.tpe.typeArgs.head.typeSymbol))
+                      gen.mkRuntimeCall("toObjectArray", List(tree))
+                    else 
+                      tree,
+                    arrayType(elemtp))
                 Apply(meth, List(adaptedTree))
               }
             } 
@@ -451,13 +454,15 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
             if (isJava && 
                 suffix.tpe.typeSymbol == ArrayClass &&
                 isValueClass(suffix.tpe.typeArgs.head.typeSymbol) &&
-                fun.tpe.paramTypes.last.typeSymbol == ArrayClass &&
-                fun.tpe.paramTypes.last.typeArgs.head.typeSymbol == ObjectClass)
+                { val lastFormal2 = fun.tpe.params.last.tpe
+                  lastFormal2.typeSymbol == ArrayClass &&
+                  lastFormal2.typeArgs.head.typeSymbol == ObjectClass
+                })
               suffix = localTyper.typedPos(pos) {
                 gen.mkRuntimeCall("toObjectArray", List(suffix))
               }
           }
-          args.take(formals.length - 1) ::: List(suffix setType formals.last)
+          args.take(formals.length - 1) ::: List(suffix setType lastFormal)
         case _ =>
           args
       }
@@ -474,6 +479,16 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           transformFunction(fun)
         }
       }
+    }
+    
+    /** For removing calls to specially designated methods.
+     */  
+    def elideIntoUnit(tree: Tree): Tree = Literal(()) setPos tree.pos setType UnitClass.tpe
+    def isElidable(tree: Tree) = {
+      val sym = tree.symbol
+      // XXX settings.noassertions.value temporarily retained to avoid
+      // breakage until a reasonable interface is settled upon.
+      sym != null && sym.elisionLevel.exists(x => x < settings.elidebelow.value || settings.noassertions.value)
     }
 
 // ------ The tree transformers --------------------------------------------------------
@@ -580,21 +595,15 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           treeCopy.UnApply(tree, fn1, args1)
 
         case Apply(fn, args) =>
-          // XXX settings.noassertions.value temporarily retained to avoid
-          // breakage until a reasonable interface is settled upon.
-          def elideFunctionCall(sym: Symbol) =
-            sym != null && sym.elisionLevel.exists(x => x < settings.elideLevel.value || settings.noassertions.value)
-
-          if (elideFunctionCall(fn.symbol)) {
-            Literal(()).setPos(tree.pos).setType(UnitClass.tpe)
-          } else if (fn.symbol == Object_synchronized && shouldBeLiftedAnyway(args.head)) {
+          if (isElidable(fn))
+            elideIntoUnit(tree)
+          else if (fn.symbol == Object_synchronized && shouldBeLiftedAnyway(args.head))
             transform(treeCopy.Apply(tree, fn, List(liftTree(args.head))))
-          } else {
+          else
             withNeedLift(true) {
-              val formals = fn.tpe.paramTypes;
+              val formals = fn.tpe.paramTypes
               treeCopy.Apply(tree, transform(fn), transformTrees(transformArgs(tree.pos, fn.symbol, args, formals)))
             }
-          }
 
         case Assign(Select(_, _), _) =>
           withNeedLift(true) { super.transform(tree) }
@@ -633,16 +642,21 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     } setType uncurryTreeType(tree.tpe)
 
     def postTransform(tree: Tree): Tree = atPhase(phase.next) {
-      def applyUnary(): Tree = 
-        if (tree.symbol.isMethod && 
-            (!tree.tpe.isInstanceOf[PolyType] || tree.tpe.typeParams.isEmpty)) {
-          if (!tree.tpe.isInstanceOf[MethodType]) tree.tpe = MethodType(List(), tree.tpe);
-          atPos(tree.pos)(Apply(tree, List()) setType tree.tpe.resultType)
-        } else if (tree.isType) {
-          TypeTree(tree.tpe) setPos tree.pos
-        } else {
-          tree
+      def applyUnary(): Tree = {
+        def needsParens = tree.symbol.isMethod && (!tree.tpe.isInstanceOf[PolyType] || tree.tpe.typeParams.isEmpty)
+        def repair = {
+          if (!tree.tpe.isInstanceOf[MethodType])
+            tree.tpe = MethodType(Nil, tree.tpe)
+          
+          atPos(tree.pos)(Apply(tree, Nil) setType tree.tpe.resultType)
         }
+        
+        if (isElidable(tree)) elideIntoUnit(tree) // was not seen in mainTransform
+        else if (needsParens) repair
+        else if (tree.isType) TypeTree(tree.tpe) setPos tree.pos
+        else tree
+      }
+      
       tree match {
         case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
           val rhs1 = nonLocalReturnKeys.get(tree.symbol) match {
@@ -651,11 +665,6 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           }
           treeCopy.DefDef(tree, mods, name, tparams, List(vparamss.flatten), tpt, rhs1)
         case Try(body, catches, finalizer) =>
-          // If warnings are enabled, alert about promiscuously catching cases.
-          if (settings.YwarnCatches.value)
-            for (cd <- catches find treeInfo.catchesThrowable)
-              unit.warning(cd.pos, "catch clause swallows everything: not advised.")
-
           if (catches forall treeInfo.isCatchCase) tree
           else {
             val exname = unit.fresh.newName(tree.pos, "ex$")

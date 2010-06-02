@@ -6,12 +6,8 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 
 package scala.xml
-
-import collection.{Iterator, Seq, Iterable}
 
 /**
  * <p>
@@ -42,9 +38,10 @@ class NodeBuffer extends scala.collection.mutable.ArrayBuffer[Node] {
   def &+(o: Any): NodeBuffer = {
     o match {
       case null | _: Unit | Text("")  => // ignore
-      case it: Iterator[_]            => it foreach (this &+ _)
+      case it: Iterator[_]            => it foreach &+
       case n: Node                    => super.+=(n)
       case ns: Iterable[_]            => this &+ ns.iterator
+      case ns: Array[_]               => this &+ ns.iterator
       case d                          => super.+=(new Atom(d))
     }
     this

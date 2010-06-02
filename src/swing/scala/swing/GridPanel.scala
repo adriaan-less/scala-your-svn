@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -21,7 +20,8 @@ object GridPanel {
  * @see java.awt.GridLayout
  */
 class GridPanel(rows0: Int, cols0: Int) extends Panel with SequentialContainer.Wrapper {
-  override lazy val peer = new javax.swing.JPanel(new java.awt.GridLayout(rows0, cols0))
+  override lazy val peer = 
+    new javax.swing.JPanel(new java.awt.GridLayout(rows0, cols0)) with SuperMixin
   
   /*type Constraints = (Int, Int)
     

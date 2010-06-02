@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -102,7 +101,7 @@ object BigInt {
    */
   implicit def int2bigInt(i: Int): BigInt = apply(i)
 
-  /** Implicit copnversion from long to BigInt
+  /** Implicit conversion from long to BigInt
    */
   implicit def long2bigInt(l: Long): BigInt = apply(l)
 }
@@ -117,14 +116,14 @@ class BigInt(val bigInteger: BigInteger) extends ScalaNumber with ScalaNumericCo
   /** Returns the hash code for this BigInt. */
   override def hashCode(): Int =
     if (this >= BigInt.MinLong && this <= BigInt.MaxLong) unifiedPrimitiveHashcode
-    else bigInteger.hashCode
+    else bigInteger.##
 
   /** Compares this BigInt with the specified value for equality.
    */
   override def equals(that: Any): Boolean = that match {
     case that: BigInt     => this equals that
     case that: BigDecimal => that.toBigIntExact exists (this equals _)
-    case x                => unifiedPrimitiveEquals(x)
+    case x                => (this <= BigInt.MaxLong && this >= BigInt.MinLong) && unifiedPrimitiveEquals(x)
   }
   
   protected[math] def isWhole = true

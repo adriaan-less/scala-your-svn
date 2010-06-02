@@ -6,19 +6,21 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
 /**
  * The <code>AbstractActor</code> trait.
  *
- * @version 0.9.18
  * @author Philipp Haller
+ *
+ * @define actor actor
  */
-trait AbstractActor extends OutputChannel[Any] with Replyable[Any, Any] {
+trait AbstractActor extends OutputChannel[Any] with CanReply[Any, Any] {
 
-  private[actors] var exiting = false
+  type Future[+R] = scala.actors.Future[R]
+
+  private[actors] def exiting: Boolean = false
 
   private[actors] def linkTo(to: AbstractActor): Unit
 

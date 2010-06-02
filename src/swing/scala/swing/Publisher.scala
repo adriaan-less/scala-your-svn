@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -52,11 +51,15 @@ trait Publisher extends Reactor {
   listenTo(this)
 }
 
+/**
+ * A publisher that subscribes itself to an underlying event source not before the first 
+ * reaction is installed. Can unsubscribe itself when the last reaction is uninstalled.
+ */
 private[swing] trait LazyPublisher extends Publisher {
   import Reactions._
   
-  def onFirstSubscribe()
-  def onLastUnsubscribe()
+  protected def onFirstSubscribe()
+  protected def onLastUnsubscribe()
   
   override def subscribe(listener: Reaction) { 
     if(listeners.size == 1) onFirstSubscribe() 
@@ -77,7 +80,7 @@ private[swing] trait SingleRefCollection[+A <: AnyRef] extends Iterable[A] { sel
   trait Ref[+A <: AnyRef] extends Reference[A] {
     override def hashCode() = {
       val v = get
-      if (v == None) 0 else v.get.hashCode
+      if (v == None) 0 else v.get.##
     }
     override def equals(that: Any) = that match {
       case that: ReferenceWrapper[_] => 

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,23 +13,16 @@ package immutable
 
 import generic._
 
-/** <p>
- *    A generic trait for immutable sets. Concrete set implementations have
- *    to provide functionality for the abstract methods in <code>Set</code>:
- *  </p>
- *  <pre>
- *    <b>def</b> contains(elem: A): Boolean
- *    <b>def</b> iterator: Iterator[A]
- *    <b>def</b> + (elem: A): Self
- *    <b>def</b> - (elem: A): Self</pre>
- *  <p>
- *    where <code>Self</code> is the type of the set.
- *  </p>
- *
+/** A generic trait for immutable sets.
+ *  
+ *  $setnote
+ *  
  *  @author Matthias Zenger
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
  */
 trait Set[A] extends Iterable[A] 
                 with scala.collection.Set[A] 
@@ -39,14 +31,29 @@ trait Set[A] extends Iterable[A]
   override def companion: GenericCompanion[Set] = Set
 }
 
-object Set extends SetFactory[Set] {
+/** $factoryInfo
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
+ */
+object Set extends ImmutableSetFactory[Set] {
+  /** $setCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
-  override def empty[A]: Set[A] = new EmptySet[A]
+  override def empty[A]: Set[A] = EmptySet.asInstanceOf[Set[A]]
 
   private val hashSeed = "Set".hashCode 
 
   /** An optimized representation for immutable empty sets */
   @serializable
+  private object EmptySet extends Set[Any] {
+    override def size: Int = 0
+    def contains(elem: Any): Boolean = false
+    def + (elem: Any): Set[Any] = new Set1(elem)
+    def - (elem: Any): Set[Any] = this
+    def iterator: Iterator[Any] = Iterator.empty
+    override def foreach[U](f: Any =>  U): Unit = {}
+  }
+
+  @serializable @deprecated("use `Set.empty' instead")
   class EmptySet[A] extends Set[A] {
     override def size: Int = 0
     def contains(elem: A): Boolean = false
@@ -66,7 +73,7 @@ object Set extends SetFactory[Set] {
       if (contains(elem)) this
       else new Set2(elem1, elem)
     def - (elem: A): Set[A] = 
-      if (elem == elem1) new EmptySet[A] 
+      if (elem == elem1) Set.empty
       else this
     def iterator: Iterator[A] = 
       Iterator(elem1)

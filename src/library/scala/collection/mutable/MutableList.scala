@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,13 +14,12 @@ package mutable
 import generic._
 import immutable.{List, Nil}
 
-/** <p>
- *    This class is used internally to represent mutable lists. It is the
- *     basis for the implementation of the classes
- *     <code>Stack</code>, and <code>Queue</code>.
- *  </p>
- *  !!! todo: convert to LinkedListBuffer?
- *
+// !!! todo: convert to LinkedListBuffer?
+/** 
+ *  This class is used internally to represent mutable lists. It is the
+ *  basis for the implementation of the classes
+ *  `Stack`, and `Queue`.
+ *  
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
@@ -29,7 +27,7 @@ import immutable.{List, Nil}
  */
 @serializable @SerialVersionUID(5938451523372603072L)
 class MutableList[A] extends LinearSeq[A]
-                        with LinearSeqLike[A, MutableList[A]]
+                        with LinearSeqOptimized[A, MutableList[A]]
                         with Builder[A, MutableList[A]] {
 
   override protected[this] def newBuilder = new MutableList[A]
@@ -56,6 +54,13 @@ class MutableList[A] extends LinearSeq[A]
     tl.len = len - 1
     tl
   }
+
+  /** Prepends a single element to this list. This operation takes constant
+   *  time.
+   *  @param elem  the element to prepend.
+   *  @return   this $coll.
+   */
+  def +=: (elem: A): this.type = { prependElem(elem); this }
 
   /** Returns the length of this list.
    */
