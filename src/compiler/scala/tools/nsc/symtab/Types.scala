@@ -2276,8 +2276,7 @@ A type's typeSymbol should never be inspected directly.
      *  This is not the case if `tp' contains type skolems whose
      *  skolemization level is higher than the level of this variable.
      */
-    def isRelatable(tp: Type): Boolean =
-      !tp.exists { t =>
+    def isRelatable(tp: Type): Boolean = !tp.exists { t =>
         t.typeSymbol match {
           case ts: TypeSkolem => ts.level > level
           case _ => false
@@ -2285,8 +2284,8 @@ A type's typeSymbol should never be inspected directly.
       }
 
     override val isHigherKinded = typeArgs.isEmpty && !params.isEmpty
-        
-    override def normalize: Type = 
+
+    override def normalize: Type =
       if  (constr.instValid) constr.inst
       else if (isHigherKinded) {  // get here when checking higher-order subtyping of the typevar by itself (TODO: check whether this ever happens?)
         // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
@@ -4679,7 +4678,26 @@ A type's typeSymbol should never be inspected directly.
     // println("solving "+tvars+"/"+tparams+"/"+(tparams map (_.info)))
     for ((tvar, (tparam, variance)) <- config)
       solveOne(tvar, tparam, variance)
-
+      
+    class deSkolemize extends TypeMap {
+      val tparams = new ListBuffer[Symbol] 
+      def apply(tp: Type): Type = tp match {
+        case TypeRef(pre, sym, args) if (sym.isExistentiallyBound) =>
+          tparams += sym
+          mapOver(TypeRef(pre, sym.resetFlag(EXISTENTIAL), args))
+        case _ => 
+          mapOver(tp)
+      }
+    }
+    
+    tvars foreach { tv =>
+      val deSkolemize = new deSkolemize
+      val inst = deSkolemize(tv.constr.inst)
+      val tparams = deSkolemize.tparams.toList
+      if(tparams nonEmpty)
+        tv.constr.inst = existentialAbstraction(tparams, inst)
+    }
+    
     tvars forall (tvar => tvar.constr.isWithinBounds(tvar.constr.inst))
   }
 
