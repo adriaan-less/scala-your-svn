@@ -4679,24 +4679,24 @@ A type's typeSymbol should never be inspected directly.
     for ((tvar, (tparam, variance)) <- config)
       solveOne(tvar, tparam, variance)
       
-    class deSkolemize extends TypeMap {
-      val tparams = new ListBuffer[Symbol] 
-      def apply(tp: Type): Type = tp match {
-        case TypeRef(pre, sym, args) if (sym.isExistentiallyBound) =>
-          tparams += sym
-          mapOver(TypeRef(pre, sym.resetFlag(EXISTENTIAL), args))
-        case _ => 
-          mapOver(tp)
-      }
-    }
-    
-    tvars foreach { tv =>
-      val deSkolemize = new deSkolemize
-      val inst = deSkolemize(tv.constr.inst)
-      val tparams = deSkolemize.tparams.toList
-      if(tparams nonEmpty)
-        tv.constr.inst = existentialAbstraction(tparams, inst)
-    }
+    // class deSkolemize extends TypeMap {
+    //   val tparams = new ListBuffer[Symbol] 
+    //   def apply(tp: Type): Type = tp match {
+    //     case TypeRef(pre, sym, args) if (sym.isExistentiallyBound) =>
+    //       tparams += sym
+    //       mapOver(TypeRef(pre, sym.resetFlag(EXISTENTIAL), args))
+    //     case _ => 
+    //       mapOver(tp)
+    //   }
+    // }
+    // 
+    // tvars foreach { tv =>
+    //   val deSkolemize = new deSkolemize
+    //   val inst = deSkolemize(tv.constr.inst)
+    //   val tparams = deSkolemize.tparams.toList
+    //   if(tparams nonEmpty)
+    //     tv.constr.inst = existentialAbstraction(tparams, inst)
+    // }
     
     tvars forall (tvar => tvar.constr.isWithinBounds(tvar.constr.inst))
   }
