@@ -473,6 +473,10 @@ abstract class GenJVM extends SubComponent {
           && !(sym.isMethod && sym.hasFlag(Flags.LIFTED))
           && !(sym.ownerChain exists (_.isImplClass))) {  // @M don't generate java generics sigs for (members of) implementation classes, as they are monomorphic (TODO: ok?)
         val memberTpe = atPhase(currentRun.erasurePhase)(owner.thisType.memberInfo(sym))
+        if(sym.fullName.toString == "T2.specified") {
+          if(sym hasFlag Flags.MIXEDIN)
+            println("T2.specified: "+ atPhase(currentRun.erasurePhase)(sym.alias.owner.thisType.memberInfo(sym.alias), owner.thisType.memberInfo(sym)))
+        }
         // println("addGenericSignature sym: " + sym.fullName + " : " + memberTpe + " sym.info: " + sym.info)
         // println("addGenericSignature: "+ (sym.ownerChain map (x => (x.name, x.isImplClass))))
         erasure.javaSig(sym, memberTpe) match {
@@ -846,6 +850,7 @@ abstract class GenJVM extends SubComponent {
 
       addRemoteException(mirrorMethod, m)
       // only add generic signature if the method is concrete; bug #1745
+      println("forwarder method gensig: "+(!m.hasFlag(Flags.DEFERRED), mirrorMethod, m, module))
       if (!m.hasFlag(Flags.DEFERRED))
         addGenericSignature(mirrorMethod, m, module)
         
