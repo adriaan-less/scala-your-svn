@@ -993,11 +993,18 @@ abstract class RefChecks extends InfoTransform {
 
       tree match {
         case m: MemberDef => applyChecks(m.symbol.annotations)
-        case dc@TypeTreeWithDeferredRefCheck() => val tpt = dc.check(); applyRefchecksToAnnotations(tpt) // #2416
-        case TypeTree()   => doTypeTraversal(tree) {
-          case AnnotatedType(annots, _, _)  => applyChecks(annots)
-          case _ =>
-        }
+        case tpt@TypeTree() =>
+          if(tpt.original != null) {
+            tpt.original foreach {
+              case dc@TypeTreeWithDeferredRefCheck() => applyRefchecksToAnnotations(dc.check()) // #2416
+              case _ =>
+            }
+          }
+
+          doTypeTraversal(tree) {
+            case AnnotatedType(annots, _, _)  => applyChecks(annots)
+            case _ =>
+          }
         case _ =>
       }
     }
@@ -1127,10 +1134,13 @@ abstract class RefChecks extends InfoTransform {
             if (bridges.nonEmpty) treeCopy.Template(tree, parents, self, body ::: bridges)
             else tree
 
+          case dc@TypeTreeWithDeferredRefCheck() => assert(false, "adapt should have turned dc: TypeTreeWithDeferredRefCheck into tpt: TypeTree, with tpt.original == dc"); dc
           case tpt@TypeTree() =>
             if(tpt.original != null) {
               tpt.original foreach {
-                case dc@TypeTreeWithDeferredRefCheck() => transform(dc.check()) // #2416
+                case dc@TypeTreeWithDeferredRefCheck() =>
+                  transform(dc.check()) // #2416 -- only call transform to do refchecks, but discard results
+                  // tpt has the right type if the deferred checks are ok
                 case _ =>
               }
             }

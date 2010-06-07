@@ -884,7 +884,6 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       case Parens(ts) =>
         traverseTrees(ts)
       case TypeTreeWithDeferredRefCheck() => // TODO: should we traverse the wrapped tree?
-        
       // (and rewrap the result? how to update the deferred check? would need to store wrapped tree instead of returning it from check)
       case _ => super.traverse(tree)
     }
