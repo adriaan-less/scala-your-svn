@@ -985,7 +985,7 @@ abstract class RefChecks extends InfoTransform {
     private def checkAnnotations(tpes: List[Type], pos: Position) = tpes foreach (tp => checkTypeRef(tp, pos))
     private def doTypeTraversal(tree: Tree)(f: Type => Unit) = if (!inPattern) tree.tpe foreach f
 
-    private def applyRefchecksToAnnotations(tree: Tree) = {
+    private def applyRefchecksToAnnotations(tree: Tree): Unit = {
       def applyChecks(annots: List[AnnotationInfo]) = {
         checkAnnotations(annots map (_.atp), tree.pos)
         transformTrees(annots flatMap (_.args))
@@ -993,6 +993,7 @@ abstract class RefChecks extends InfoTransform {
 
       tree match {
         case m: MemberDef => applyChecks(m.symbol.annotations)
+        case dc@TypeTreeWithDeferredRefCheck() => val tpt = dc.check(); applyRefchecksToAnnotations(tpt) // #2416
         case TypeTree()   => doTypeTraversal(tree) {
           case AnnotatedType(annots, _, _)  => applyChecks(annots)
           case _ =>
@@ -1101,12 +1102,11 @@ abstract class RefChecks extends InfoTransform {
       val savedCurrentApplication = currentApplication
       try {
         val sym = tree.symbol
-      
+
         // Apply RefChecks to annotations. Makes sure the annotations conform to
         // type bounds (bug #935), issues deprecation warnings for symbols used
         // inside annotations.
         applyRefchecksToAnnotations(tree)
-
         var result: Tree = tree match {
           case DefDef(mods, name, tparams, vparams, tpt, EmptyTree) if tree.symbol.hasAnnotation(NativeAttr) =>
             tree.symbol.resetFlag(DEFERRED)
@@ -1127,8 +1127,13 @@ abstract class RefChecks extends InfoTransform {
             if (bridges.nonEmpty) treeCopy.Template(tree, parents, self, body ::: bridges)
             else tree
 
-          case tpt@TypeTree() => 
-            if(tpt.tparams ne null) checkBounds(NoPrefix, NoSymbol, tpt.tparams, tpt.targs, tpt.pos) // #2416
+          case tpt@TypeTree() =>
+            if(tpt.original != null) {
+              tpt.original foreach {
+                case dc@TypeTreeWithDeferredRefCheck() => transform(dc.check()) // #2416
+                case _ =>
+              }
+            }
 
             val existentialParams = new ListBuffer[Symbol]
             doTypeTraversal(tree) { // check all bounds, except those that are
