@@ -2910,7 +2910,7 @@ trait Typers { self: Analyzer =>
     private[this] var typingIndent: String = ""
     @inline def deindentTyping() = if (printTypings) typingIndent = typingIndent.substring(0, typingIndent.length() - 2)
     @inline def indentTyping() = if (printTypings) typingIndent += "  "
-    @inline def printTyping(s: String) = if (printTypings) println(typingIndent+s)
+    @inline def printTyping(s: => String) = if (printTypings) println(typingIndent+s)
 
     /**
      *  @param tree ...
