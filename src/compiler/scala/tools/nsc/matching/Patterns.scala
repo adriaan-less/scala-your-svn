@@ -408,7 +408,12 @@ trait Patterns extends ast.TreeDSL {
   
   sealed trait UnapplyPattern extends Pattern {
     lazy val UnApply(unfn, args) = tree
-    override def subpatternsForVars: List[Pattern] = toPats(args)
+    override def subpatternsForVars: List[Pattern] = {
+      unfn match {
+        case Apply(Select(extractor, _),_) => println("extractor: "+extractor); Pattern(extractor) :: toPats(args)
+        case _ => println("weird unfn "+unfn); toPats(args)
+      }
+    }
     
     def resTypes = analyzer.unapplyTypeList(unfn.symbol, unfn.tpe)
     def resTypesString = resTypes match {
@@ -426,7 +431,10 @@ trait Patterns extends ast.TreeDSL {
 
   sealed trait ApplyPattern extends Pattern {
     protected lazy val Apply(fn, args) = tree
-    override def subpatternsForVars: List[Pattern] = toPats(args)
+    override def subpatternsForVars: List[Pattern] = {
+      println("subpatternsForVarsApply:"+ fn)
+      toPats(args)
+    }
 
     def isConstructorPattern = fn.isType    
   }
