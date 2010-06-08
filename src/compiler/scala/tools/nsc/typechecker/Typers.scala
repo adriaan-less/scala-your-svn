@@ -3022,10 +3022,12 @@ trait Typers { self: Analyzer =>
               error(tree.pos, "illegal variable in pattern alternative")
             vble = namer.enterInScope(vble)
           }
+          def xform(tp: Type) = if (treeInfo.isSequenceValued(body)) seqType(tp) else tp
+          vble setInfo xform(pt) // #3392: initialize info of sym for the variable that's bound to the pattern
+          // needed for recursive references to varid's in patterns: a@Foo(a.Bar)
+          // TODO: it's not clear to me what the spec says on this (see 8.1.3 Pattern Binders)
           val body1 = typed(body, mode, pt)
-          trackSetInfo(vble)(
-            if (treeInfo.isSequenceValued(body)) seqType(body1.tpe)
-            else body1.tpe)
+          trackSetInfo(vble)(xform(body1.tpe))
           treeCopy.Bind(tree, name, body1) setSymbol vble setType body1.tpe   // burak, was: pt
         }
       }
