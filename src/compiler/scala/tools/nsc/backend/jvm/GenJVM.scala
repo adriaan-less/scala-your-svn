@@ -469,7 +469,6 @@ abstract class GenJVM extends SubComponent {
     }
 
     def addGenericSignature(jmember: JMember, sym: Symbol, owner: Symbol) {
-      // if(sym hasFlag Flags.MIXEDIN) addGenericSignature(jmember, sym.alias, sym.alias.owner) -- does not work
       if (!sym.hasFlag(Flags.EXPANDEDNAME | Flags.SYNTHETIC)
           && !(sym.isMethod && sym.hasFlag(Flags.LIFTED))
           && !(sym.ownerChain exists (_.isImplClass))) {  // @M don't generate java generics sigs for (members of) implementation classes, as they are monomorphic (TODO: ok?)

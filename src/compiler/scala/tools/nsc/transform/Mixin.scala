@@ -231,13 +231,12 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         for (member <- impl.info.decls.toList) {
           if (isForwarded(member)) {
             val imember = member.overriddenSymbol(iface)
-            //Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
+            // Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" : "+ atPhase(currentRun.erasurePhase)(imember.info) +" overriding "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
             if (imember.overridingSymbol(clazz) == NoSymbol &&
                 clazz.info.findMember(member.name, 0, lateDEFERRED, false).alternatives.contains(imember)) {
-                  val clone = atPhase(currentRun.erasurePhase){member.cloneSymbol(clazz)}
                   val member1 = addMember(
                     clazz,
-                    clone setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
+                    member.cloneSymbol(clazz) setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
                   member1.asInstanceOf[TermSymbol] setAlias member;
                 }
           }

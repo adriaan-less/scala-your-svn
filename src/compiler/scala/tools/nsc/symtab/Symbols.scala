@@ -1089,7 +1089,6 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       
       newSym.infos = cloneHist(infos)
       newSym.validTo = validTo
-      // if(this.rawname.toString == "specified") newSym.dumpInfoHistory()
       newSym.setFlag(this.rawflags).setAnnotations(this.annotations)
     }
 
