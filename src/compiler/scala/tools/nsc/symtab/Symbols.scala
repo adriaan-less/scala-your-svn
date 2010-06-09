@@ -707,6 +707,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 // Info and Type -------------------------------------------------------------------
 
     private[Symbols] var infos: TypeHistory = null
+    def dumpInfos(): Unit = println(infos)
 
     /** Get type. The type of a symbol is:
      *  for a type symbol, the type corresponding to the symbol itself, 
@@ -776,6 +777,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       assert(phaseId(infos.validFrom) <= phase.id)
       if (phaseId(infos.validFrom) == phase.id) infos = infos.prev
       infos = TypeHistory(currentPeriod, info, infos)
+      validTo = if (info.isComplete) currentPeriod else NoPeriod
       this
     }
 

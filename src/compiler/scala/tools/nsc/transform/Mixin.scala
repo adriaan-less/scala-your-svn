@@ -234,9 +234,13 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             //Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
             if (imember.overridingSymbol(clazz) == NoSymbol &&
                 clazz.info.findMember(member.name, 0, lateDEFERRED, false).alternatives.contains(imember)) {
+                  val newSym = atPhase(currentRun.erasurePhase){imember.cloneSymbol(clazz)} // clone before erasure got rid of type info we'll need to generate a javaSig
+                  // newSym.dumpInfos()
+                  newSym.updateInfo(imember.info.cloneInfo(newSym)) // now we'll have the pre-erasure type info in our history, and the current version as the actual info
+                  // newSym.dumpInfos()
                   val member1 = addMember(
                     clazz,
-                    atPhase(currentRun.erasurePhase){imember.cloneSymbol(clazz)} setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
+                    newSym setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
                   member1.asInstanceOf[TermSymbol] setAlias member;
                 }
           }
