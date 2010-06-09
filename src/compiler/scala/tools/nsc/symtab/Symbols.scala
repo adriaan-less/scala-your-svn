@@ -1073,8 +1073,24 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** A clone of this symbol, but with given owner */
     final def cloneSymbol(owner: Symbol): Symbol = {
       val newSym = cloneSymbolImpl(owner)
-      newSym.setInfo(info.cloneInfo(newSym))
-        .setFlag(this.rawflags).setAnnotations(this.annotations)
+      // newSym.setInfo(info.cloneInfo(newSym)).setFlag(this.rawflags).setAnnotations(this.annotations)
+
+      // TODO: optimise
+      def cloneHist(th: TypeHistory): TypeHistory = if(th eq null) null else {
+        val TypeHistory(period, tp, prev) = th
+        val clonedTp = atPhase(phaseOf(period)){
+          val inf = tp.cloneInfo(newSym)
+          // println("info of "+ this +" at: "+ phaseOf(period) +":"+ runId(period) +" = "+ debugString(inf))
+          inf
+        }
+      
+        TypeHistory(period, clonedTp, cloneHist(prev))
+      }
+      
+      newSym.infos = cloneHist(infos)
+      newSym.validTo = validTo
+      // if(this.rawname.toString == "specified") newSym.dumpInfoHistory()
+      newSym.setFlag(this.rawflags).setAnnotations(this.annotations)
     }
 
     /** Internal method to clone a symbol's implementation without flags or type
