@@ -18,25 +18,14 @@ package com.example.android.apis.media
 
 import com.example.android.apis.R
 
-import _root_.android.app.Activity
-import _root_.android.media.{AudioManager, MediaPlayer}
-import _root_.android.media.MediaPlayer.{OnBufferingUpdateListener, OnCompletionListener,
+import android.app.Activity
+import android.media.{AudioManager, MediaPlayer}
+import android.media.MediaPlayer.{OnBufferingUpdateListener, OnCompletionListener,
                                   OnPreparedListener, OnVideoSizeChangedListener}
-import _root_.android.os.Bundle
-import _root_.android.util.Log
-import _root_.android.view.{SurfaceHolder, SurfaceView}
-import _root_.android.widget.Toast
-
-object MediaPlayerDemo_Video {
-  private final val TAG = "MediaPlayerDemo"
-
-  private final val MEDIA = "media"
-  private final val LOCAL_AUDIO = 1
-  private final val STREAM_AUDIO = 2
-  private final val RESOURCES_AUDIO = 3
-  private final val LOCAL_VIDEO = 4
-  private final val STREAM_VIDEO = 5
-}
+import android.os.Bundle
+import android.util.Log
+import android.view.{SurfaceHolder, SurfaceView}
+import android.widget.Toast
 
 class MediaPlayerDemo_Video extends Activity
                                with OnBufferingUpdateListener
@@ -201,4 +190,15 @@ class MediaPlayerDemo_Video extends Activity
     holder.setFixedSize(mVideoWidth, mVideoHeight)
     mMediaPlayer.start()
   }
+}
+
+object MediaPlayerDemo_Video {
+  private final val TAG = "MediaPlayerDemo"
+
+  private final val MEDIA = "media"
+  private final val LOCAL_AUDIO = 1
+  private final val STREAM_AUDIO = 2
+  private final val RESOURCES_AUDIO = 3
+  private final val LOCAL_VIDEO = 4
+  private final val STREAM_VIDEO = 5
 }

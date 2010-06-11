@@ -18,13 +18,13 @@ package com.example.android.apis.os
 
 // Need the following import to get access to the app resources, since this
 // class is in a sub-package.
-
-import _root_.android.app.Activity
-import _root_.android.content.Context
-import _root_.android.os.{Bundle, Vibrator}
-import _root_.android.view.View
-import _root_.android.widget.TextView
 import com.example.android.apis.R
+
+import android.app.Activity
+import android.content.Context
+import android.os.{Bundle, Vibrator}
+import android.view.View
+import android.widget.TextView
 
 /**
  * <h3>App that vibrates the vibrator with the Morse Code for a string.</h3>
@@ -79,7 +79,7 @@ class MorseCode extends Activity {
   }
 
   /** Called when the button is pushed */
-  val mClickListener = new View.OnClickListener() {
+  private val mClickListener = new View.OnClickListener() {
     def onClick(v: View) {
       // Get the text out of the view
       val text = mTextView.getText.toString

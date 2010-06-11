@@ -40,13 +40,6 @@ OS / Sensors
  *         </tr>
  * </table> 
  */
-object Sensors {
-  /** Tag string for our debug logs */
-  private final val TAG = "Sensors"
-
-  private final val SENSOR_SERVICE = Context.SENSOR_SERVICE
-}
-
 class Sensors extends Activity {
   import Sensors._  // companion object
 
@@ -215,16 +208,26 @@ class Sensors extends Activity {
 
   override protected def onResume() {
     super.onResume()
-    val sensors = mSensorManager.getSensorList(Sensor.TYPE_LIGHT)
-    mSensorManager.registerListener(mGraphView, sensors.get(0),
-            SensorManager.SENSOR_ACCELEROMETER | 
-            SensorManager.SENSOR_MAGNETIC_FIELD | 
-            SensorManager.SENSOR_ORIENTATION |
-            SensorManager.SENSOR_DELAY_FASTEST)
+
+    val sensors = mSensorManager.getSensorList(
+      Sensor.TYPE_ACCELEROMETER | Sensor.TYPE_MAGNETIC_FIELD |
+      Sensor.TYPE_ORIENTATION)
+    val it = sensors.iterator()
+    while (it.hasNext) {
+      mSensorManager.registerListener(mGraphView, it.next(),
+        SensorManager.SENSOR_DELAY_FASTEST)
+    }
   }
     
   override protected def onStop() {
     mSensorManager unregisterListener mGraphView
     super.onStop()
   }
+}
+
+object Sensors {
+  /** Tag string for our debug logs */
+  private final val TAG = "Sensors"
+
+  private final val SENSOR_SERVICE = Context.SENSOR_SERVICE
 }
