@@ -6,12 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 
-import mutable.{ListBuffer, HashMap, GenericArray}
+import mutable.{ListBuffer, HashMap, ArraySeq}
 import immutable.{List, Range}
 import generic._
 
@@ -20,6 +19,7 @@ import generic._
 object SeqLike {
 
   /**  A KMP implementation, based on the undoubtedly reliable wikipedia entry.
+   *
    *  @author paulp
    *  @since  2.8
    */
@@ -72,7 +72,23 @@ object SeqLike {
     None
   }
 
-  /** Waiting for a doc comment from Paul
+  /** Finds a particular index at which one sequence occurs in another sequence.
+   *  Both the source sequence and the target sequence are expressed in terms
+   *  other sequences S' and T' with offset and length parameters.  This
+   *  function is designed to wrap the KMP machinery in a sufficiently general
+   *  way that all library sequence searches can use it.  It is unlikely you
+   *  have cause to call it directly: prefer functions such as StringBuilder#indexOf
+   *  and Seq#lastIndexOf.
+   *   
+   *  @param  source        the sequence to search in
+   *  @param  sourceOffset  the starting offset in source
+   *  @param  sourceCount   the length beyond sourceOffset to search
+   *  @param  target        the sequence being searched for
+   *  @param  targetOffset  the starting offset in target
+   *  @param  targetCount   the length beyond targetOffset which makes up the target string
+   *  @param  fromIndex     the smallest index at which the target sequence may start
+   *
+   *  @return the applicable index in source where target exists, or -1 if not found
    */
   def indexOf[B](
     source: Seq[B], sourceOffset: Int, sourceCount: Int,
@@ -83,7 +99,10 @@ object SeqLike {
         case Some(x) => x + fromIndex
       }
 
-  /** Waiting for a doc comment from Paul
+  /** Finds a particular index at which one sequence occurs in another sequence.
+   *  Like indexOf, but finds the latest occurrence rather than earliest.
+   *  
+   *  @see  SeqLike#indexOf
    */
   def lastIndexOf[B](
     source: Seq[B], sourceOffset: Int, sourceCount: Int,
@@ -99,12 +118,8 @@ object SeqLike {
     }
 }
 
-/** A template trait for sequences of type `Seq[A]`, representing
- *  sequences of elements of type <code>A</code>.
+/** A template trait for sequences of type `Seq[A]`
  *  $seqInfo
- *
- *  @tparam A    the element type of the collection
- *  @tparam Repr the type of the actual collection containing the elements.
  *
  *  @define seqInfo
  *  Sequences are special cases of iterable collections of class `Iterable`.
@@ -121,10 +136,13 @@ object SeqLike {
  *  Sequences can be accessed in reverse order of their elements, using methods
  *  `reverse` and `reverseIterator`.
  *
- *  Sequences have two principle subtraits, `IndexedSeq` and `LinearSeq`, which give different guarantees for performance.
+ *  Sequences have two principal subtraits, `IndexedSeq` and `LinearSeq`, which give different guarantees for performance.
  *  An `IndexedSeq` provides fast random-access of elements and a fast `length` operation.
  *  A `LinearSeq` provides fast access only to the first element via `head`, but also
  *  has a fast `tail` operation. 
+ *
+ *  @tparam A    the element type of the collection
+ *  @tparam Repr the type of the actual collection containing the elements.
  *
  *  @author  Martin Odersky
  *  @author  Matthias Zenger
@@ -169,7 +187,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *
    *  @param  idx  The index to select.
    *  @return the element of this $coll at index `idx`, where `0` indicates the first element.
-   *  @throws `IndexOutOfBoundsEsxception` if `idx` does not satisfy `0 <= idx < length`.
+   *  @throws `IndexOutOfBoundsException` if `idx` does not satisfy `0 <= idx < length`.
    */
   def apply(idx: Int): A
 
@@ -212,7 +230,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    */
   def isDefinedAt(idx: Int): Boolean = (idx >= 0) && (idx < length)
 
-  /** Computes length of longest segment whose elements all satisfy some preficate.
+  /** Computes length of longest segment whose elements all satisfy some predicate.
    * 
    *  $mayNotTerminateInf
    *
@@ -229,7 +247,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     i
   }
 
-  /** Returns the length of the longest prefix whose elements all satisfy some preficate. 
+  /** Returns the length of the longest prefix whose elements all satisfy some predicate. 
    * 
    *  $mayNotTerminateInf
    *
@@ -269,7 +287,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     -1
   }
 
-  /** Returns index of the first element satisying a predicate, or `-1`.
+  /** Returns index of the first element satisfying a predicate, or `-1`.
    */
   def findIndexOf(p: A => Boolean): Int = indexWhere(p)
 
@@ -296,7 +314,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  @return  the index `>= from` of the first element of this $coll that is equal (wrt `==`)
    *           to `elem`, or `-1`, if none exists.
    *
-   *  @usecase def indexOf(elem: A): Int
+   *  @usecase def indexOf(elem: A, from: Int): Int
    */
   def indexOf[B >: A](elem: B, from: Int): Int = indexWhere(elem ==, from)
 
@@ -321,7 +339,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  @return  the index `<= end` of the last element of this $coll that is equal (wrt `==`)
    *           to `elem`, or `-1`, if none exists.
    *
-   *  @usecase def lastIndexOf(elem: A): Int
+   *  @usecase def lastIndexOf(elem: A, end: Int): Int
    */
   def lastIndexOf[B >: A](elem: B, end: Int): Int = lastIndexWhere(elem ==, end)
 
@@ -359,6 +377,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     for (x <- this) 
       xs = x :: xs
     val b = newBuilder
+    b.sizeHint(this)
     for (x <- xs)
       b += x
     b.result
@@ -434,7 +453,6 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *
    * @param  that    the sequence to test
    * @return `true` if this collection has `that` as a prefix, `false` otherwise.
-   * otherwise false 
    */
   def startsWith[B](that: Seq[B]): Boolean = startsWith(that, 0)
 
@@ -490,11 +508,11 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *  @return  the last index such that the elements of this $coll starting a this index
    *           match the elements of sequence `that`, or `-1` of no such subsequence exists. 
    */
-  def lastIndexOfSlice[B >: A](that: Seq[B]): Int = lastIndexOfSlice(that, that.length)
+  def lastIndexOfSlice[B >: A](that: Seq[B]): Int = lastIndexOfSlice(that, length)
 
   /** Finds last index before or at a given end index where this $coll contains a given sequence as a slice.
    *  @param  that    the sequence to test
-   *  @param  end     the end idnex
+   *  @param  end     the end index
    *  @return  the last index `<= end` such that the elements of this $coll starting at this index
    *           match the elements of sequence `that`, or `-1` of no such subsequence exists. 
    */
@@ -524,7 +542,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *
    *  Another way to express this
    *  is that `xs union ys` computes the order-presevring multi-set union of `xs` and `ys`.
-   *  `union` is hence a counter-oart of `diff` and `intersect` which also work on multi-sets.
+   *  `union` is hence a counter-part of `diff` and `intersect` which also work on multi-sets.
    *
    *  $willNotTerminateInf
    *
@@ -553,14 +571,14 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *                If an element value `x` appears
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will not form
    *                part of the result, but any following occurrences will.
-   *  @usecase def union(that: Seq[A]): $Coll[A]
+   *  @usecase def diff(that: Seq[A]): $Coll[A]
    *  @return       a new $coll which contains all elements of this $coll
    *                except some of occurrences of elements that also appear in `that`.
    *                If an element value `x` appears
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will not form
    *                part of the result, but any following occurrences will.
    */
-  def diff[B >: A, That](that: Seq[B]): Repr = {
+  def diff[B >: A](that: Seq[B]): Repr = {
     val occ = occCounts(that)
     val b = newBuilder
     for (x <- this)
@@ -581,14 +599,14 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *                If an element value `x` appears
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                in the result, but any following occurrences will be omitted.
-   *  @usecase def union(that: Seq[A]): $Coll[A]
+   *  @usecase def intersect(that: Seq[A]): $Coll[A]
    *  @return       a new $coll which contains all elements of this $coll
    *                which also appear in `that`.
    *                If an element value `x` appears
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                in the result, but any following occurrences will be omitted.
    */
-  def intersect[B >: A, That](that: Seq[B]): Repr = {
+  def intersect[B >: A](that: Seq[B]): Repr = {
     val occ = occCounts(that)
     val b = newBuilder
     for (x <- this)
@@ -801,7 +819,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *              sorted according to the ordering `ord`.
    */
   def sorted[B >: A](implicit ord: Ordering[B]): Repr = {
-    val arr = new GenericArray[A](this.length)
+    val arr = new ArraySeq[A](this.length)
     var i = 0
     for (x <- this) {
       arr(i) = x
@@ -809,6 +827,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
     }
     java.util.Arrays.sort(arr.array, ord.asInstanceOf[Ordering[Object]])
     val b = newBuilder
+    b.sizeHint(this)
     for (x <- arr) b += x
     b.result
   }
@@ -838,7 +857,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
   /** Hashcodes for $Coll produce a value from the hashcodes of all the
    *  elements of the $coll.
    */
-  override def hashCode() = (Seq.hashSeed /: this)(_ * 41 + _.hashCode)
+  override def hashCode() = (Seq.hashSeed /: this)(_ * 41 + _.##)
 
   override def equals(that: Any): Boolean = that match {
     case that: Seq[_] => (that canEqual this) && (this sameElements that)
@@ -849,8 +868,9 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    */
   override def toString = super[IterableLike].toString
 
-  /** Returns index of the last element satisying a predicate, or -1.
+  /** Returns index of the last element satisfying a predicate, or -1.
    */
+  @deprecated("use `lastIndexWhere` instead")
   def findLastIndexOf(p: A => Boolean): Int = lastIndexWhere(p)
 
   /** Tests whether every element of this $coll relates to the
@@ -864,15 +884,7 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] { self =>
    *                  and `y` of `that`, otherwise `false`.
    */
   @deprecated("use `corresponds` instead")
-  def equalsWith[B](that: Seq[B])(f: (A,B) => Boolean): Boolean = {
-    val i = this.iterator
-    val j = that.iterator
-    while (i.hasNext && j.hasNext)
-      if (!f(i.next, j.next))
-        return false
-    
-    !i.hasNext && !j.hasNext
-  }
+  def equalsWith[B](that: Seq[B])(f: (A,B) => Boolean): Boolean = corresponds(that)(f)
 
  /** 
    * returns a projection that can be used to call non-strict <code>filter</code>,

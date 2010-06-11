@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 import generic._
@@ -15,10 +14,8 @@ import annotation.unchecked.uncheckedVariance
 
 /** A template trait for iterable collections of type `Iterable[A]`.
  *  $iterableInfo
- *  @tparam A    the element type of the collection
- *  @tparam Repr the type of the actual collection containing the elements.
  *  @define iterableInfo
- *    This is a base trait for all scala collections that define an `iterator`
+ *    This is a base trait for all $mutability Scala collections that define an `iterator`
  *    method to step through one-by-one the collection's elements.
  *    Implementations of this trait need to provide a concrete method with
  *    signature:
@@ -44,6 +41,8 @@ import annotation.unchecked.uncheckedVariance
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   2.8
+ *  @tparam A    the element type of the collection
+ *  @tparam Repr the type of the actual collection containing the elements.
  *
  *  @define Coll Iterable
  *  @define coll iterable collection
@@ -69,9 +68,6 @@ self =>
    */
   def iterator: Iterator[A]
   
-  @deprecated("use `iterator' instead")
-  def elements = iterator
-
   /** Applies a function `f` to all elements of this $coll.
    *  
    *    Note: this method underlies the implementation of most other bulk operations.
@@ -107,6 +103,7 @@ self =>
 
   override /*TraversableLike*/ def take(n: Int): Repr = {
     val b = newBuilder
+    b.sizeHintBounded(n, this)
     var i = 0
     val it = iterator
     while (i < n && it.hasNext) {
@@ -118,6 +115,7 @@ self =>
   
   override /*TraversableLike*/ def slice(from: Int, until: Int): Repr = {
     val b = newBuilder
+    b.sizeHintBounded(until - from, this)
     var i = from
     val it = iterator drop from
     while (i < until && it.hasNext) {
@@ -160,7 +158,8 @@ self =>
    *  @param step the distance between the first elements of successive
    *         groups (defaults to 1)
    *  @return An iterator producing ${coll}s of size `size`, except the
-   *          last will be truncated if the elements don't divide evenly.
+   *          last and the only element will be truncated if there are
+   *          fewer elements than size.
    */
   def sliding[B >: A](size: Int): Iterator[Repr] = sliding(size, 1)
   def sliding[B >: A](size: Int, step: Int): Iterator[Repr] =
@@ -179,6 +178,7 @@ self =>
    */
   def takeRight(n: Int): Repr = {
     val b = newBuilder
+    b.sizeHintBounded(n, this)
     val lead = this.iterator drop n
     var go = false
     for (x <- this) {
@@ -198,6 +198,7 @@ self =>
    */
   def dropRight(n: Int): Repr = {
     val b = newBuilder
+    if (n >= 0) b.sizeHint(this, -n)
     val lead = iterator drop n
     val it = iterator
     while (lead.hasNext) {
@@ -231,7 +232,7 @@ self =>
    *  @param   bf    $zipbfinfo
    *  @return        a new collection of type `That` containing pairs consisting of
    *                 corresponding elements of this $coll and `that`. The length
-   *                 of the returned collection is the minimum of the lengths of this $coll$ and `that`.
+   *                 of the returned collection is the minimum of the lengths of this $coll and `that`.
    *
    *  @usecase def zip[B](that: Iterable[B]): $Coll[(A, B)]
    *
@@ -239,7 +240,7 @@ self =>
    *  @tparam  B     the type of the second half of the returned pairs
    *  @return        a new $coll containing pairs consisting of
    *                 corresponding elements of this $coll and `that`. The length
-   *                 of the returned collection is the minimum of the lengths of this $coll$ and `that`.
+   *                 of the returned collection is the minimum of the lengths of this $coll and `that`.
    */
   def zip[A1 >: A, B, That](that: Iterable[B])(implicit bf: CanBuildFrom[Repr, (A1, B), That]): That = {
     val b = bf(repr)
@@ -262,7 +263,7 @@ self =>
    *  @param thatElem the element to be used to fill up the result if `that` is shorter than this $coll.
    *  @return        a new collection of type `That` containing pairs consisting of
    *                 corresponding elements of this $coll and `that`. The length
-   *                 of the returned collection is the maximum of the lengths of this $coll$ and `that`.
+   *                 of the returned collection is the maximum of the lengths of this $coll and `that`.
    *                 If this $coll is shorter than `that`, `thisElem` values are used to pad the result.
    *                 If `that` is shorter than this $coll, `thatElem` values are used to pad the result.
    * 
@@ -274,7 +275,7 @@ self =>
    *  @tparam  B     the type of the second half of the returned pairs
    *  @return        a new $coll containing pairs consisting of
    *                 corresponding elements of this $coll and `that`. The length
-   *                 of the returned collection is the maximum of the lengths of this $coll$ and `that`.
+   *                 of the returned collection is the maximum of the lengths of this $coll and `that`.
    *                 If this $coll is shorter than `that`, `thisElem` values are used to pad the result.
    *                 If `that` is shorter than this $coll, `thatElem` values are used to pad the result.
    */
@@ -367,6 +368,9 @@ self =>
 
   override /*TraversableLike*/ def view(from: Int, until: Int) = view.slice(from, until)
   
+  @deprecated("use `iterator' instead")
+  def elements = iterator
+
   @deprecated("use `head' instead") def first: A = head
 
   /** `None` if iterable is empty.

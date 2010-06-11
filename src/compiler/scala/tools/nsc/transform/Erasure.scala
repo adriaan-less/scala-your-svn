@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -18,7 +17,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
 {
   import global._                  // the global environment
   import definitions._             // standard classes and methods
-  // @S: XXX: why is this here? earsure is a typer, if you comment this
+  // @S: XXX: why is this here? erasure is a typer, if you comment this
   //          out erasure still works, uses its own typed methods.
   lazy val typerXXX = this.typer
   import typerXXX.{typed}             // methods to type trees
@@ -30,6 +29,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
 
   def newTransformer(unit: CompilationUnit): Transformer =
     new ErasureTransformer(unit)
+
+  override def keepsTypeParams = false
 
 // -------- erasure on types --------------------------------------------------------
 
@@ -117,15 +118,15 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
    */
   val erasure = new TypeMap {
 
-    // Compute the erasure of the intersection type with given `parents` according to new spec.
-    private def intersectionErasure(parents: List[Type]): Type =
-      if (parents.isEmpty) erasedTypeRef(ObjectClass) 
-      else apply {
+    // Compute the dominant part of the intersection type with given `parents` according to new spec.
+    def intersectionDominator(parents: List[Type]): Type =
+      if (parents.isEmpty) ObjectClass.tpe
+      else {
         val psyms = parents map (_.typeSymbol)
         if (psyms contains ArrayClass) {
           // treat arrays specially
           arrayType(
-            intersectionErasure(
+            intersectionDominator(
               parents filter (_.typeSymbol == ArrayClass) map (_.typeArgs.head)))
         } else {
           // implement new spec for erasure of refined types.
@@ -150,9 +151,9 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             if (unboundedGenericArrayLevel(tp) == 1) ObjectClass.tpe
             else if (args.head.typeSymbol == NothingClass || args.head.typeSymbol == NullClass) arrayType(ObjectClass.tpe)
             else typeRef(apply(pre), sym, args map this)
-          else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass) erasedTypeRef(ObjectClass)
+          else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass || sym == NotNullClass) erasedTypeRef(ObjectClass)
           else if (sym == UnitClass) erasedTypeRef(BoxedUnitClass)
-          else if (sym.isRefinementClass) intersectionErasure(tp.parents) 
+          else if (sym.isRefinementClass) apply(intersectionDominator(tp.parents))
           else if (sym.isClass) typeRef(apply(rebindInnerClass(pre, sym)), sym, List())  // #2585
           else apply(sym.info) // alias type or abstract type
         case PolyType(tparams, restpe) =>
@@ -169,7 +170,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             else
               apply(restpe))
         case RefinedType(parents, decls) =>
-          intersectionErasure(parents)
+          apply(intersectionDominator(parents))
         case AnnotatedType(_, atp, _) =>
           apply(atp)
         case ClassInfoType(parents, decls, clazz) =>
@@ -334,9 +335,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
   def erasedTypeRef(sym: Symbol): Type =
     typeRef(erasure(sym.owner.tpe), sym, List())
 
-  /** Remove duplicate references to class Object in a list of parent classes
-   * todo: needed?
-   */
+  /** Remove duplicate references to class Object in a list of parent classes */
   private def removeDoubleObject(tps: List[Type]): List[Type] = tps match {
     case List() => List()
     case tp :: tps1 => 
@@ -749,7 +748,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
       val opc = new overridingPairs.Cursor(root) {
         override def exclude(sym: Symbol): Boolean =
           (!sym.isTerm || sym.hasFlag(PRIVATE) || super.exclude(sym) 
-           // specialized members have no type history before 'specialize', causing duble def errors for curried defs
+           // specialized members have no type history before 'specialize', causing double def errors for curried defs
            || !sym.hasTypeAt(currentRun.refchecksPhase.id)) 
 
         override def matches(sym1: Symbol, sym2: Symbol): Boolean =

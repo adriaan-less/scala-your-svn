@@ -1,18 +1,33 @@
+/*
+ * Copyright 2007 Steven Osborn
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.anddev.android.filebrowser2
 
 import java.io.File
 import java.util.Collections
 
-import scala.collection.jcl.ArrayList
+import scala.collection.mutable.ArrayBuffer
 
-import _root_.android.app.{AlertDialog, ListActivity}
-import _root_.android.content.{DialogInterface, Intent}
-import _root_.android.content.DialogInterface.{OnCancelListener, OnClickListener}
-import _root_.android.graphics.drawable.Drawable
-import _root_.android.net.Uri
-import _root_.android.os.Bundle
-import _root_.android.view.View
-import _root_.android.widget.ListView
+import android.app.{AlertDialog, ListActivity}
+import android.content.{DialogInterface, Intent}
+import android.content.DialogInterface.{OnCancelListener, OnClickListener}
+import android.graphics.drawable.Drawable
+import android.net.Uri
+import android.os.Bundle
+import android.view.View
+import android.widget.ListView
 
 import iconifiedlist.{IconifiedText, IconifiedTextListAdapter}
 
@@ -28,7 +43,7 @@ class AndroidFileBrowser extends ListActivity {
   import DISPLAYMODE._
 
   private val displayMode = ABSOLUTE
-  private val directoryEntries = new ArrayList[IconifiedText]()
+  private val directoryEntries = new ArrayBuffer[IconifiedText]
   private var currentDirectory = new File("/")
 
   /** Called when the activity is first created. */
@@ -98,7 +113,7 @@ AlertDialog.show(
   private def openFile(aFile: File) {
     try {
       val myIntent = new Intent(
-        _root_.android.content.Intent.ACTION_VIEW,
+        android.content.Intent.ACTION_VIEW,
         Uri.parse("file://" + aFile.getAbsolutePath))
       startActivity(myIntent)
     } catch {
@@ -113,58 +128,59 @@ AlertDialog.show(
     directoryEntries.clear()
 
     // Add the "." == "current directory"
-    directoryEntries.add(
+    directoryEntries +=
       new IconifiedText(
         getString(R.string.current_dir),
-        getDrawable(R.drawable.folder)))
+        getDrawable(R.drawable.folder))
     // and the ".." == 'Up one level'
     if (currentDirectory.getParent != null)
-      directoryEntries.add(
+      directoryEntries +=
         new IconifiedText(
           getString(R.string.up_one_level),
-          getDrawable(R.drawable.uponelevel)))
+          getDrawable(R.drawable.uponelevel))
+
+    val endingImage = getResources.getStringArray(R.array.fileEndingImage)
+    val endingWeb = getResources.getStringArray(R.array.fileEndingWebText)
+    val endingPackage = getResources.getStringArray(R.array.fileEndingPackage)
+    val endingAudio = getResources.getStringArray(R.array.fileEndingAudio)
 
     var currentIcon: Drawable = null
     for (currentFile <- files) {
       if (currentFile.isDirectory)
         currentIcon = getDrawable(R.drawable.folder)
       else {
-        val fileName = currentFile.getName();
+        val fileName = currentFile.getName()
         /* Determine the Icon to be used,
          * depending on the FileEndings defined in:
          * res/values/fileendings.xml. */
-        if (checkEndsWithInStringArray(fileName, getResources().
-                                       getStringArray(R.array.fileEndingImage))) {
-          currentIcon = getDrawable(R.drawable.image)
-        } else if (checkEndsWithInStringArray(fileName, getResources.
-                                        getStringArray(R.array.fileEndingWebText))) {
-          currentIcon = getDrawable(R.drawable.webtext)
-        } else if (checkEndsWithInStringArray(fileName, getResources.
-                                        getStringArray(R.array.fileEndingPackage))) {
-          currentIcon = getDrawable(R.drawable.packed)
-        } else if (checkEndsWithInStringArray(fileName, getResources.
-                                        getStringArray(R.array.fileEndingAudio))){
-          currentIcon = getDrawable(R.drawable.audio)
-        } else {
-          currentIcon = getDrawable(R.drawable.text)
-        }                   
+        currentIcon =
+          if (checkEndsWithInStringArray(fileName, endingImage))
+            getDrawable(R.drawable.image)
+          else if (checkEndsWithInStringArray(fileName, endingWeb))
+            getDrawable(R.drawable.webtext)
+          else if (checkEndsWithInStringArray(fileName, endingPackage))
+            getDrawable(R.drawable.packed)
+          else if (checkEndsWithInStringArray(fileName, endingAudio))
+            getDrawable(R.drawable.audio)
+          else
+            getDrawable(R.drawable.text)                 
       }
       displayMode match {
         case ABSOLUTE =>
           /* On absolute Mode, we show the full path */
-          directoryEntries.add(new IconifiedText(currentFile.getPath, currentIcon))
+          directoryEntries += new IconifiedText(currentFile.getPath, currentIcon)
         case RELATIVE =>
           /* On relative Mode, we have to cut the
            * current-path at the beginning */
-          val currentPathStringLenght = currentDirectory.getAbsolutePath.length
-          directoryEntries.add(new IconifiedText(
+          val currentPathStringLength = currentDirectory.getAbsolutePath.length
+          directoryEntries += new IconifiedText(
                                    currentFile.getAbsolutePath.
-                                   substring(currentPathStringLenght),
-                                   currentIcon))
+                                   substring(currentPathStringLength),
+                                   currentIcon)
       }
     }
-    Collections.sort(directoryEntries.underlying)
-          
+    directoryEntries sortWith ((x, y) => x.compareTo(y) < 0)
+
     val itla = new IconifiedTextListAdapter(this)
     itla setListItems directoryEntries      
     setListAdapter(itla)

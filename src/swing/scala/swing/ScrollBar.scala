@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -23,7 +22,7 @@ object ScrollBar {
 }
 
 class ScrollBar extends Component with Orientable.Wrapper with Adjustable.Wrapper {
-	override lazy val peer = new JScrollBar
+	override lazy val peer: JScrollBar = new JScrollBar with SuperMixin
 
 	def valueIsAjusting = peer.getValueIsAdjusting
 	def valueIsAjusting_=(b : Boolean) = peer.setValueIsAdjusting(b)

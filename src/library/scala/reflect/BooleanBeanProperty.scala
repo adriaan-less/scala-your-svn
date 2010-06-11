@@ -6,10 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.reflect
+
+import annotation.target._
 
 /** <p>
  *    This annotation has the same functionality as
@@ -18,4 +19,5 @@ package scala.reflect
  *    of <code>getFieldName</code>.
  *  </p>
  */
+@field
 class BooleanBeanProperty extends StaticAnnotation

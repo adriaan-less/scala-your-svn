@@ -41,7 +41,7 @@ h1 {
 	right: 0;
 	left: 0;
 	top: 0;
-	background-color: grey;
+	background-color: #B78E99;
 }
 
 #textfilter {
@@ -124,14 +124,14 @@ h1 {
 	float: right;
 	font-weight: normal;
 	color: white;
-	padding: 1px 4px 1px 4px;
+	padding: 1px 0.5em 1px 4px;
 }
 
 #tpl .packages > li > h3 {
 	display: block;
-	background-color: #142556;
+	background-color: #2C475C;
 	color: white;
-	padding: 1px 4px 1px 4px;
+	padding: 1px 4px 1px 0.5em;
 	font-weight: bold;
 	display: block;
 }
@@ -140,9 +140,24 @@ h1 {
 	display: block;
 }
 
+#tpl .templates > li {
+  padding-left: 0.5em;
+}
+
 #tpl ol > li .icon {
+  padding-right: 5px;
 	bottom: -2px;
 	position: relative;
+}
+
+#tpl .templates div.placeholder {
+  padding-right: 5px;
+  width: 13px;
+  display: inline-block;  
+}
+
+#tpl .templates span.tplLink {
+  padding-left: 8px;
 }
 
 #content {

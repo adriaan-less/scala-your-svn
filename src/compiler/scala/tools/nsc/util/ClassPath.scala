@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package util
@@ -29,20 +28,20 @@ object ClassPath {
   /** Expand single path entry */
   private def expandS(pattern: String): List[String] = {
     val wildSuffix = File.separator + "*"
-
-    /** Get all jars in directory */
-    def lsJars(dir: Directory, filt: String => Boolean = _ => true) =
-      dir.files partialMap { case f if filt(f.name) && (f hasExtension "jar") => f.path } toList
+    
+    /** Get all subdirectories, jars, zips out of a directory. */
+    def lsDir(dir: Directory, filt: String => Boolean = _ => true) =
+      dir.list filter (x => filt(x.name) && (x.isDirectory || isJarOrZip(x))) map (_.path) toList
 
     def basedir(s: String) = 
       if (s contains File.separator) s.substring(0, s.lastIndexOf(File.separator))
       else "."
     
-    if (pattern == "*") lsJars(Directory("."))
-    else if (pattern endsWith wildSuffix) lsJars(Directory(pattern dropRight 2))
+    if (pattern == "*") lsDir(Directory("."))
+    else if (pattern endsWith wildSuffix) lsDir(Directory(pattern dropRight 2))
     else if (pattern contains '*') {
       val regexp = ("^%s$" format pattern.replaceAll("""\*""", """.*""")).r
-      lsJars(Directory(pattern).parent, regexp findFirstIn _ isDefined)
+      lsDir(Directory(pattern).parent, regexp findFirstIn _ isDefined)
     }
     else List(pattern)
   }
@@ -71,7 +70,7 @@ object ClassPath {
   def split(path: String): List[String] = (path split pathSeparator).toList filterNot (_ == "") distinct
   
   /** Join classpath using platform-dependent path separator */
-  def join(path: String*): String = path filterNot (_ == "") mkString pathSeparator
+  def join(paths: String*): String  = paths filterNot (_ == "") mkString pathSeparator
   
   /** Split the classpath, apply a transformation function, and reassemble it. */
   def map(cp: String, f: String => String): String = join(split(cp) map f: _*)
@@ -81,6 +80,9 @@ object ClassPath {
   
   /** Split the classpath and map them into Paths */
   def toPaths(cp: String): List[Path] = split(cp) map (x => Path(x).toAbsolute)
+  
+  /** Join the paths as a classpath */
+  def fromPaths(paths: Path*): String = join(paths map (_.path): _*)
 
   /** Split the classpath and map them into URLs */
   def toURLs(cp: String): List[URL] = toPaths(cp) map (_.toURL)
@@ -194,6 +196,10 @@ abstract class ClassPath[T] {
    */
   def asURLs: List[URL]
   
+  /** The whole classpath in the form of one String.
+   */
+  def asClasspathString: String
+
   /** Info which should be propagated to any sub-classpaths.
    */
   def context: ClassPathContext[T]
@@ -240,7 +246,7 @@ abstract class ClassPath[T] {
   /** Filters for assessing validity of various entities.
    */
   def validClassFile(name: String)  = (name endsWith ".class") && context.isValidName(name)
-  def validPackage(name: String)    = (name != "META-INF") && (name != "") && (name.head != '.')
+  def validPackage(name: String)    = (name != "META-INF") && (name != "") && (name(0) != '.')
   def validSourceFile(name: String) = validSourceExtensions exists (name endsWith _)
   def validSourceExtensions         = List(".scala", ".java")
 
@@ -281,13 +287,14 @@ class SourcePath[T](dir: AbstractFile, val context: ClassPathContext[T]) extends
   def name = dir.name
   override def origin = dir.underlyingSource map (_.path)
   def asURLs = dir.sfile.toList map (_.toURL)
+  def asClasspathString = dir.path
   val sourcepaths: List[AbstractFile] = List(dir)
 
-  lazy val classes: List[ClassRep] = dir partialMap {
+  lazy val classes: List[ClassRep] = dir collect {
     case f if !f.isDirectory && validSourceFile(f.name) => ClassRep(None, Some(f))
   } toList
   
-  lazy val packages: List[SourcePath[T]] = dir partialMap {
+  lazy val packages: List[SourcePath[T]] = dir collect {
     case f if f.isDirectory && validPackage(f.name) => new SourcePath[T](f, context)
   } toList
 
@@ -302,18 +309,18 @@ class DirectoryClassPath(val dir: AbstractFile, val context: ClassPathContext[Ab
   def name = dir.name
   override def origin = dir.underlyingSource map (_.path)
   def asURLs = dir.sfile.toList map (_.toURL)
+  def asClasspathString = dir.path
   val sourcepaths: List[AbstractFile] = Nil
   
-  lazy val classes: List[ClassRep] = dir partialMap {
+  lazy val classes: List[ClassRep] = dir collect {
     case f if !f.isDirectory && validClassFile(f.name) => ClassRep(Some(f), None)
   } toList
   
-  lazy val packages: List[DirectoryClassPath] = dir partialMap {
+  lazy val packages: List[DirectoryClassPath] = dir collect {
     case f if f.isDirectory && validPackage(f.name) => new DirectoryClassPath(f, context)
   } toList
-
   
-  override def toString() = "directory classpath: "+ dir.toString()
+  override def toString() = "directory classpath: "+ dir
 }
 
 /**
@@ -324,9 +331,11 @@ class MergedClassPath[T](
   val context: ClassPathContext[T])
 extends ClassPath[T] {
   def name = entries.head.name
-  override def origin = Some(entries map (x => x.origin getOrElse x.name) mkString ("Merged(", ", ", ")"))
   def asURLs = entries flatMap (_.asURLs)
   lazy val sourcepaths: List[AbstractFile] = entries flatMap (_.sourcepaths)
+
+  override def origin = Some(entries map (x => x.origin getOrElse x.name) mkString ("Merged(", ", ", ")"))
+  override def asClasspathString: String = join(entries map (_.asClasspathString) : _*)
 
   lazy val classes: List[AnyClassRep] = {
     val cls = new ListBuffer[AnyClassRep]
@@ -392,11 +401,6 @@ extends ClassPath[T] {
         case (_, cp, _)                         => cp.asURLs.mkString
       })
   }
-  
-  def asClasspathString: String = join(entries partialMap {
-    case x: DirectoryClassPath  => x.dir.path
-    case x: MergedClassPath[_]  => x.asClasspathString
-  }: _*)
 
   def show {
     println("ClassPath %s has %d entries and results in:\n".format(name, entries.size))

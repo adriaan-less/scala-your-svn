@@ -47,30 +47,21 @@ object PathResolver {
       for (url <- ScalaClassLoader originOfClass classOf[ScalaObject] ; if url.getProtocol == "file") yield
         File(url.getFile).parent.path
     } getOrElse ""
-    
+
+    /** Environment variables which java pays attention to so it
+     *  seems we do as well.
+     */
     def classPathEnv        =  envOrElse("CLASSPATH", "")
-    def sourcePathEnv       =  envOrElse("SOURCEPATH", "")        // not used
-    def scalaHomeEnv        =  envOrElse("SCALA_HOME", "")        // not used
+    def sourcePathEnv       =  envOrElse("SOURCEPATH", "")
+    
     def javaBootClassPath   = propOrElse("sun.boot.class.path", searchForBootClasspath)
     def javaExtDirs         = propOrEmpty("java.ext.dirs")
-    def javaUserClassPath   = propOrElse("java.class.path", classPathEnv)
+    def scalaHome           = propOrEmpty("scala.home")
     def scalaExtDirs        = propOrEmpty("scala.ext.dirs")
 
-    def scalaHome           = propOrEmpty("scala.home")
-    
-    /** I have distilled everyone's classpath hopes and dreams into the
-     *  question of how to resolve this boolean.  Right at this moment if I
-     *  do anything but default to true right here, partest chokes.  I'm
-     *  steadily reworking all the places partest gets its hands on the
-     *  classpath so eventually I'll be able to remedy that, at which point
-     *  my current plan is to have this default to false unless some
-     *  property or command line option is supplied.  This is negotiable,
-     *  but at this point I can say with confidence that less magic and
-     *  less autodetection is more better.
-     */
-    def useJavaClassPath    = true
-    // hypothetically:
-    // def useJavaClassPath = propIsSet("scala.auto.class.path")
+    /** The java classpath and whether to use it. */
+    def javaUserClassPath   = propOrElse("java.class.path", "")
+    def useJavaClassPath    = propOrFalse("scala.usejavacp")
     
     override def toString = """
       |object Environment {
@@ -88,13 +79,21 @@ object PathResolver {
       )
   }
   
-  /** Default values based on those in Environment as interpretered according
+  /** Default values based on those in Environment as interpreted according
    *  to the path resolution specification.
    */
-  object Defaults {
+  object Defaults {    
+    /* Against my better judgment, giving in to martin here and allowing
+     * CLASSPATH as the default if no -cp is given.  Only if there is no
+     * command line option or environment variable is "." used.
+     */
+    def scalaUserClassPath  = firstNonEmpty(Environment.classPathEnv, ".")
+    def scalaSourcePath     = Environment.sourcePathEnv
+
     def javaBootClassPath = Environment.javaBootClassPath
     def javaUserClassPath = Environment.javaUserClassPath
     def javaExtDirs       = Environment.javaExtDirs
+    def useJavaClassPath  = Environment.useJavaClassPath
 
     def scalaHome         = Environment.scalaHome
     def scalaHomeDir      = Directory(scalaHome)
@@ -120,10 +119,10 @@ object PathResolver {
       case _                            => ""
     }
 
-    def scalaExtDirs        = Environment.scalaExtDirs
-    def scalaPluginDirs     = List("misc", "scala-devel", "plugins")
-    def scalaPluginPath     = join(scalaPluginDirs map (scalaHomeDir / _ path): _*)
-    
+    def scalaExtDirs = Environment.scalaExtDirs
+
+    def scalaPluginPath = (scalaHomeDir / "misc" / "scala-devel" / "plugins").path
+
     override def toString = """
       |object Defaults {
       |  scalaHome            = %s
@@ -186,20 +185,19 @@ class PathResolver(settings: Settings, context: JavaContext) {
     case "sourcepath"         => settings.sourcepath.value
   }
   
-  private def useJavaClassPath = !settings.javaignorecp.value && Environment.useJavaClassPath
-  
   /** Calculated values based on any given command line options, falling back on
    *  those in Defaults.
    */
   object Calculated {
-    def scalaHome           = Defaults.scalaHome
+    def scalaHome           = Defaults.scalaHome    
+    def useJavaClassPath    = settings.usejavacp.value || Defaults.useJavaClassPath
     def javaBootClassPath   = cmdLineOrElse("javabootclasspath", Defaults.javaBootClassPath)
     def javaExtDirs         = cmdLineOrElse("javaextdirs", Defaults.javaExtDirs)
     def javaUserClassPath   = if (useJavaClassPath) Defaults.javaUserClassPath else ""
     def scalaBootClassPath  = cmdLineOrElse("bootclasspath", Defaults.scalaBootClassPath)
     def scalaExtDirs        = cmdLineOrElse("extdirs", Defaults.scalaExtDirs)
-    def userClassPath       = cmdLineOrElse("classpath", ".")
-    def sourcePath          = cmdLineOrElse("sourcepath", "")
+    def userClassPath       = cmdLineOrElse("classpath", Defaults.scalaUserClassPath)
+    def sourcePath          = cmdLineOrElse("sourcepath", Defaults.scalaSourcePath)
     
     import context._
 

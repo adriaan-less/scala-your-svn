@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Burak Emir
  */
-// $Id$
 
 package scala.tools.nsc
 package ast.parser
@@ -191,7 +190,7 @@ abstract class SymbolicXMLBuilder(p: Parsers#Parser, preserveWS: Boolean)
 
     /** Extract all the namespaces from the attribute map. */
     val namespaces: List[Tree] =
-      for (z <- attrMap.keysIterator.toList ; if z startsWith xmlns) yield {
+      for (z <- attrMap.keys.toList ; if z startsWith xmlns) yield {
         val ns = splitPrefix(z) match {
           case (Some(_), rest)  => rest
           case _                => null

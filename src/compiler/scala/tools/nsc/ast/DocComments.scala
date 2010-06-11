@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id: Unapplies.scala 19206 2009-10-21 20:57:27Z extempore $
 
 package scala.tools.nsc
 package ast
@@ -29,7 +28,7 @@ trait DocComments { self: SymbolTable =>
 
   /** The position of the raw doc comment of symbol `sym`, or NoPosition if missing
    *  If a symbol does not have a doc comment but some overridden version of it does,
-   *  the posititon of the doc comment of the overridden version is returned instead.
+   *  the position of the doc comment of the overridden version is returned instead.
    */
   def docCommentPos(sym: Symbol): Position = 
     getDocComment(sym) map (_.pos) getOrElse NoPosition
@@ -58,13 +57,17 @@ trait DocComments { self: SymbolTable =>
    *                                  of the same string are done, which is
    *                                  interpreted as a recursive variable definition.
    */
-  def expandedDocComment(sym: Symbol, site: Symbol): String =    
-    expandVariables(cookedDocComment(sym), sym, site)
+  def expandedDocComment(sym: Symbol, site: Symbol): String = {
+    // when parsing a top level class or module, use the (module-)class itself to look up variable definitions
+    val site1 = if ((sym.isModule || sym.isClass) && (site hasFlag Flags.PACKAGE)) sym
+                else site 
+    expandVariables(cookedDocComment(sym), sym, site1)
+  }
     
   /** The cooked doc comment of symbol `sym` after variable expansion, or "" if missing.
    *  @param sym  The symbol for which doc comment is returned (site is always the containing class)
    */
-  def expandedDocComment(sym: Symbol): String = expandedDocComment(sym, sym)
+  def expandedDocComment(sym: Symbol): String = expandedDocComment(sym, sym.enclClass)
 
   /** The list of use cases of doc comment of symbol `sym` seen as a member of class
    *  `site`. Each use case consists of a synthetic symbol (which is entered nowhere else),
@@ -86,7 +89,7 @@ trait DocComments { self: SymbolTable =>
     getDocComment(sym) map getUseCases getOrElse List()
   }
     
-  def useCases(sym: Symbol): List[(Symbol, String, Position)] = useCases(sym, sym)
+  def useCases(sym: Symbol): List[(Symbol, String, Position)] = useCases(sym, sym.enclClass)
 
   /** Returns the javadoc format of doc comment string `s`, including wiki expansion
    */
@@ -203,11 +206,18 @@ trait DocComments { self: SymbolTable =>
   def lookupVariable(vble: String, site: Symbol): Option[String] =
     if (site == NoSymbol) 
       None
-    else 
-      mapFind(site.info.baseClasses)(defs(_).get(vble)) match {
+    else {
+      def lookInBaseClasses = mapFind(site.info.baseClasses)(defs(_).get(vble)) match {
         case None => lookupVariable(vble, site.owner)
         case someStr => someStr
       }
+      if (site.isModule)
+        defs(site).get(vble) match {
+          case Some(str) => return Some(str)
+          case None => lookInBaseClasses
+        }
+      else lookInBaseClasses
+    }
 
   private var expandCount = 0
   private final val expandLimit = 10

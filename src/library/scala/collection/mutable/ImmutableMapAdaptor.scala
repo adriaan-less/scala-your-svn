@@ -6,17 +6,17 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
+import annotation.migration
 
 /** This class can be used as an adaptor to create mutable maps from
- *  immutable map implementations. Only method <code>empty</code> has
+ *  immutable map implementations. Only method `empty` has
  *  to be redefined if the immutable map on which this mutable map is
- *  originally based is not empty. <code>empty</code> is supposed to
+ *  originally based is not empty. `empty` is supposed to
  *  return the representation of an empty map.
  *
  *  @author  Matthias Zenger
@@ -41,19 +41,17 @@ extends Map[A, B]
 
   override def isDefinedAt(key: A) = imap.isDefinedAt(key)
 
-  override def keySet: scala.collection.Set[A] = imap.keySet
+  override def keySet: collection.Set[A] = imap.keySet
 
   override def keysIterator: Iterator[A] = imap.keysIterator
 
-  @deprecated("use `keysIterator' instead")
-  override def keys: Iterator[A] = imap.keysIterator
-
-  override def valuesIterable: scala.collection.Iterable[B] = imap.valuesIterable
+  @migration(2, 8, "As of 2.8, keys returns Iterable[A] rather than Iterator[A].")
+  override def keys: collection.Iterable[A] = imap.keys
 
   override def valuesIterator: Iterator[B] = imap.valuesIterator
 
-  @deprecated("use `valuesIterator' instead")
-  override def values: Iterator[B] = imap.valuesIterator
+  @migration(2, 8, "As of 2.8, values returns Iterable[B] rather than Iterator[B].")
+  override def values: collection.Iterable[B] = imap.values
 
   def iterator: Iterator[(A, B)] = imap.iterator
 

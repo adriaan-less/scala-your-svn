@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package util
@@ -206,7 +205,7 @@ abstract class Statistics {
     if (phase.name != "parser") {
       val counts = new ClassCounts
       for (u <- currentRun.units; t <- u.body) counts(t.getClass) += 1
-      inform("#retained nodes          : " + counts.valuesIterable.sum)
+      inform("#retained nodes          : " + counts.values.sum)
       inform("#retained nodes by type  : " + showCounts(counts))
       inform("#typechecked identifiers : " + typedIdentCount)
       inform("#typechecked selections  : " + typedSelectCount)

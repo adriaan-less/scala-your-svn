@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,25 +13,34 @@ package immutable
 
 import generic._
 
-/** The canonical factory of <a href="ListMap.html">ListMap</a>'s.
- *
+/** $factoryInfo
  *  @since 1
+ *  @define Coll immutable.ListMap
+ *  @define coll immutable list map
  */
 object ListMap extends ImmutableMapFactory[ListMap] {
+  /** $mapCanBuildFromInfo */
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), ListMap[A, B]] =
     new MapCanBuildFrom[A, B]
   def empty[A, B]: ListMap[A, B] = new ListMap
 }
 
 /** This class implements immutable maps using a list-based data
- *  structure. Instances of <code>ListMap</code> represent
+ *  structure. Instances of `ListMap` represent
  *  empty maps; they can be either created by calling the constructor
- *  directly, or by applying the function <code>ListMap.empty</code>.
- *
+ *  directly, or by applying the function `ListMap.empty`.
+ *  
+ *  @tparam A     the type of the keys in this list map.
+ *  @tparam B     the type of the values associated with the keys.
+ *  
  *  @author  Matthias Zenger
- *  @author  Martin Oderskty
+ *  @author  Martin Odersky
  *  @version 2.0, 01/01/2007
  *  @since   1
+ *  @define Coll immutable.ListMap
+ *  @define coll immutable list map
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 @serializable @SerialVersionUID(301002838095710379L)
 class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
@@ -45,7 +53,7 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
    */
   override def size: Int = 0
 
-  /** Checks if this map maps <code>key</code> to a value and return the
+  /** Checks if this map maps `key` to a value and return the
    *  value if it exists.
    *
    *  @param  key the key of the mapping of interest
@@ -103,7 +111,9 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
   protected def key: A = throw new NoSuchElementException("empty map")
   protected def value: B = throw new NoSuchElementException("empty map")
   protected def next: ListMap[A, B] = throw new NoSuchElementException("empty map")
-
+  
+  /** This class represents an entry in the `ListMap`.
+   */
   @serializable @SerialVersionUID(-6453056603889598734L)
   protected class Node[B1 >: B](override protected val key: A, 
                                 override protected val value: B1) extends ListMap[A, B1] {

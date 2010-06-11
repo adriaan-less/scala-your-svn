@@ -4,21 +4,18 @@
  */
 // $Id$
 
-package scala.tools.nsc
+package scala.tools
+package nsc
 package settings
 
-import io.AbstractFile
-import util.{ ClassPath, SourceFile, CommandLineParser }
 import annotation.elidable
-import scala.tools.util.{ PathResolver, StringOps }
-import scala.collection.mutable.{ HashSet, ListBuffer }
-import scala.collection.immutable.TreeSet
-import interpreter.{ returning }
+import scala.tools.util.PathResolver.Defaults
+import scala.collection.mutable.HashSet
 
 trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   self: MutableSettings =>
   
-  import PathResolver.{ Defaults, Environment }
+  import Defaults.scalaUserClassPath
 
   /** Set of settings */
   protected lazy val allSettings = HashSet[Setting]()
@@ -36,13 +33,15 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
    */
   // argfiles is only for the help message
   val argfiles      = BooleanSetting    ("@<file>", "A text file containing compiler arguments (options and source files)")
-  val classpath     = PathSetting       ("-classpath", "path", "Specify where to find user class files", ".") .
+  val classpath     = PathSetting       ("-classpath", "path", "Specify where to find user class files", scalaUserClassPath) .
                                             withAbbreviation ("-cp")
   val d             = OutputSetting     (outputDirs, ".")
   val defines       = DefinesSetting()
   val optimise      = BooleanSetting    ("-optimise", "Generates faster bytecode by applying optimisations to the program") . 
                                             withAbbreviation("-optimize") .
                                             withPostSetHook(_ => List(inline, Xcloselim, Xdce) foreach (_.value = true))
+  val nospecialization = BooleanSetting    ("-no-specialization", "Ignore @specialize annotations.")
+
 
   /**
    * -X "Advanced" settings
@@ -54,7 +53,7 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val sourcedir     = StringSetting     ("-Xsourcedir", "directory", "When -target:msil, the source folder structure is mirrored in output directory.", ".").dependsOn(target, "msil")
   val checkInit     = BooleanSetting    ("-Xcheckinit", "Add runtime checks on field accessors. Uninitialized accesses result in an exception being thrown.")
   val noassertions  = BooleanSetting    ("-Xdisable-assertions", "Generate no assertions and assumptions")
-  val elideLevel    = IntSetting        ("-Xelide-level", "Generate calls to @elidable-marked methods only method priority is greater than argument.",
+  val elidebelow    = IntSetting        ("-Xelide-below", "Generate calls to @elidable-marked methods only if method priority is greater than argument.",
                                                 elidable.ASSERTION, None, elidable.byName.get(_))
   val Xexperimental = BooleanSetting    ("-Xexperimental", "Enable experimental extensions")
   val noForwarders  = BooleanSetting    ("-Xno-forwarders", "Do not generate static forwarders in mirror classes")
@@ -80,6 +79,9 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val Xshowobj      = StringSetting     ("-Xshow-object", "object", "Show object info", "")
   val showPhases    = BooleanSetting    ("-Xshow-phases", "Print a synopsis of compiler phases")
   val sourceReader  = StringSetting     ("-Xsource-reader", "classname", "Specify a custom method for reading source files", "scala.tools.nsc.io.SourceReader")
+  val Xwarnfatal    = BooleanSetting    ("-Xfatal-warnings", "Fail the compilation if there are any warnings.")
+  val Xwarninit     = BooleanSetting    ("-Xwarninit", "Warn about possible changes in initialization semantics")
+  val Xchecknull    = BooleanSetting    ("-Xcheck-null", "Emit warning on selection of nullable reference")
   
   /** Compatibility stubs for options whose value name did
    *  not previously match the option name.
@@ -124,7 +126,6 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
                       ChoiceSetting     ("-Ystruct-dispatch", "Selects dispatch method for structural refinement method calls",
                         List("no-cache", "mono-cache", "poly-cache", "invoke-dynamic"), "poly-cache") .
                         withHelpSyntax("-Ystruct-dispatch:<method>")
-  val specialize    = BooleanSetting    ("-Yspecialize", "Specialize generic code on types.")
   val Yrangepos     = BooleanSetting    ("-Yrangepos", "Use range positions for syntax trees.")
   val Yidedebug     = BooleanSetting    ("-Yide-debug", "Generate, validate and output trees using the interactive compiler.")
   val Ybuilderdebug = ChoiceSetting     ("-Ybuilder-debug", "Compile using the specified build manager", List("none", "refined", "simple"), "none") .
@@ -134,21 +135,13 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val Ytyperdebug   = BooleanSetting    ("-Ytyper-debug", "Trace all type assignements")
   val Ypmatdebug    = BooleanSetting    ("-Ypmat-debug", "Trace all pattern matcher activity.")
   val Yrepldebug    = BooleanSetting    ("-Yrepl-debug", "Trace all repl activity.")
+  val Ycompletion   = BooleanSetting    ("-Ycompletion-debug", "Trace all tab completion activity.")
   val Ypmatnaive    = BooleanSetting    ("-Ypmat-naive", "Desugar matches as naively as possible..")
-  val Ytailrec      = BooleanSetting    ("-Ytailrecommend", "Alert methods which would be tail-recursive if private or final.")
   val Yjenkins      = BooleanSetting    ("-Yjenkins-hashCodes", "Use jenkins hash algorithm for case class generated hashCodes.")
 
   // Warnings
-  val Ywarnfatal    = BooleanSetting    ("-Yfatal-warnings", "Fail the compilation if there are any warnings.")
-  val Xwarninit     = BooleanSetting    ("-Xwarninit", "Warn about possible changes in initialization semantics")
-  val Xchecknull    = BooleanSetting    ("-Xcheck-null", "Emit warning on selection of nullable reference")
-  val Xwarndeadcode = BooleanSetting    ("-Ywarn-dead-code", "Emit warnings for dead code")
-  val YwarnShadow   = BooleanSetting    ("-Ywarn-shadowing", "Emit warnings about possible variable shadowing.")
-  val YwarnCatches  = BooleanSetting    ("-Ywarn-catches", "Emit warnings about catch blocks which catch everything.")
-  val Xwarnings     = BooleanSetting    ("-Xstrict-warnings", "Emit warnings about lots of things.") .
-                          withPostSetHook(_ =>
-                            List(YwarnShadow, YwarnCatches, Xwarndeadcode, Xwarninit) foreach (_.value = true)
-                          )
+  val Ywarndeadcode = BooleanSetting    ("-Ywarn-dead-code", "Emit warnings for dead code")
+
   /**
    * "fsc-specific" settings.
    */

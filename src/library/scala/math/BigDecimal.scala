@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.math
 
@@ -14,24 +13,30 @@ import java.{ lang => jl }
 import java.math.{ MathContext, BigDecimal => BigDec }
 import scala.collection.immutable.NumericRange
 
+import annotation.migration
+
 /** 
  *  @author  Stephane Micheloud
  *  @version 1.0
  *  @since 2.7
  */
-object BigDecimal
-{
+object BigDecimal {
+  private val minCached = -512
+  private val maxCached = 512
+  
+  val defaultMathContext = MathContext.UNLIMITED
+
+  val MinLong = new BigDecimal(BigDec valueOf Long.MinValue, defaultMathContext)
+  val MaxLong = new BigDecimal(BigDec valueOf Long.MaxValue, defaultMathContext)
+  
+  /** Cache ony for defaultMathContext using BigDecimals in a small range. */
+  private lazy val cache = new Array[BigDecimal](maxCached - minCached + 1)
+
   @serializable
   object RoundingMode extends Enumeration(java.math.RoundingMode.values map (_.toString) : _*) {
     type RoundingMode = Value
     val UP, DOWN, CEILING, FLOOR, HALF_UP, HALF_DOWN, HALF_EVEN, UNNECESSARY = Value
   }
-
-  private val minCached = -512
-  private val maxCached = 512
-  private lazy val cache = new Array[BigDecimal](maxCached - minCached + 1)
-
-  val defaultMathContext = MathContext.UNLIMITED
   
   /** Constructs a <code>BigDecimal</code> using the java BigDecimal static
    *  valueOf constructor.
@@ -50,12 +55,13 @@ object BigDecimal
    */
   def apply(i: Int): BigDecimal = apply(i, defaultMathContext)
   def apply(i: Int, mc: MathContext): BigDecimal =
-    if (minCached <= i && i <= maxCached) {
+    if (mc == defaultMathContext && minCached <= i && i <= maxCached) {
       val offset = i - minCached
       var n = cache(offset)
       if (n eq null) { n = new BigDecimal(BigDec.valueOf(i), mc); cache(offset) = n }
       n
-    } else new BigDecimal(BigDec.valueOf(i), mc)
+    }
+    else new BigDecimal(BigDec.valueOf(i), mc)
 
   /** Constructs a <code>BigDecimal</code> whose value is equal to that of the
    *  specified long value.
@@ -167,15 +173,15 @@ extends ScalaNumber with ScalaNumericConversions
    */
   override def hashCode(): Int =
     if (isWhole) unifiedPrimitiveHashcode
-    else doubleValue.hashCode()
+    else doubleValue.##
 
   /** Compares this BigDecimal with the specified value for equality.
-   *  Will only claim equality with scala.BigDecimal and java.math.BigDecimal.
    */
   override def equals (that: Any): Boolean = that match {
-    case that: BigDecimal => this equals that 
-    case that: BigInt     => this.toBigIntExact exists (that equals _)
-    case x                => unifiedPrimitiveEquals(x)
+    case that: BigDecimal     => this equals that 
+    case that: BigInt         => this.toBigIntExact exists (that equals _)
+    case _: Float | _: Double => unifiedPrimitiveEquals(that)
+    case x                    => isWhole && this <= BigDecimal.MaxLong && this >= BigDecimal.MinLong && unifiedPrimitiveEquals(x)
   }
   
   protected[math] def isWhole = (this remainder 1) == BigDecimal(0)
@@ -245,6 +251,10 @@ extends ScalaNumber with ScalaNumericConversions
   /** Remainder after dividing this by that.
    */
   def remainder (that: BigDecimal): BigDecimal = this.bigDecimal.remainder(that.bigDecimal, mc)
+  
+  /** Remainder after dividing this by that.
+   */
+  def % (that: BigDecimal): BigDecimal = this.remainder(that)
   
   /** Returns a BigDecimal whose value is this ** n.
    */

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -100,6 +99,7 @@ trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBui
   }
 
   /** Transposes this $coll of traversable collections into
+   *  a $coll of ${coll}s.
    *  @tparam B the type of the elements of each traversable collection.
    *  @param  asTraversable an implicit conversion which asserts that the element type of this
    *          $coll is a `Traversable`.
@@ -107,7 +107,7 @@ trait GenericTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBui
    *          the ''n''th column of this $coll. 
    */
   def transpose[B](implicit asTraversable: A => /*<:<!!!*/ Traversable[B]): CC[CC[B] @uncheckedVariance] = {
-    val bs: IndexedSeq[Builder[B, CC[B]]] = asTraversable(head).map(_ => genericBuilder[B]).toIndexedSeq 
+    val bs: IndexedSeq[Builder[B, CC[B]]] = IndexedSeq.fill(asTraversable(head).size)(genericBuilder[B])
     for (xs <- this) {
       var i = 0
       for (x <- asTraversable(xs)) {

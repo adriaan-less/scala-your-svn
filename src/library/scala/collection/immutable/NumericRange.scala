@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: NumericRange.scala 18987 2009-10-08 18:31:44Z odersky $
 
 package scala.collection
 package immutable
@@ -14,31 +13,35 @@ package immutable
 import mutable.{ Builder, ListBuffer }
 import generic._
 
-/** <p>
- *    <code>NumericRange</code> is a more generic version of the
- *    <code>Range</code> class which works with arbitrary types.
- *    It must be supplied with an Integral implementation of the
- *    range type.
- *
- *    Factories for likely types include Range.BigInt, Range.Long,
- *    and Range.BigDecimal.  Range.Int exists for completeness, but
- *    the Int-based scala.Range should be more performant.
- *  </p><pre>
- *     <b>val</b> r1 = new Range(0, 100, 1)
- *     <b>val</b> veryBig = Int.MaxValue.toLong + 1
- *     <b>val</b> r2 = Range.Long(veryBig, veryBig + 100, 1)
+/** `NumericRange` is a more generic version of the
+ *  `Range` class which works with arbitrary types.
+ *  It must be supplied with an `Integral` implementation of the
+ *  range type.
+ *  
+ *  Factories for likely types include `Range.BigInt`, `Range.Long`,
+ *  and `Range.BigDecimal`.  `Range.Int` exists for completeness, but
+ *  the `Int`-based `scala.Range` should be more performant.
+ *  
+ *  {{{
+ *     val r1 = new Range(0, 100, 1)
+ *     val veryBig = Int.MaxValue.toLong + 1
+ *     val r2 = Range.Long(veryBig, veryBig + 100, 1)
  *     assert(r1 sameElements r2.map(_ - veryBig))
- *  </pre>
+ *  }}}
  *
  *  @author  Paul Phillips
  *  @version 2.8
+ *  @define Coll NumericRange
+ *  @define coll numeric range
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 @serializable
 abstract class NumericRange[T]
   (val start: T, val end: T, val step: T, val isInclusive: Boolean)
   (implicit num: Integral[T])
-extends IndexedSeq[T]
-{
+extends IndexedSeq[T] {
+
   /** Note that NumericRange must be invariant so that constructs
    *  such as
    * 
@@ -68,7 +71,7 @@ extends IndexedSeq[T]
   protected def underlying = collection.immutable.IndexedSeq.empty[T]
   
   /** Create a new range with the start and end values of this range and
-   *  a new <code>step</code>.
+   *  a new `step`.
    */
   def by(newStep: T): NumericRange[T] = copy(start, end, newStep)
   
@@ -118,18 +121,6 @@ extends IndexedSeq[T]
     if (idx < 0 || idx >= length) throw new IndexOutOfBoundsException(idx.toString)
     else start + (fromInt(idx) * step)
   }
-
-  // a well-typed contains method.
-  def containsTyped(x: T): Boolean = {
-    def divides(d: T, by: T) = equiv(d % by, zero)
-
-    limitTest(x) || (
-      if (step > zero)
-        (start <= x) && (x < end) && divides(x - start, step)
-      else
-        (start >= x) && (x > end) && divides(start - x, step)
-    )
-  }
   
   // Motivated by the desire for Double ranges with BigDecimal precision,
   // we need some way to map a Range and get another Range.  This can't be
@@ -162,7 +153,7 @@ extends IndexedSeq[T]
         if (isInclusive) NumericRange.inclusive(start, end, step)
         else NumericRange(start, end, step)
       
-      private val underlyingRange: NumericRange[T] = self
+      private lazy val underlyingRange: NumericRange[T] = self
       override def foreach[U](f: A => U) { underlyingRange foreach (x => f(fm(x))) }
       override def isEmpty = underlyingRange.isEmpty
       override def apply(idx: Int): A = fm(underlyingRange(idx))
@@ -170,20 +161,21 @@ extends IndexedSeq[T]
     }
   }
 
-  // The contains situation makes for some interesting code.
-  // I am not aware of any way to avoid a cast somewhere, because 
-  // contains must take an Any.
-  override def contains(x: Any): Boolean =    
-    try {
-      // if we don't verify that x == typedX, then a range
-      // of e.g. Longs will appear to contain an Int because
-      // the cast will perform the conversion.  (As of this writing
-      // it is anticipated that in scala 2.8, 5L != 5 although
-      // this is not yet implemented.)
-      val typedX = x.asInstanceOf[T]
-      containsTyped(typedX) && (x == typedX)
-    }
-    catch { case _: ClassCastException => super.contains(x) }
+  // a well-typed contains method.
+  def containsTyped(x: T): Boolean = {
+    def divides(d: T, by: T) = equiv(d % by, zero)
+
+    limitTest(x) || (
+      if (step > zero)
+        (start <= x) && (x < end) && divides(x - start, step)
+      else
+        (start >= x) && (x > end) && divides(start - x, step)
+    )
+  }
+
+  override def contains(x: Any): Boolean =
+    try containsTyped(x.asInstanceOf[T])
+    catch { case _: ClassCastException => false }
 
   override lazy val hashCode = super.hashCode()
   override def equals(other: Any) = other match {
@@ -200,6 +192,8 @@ extends IndexedSeq[T]
   }
 }
 
+/** A companion object for numeric ranges.
+ */
 object NumericRange {  
   class Inclusive[T](start: T, end: T, step: T)(implicit num: Integral[T])
   extends NumericRange(start, end, step, true) {

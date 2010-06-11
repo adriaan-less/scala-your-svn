@@ -1,18 +1,34 @@
+/*
+ * Copyright (C) 2007 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.example.android.notepad
 
 import com.example.android.notepad.NotePad.Notes
 
-import _root_.android.app.Activity._
-import _root_.android.app.ListActivity
-import _root_.android.content.{ComponentName, ContentUris, Intent}
-import _root_.android.database.Cursor
-import _root_.android.net.Uri
-import _root_.android.os.Bundle
-import _root_.android.util.Log
-import _root_.android.view.{ContextMenu, Menu, MenuItem, View}
-import _root_.android.view.ContextMenu.ContextMenuInfo
-import _root_.android.widget.{AdapterView, ListView, SimpleCursorAdapter}
-import _root_.android.widget.AdapterView.AdapterContextMenuInfo
+import android.app.Activity._
+import android.app.ListActivity
+import android.content.{ComponentName, ContentUris, Intent}
+import android.database.Cursor
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
+import android.view.{ContextMenu, Menu, MenuItem, View}
+import android.view.ContextMenu.ContextMenuInfo
+import android.widget.{AdapterView, ListView, SimpleCursorAdapter}
+import android.widget.AdapterView.AdapterContextMenuInfo
 
 object NotesList {
   private final val TAG = "NotesList"
@@ -33,7 +49,7 @@ object NotesList {
  *  contents of the {@link NotePadProvider}
  */
 class NotesList extends ListActivity {
-  import NotesList._
+  import NotesList._ // companion object
 
   override protected def onCreate(savedInstanceState: Bundle) {
     super.onCreate(savedInstanceState)
@@ -56,7 +72,7 @@ class NotesList extends ListActivity {
 
     // Used to map notes entries from the database to views
     val adapter = new SimpleCursorAdapter(this, R.layout.noteslist_item, cursor,
-                                          Array(Notes.TITLE), Array(_root_.android.R.id.text1))
+                                          Array(Notes.TITLE), Array(android.R.id.text1))
     setListAdapter(adapter)
   }
 
@@ -66,8 +82,8 @@ class NotesList extends ListActivity {
     // This is our one standard application action -- inserting a
     // new note into the list.
     menu.add(0, MENU_ITEM_INSERT, 0, R.string.menu_insert)
-                .setShortcut('3', 'a')
-                .setIcon(_root_.android.R.drawable.ic_menu_add)
+        .setShortcut('3', 'a')
+        .setIcon(android.R.drawable.ic_menu_add)
 
     // Generate any additional actions that can be performed on the
     // overall list.  In a normal install, there are no additional
@@ -75,8 +91,9 @@ class NotesList extends ListActivity {
     // our menu with their own actions.
     val intent = new Intent(null, getIntent().getData())
     intent addCategory Intent.CATEGORY_ALTERNATIVE
-    menu.addIntentOptions(Menu.CATEGORY_ALTERNATIVE, 0, 0,
-                new ComponentName(this, classOf[NotesList]), null, intent, 0, null)
+    menu.addIntentOptions(
+      Menu.CATEGORY_ALTERNATIVE, 0, 0,
+      new ComponentName(this, classOf[NotesList]), null, intent, 0, null)
     true
   }
 

@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  * @author  Geoffrey Washburn
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -38,7 +37,7 @@ object ScalaDoc {
     reporter = new ConsoleReporter(docSettings)
     
     val command =
-      new CompilerCommand(args.toList, docSettings, error, false)
+      new CompilerCommand(args.toList, docSettings)
       
     if (!reporter.hasErrors) { // No need to continue if reading the command generated errors
       

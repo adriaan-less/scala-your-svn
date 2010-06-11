@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -74,7 +73,7 @@ abstract class Checkers {
     def checkICodes: Unit = {
       if (settings.verbose.value)
       println("[[consistency check at the beginning of phase " + globalPhase.name + "]]")
-      classes.valuesIterator foreach check
+      classes.values foreach check
     }
 
     def check(cls: IClass) {
@@ -94,7 +93,7 @@ abstract class Checkers {
       clasz.methods.foreach(check)
     }
 
-    /** Apply the give funtion to each pair of the cartesian product of
+    /** Apply the give function to each pair of the cartesian product of
      * l1 x l2.
      */
     def pairwise[a](l1: List[a], l2: List[a])(f: (a, a) => Unit) =

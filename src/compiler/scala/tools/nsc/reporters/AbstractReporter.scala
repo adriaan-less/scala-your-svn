@@ -2,7 +2,6 @@
  * Copyright 2002-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package reporters
@@ -29,7 +28,7 @@ abstract class AbstractReporter extends Reporter {
 
   protected def info0(pos: Position, msg: String, _severity: Severity, force: Boolean) {
     val severity = 
-      if (settings.Ywarnfatal.value && _severity == WARNING) ERROR
+      if (settings.Xwarnfatal.value && _severity == WARNING) ERROR
       else _severity
     
     severity match {

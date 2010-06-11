@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -80,7 +79,7 @@ abstract class NodePrinters {
           if (sym hasFlag COVARIANT    ) buf.append(" | COVARIANT")
           if (sym hasFlag CAPTURED     ) buf.append(" | CAPTURED")
           if (sym hasFlag BYNAMEPARAM  ) buf.append(" | BYNAMEPARAM")
-          if (sym hasFlag CONTRAVARIANT) buf.append(" | CONTRVARIANT")
+          if (sym hasFlag CONTRAVARIANT) buf.append(" | CONTRAVARIANT")
           if (sym hasFlag LABEL        ) buf.append(" | LABEL")
           if (sym hasFlag INCONSTRUCTOR) buf.append(" | INCONSTRUCTOR")
           if (sym hasFlag ABSOVERRIDE  ) buf.append(" | ABSOVERRIDE")

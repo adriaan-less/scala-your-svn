@@ -1,17 +1,33 @@
+/*
+ * Copyright (C) 2007 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.example.android.lunarlander
 
-import _root_.android.content.Context
-import _root_.android.graphics.{Bitmap, BitmapFactory, Canvas, Paint, RectF}
-import _root_.android.graphics.drawable.Drawable
-import _root_.android.os.{Bundle, Handler, Message}
-import _root_.android.view.{KeyEvent, SurfaceHolder, View}
+import android.content.Context
+import android.graphics.{Bitmap, BitmapFactory, Canvas, Paint, RectF}
+import android.graphics.drawable.Drawable
+import android.os.{Bundle, Handler, Message}
+import android.view.{KeyEvent, SurfaceHolder, View}
 
 
 private[lunarlander] object LunarThread {
 
   /** Difficulty setting constants */
   object Difficulty extends Enumeration {
-  val EASY, HARD, MEDIUM = Value
+    val EASY, HARD, MEDIUM = Value
   }
   type Difficulty = Difficulty.Value
 
@@ -28,7 +44,7 @@ private[lunarlander] object LunarThread {
 
   /** State-tracking constants */
   object State extends Enumeration {
-  val LOSE, PAUSE, READY, RUNNING, WIN = Value
+    val LOSE, PAUSE, READY, RUNNING, WIN = Value
   }
   type State = State.Value
 
@@ -142,7 +158,7 @@ private[lunarlander] class LunarThread(mSurfaceHolder: SurfaceHolder,
   private var mRotating = 0
 
   /** Indicate whether the surface has been created & is ready to draw */
-  private var mRun = false;
+  private var mRun = false
 
   /** Scratch rect object. */
   private var mScratchRect = new RectF(0, 0, 0, 0)
@@ -220,15 +236,15 @@ private[lunarlander] class LunarThread(mSurfaceHolder: SurfaceHolder,
       mY = mCanvasHeight - mLanderHeight / 2
 
       // start with a little random motion
-      mDY = Math.random * -speedInit
-      mDX = Math.random * 2 * speedInit - speedInit
+      mDY = math.random * -speedInit
+      mDX = math.random * 2 * speedInit - speedInit
       mHeading = 0
 
       // Figure initial spot for landing, not too near center
       do {
-        mGoalX = (Math.random * (mCanvasWidth - mGoalWidth)).toInt
+        mGoalX = (math.random * (mCanvasWidth - mGoalWidth)).toInt
       }
-      while (Math.abs(mGoalX - (mX - mLanderWidth / 2)) <= mCanvasHeight / 6)
+      while (math.abs(mGoalX - (mX - mLanderWidth / 2)) <= mCanvasHeight / 6)
 
       mLastTime = System.currentTimeMillis + 100
       setState(State.RUNNING)
@@ -530,7 +546,7 @@ private[lunarlander] class LunarThread(mSurfaceHolder: SurfaceHolder,
     canvas.drawRect(mScratchRect, mLinePaint)
 
     // Draw the speed gauge, with a two-tone effect
-    val speed = Math.sqrt(mDX * mDX + mDY * mDY)
+    val speed = math.sqrt(mDX * mDX + mDY * mDY)
     val speedWidth = (UI_BAR * speed / PHYS_SPEED_MAX).toInt
 
     if (speed <= mGoalSpeed) {
@@ -621,9 +637,9 @@ private[lunarlander] class LunarThread(mSurfaceHolder: SurfaceHolder,
       // have this much acceleration from the engine
       val accel = PHYS_FIRE_ACCEL_SEC * elapsedFiring
 
-      val radians = 2 * Math.Pi * mHeading / 360
-      ddx = Math.sin(radians) * accel
-      ddy += Math.cos(radians) * accel
+      val radians = 2 * math.Pi * mHeading / 360
+      ddx = math.sin(radians) * accel
+      ddy += math.cos(radians) * accel
     }
 
     val dxOld = mDX
@@ -648,13 +664,13 @@ private[lunarlander] class LunarThread(mSurfaceHolder: SurfaceHolder,
       var result = State.LOSE
       var message: CharSequence = ""
       val res = mContext.getResources();
-      val speed = Math.sqrt(mDX * mDX + mDY * mDY);
+      val speed = math.sqrt(mDX * mDX + mDY * mDY);
       val onGoal = (mGoalX <= mX - mLanderWidth / 2 && mX
                       + mLanderWidth / 2 <= mGoalX + mGoalWidth)
 
       // "Hyperspace" win -- upside down, going fast,
       // puts you back at the top.
-      if (onGoal && Math.abs(mHeading - 180) < mGoalAngle
+      if (onGoal && math.abs(mHeading - 180) < mGoalAngle
                     && speed > PHYS_SPEED_HYPERSPACE) {
         result = State.WIN
         mWinsInARow += 1
