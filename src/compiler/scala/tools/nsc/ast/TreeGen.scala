@@ -55,6 +55,7 @@ abstract class TreeGen {
       EmptyTree
     case ThisType(clazz) =>
       if (isRootOrEmptyPackageClass(clazz)) EmptyTree
+      else if(clazz isPackageClass) mkAttributedIdent(clazz.companionModule) // #3152b
       else mkAttributedThis(clazz)
     case SingleType(pre, sym) =>
       val qual = mkAttributedStableRef(pre, sym)

@@ -3449,7 +3449,7 @@ trait Typers { self: Analyzer =>
             member(qual, name)
           }
         if (sym == NoSymbol && name != nme.CONSTRUCTOR && (mode & EXPRmode) != 0) {
-          val qual1 = adaptToName(qual, name)
+          val qual1 = adaptToName(qual, name) // doesn't this always end up calling `adaptToMember(qual, HasMember(name))` (after checking `member(qual, name) == NoSymbol` once more)
           if (qual1 ne qual) return typed(treeCopy.Select(tree, qual1, name), mode, pt)
         }
         
