@@ -701,16 +701,20 @@ abstract class RefChecks extends InfoTransform {
       currentLevel = currentLevel.outer
     }
 
+    private def normalizeSymToRef(sym: Symbol): Symbol =
+      if(sym isLazy) sym.lazyAccessor else sym // TODO: other rewrites necessary? (this one triggered by #2910)
+
     private def enterSyms(stats: List[Tree]) {
       var index = -1
       for (stat <- stats) { 
         index = index + 1; 
         stat match {
           case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) =>
-            assert(stat.symbol != NoSymbol, stat);//debug
-            if (stat.symbol.isLocal) {
-              currentLevel.scope.enter(stat.symbol)
-              symIndex(stat.symbol) = index;
+            // assert(stat.symbol != NoSymbol, stat);//debug
+            val sym = normalizeSymToRef(stat.symbol)
+            if (sym.isLocal) {
+              currentLevel.scope.enter(sym)
+              symIndex(sym) = index;
             }
           case _ =>
         }
@@ -855,8 +859,14 @@ abstract class RefChecks extends InfoTransform {
 
       case ValDef(_, _, _, _) =>
         val tree1 = transform(tree); // important to do before forward reference check
-        val ValDef(_, _, _, rhs) = tree1
+        val refsym = normalizeSymToRef(tree.symbol)
+        if (refsym.isLocal && index <= currentLevel.maxindex /*&& !tree.symbol.hasFlag(LAZY) -- #2910 says these need to be checked too*/) {
+          if (settings.debug.value) Console.println(currentLevel.refsym);
+          unit.error(currentLevel.refpos, "forward reference extends over definition of " + refsym)
+        }
+
         if (tree.symbol.hasFlag(LAZY)) {
+          val ValDef(_, _, _, rhs) = tree1
           assert(tree.symbol.isTerm, tree.symbol)
           val vsym = tree.symbol
           val hasUnitType = (tree.symbol.tpe.typeSymbol == UnitClass)
@@ -876,10 +886,6 @@ abstract class RefChecks extends InfoTransform {
           else
             typed(ValDef(vsym, EmptyTree)) :: typed(lazyDef) :: Nil
         } else {
-          if (tree.symbol.isLocal && index <= currentLevel.maxindex /*&& !tree.symbol.hasFlag(LAZY) -- redundant due to if above*/) {
-            if (settings.debug.value) Console.println(currentLevel.refsym);
-            unit.error(currentLevel.refpos, "forward reference extends over definition of " + tree.symbol);
-          }
           List(tree1)
         }
 

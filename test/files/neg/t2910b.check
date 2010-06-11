@@ -1,0 +1,4 @@
+t2910b.scala:3: error: forward reference extends over definition of lazy value s
+    println(s.length)
+            ^
+one error found
