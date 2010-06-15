@@ -495,6 +495,7 @@ self: Analyzer =>
               val result = new SearchResult(itree2, subst)
               incCounter(foundImplicits)
               if (traceImplicits) println("RESULT = "+result)
+              Thread.dumpStack()
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
             } else {

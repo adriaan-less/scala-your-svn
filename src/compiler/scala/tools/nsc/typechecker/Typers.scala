@@ -811,6 +811,7 @@ trait Typers { self: Analyzer =>
               // Looking for a manifest of Nil: This mas many potential types,
               // so we need to instantiate to minimal type List[Nothing].
         } 
+        println("implicit apply for: "+ tree)
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
@@ -821,8 +822,13 @@ trait Typers { self: Analyzer =>
               tree1.tpe = addAnnotations(tree1, tree1.tpe)
               if (tree1.isEmpty) tree1 else adapt(tree1, mode, pt, EmptyTree)
           }
-        else
-          typer1.typed(typer1.applyImplicitArgs(tree), mode, pt)
+        else {
+          val ifunapp = typer1.applyImplicitArgs(tree)
+          println("implicit apply: "+ ifunapp)
+          val res = typer1.typed(ifunapp, mode, pt)
+          println("typed implicit apply: "+ res)
+          res
+        }
       case mt: MethodType
       if (((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) && 
           (context.undetparams.isEmpty || (mode & POLYmode) != 0)) =>
@@ -3263,12 +3269,17 @@ trait Typers { self: Analyzer =>
               printTyping("second try for: "+fun+" and "+args)
               val Select(qual, name) = fun
               val args1 = tryTypedArgs(args, argMode(fun, mode), ex)
+              printTyping("args1"+(args1, args))
               val qual1 =
                 if ((args1 ne null) && !pt.isError) adaptToArguments(qual, name, args1, pt) 
                 else qual
-              if (qual1 ne qual) {
+              printTyping("qual1"+(qual1, qual))
+              if ((args1 ne null) && !pt.isError) {
                 val tree1 = Apply(Select(qual1, name) setPos fun.pos, args1) setPos tree.pos
-                return typed1(tree1, mode | SNDTRYmode, pt)
+                printTyping("tree1"+tree1)
+                val res = typed1(tree1, mode | SNDTRYmode, pt)
+                printTyping("res: "+res)
+                res
               }
             } else printTyping("no second try for "+fun+" and "+args+" because error not in result:"+ex.pos+"!="+tree.pos)
 
