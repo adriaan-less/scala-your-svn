@@ -811,7 +811,7 @@ trait Typers { self: Analyzer =>
               // Looking for a manifest of Nil: This mas many potential types,
               // so we need to instantiate to minimal type List[Nothing].
         } 
-        println("implicit apply for: "+ tree)
+        printTyping("implicit apply for: "+ tree)
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
@@ -824,9 +824,9 @@ trait Typers { self: Analyzer =>
           }
         else {
           val ifunapp = typer1.applyImplicitArgs(tree)
-          println("implicit apply: "+ ifunapp)
+          printTyping("implicit apply: "+ ifunapp)
           val res = typer1.typed(ifunapp, mode, pt)
-          println("typed implicit apply: "+ res)
+          printTyping("typed implicit apply: "+ res)
           res
         }
       case mt: MethodType
@@ -1048,15 +1048,14 @@ trait Typers { self: Analyzer =>
      * 
      */
     def adaptToArguments(qual: Tree, name: Name, args: List[Tree], pt: Type): Tree = {
-      def doAdapt(restpe: Type) =
-        //util.trace("adaptToArgs "+qual+", name = "+name+", argtpes = "+(args map (_.tpe))+", pt = "+pt+" = ")
-        adaptToMember(qual, HasMethodMatching(name, args map (_.tpe), restpe))
+      def doAdapt(restpe: Type) = { printTyping("adaptToArgs "+qual+", name = "+name+", argtpes = "+(args map (_.tpe))+", pt = "+pt+" = ")
+        adaptToMember(qual, HasMethodMatching(name, args map (_.tpe), restpe)) }
       if (pt != WildcardType) {
         silent(_ => doAdapt(pt)) match {
           case result: Tree if result != qual => 
             result
           case _ => 
-            if (settings.debug.value) log("fallback on implicits in adaptToArguments: "+qual+" . "+name)
+            printTyping("fallback on implicits in adaptToArguments: "+qual+" . "+name)
             doAdapt(WildcardType)
         }
       } else 
@@ -3264,27 +3263,24 @@ trait Typers { self: Analyzer =>
               case _                                  => Nil
             })
             def errorInResult(tree: Tree) = treesInResult(tree) exists (_.pos == ex.pos)
-            
+
+            def fail() = { reportTypeError(tree.pos, ex); setError(tree) }
             if (fun :: tree :: args exists errorInResult) {
-              printTyping("second try for: "+fun+" and "+args)
+              printTyping("second try for "+fun+" and "+args)              
               val Select(qual, name) = fun
               val args1 = tryTypedArgs(args, argMode(fun, mode), ex)
-              printTyping("args1"+(args1, args))
-              val qual1 =
-                if ((args1 ne null) && !pt.isError) adaptToArguments(qual, name, args1, pt) 
-                else qual
-              printTyping("qual1"+(qual1, qual))
-              if ((args1 ne null) && !pt.isError) {
+              var qual1: Tree = _
+              if ( (args1 ne null) && 
+                   !pt.isError && {
+                   qual1 = adaptToArguments(qual, name, args1, pt) 
+                   (qual1 != qual || args1 != args) } ) { 
                 val tree1 = Apply(Select(qual1, name) setPos fun.pos, args1) setPos tree.pos
-                printTyping("tree1"+tree1)
-                val res = typed1(tree1, mode | SNDTRYmode, pt)
-                printTyping("res: "+res)
-                res
-              }
-            } else printTyping("no second try for "+fun+" and "+args+" because error not in result:"+ex.pos+"!="+tree.pos)
-
-            reportTypeError(tree.pos, ex)
-            setError(tree)
+                typed1(tree1, mode | SNDTRYmode, pt)
+              } else fail()
+            } else {
+              printTyping("no second try for "+fun+" and "+args+" because error not in result:"+ex.pos+"!="+tree.pos)
+              fail()
+            }
         }
       }
     

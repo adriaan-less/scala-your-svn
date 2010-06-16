@@ -21,6 +21,7 @@ trait Infer {
   import definitions._
 
   private final val inferInfo = true //@MDEBUG
+  import global.typer.{printTyping, deindentTyping, indentTyping}
 
 /* -- Type parameter inference utility functions --------------------------- */
 
@@ -901,8 +902,8 @@ trait Infer {
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
         val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
                             (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
-//        println("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
-//                specificCount+"/"+subClassCount)
+        printTyping("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
+               specificCount+"/"+subClassCount)
         specificCount + subClassCount > 0
       }
     }
