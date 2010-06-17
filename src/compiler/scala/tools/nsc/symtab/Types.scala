@@ -2453,6 +2453,10 @@ A type's typeSymbol should never be inspected directly.
       val clazz = owner.newRefinementClass(NoPosition)
       val result = RefinedType(parents, decls, clazz)
       clazz.setInfo(result)
+      // if(!owner.isClass) {
+      //   println("refinedType"+(clazz ownerChain, result))
+      //   Thread.dumpStack()
+      // }
       result
     }
   }

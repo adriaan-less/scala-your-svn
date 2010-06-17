@@ -620,7 +620,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               qual1 = Apply(qual1, List()) setPos qual1.pos setType qual1.tpe.resultType
             } else if (!(qual1.isInstanceOf[Super] || (qual1.tpe.typeSymbol isSubClass tree.symbol.owner))) {
               assert(tree.symbol.owner != ArrayClass)
-              qual1 = cast(qual1, tree.symbol.owner.tpe)
+              // println("member cast in "+tree.symbol.ownerChain+" for "+qual1+" : "+qual1.tpe) 
+              qual1 = cast(qual1, tree.symbol.owner.tpe.normalize) // TODO: why is normalize necessary here!?
             }
             treeCopy.Select(tree, qual1, name)
           }

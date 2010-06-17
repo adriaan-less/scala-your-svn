@@ -954,7 +954,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  }
      */
     def classBound: Type = {
-      val tp = refinedType(info.parents, owner)
+      val tp = refinedType(info.parents, owner.enclClass)
       val thistp = tp.typeSymbol.thisType
       val oldsymbuf = new ListBuffer[Symbol]
       val newsymbuf = new ListBuffer[Symbol]
@@ -1961,7 +1961,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         newTypeName(rawname+"$trait") // (part of DEVIRTUALIZE)
       } else if (phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname+idString, rawowner))
           flatname = newTypeName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname
