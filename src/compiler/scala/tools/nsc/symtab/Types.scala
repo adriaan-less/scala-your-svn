@@ -1327,16 +1327,17 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      * to take the intersection of their bounds
      */
     override def normalize = {
-      if (isHigherKinded)
+      if (isHigherKinded) {
         PolyType(
-          typeParams, 
+          typeParams,
           RefinedType(
             parents map {
               case TypeRef(pre, sym, List()) => TypeRef(pre, sym, dummyArgs)
               case p => p
             },
-            decls, 
+            decls,
             typeSymbol))
+      }
       else super.normalize
     }
 
@@ -2453,10 +2454,6 @@ A type's typeSymbol should never be inspected directly.
       val clazz = owner.newRefinementClass(NoPosition)
       val result = RefinedType(parents, decls, clazz)
       clazz.setInfo(result)
-      // if(!owner.isClass) {
-      //   println("refinedType"+(clazz ownerChain, result))
-      //   Thread.dumpStack()
-      // }
       result
     }
   }

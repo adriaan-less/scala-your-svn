@@ -954,7 +954,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  }
      */
     def classBound: Type = {
-      val tp = refinedType(info.parents, owner.enclClass)
+      val tp = refinedType(info.parents, owner)
       val thistp = tp.typeSymbol.thisType
       val oldsymbuf = new ListBuffer[Symbol]
       val newsymbuf = new ListBuffer[Symbol]

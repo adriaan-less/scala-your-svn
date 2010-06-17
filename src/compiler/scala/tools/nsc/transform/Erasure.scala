@@ -495,6 +495,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     }
 
     /**   Generate a synthetic cast operation from <code>tree.tpe</code> to <code>pt</code>.
+     * @pre pt eq pt.normalize
      */
     private def cast(tree: Tree, pt: Type): Tree =
       tree AS_ATTR pt
@@ -505,10 +506,11 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     /** Adapt <code>tree</code> to expected type <code>pt</code>.
      *
      *  @param tree the given tree
-     *  @param pt   the expected type.
+     *  @param pt   the expected type (which has been normalized)
      *  @return     the adapted tree
      */
     private def adaptToType(tree: Tree, pt: Type): Tree = {
+      assert(pt eq pt.normalize) // #2331 -- a hypothesis
       if (settings.debug.value && pt != WildcardType)
         log("adapting " + tree + ":" + tree.tpe + " : " +  tree.tpe.parents + " to " + pt)//debug
       if (tree.tpe <:< pt)
@@ -620,10 +622,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               qual1 = Apply(qual1, List()) setPos qual1.pos setType qual1.tpe.resultType
             } else if (!(qual1.isInstanceOf[Super] || (qual1.tpe.typeSymbol isSubClass tree.symbol.owner))) {
               assert(tree.symbol.owner != ArrayClass)
-              // println("member cast in "+tree.symbol.ownerChain+" for "+qual1+" : "+qual1.tpe) 
-              qual1 = cast(qual1, tree.symbol.owner.tpe.normalize) // TODO: why is normalize necessary here!?
+              // println("member cast in "+tree.symbol.ownerChain+" for "+qual1+" : "+qual1.tpe)
+              qual1 = cast(qual1, tree.symbol.owner.tpe.normalize) // #2331
             }
-            treeCopy.Select(tree, qual1, name)
+            treeCopy.Select(tree, qual1, name) setSymbol NoSymbol // #2331: force re-typecheck as name may now refer to a different symbol
           }
         case SelectFromArray(qual, name, erasure) =>
           var qual1 = typedQualifier(qual)
