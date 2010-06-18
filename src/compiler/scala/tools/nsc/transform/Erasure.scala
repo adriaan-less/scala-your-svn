@@ -624,8 +624,9 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               assert(tree.symbol.owner != ArrayClass)
               // println("member cast in "+tree.symbol.ownerChain+" for "+qual1+" : "+qual1.tpe)
               qual1 = cast(qual1, tree.symbol.owner.tpe.normalize) // #2331
+              tree.symbol = NoSymbol // #2331: force re-typecheck as name may now refer to a different symbol              
             }
-            treeCopy.Select(tree, qual1, name) setSymbol NoSymbol // #2331: force re-typecheck as name may now refer to a different symbol
+            treeCopy.Select(tree, qual1, name)
           }
         case SelectFromArray(qual, name, erasure) =>
           var qual1 = typedQualifier(qual)
