@@ -952,7 +952,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
                                       fun.symbol != Object_asInstanceOf &&
                                       fun.symbol != Object_isInstanceOf) =>
           // leave all other type tests/type casts, remove all other type applications
-          fun
+          preErase(fun)
         case Apply(fn @ Select(qual, name), args) if (fn.symbol.owner == ArrayClass) => 
           if (unboundedGenericArrayLevel(qual.tpe.widen) == 1) 
             // convert calls to apply/update/length on generic arrays to
@@ -1016,18 +1016,18 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             def doDynamic(fn: Tree, qual: Tree): Tree = {
               if (fn.symbol.owner.isRefinementClass && fn.symbol.allOverriddenSymbols.isEmpty)
                 ApplyDynamic(qual, args) setSymbol fn.symbol setPos tree.pos
-              else tree //Copy.Apply(tree, preErase(fn), args mapConserve (preErase(_)))
+              else tree
             }
             fn match {
               case Select(qual, _) => doDynamic(fn, qual)
               case TypeApply(fni@Select(qual, _), _) => doDynamic(fni, qual)// type parameters are irrelevant in case of dynamic call
               case _ =>
-                tree //Copy.Apply(tree, preErase(fn), args mapConserve (preErase(_)))
+                tree
             }
           }
 
         case Select(_, _) =>
-          println("preXform: "+ (tree, tree.symbol, tree.symbol.owner, tree.symbol.owner.isRefinementClass))
+          // println("preXform: "+ (tree, tree.symbol, tree.symbol.owner, tree.symbol.owner.isRefinementClass))
           if (tree.symbol.owner.isRefinementClass) {
             val overridden = tree.symbol.allOverriddenSymbols
             assert(!overridden.isEmpty, tree.symbol)
@@ -1054,16 +1054,22 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
 
       override def transform(tree: Tree): Tree =
         if (tree.symbol == ArrayClass && !tree.isType) tree // !!! needed?
-        else {val tree1 = preErase(tree); tree1 match {
-          case EmptyTree | TypeTree() =>
-            tree1 setType erasure(tree1.tpe)
-          case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
-            val result = super.transform(tree1) setType null
-            tpt.tpe = erasure(tree1.symbol.tpe).resultType
-            result
-          case _ =>
-            super.transform(tree1) setType null
-        }}
+        else {
+          val tree1 = preErase(tree)
+          // println("preErase: "+ tree +" = "+ tree1)
+          val res = tree1 match {
+            case EmptyTree | TypeTree() =>
+              tree1 setType erasure(tree1.tpe)
+            case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
+              val result = super.transform(tree1) setType null
+              tpt.tpe = erasure(tree1.symbol.tpe).resultType
+              result
+            case _ =>
+              super.transform(tree1) setType null
+          }
+          // println("xform: "+ res)
+          res
+        }
     }
 
     /** The main transform function: Pretransfom the tree, and then
