@@ -506,11 +506,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     /** Adapt <code>tree</code> to expected type <code>pt</code>.
      *
      *  @param tree the given tree
-     *  @param pt   the expected type (which has been normalized)
+     *  @param pt   the expected type
      *  @return     the adapted tree
      */
     private def adaptToType(tree: Tree, pt: Type): Tree = {
-      assert(pt eq pt.normalize) // #2331 -- a hypothesis
       if (settings.debug.value && pt != WildcardType)
         log("adapting " + tree + ":" + tree.tpe + " : " +  tree.tpe.parents + " to " + pt)//debug
       if (tree.tpe <:< pt)
@@ -622,15 +621,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               qual1 = Apply(qual1, List()) setPos qual1.pos setType qual1.tpe.resultType
             } else if (!(qual1.isInstanceOf[Super] || (qual1.tpe.typeSymbol isSubClass tree.symbol.owner))) {
               assert(tree.symbol.owner != ArrayClass)
-              val tp = tree.symbol.owner.tpe.normalize
-              // println("member cast in "+tree.symbol.ownerChain+" for "+qual1+" : "+qual1.tpe)
-              qual1 = cast(qual1, tp) // #2331
-              if (tp.typeSymbolDirect.isRefinementClass) {
-                val overridden = tree.symbol.allOverriddenSymbols
-                assert(!overridden.isEmpty, tree.symbol)
-                println("adapt: "+(tree, tree.symbol, tp, overridden))
-                tree.symbol = overridden.head
-              }
+              qual1 = cast(qual1, tree.symbol.owner.tpe)
             }
             treeCopy.Select(tree, qual1, name)
           }
@@ -1027,21 +1018,21 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               def doDynamic(fn: Tree, qual: Tree): Tree = {
                 if (fn.symbol.owner.isRefinementClass && fn.symbol.allOverriddenSymbols.isEmpty)
                   ApplyDynamic(qual, args) setSymbol fn.symbol setPos tree.pos
-                else tree
+                else super.transform(tree)
               }
               fn match {
                 case Select(qual, _) => doDynamic(fn, qual)
                 case TypeApply(fni@Select(qual, _), _) => doDynamic(fni, qual)// type parameters are irrelevant in case of dynamic call
-                case _ =>    
-                  tree
+                case _ =>
+                  super.transform(tree)
               }
             }
 
           case Select(_, _) =>
+            // println("preXform: "+ (tree, tree.symbol, tree.symbol.owner, tree.symbol.owner.isRefinementClass))
             if (tree.symbol.owner.isRefinementClass) {
               val overridden = tree.symbol.allOverriddenSymbols
               assert(!overridden.isEmpty, tree.symbol)
-              println("preXform: "+(tree, tree.symbol, overridden))
               tree.symbol = overridden.head
             }
             tree
