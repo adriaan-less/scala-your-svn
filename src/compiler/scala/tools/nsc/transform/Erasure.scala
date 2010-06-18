@@ -1016,18 +1016,18 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             def doDynamic(fn: Tree, qual: Tree): Tree = {
               if (fn.symbol.owner.isRefinementClass && fn.symbol.allOverriddenSymbols.isEmpty)
                 ApplyDynamic(qual, args) setSymbol fn.symbol setPos tree.pos
-              else treeCopy.Apply(tree, preErase(fn), args mapConserve (preErase(_)))
+              else tree //Copy.Apply(tree, preErase(fn), args mapConserve (preErase(_)))
             }
             fn match {
               case Select(qual, _) => doDynamic(fn, qual)
               case TypeApply(fni@Select(qual, _), _) => doDynamic(fni, qual)// type parameters are irrelevant in case of dynamic call
               case _ =>
-                treeCopy.Apply(tree, preErase(fn), args mapConserve (preErase(_)))
+                tree //Copy.Apply(tree, preErase(fn), args mapConserve (preErase(_)))
             }
           }
 
         case Select(_, _) =>
-          //println("preXform: "+ (tree, tree.symbol, tree.symbol.owner, tree.symbol.owner.isRefinementClass))
+          println("preXform: "+ (tree, tree.symbol, tree.symbol.owner, tree.symbol.owner.isRefinementClass))
           if (tree.symbol.owner.isRefinementClass) {
             val overridden = tree.symbol.allOverriddenSymbols
             assert(!overridden.isEmpty, tree.symbol)
