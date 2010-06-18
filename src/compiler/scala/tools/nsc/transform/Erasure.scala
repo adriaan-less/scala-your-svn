@@ -622,9 +622,15 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               qual1 = Apply(qual1, List()) setPos qual1.pos setType qual1.tpe.resultType
             } else if (!(qual1.isInstanceOf[Super] || (qual1.tpe.typeSymbol isSubClass tree.symbol.owner))) {
               assert(tree.symbol.owner != ArrayClass)
+              val tp = tree.symbol.owner.tpe.normalize
               // println("member cast in "+tree.symbol.ownerChain+" for "+qual1+" : "+qual1.tpe)
-              qual1 = cast(qual1, tree.symbol.owner.tpe.normalize) // #2331
-              tree.symbol = NoSymbol // #2331: force re-typecheck as name may now refer to a different symbol              
+              qual1 = cast(qual1, tp) // #2331
+              if (tp.typeSymbolDirect.isRefinementClass) {
+                val overridden = tree.symbol.allOverriddenSymbols
+                assert(!overridden.isEmpty, tree.symbol)
+                println("adapt: "+(tree, tree.symbol, tp, overridden))
+                tree.symbol = overridden.head
+              }
             }
             treeCopy.Select(tree, qual1, name)
           }
@@ -1035,6 +1041,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             if (tree.symbol.owner.isRefinementClass) {
               val overridden = tree.symbol.allOverriddenSymbols
               assert(!overridden.isEmpty, tree.symbol)
+              println("preXform: "+(tree, tree.symbol, overridden))
               tree.symbol = overridden.head
             }
             tree
