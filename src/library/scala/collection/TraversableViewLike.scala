@@ -199,6 +199,7 @@ self =>
   }
 
   override def filter(p: A => Boolean): This = newFiltered(p).asInstanceOf[This]
+  override def withFilter(p: A => Boolean): This = newFiltered(p).asInstanceOf[This]
   override def partition(p: A => Boolean): (This, This) = (filter(p), filter(!p(_)))
   override def init: This = newSliced(0, size - 1).asInstanceOf[This]
   override def drop(n: Int): This = newSliced(n max 0, Int.MaxValue).asInstanceOf[This]
@@ -215,7 +216,7 @@ self =>
   override def scanRight[B, That](z: B)(op: (A, B) => B)(implicit bf: CanBuildFrom[This, B, That]): That =
     newForced(thisSeq.scanRight(z)(op)).asInstanceOf[That]
 
-  override def groupBy[K](f: A => K): Map[K, This] =
+  override def groupBy[K](f: A => K): immutable.Map[K, This] =
     thisSeq.groupBy(f).mapValues(xs => newForced(xs).asInstanceOf[This])
   
   override def stringPrefix = "TraversableView"

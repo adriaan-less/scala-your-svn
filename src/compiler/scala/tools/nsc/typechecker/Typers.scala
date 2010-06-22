@@ -69,6 +69,10 @@ trait Typers { self: Analyzer =>
   private class NormalTyper(context : Context) extends Typer(context)
   // hooks for auto completion
 
+  // A transient flag to mark members of anonymous classes
+  // that are turned private by typedBlock
+  private final val SYNTHETIC_PRIVATE = TRANS_FLAG
+
   // Mode constants
 
   /** The three mode <code>NOmode</code>, <code>EXPRmode</code>
@@ -434,7 +438,7 @@ trait Typers { self: Analyzer =>
 
       override def apply(t: Type): Type = {
         def checkNoEscape(sym: Symbol) {
-          if (sym.hasFlag(PRIVATE)) {
+          if (sym.hasFlag(PRIVATE) && !sym.hasFlag(SYNTHETIC_PRIVATE)) {
             var o = owner
             while (o != NoSymbol && o != sym.owner && 
                    !o.isLocal && !o.hasFlag(PRIVATE) &&
@@ -1822,50 +1826,78 @@ trait Typers { self: Analyzer =>
      *  @return      ...
      */
     def typedBlock(block: Block, mode: Int, pt: Type): Block = {
-      namer.enterSyms(block.stats)
-      for (stat <- block.stats) {
-        if (onlyPresentation && stat.isDef) {
-          var e = context.scope.lookupEntry(stat.symbol.name)
-          while ((e ne null) && (e.sym ne stat.symbol)) e = e.tail
-          if (e eq null) context.scope.enter(stat.symbol)
+      val syntheticPrivates = new ListBuffer[Symbol]
+      try {
+        namer.enterSyms(block.stats)
+        for (stat <- block.stats) {
+          if (onlyPresentation && stat.isDef) {
+            var e = context.scope.lookupEntry(stat.symbol.name)
+            while ((e ne null) && (e.sym ne stat.symbol)) e = e.tail
+            if (e eq null) context.scope.enter(stat.symbol)
+          }
+          enterLabelDef(stat)
         }
-        enterLabelDef(stat)
-      }
-      if (phaseId(currentPeriod) <= currentRun.typerPhase.id) {
-        block match {
-          case block @ Block(List(classDef @ ClassDef(_, _, _, _)), newInst @ Apply(Select(New(_), _), _)) =>
-            // The block is an anonymous class definitions/instantiation pair
-            //   -> members that are hidden by the type of the block are made private
-            val visibleMembers = pt match {
-              case WildcardType => classDef.symbol.info.decls.toList
-              case BoundedWildcardType(TypeBounds(lo, hi)) => lo.members
-              case _ => pt.members
-            }
-            for (member <- classDef.symbol.info.decls.toList
-                 if member.isTerm && !member.isConstructor &&
-                    member.allOverriddenSymbols.isEmpty &&
-                    (!member.hasFlag(PRIVATE) && member.privateWithin == NoSymbol) &&
-                    !(visibleMembers exists { visible =>
-                      visible.name == member.name &&
-                      member.tpe <:< visible.tpe.substThis(visible.owner, ThisType(classDef.symbol))
-                    })
-            ) {
-              member.resetFlag(PROTECTED)
-              member.resetFlag(LOCAL)
-              member.setFlag(PRIVATE)
-              member.privateWithin = NoSymbol
-            }
-          case _ =>
-        }
-      }
-      val stats1 = typedStats(block.stats, context.owner)
-      val expr1 = typed(block.expr, mode & ~(FUNmode | QUALmode), pt)
-      val block1 = treeCopy.Block(block, stats1, expr1)
-        .setType(if (treeInfo.isPureExpr(block)) expr1.tpe else expr1.tpe.deconst)
-      //checkNoEscaping.locals(context.scope, pt, block1)
-      block1
-    }
 
+        if (phaseId(currentPeriod) <= currentRun.typerPhase.id) {
+          // This is very tricky stuff, because we are navigating
+          // the Skylla and Charybdis of anonymous classes and what to return
+          // from them here. On the one hand, we cannot admit
+          // every non-private member of an anonymous class as a part of
+          // the structural type of the enclosing block. This runs afoul of
+          // the restriction that a structural type may not refer to an enclosing
+          // type parameter or abstract types (which in turn is necessitated
+          // by what can be done in Java reflection. On the other hand,
+          // making every term member private conflicts with private escape checking
+          // see ticket #3174 for an example.
+          // The cleanest way forward is if we would find a way to suppress
+          // structural type checking for these members and maybe defer 
+          // type errors to the places where members are called. But that would
+          // be a bug refactoring and also a  big departure from existing code.
+          // The probably safest fix for 2.8 is to keep members of an anonymous
+          // class that are not mentioned in a parent type private (as before)
+          // but to disable escape checking for code that's in the same anonymous class.
+          // That's what's done here. 
+          // We really should go back and think hard whether we find a better
+          // way to address the problem of escaping idents on the one hand and well-formed
+          // structural types on the other.
+          block match {
+            case block @ Block(List(classDef @ ClassDef(_, _, _, _)), newInst @ Apply(Select(New(_), _), _)) =>
+              // The block is an anonymous class definitions/instantiation pair
+              //   -> members that are hidden by the type of the block are made private
+              val visibleMembers = pt match {
+                case WildcardType => classDef.symbol.info.decls.toList
+                case BoundedWildcardType(TypeBounds(lo, hi)) => lo.members
+                case _ => pt.members
+              }
+              for (member <- classDef.symbol.info.decls.toList
+                   if member.isTerm && !member.isConstructor &&
+                      member.allOverriddenSymbols.isEmpty &&
+                      (!member.hasFlag(PRIVATE) && member.privateWithin == NoSymbol) &&
+                      !(visibleMembers exists { visible =>
+                        visible.name == member.name &&
+                        member.tpe <:< visible.tpe.substThis(visible.owner, ThisType(classDef.symbol))
+                      })
+              ) {
+                member.resetFlag(PROTECTED)
+                member.resetFlag(LOCAL)
+                member.setFlag(PRIVATE | SYNTHETIC_PRIVATE)
+                syntheticPrivates += member
+                member.privateWithin = NoSymbol
+              }
+            case _ =>
+          }
+        }
+        val stats1 = typedStats(block.stats, context.owner)
+        val expr1 = typed(block.expr, mode & ~(FUNmode | QUALmode), pt)
+        treeCopy.Block(block, stats1, expr1)
+          .setType(if (treeInfo.isPureExpr(block)) expr1.tpe else expr1.tpe.deconst)
+      } finally {
+        // enable escaping privates checking from the outside and recycle
+        // transient flag
+        for (sym <- syntheticPrivates) sym resetFlag SYNTHETIC_PRIVATE
+      }
+    }
+ 
     /**
      *  @param cdef   ...
      *  @param pattpe ...
@@ -2520,7 +2552,10 @@ trait Typers { self: Analyzer =>
         annotationError
       }
 
-      def tryConst(tr: Tree, pt: Type) = typed(tr, EXPRmode, pt) match {
+      /** Calling constfold right here is necessary because some trees (negated
+       *  floats and literals in particular) are not yet folded.
+       */
+      def tryConst(tr: Tree, pt: Type) = typed(constfold(tr), EXPRmode, pt) match {
         // null cannot be used as constant value for classfile annotations
         case l @ Literal(c) if !(l.isErroneous || c.value == null) =>
           Some(LiteralAnnotArg(c))
@@ -2545,11 +2580,10 @@ trait Typers { self: Analyzer =>
         // and    Array.apply(x: Int, xs: Int*): Array[Int]       (and similar)
         case Apply(fun, args) =>
           val typedFun = typed(fun, funMode(mode), WildcardType)
-          if (typedFun.symbol.owner == ArrayModule.moduleClass &&
-              typedFun.symbol.name == nme.apply)
+          if (typedFun.symbol.owner == ArrayModule.moduleClass && typedFun.symbol.name == nme.apply)
             pt match {
-              case TypeRef(_, sym, argts) if (sym == ArrayClass && !argts.isEmpty) =>
-                trees2ConstArg(args, argts.head)
+              case TypeRef(_, ArrayClass, targ :: _) =>
+                trees2ConstArg(args, targ)
               case _ =>
                 // For classfile annotations, pt can only be T:
                 //   BT = Int, .., String, Class[_], JavaAnnotClass

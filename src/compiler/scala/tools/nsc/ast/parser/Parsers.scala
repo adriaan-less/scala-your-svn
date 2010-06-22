@@ -1363,25 +1363,10 @@ self =>
         }
       }
 
-      // if arg has the form "x$1 => a = x$1" it's treated as "a = x$1" with x$1
-      // in placeholderParams. This allows e.g. "val f: Int => Int = foo(a = 1, b = _)"
-      def convertArg(arg: Tree): Tree = arg match {
-        case Function(
-          List(vd @ ValDef(mods, pname1, ptype1, EmptyTree)),
-          Assign(Ident(aname), rhs)) if (mods hasFlag Flags.SYNTHETIC) =>
-          rhs match {
-            case Ident(`pname1`) | Typed(Ident(`pname1`), _) =>
-              placeholderParams = vd :: placeholderParams
-              atPos(arg.pos) { AssignOrNamedArg(Ident(aname), Ident(pname1)) }
-            case _ => arg
-          }
-        case _ => arg
-      }
-
-      if (in.token == LBRACE) 
+      if (in.token == LBRACE)
         List(blockExpr())
       else
-        surround(LPAREN, RPAREN)(if (in.token == RPAREN) List() else (args() map convertArg), List())
+        surround(LPAREN, RPAREN)(if (in.token == RPAREN) List() else args(), List())
     }
         
     /** BlockExpr ::= `{' (CaseClauses | Block) `}'
@@ -1547,7 +1532,8 @@ self =>
       var top = simplePattern(seqOK)
       // See ticket #3189 for the motivation for the null check.
       // TODO: dredge out the remnants of regexp patterns.
-      if (seqOK && isIdent && in.name == STAR && in.prev.name != null)
+      // ... and now this is back the way it was because it caused #3480.
+      if (seqOK && isIdent && in.name == STAR)
         return atPos(top.pos.startOrPoint, in.skipToken())(Star(stripParens(top)))
           
       while (isIdent && in.name != BAR) {

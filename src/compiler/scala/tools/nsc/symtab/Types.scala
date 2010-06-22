@@ -393,9 +393,12 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      *  the empty list for all other types */
     def boundSyms: List[Symbol] = List()
 
-    /** Mixin a NotNull trait unless type already has one */
-    def notNull: Type = 
-      if (isNotNull || phase.erasedTypes) this else NotNullType(this)
+    /** Mixin a NotNull trait unless type already has one
+     *  ...if the option is given, since it is causing typing bugs.
+     */
+    def notNull: Type =
+      if (!settings.Ynotnull.value || isNotNull || phase.erasedTypes) this
+      else NotNullType(this)
     
     /** Replace formal type parameter symbols with actual type arguments. 
      *
@@ -4389,7 +4392,7 @@ A type's typeSymbol should never be inspected directly.
           if (sym2 == NotNullClass)
             tp1.isNotNull
           else if (sym2 == SingletonClass)
-            tp1.isStable
+            tp1.isStable || fourthTry
           else if (isRaw(sym2, tp2.args))
             isSubType(tp1, rawToExistential(tp2), depth)
           else if (sym2.name == nme.REFINE_CLASS_NAME.toTypeName)
