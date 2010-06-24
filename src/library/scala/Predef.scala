@@ -326,10 +326,11 @@ object Predef extends LowPriorityImplicits {
   class DummyImplicit
   
   object DummyImplicit {
-  
     /** An implicit value yielding a DummyImplicit.
      *   @see fallbackCanBuildFrom in Array.scala
      */
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }
+
+  type Solve[C[_]] = Any
 }

@@ -1081,7 +1081,7 @@ trait Namers { self: Analyzer =>
       if (tpsym.owner.isRefinementClass &&  // only needed in refinements
           !tpsym.allOverriddenSymbols.forall{verifyOverriding(_)})
 	      ErrorType 
-      else polyType(tparamSyms, tp)   
+      else polyType(tparamSyms, tp)
     }
 
     /** Given a case class

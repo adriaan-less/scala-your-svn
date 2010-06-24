@@ -386,6 +386,9 @@ trait Definitions extends reflect.generic.StandardDefinitions {
         case _ => false
       })
     }
+    
+    // crazy type hacking stuff
+    lazy val SolveImplicit = getMember(PredefModule, nme.Solve.toTypeName)
 
     // members of class scala.Any
     var Any_==          : Symbol = _

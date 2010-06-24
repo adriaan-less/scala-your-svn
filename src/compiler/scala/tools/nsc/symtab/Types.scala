@@ -1724,8 +1724,8 @@ A type's typeSymbol should never be inspected directly.
     override def remove(clazz: Symbol): Type = 
       if (sym == clazz && !args.isEmpty) args.head else this
 
-    def normalize0: Type = 
-      if (sym.isAliasType) { // beta-reduce 
+    def normalize0: Type =
+      if (sym.isAliasType) { // beta-reduce
         if (sym.info.typeParams.length == args.length || !isHigherKinded) {
           /* !isHigherKinded && sym.info.typeParams.length != args.length only happens when compiling e.g., 
            `val x: Class' with -Xgenerics, while `type Class = java.lang.Class' had already been compiled without -Xgenerics */

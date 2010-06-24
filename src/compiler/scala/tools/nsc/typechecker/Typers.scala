@@ -1761,13 +1761,45 @@ trait Typers { self: Analyzer =>
       treeCopy.DefDef(ddef, typedMods, ddef.name, tparams1, vparamss1, tpt1, rhs1) setType NoType
     }
 
+    // solve rhs of type alias like type T = Solve[C]
+    // search implicit C[?T], solve ?T and replace Solve[C] by the result
+    // TODO: 
+    //  - allow Solve to occur anywhere
+    //  - include bounds on T declared in supertypes
+    def typedSolveImplicit(tdef: Symbol, tree: Tree): Tree = tree.tpe match {
+      case TypeRef(_, SolveImplicit, List(c)) =>
+        val param = tdef.newTypeParameter(tree.pos, tdef.name+" $").setInfo(TypeBounds(NothingClass.typeConstructor, AnyClass.typeConstructor))
+        // val absTdef = tdef.owner.overriddenSymbol(tdef.info)
+        // param.setInfo(absTdef.info substSym(List(absTdef), List(param)))
+        val pt = appliedType(c, List(param.tpe))
+        println("typedSolveImplicit: "+(param, param.info, pt))
+        val savedUndets = context.undetparams
+        context.undetparams = param :: context.undetparams
+        val result = inferImplicit(tree, pt, true, false, context)
+        context.undetparams = savedUndets
+        println("typedSolveImplicit: "+(result))
+
+        if(result.subst.from contains param) atPos(tree.pos) {
+          val tp = result.subst.to(result.subst.from indexOf param)
+          println("typedSolveImplicit tp= "+ tp)
+          TypeTree(tp)
+        } else {
+          error(tree.pos, "Could not determine "+ tdef +" by searching the implicit of type "+ pt.substSym(List(param), List(tdef)) +".")
+          tree
+        }
+      case _ =>
+        println("typedSolveImplicit not activating on "+ tree)
+        tree
+    }
+
     def typedTypeDef(tdef: TypeDef): TypeDef = {
       reenterTypeParams(tdef.tparams) // @M!
       val tparams1 = tdef.tparams mapConserve (typedTypeDef) // @M!
       val typedMods = removeAnnotations(tdef.mods)
       // complete lazy annotations
       val annots = tdef.symbol.annotations
-      val rhs1 = checkNoEscaping.privates(tdef.symbol, typedType(tdef.rhs))
+      val rhs = typedSolveImplicit(tdef.symbol, typedType(tdef.rhs))
+      val rhs1 = checkNoEscaping.privates(tdef.symbol, rhs)
       checkNonCyclic(tdef.symbol)
       if (tdef.symbol.owner.isType) 
         rhs1.tpe match {
