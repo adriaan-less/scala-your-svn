@@ -63,7 +63,6 @@ import scala.util.control.ControlThrowable
 trait Types extends reflect.generic.Types { self: SymbolTable =>
   import definitions._
   
-  
   //statistics
   def uniqueTypeCount = if (uniques == null) 0 else uniques.size
 
@@ -144,6 +143,10 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
   } with TreeGen
 
   import gen._
+
+  private[Types] var subtypingIndent: String = ""
+  @inline private[Types] def deindentSubtyping() = subtypingIndent = subtypingIndent.substring(0, subtypingIndent.length() - 2)
+  @inline private[Types] def indentSubtyping() = subtypingIndent += "  "
 
   // @M toString that is safe during debugging (does not normalize, ...)
   def debugString(tp: Type): String = tp match { 
@@ -4308,6 +4311,14 @@ A type's typeSymbol should never be inspected directly.
    */
   private def isSubType2(tp1: Type, tp2: Type, depth: Int): Boolean = {
     if (tp1 eq tp2) return true
+
+    def trace(msg: String)(body: => Boolean) = {
+      println(subtypingIndent+ tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg)
+      val res = body
+      println(subtypingIndent+ res +" for "+ tp1 +" <:< "+ tp2 +" at depth "+ depth +" -- "+ msg)
+      res
+    }
+
     if (isErrorOrWildcard(tp1)) return true
     if (isErrorOrWildcard(tp2)) return true
     if (tp1 eq NoType) return false
@@ -4316,14 +4327,14 @@ A type's typeSymbol should never be inspected directly.
     if (tp2 eq NoPrefix) return (tp1 eq NoPrefix) || tp1.typeSymbol.isPackageClass
     if (isSingleType(tp1) && isSingleType(tp2) ||
         isConstantType(tp1) && isConstantType(tp2)) return tp1 =:= tp2
-    if (tp1.isHigherKinded || tp2.isHigherKinded) return isHKSubType0(tp1, tp2, depth)
+    if (tp1.isHigherKinded || tp2.isHigherKinded) return trace("HK"){Thread.dumpStack; isHKSubType0(tp1, tp2, depth)}
 
     /** First try, on the right:
      *   - unwrap Annotated types, BoundedWildcardTypes,
      *   - bind TypeVars  on the right, if lhs is not Annotated nor BoundedWildcard
      *   - handle common cases for first-kind TypeRefs on both sides as a fast path.
      */
-    def firstTry = { incCounter(ctr1); tp2 match {
+    def firstTry = { incCounter(ctr1); trace("first")(tp2 match {
       // fast path: two typerefs, none of them HK
       case tr2: TypeRef =>
         tp1 match {
@@ -4359,14 +4370,14 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         secondTry
-    }}
+    })}
 
     /** Second try, on the left:
      *   - unwrap AnnotatedTypes, BoundedWildcardTypes,
      *   - bind typevars,
      *   - handle existential types by skolemization.
      */
-    def secondTry = { incCounter(ctr2); tp1 match {
+    def secondTry = { incCounter(ctr2); trace("second")(tp1 match {
       case AnnotatedType(_, _, _) =>
         tp1.withoutAnnotations <:< tp2.withoutAnnotations && annotationsConform(tp1, tp2)
       case BoundedWildcardType(bounds) =>
@@ -4382,10 +4393,11 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         thirdTry
-    }}
+    })}
 
     def thirdTryRef(tp1: Type, tp2: TypeRef): Boolean = { 
       incCounter(ctr3); 
+      trace("thirdRef")({
       val sym2 = tp2.sym
       sym2 match {
         case _: ClassSymbol =>
@@ -4409,14 +4421,14 @@ A type's typeSymbol should never be inspected directly.
         case _ =>
           fourthTry
       }
-    }
+    })}
     
     /** Third try, on the right:
      *   - decompose refined types.
      *   - handle typerefs, existentials, and notnull types.
      *   - handle left+right method types, polytypes, typebounds
      */
-    def thirdTry = { incCounter(ctr3); tp2 match {
+    def thirdTry = { incCounter(ctr3); trace("third")(tp2 match {
       case tr2: TypeRef =>
         thirdTryRef(tp1, tr2)
       case rt2: RefinedType =>
@@ -4455,12 +4467,12 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         fourthTry
-    }}
+    })}
 
     /** Fourth try, on the left:
      *   - handle typerefs, refined types, notnull and singleton types. 
      */
-    def fourthTry = { incCounter(ctr4); tp1 match {
+    def fourthTry = { incCounter(ctr4); trace("fourth")(tp1 match {
       case tr1 @ TypeRef(_, sym1, _) =>
         sym1 match {
           case _: ClassSymbol =>
@@ -4495,9 +4507,12 @@ A type's typeSymbol should never be inspected directly.
         tp1.underlying <:< tp2
       case _ =>
         false
-    }}
+    })}
 
-    firstTry
+    indentSubtyping()
+    val res = firstTry
+    deindentSubtyping()
+    res
   }
 
   /** Are `tps1' and `tps2' lists of equal length such
