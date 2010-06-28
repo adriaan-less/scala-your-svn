@@ -460,9 +460,20 @@ self: Analyzer =>
           // after typed1, type parameters may appear in context.undetparams that weren't (and thus aren't) in undetParams
           incCounter(typedImplicits)
 
-          printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+wildPt)
+          // consider a type that depends on an implicit argument, such as ev.T
+          // more precisely, ev.type#T -- here ev.type is like an undetermined type parameter
+          // TODO: create synthetic type params for these singleton types and propagate them in undetparams,
+          // so that we don't have to approximate them by a wildcard. Also, could use the collected constraints
+          // on the synthetic type param to constrain the search for the implicit value for the corresponding implicit argument
+          object ApproximateImplicitDependentMap extends TypeMap {
+            def apply(tp: Type): Type =
+              if(tp.isImmediatelyDependent && tp.termSymbol.isImplicit) WildcardType
+              else mapOver(tp)
+          }
+
+          printTyping("typed implicit "+itree1+":"+itree1.tpe +" (approx= "+  ApproximateDependentMap(itree1.tpe) +"), pt = "+wildPt)
           val itree2 = if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
-                       else adapt(itree1, EXPRmode, wildPt)
+                       else adapt(itree1 setType ApproximateImplicitDependentMap(itree1.tpe), EXPRmode, wildPt)
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
