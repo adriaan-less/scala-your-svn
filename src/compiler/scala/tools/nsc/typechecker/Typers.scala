@@ -1761,44 +1761,13 @@ trait Typers { self: Analyzer =>
       treeCopy.DefDef(ddef, typedMods, ddef.name, tparams1, vparamss1, tpt1, rhs1) setType NoType
     }
 
-    // solve rhs of type alias like type T = Solve[C]
-    // search implicit C[?T], solve ?T and replace Solve[C] by the result
-    // TODO: 
-    //  - allow Solve to occur anywhere
-    //  - include bounds on T declared in supertypes
-    def typedSolveImplicit(tdef: Symbol, tree: Tree): Tree = tree.tpe match {
-      case TypeRef(_, SolveImplicit, List(c)) =>
-        val param = tdef.newTypeParameter(tree.pos, tdef.name+" $").setInfo(TypeBounds(NothingClass.typeConstructor, AnyClass.typeConstructor))
-        // val absTdef = tdef.owner.overriddenSymbol(tdef.info)
-        // param.setInfo(absTdef.info substSym(List(absTdef), List(param)))
-        val pt = appliedType(c, List(param.tpe))
-        println("typedSolveImplicit: "+(param, param.info, pt))
-        val savedUndets = context.undetparams
-        context.undetparams = param :: context.undetparams
-        val result = inferImplicit(tree, pt, true, false, context)
-        context.undetparams = savedUndets
-        println("typedSolveImplicit: "+(result))
-
-        if(result.subst.from contains param) atPos(tree.pos) {
-          val tp = result.subst.to(result.subst.from indexOf param)
-          println("typedSolveImplicit tp= "+ tp)
-          TypeTree(tp)
-        } else {
-          error(tree.pos, "Could not determine "+ tdef +" by searching the implicit of type "+ pt.substSym(List(param), List(tdef)) +".")
-          tree
-        }
-      case _ =>
-        println("typedSolveImplicit not activating on "+ tree)
-        tree
-    }
-
     def typedTypeDef(tdef: TypeDef): TypeDef = {
       reenterTypeParams(tdef.tparams) // @M!
       val tparams1 = tdef.tparams mapConserve (typedTypeDef) // @M!
       val typedMods = removeAnnotations(tdef.mods)
       // complete lazy annotations
       val annots = tdef.symbol.annotations
-      val rhs = typedSolveImplicit(tdef.symbol, typedType(tdef.rhs))
+      val rhs = typedType(tdef.rhs)
       val rhs1 = checkNoEscaping.privates(tdef.symbol, rhs)
       checkNonCyclic(tdef.symbol)
       if (tdef.symbol.owner.isType) 
@@ -3701,6 +3670,47 @@ trait Typers { self: Analyzer =>
         }
       }
 
+      // solve rhs of type alias like type T = Solve[C]
+      // search implicit C[?T], solve ?T and replace Solve[C] by the result
+      // TODO: 
+      //  - allow Solve to occur anywhere
+      //     - remove dependency on tdef, use context.owner
+      //     - call it from typedType instead of in typedTypeDef
+      //  - redefine it as `type Solve[C[_], OrElse]` and return OrElse when implicit search fails
+      //  - make a new TypeTree that recomputes its type when it's called from different context (when implicit search would change)
+      //     - will need to preserve it in adapt
+      //  - check that result is subtype of OrElse
+      def typedSolveImplicit(tree: Tree, args: List[Tree]): Tree = {
+        val tdef = context.owner // if(context.owner.isNonClassType) context.owner else context.owner.newAnonymousAbstractType
+        val name = tdef.name+" $"
+        val param = tdef.newTypeParameter(tree.pos, name).setInfo(TypeBounds(NothingClass.typeConstructor, AnyClass.typeConstructor))
+        // val absTdef = tdef.owner.overriddenSymbol(tdef.info)
+        // param.setInfo(absTdef.info substSym(List(absTdef), List(param)))
+        val contextBound = args(0).tpe
+        val orElse = args(1).tpe
+        val pt = appliedType(contextBound, List(param.tpe))
+
+        println("typedSolveImplicit: "+(param, param.info, pt))
+
+        def solve = {
+          val savedUndets = context.undetparams
+          context.undetparams = param :: context.undetparams
+          val result = inferImplicit(tree, pt, true, false, context)
+          context.undetparams = savedUndets
+          println("typedSolveImplicit: "+(result))
+
+          if(result.subst.from contains param) 
+            val tp = result.subst.to(result.subst.from indexOf param)
+            println("typedSolveImplicit tp= "+ tp)
+            tp
+          } else orElse
+        }
+
+        TypeTree(tp) recomputeWith (solve(_))
+        // error(tree.pos, "Could not determine "+ tdef +" by searching the implicit of type "+ pt.substSym(List(param), List(tdef)) +".")
+        // tree
+      }
+
       def typedAppliedTypeTree(tpt: Tree, args: List[Tree]) = {
         val tpt1 = typed1(tpt, mode | FUNmode | TAPPmode, WildcardType)
         if (tpt1.tpe.isError) {
@@ -3721,6 +3731,7 @@ trait Typers { self: Analyzer =>
                   //@M! the polytype denotes the expected kind
               }
             val argtypes = args1 map (_.tpe)
+
             val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isNonClassType) 
                              // @M! added the latter condition
                              appliedType(tpt1.tpe, argtypes) 
@@ -3735,7 +3746,8 @@ trait Typers { self: Analyzer =>
                       glb(List(arg.symbol.info.bounds.hi, tparam.info.bounds.hi.subst(tparams, argtypes))))
               case _ =>
             }}
-            TypeTree(owntype) setOriginal(tree) // setPos tree.pos
+            (if(tpt1.symbol eq SolveImplicit) typedSolveImplicit(tree, args1)
+            else TypeTree(owntype)) setOriginal(tree) // setPos tree.pos (implied by setOriginal)
           } else if (tparams.length == 0) {
             errorTree(tree, tpt1.tpe+" does not take type parameters")
           } else {

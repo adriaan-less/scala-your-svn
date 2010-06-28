@@ -332,5 +332,5 @@ object Predef extends LowPriorityImplicits {
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }
 
-  type Solve[C[_]] = Any
+  type Solve[Bound[_], OrElse] = Any
 }
