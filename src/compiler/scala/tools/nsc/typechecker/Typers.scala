@@ -2577,6 +2577,10 @@ trait Typers { self: Analyzer =>
        *  an error message is reported and None is returned.
        */
       def tree2ConstArg(tree: Tree, pt: Type): Option[ClassfileAnnotArg] = tree match {
+        case Apply(Select(New(tpt), nme.CONSTRUCTOR), args) if (pt.typeSymbol == ArrayClass) =>
+          error(tree.pos, "Array constants have to be specified using the `Array(...)' factory method")
+          None
+
         case ann @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) =>
           val annInfo = typedAnnotation(ann, mode, NoSymbol, pt.typeSymbol, true)
           if (annInfo.atp.isErroneous) {
@@ -3767,12 +3771,17 @@ trait Typers { self: Analyzer =>
             docComments(sym) = comment
             comment.defineVariables(sym)
             val typer1 = newTyper(context.makeNewScope(tree, context.owner))
-            for (useCase <- comment.useCases) 
+            for (useCase <- comment.useCases) {
               typer1.silent(_.typedUseCase(useCase)) match {
                 case ex: TypeError =>
                   unit.warning(useCase.pos, ex.msg)
                 case _ =>
               }
+              useCase.defined foreach { symbol =>
+                if (sym.name.toString != symbol.name.toString)
+                  unit.warning(useCase.pos, "@usecase "+symbol.name+" does not match commented symbol: "+sym.name)
+              }
+            }
           }
           typed(defn, mode, pt)
 
