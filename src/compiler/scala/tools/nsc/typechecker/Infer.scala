@@ -444,7 +444,6 @@ trait Infer {
      */
     private def exprTypeArgs(tparams: List[Symbol], restpe: Type, pt: Type, checkCompat: (Type, Type) => Boolean = isCompatible): List[Type] = {
       val tvars = tparams map freshVar
-      println("check compat: "+(restpe.instantiateTypeParams(tparams, tvars), pt, checkCompat(restpe.instantiateTypeParams(tparams, tvars), pt)))
       if (checkCompat(restpe.instantiateTypeParams(tparams, tvars), pt)) {
         try {
           // If the restpe is an implicit method, and the expected type is fully defined

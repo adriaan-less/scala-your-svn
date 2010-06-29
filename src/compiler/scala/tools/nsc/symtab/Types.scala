@@ -1929,7 +1929,6 @@ A type's typeSymbol should never be inspected directly.
     override def resultType(actuals: List[Type]) = {
       val map = new InstantiateDependentMap(params, actuals)
       val rawResTpe = map.apply(resultType)
-
       if (phase.erasedTypes)
         rawResTpe
       else
@@ -3276,7 +3275,7 @@ A type's typeSymbol should never be inspected directly.
       else if (matches(from.head, sym)) toType(tp, to.head)
       else subst(tp, sym, from.tail, to.tail)
 
-    private def renameBoundSyms(tp: Type): Type = tp match {
+    protected def renameBoundSyms(tp: Type): Type = tp match {
       case MethodType(ps, restp) =>
         val ps1 = cloneSymbols(ps)
         copyMethodType(tp, ps1, renameBoundSyms(restp.substSym(ps, ps1)))
@@ -3508,10 +3507,13 @@ A type's typeSymbol should never be inspected directly.
   }
 */
 
-  class InstantiateDependentMap(params: List[Symbol], actuals: List[Type]) extends TypeMap {
+  class InstantiateDependentMap(params: List[Symbol], actuals: List[Type]) extends SubstTypeMap(params, actuals) {
     def existentialsNeeded: List[Symbol] = List()
 
-    def apply(tp: Type): Type = tp subst (params, actuals)
+    override protected def renameBoundSyms(tp: Type): Type = tp match {
+      case MethodType(ps, restp) => tp // the whole point of this substitution is to instantiate these args
+      case _ => super.renameBoundSyms(tp)
+    }
     // TODO: should we optimise this? only need to consider singletontypes
     // TODODEPMET: existential abstraction for annotations?
   }

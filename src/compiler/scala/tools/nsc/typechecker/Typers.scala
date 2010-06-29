@@ -215,7 +215,6 @@ trait Typers { self: Analyzer =>
           s traverse fun
           for (arg <- args) s traverse arg
         }
-        println("ApplyToImplicitArgs(fun, args)="+(fun, args))
         new ApplyToImplicitArgs(fun, args) setPos fun.pos
       case ErrorType =>
         fun
@@ -813,22 +812,24 @@ trait Typers { self: Analyzer =>
           val paramtp = singleType(NoPrefix, param)
           new TypeVar(paramtp, new TypeConstraint, List(), List())
         }
-        tree.tpe = copyMethodType(mt, mt.params, mt.resultType(tvars)) // implicit args can only be depended on in result type
+        tree.tpe = MethodType(mt.params, mt.resultType(tvars)) // implicit args can only be depended on in result type
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
-          try{
+          // try{
             context.undetparams = inferExprInstance(
               tree, context.extractUndetparams(), pt, mt.params exists (p => isManifest(p.tpe)))
                 // if we are looking for a manifest, instantiate type to Nothing anyway,
                 // as we would get amnbiguity errors otherwise. Example
                 // Looking for a manifest of Nil: This mas many potential types,
                 // so we need to instantiate to minimal type List[Nothing].
-          } catch {
-            case e: Throwable => e.printStackTrace(); throw e
-          }
+          // } catch {
+          //   case e: Throwable => e.printStackTrace(); throw e
+          // }
         } 
-        tree.tpe = typeVarToOriginMap(tree.tpe) // types have been inferred in tree.tpe, but typevars that refer to implicit args remain
-        // their values will be inferred by applyImplicitArgs
-        // the typevars can be replaced by the original types since they were only there to prevent inferExprInstance from choking on them
+        // types have been inferred in tree.tpe, but typevars that refer to implicit args remain: replace typevars by their origin
+        // substSym: method type will have been cloned by typer during inference (params are now tree.tpe.asInstanceOf[MethodType].params), 
+        // but typevars still point to old param symbols (mt.params)
+        // the typevars were only there to prevent inferExprInstance from choking on them
+        tree.tpe = typeVarToOriginMap(tree.tpe).substSym(mt.params, tree.tpe.asInstanceOf[MethodType].params) 
 
         // TODO: pass tvars on to applyImplicitArgs, which should take their constraints into account while inferring values for the corresponding implicit arguments
         // it's sound not to do so, becaus the tree is type checked again anyway, it could potentially make the search more precise

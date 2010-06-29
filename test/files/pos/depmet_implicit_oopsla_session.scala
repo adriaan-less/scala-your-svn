@@ -11,20 +11,20 @@ object Sessions {
     def run(p: Stop, dp: Stop): Unit = {}
   }
 
-  implicit def InDual[A, B](implicit sessionD: Session[B]) = 
+  implicit def InDual[A, B](implicit sessionDIn: Session[B]) = 
     new Session[In[A, B]] {
-      type Dual = Out[A, sessionD.Dual]
+      type Dual = Out[A, sessionDIn.Dual]
 
       def run(p: In[A, B], dp: Dual): Unit = 
-        sessionD.run(p.func(dp.x), dp.y)
+        sessionDIn.run(p.func(dp.x), dp.y)
   }
 
-  implicit def OutDual[A, B](implicit sessionD: Session[B]) = 
+  implicit def OutDual[A, B](implicit sessionDOut: Session[B]) = 
     new Session[Out[A, B]] {
-     type Dual = In[A, sessionD.Dual]
+     type Dual = In[A, sessionDOut.Dual]
 
-     def run(p: Out[A, B], dp: In[A, sessionD.Dual]): Unit = 
-       sessionD.run(p.y, dp.func(p.x))
+     def run(p: Out[A, B], dp: Dual): Unit = 
+       sessionDOut.run(p.y, dp.func(p.x))
   }
 
   sealed case class Stop
