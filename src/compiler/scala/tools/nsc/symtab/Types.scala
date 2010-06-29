@@ -2310,6 +2310,20 @@ A type's typeSymbol should never be inspected directly.
       }
     }
 
+    /**
+     * ?A.T =:= tp is rewritten as the constraint ?A <: {type T = tp}
+     *
+     * TODO: make these constraints count (incorporate them into implicit search in applyImplicitArgs)
+     * (T corresponds to @param sym)
+     */
+    def registerTypeSelection(sym: Symbol, tp: Type): Boolean = {
+      val bound = refinedType(List(WildcardType), NoSymbol)
+      val bsym = bound.typeSymbol.newAliasType(NoPosition, sym.name)
+      bsym setInfo tp
+      bound.decls enter bsym
+      registerBound(bound, false)
+    }
+
     /** Can this variable be related in a constraint to type `tp'?
      *  This is not the case if `tp' contains type skolems whose
      *  skolemization level is higher than the level of this variable.
@@ -4050,9 +4064,14 @@ A type's typeSymbol should never be inspected directly.
       case tr1: TypeRef =>
         tp2 match {
           case tr2: TypeRef =>
-            return equalSymsAndPrefixes(tr1.sym, tr1.pre, tr2.sym, tr2.pre) &&
+            return (equalSymsAndPrefixes(tr1.sym, tr1.pre, tr2.sym, tr2.pre) &&
               ((tp1.isHigherKinded && tp2.isHigherKinded && tp1.normalize =:= tp2.normalize) || 
-               isSameTypes(tr1.args, tr2.args))
+               isSameTypes(tr1.args, tr2.args))) ||
+               ((tr1.pre, tr2.pre) match {
+                 case (tv @ TypeVar(_,_), _) => tv.registerTypeSelection(tr1.sym, tr2)
+                 case (_, tv @ TypeVar(_,_)) => tv.registerTypeSelection(tr2.sym, tr1)
+                 case _ => false
+               })
           case _ =>
         }
       case tt1: ThisType =>

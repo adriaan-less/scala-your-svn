@@ -813,11 +813,8 @@ trait Typers { self: Analyzer =>
           val paramtp = singleType(NoPrefix, param)
           new TypeVar(paramtp, new TypeConstraint, List(), List())
         }
-        println("adapt IMT: "+(tree.tpe, tvars))
-        tree.tpe = copyMethodType(mt, mt.params, mt.resultType(tvars))
-        println("adapt substed IMT: "+(tree.tpe))
+        tree.tpe = copyMethodType(mt, mt.params, mt.resultType(tvars)) // implicit args can only be depended on in result type
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
-          println("adapt IMT: "+(context.undetparams, pt)) //@MDEBUG
           try{
             context.undetparams = inferExprInstance(
               tree, context.extractUndetparams(), pt, mt.params exists (p => isManifest(p.tpe)))
@@ -829,7 +826,12 @@ trait Typers { self: Analyzer =>
             case e: Throwable => e.printStackTrace(); throw e
           }
         } 
-        println("adapt IMT2: "+(context.undetparams, tree.tpe, tree)) //@MDEBUG
+        tree.tpe = typeVarToOriginMap(tree.tpe) // types have been inferred in tree.tpe, but typevars that refer to implicit args remain
+        // their values will be inferred by applyImplicitArgs
+        // the typevars can be replaced by the original types since they were only there to prevent inferExprInstance from choking on them
+
+        // TODO: pass tvars on to applyImplicitArgs, which should take their constraints into account while inferring values for the corresponding implicit arguments
+        // it's sound not to do so, becaus the tree is type checked again anyway, it could potentially make the search more precise
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
