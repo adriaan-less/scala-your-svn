@@ -2292,7 +2292,7 @@ A type's typeSymbol should never be inspected directly.
       }
     }
 
-    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
+    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
       def checkIsSameType(tp: Type) = 
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst

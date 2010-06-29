@@ -181,7 +181,7 @@ trait Typers { self: Analyzer =>
         var positional = true
         val argResultsBuff = new ListBuffer[SearchResult]()
 
-        // DEPMETTODO: subst singleton types that depend on earlier arguments
+        // DEPMETTODO: replace singleton types that depend on (earlier) implicit arguments by type parameters
         // apply the substitutions (undet type param -> type) that were determined
         // by implicit resolution of implicit arguments on the left of this argument
         for(param <- params) {
@@ -215,6 +215,7 @@ trait Typers { self: Analyzer =>
           s traverse fun
           for (arg <- args) s traverse arg
         }
+        println("ApplyToImplicitArgs(fun, args)="+(fun, args))
         new ApplyToImplicitArgs(fun, args) setPos fun.pos
       case ErrorType =>
         fun
@@ -807,15 +808,28 @@ trait Typers { self: Analyzer =>
         context.undetparams = context.undetparams ::: tparams1
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
       case mt: MethodType if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
+        // replace singleton types that depend on implicit arguments by type variables, since they behave like type parameters (we're trying to infer them -- in applyImplicitArgs)
+        val tvars = mt.params map {param => 
+          val paramtp = singleType(NoPrefix, param)
+          new TypeVar(paramtp, new TypeConstraint, List(), List())
+        }
+        println("adapt IMT: "+(tree.tpe, tvars))
+        tree.tpe = copyMethodType(mt, mt.params, mt.resultType(tvars))
+        println("adapt substed IMT: "+(tree.tpe))
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
-          // println("adapt IMT: "+(context.undetparams, pt)) //@MDEBUG
-          context.undetparams = inferExprInstance(
-            tree, context.extractUndetparams(), pt, mt.params exists (p => isManifest(p.tpe)))
-              // if we are looking for a manifest, instantiate type to Nothing anyway,
-              // as we would get amnbiguity errors otherwise. Example
-              // Looking for a manifest of Nil: This mas many potential types,
-              // so we need to instantiate to minimal type List[Nothing].
+          println("adapt IMT: "+(context.undetparams, pt)) //@MDEBUG
+          try{
+            context.undetparams = inferExprInstance(
+              tree, context.extractUndetparams(), pt, mt.params exists (p => isManifest(p.tpe)))
+                // if we are looking for a manifest, instantiate type to Nothing anyway,
+                // as we would get amnbiguity errors otherwise. Example
+                // Looking for a manifest of Nil: This mas many potential types,
+                // so we need to instantiate to minimal type List[Nothing].
+          } catch {
+            case e: Throwable => e.printStackTrace(); throw e
+          }
         } 
+        println("adapt IMT2: "+(context.undetparams, tree.tpe, tree)) //@MDEBUG
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {

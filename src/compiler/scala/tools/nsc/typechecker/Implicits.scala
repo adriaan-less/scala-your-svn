@@ -214,7 +214,6 @@ self: Analyzer =>
    */
   class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: Context) 
     extends Typer(context0) {
-    printTyping("begin implicit search: "+(tree, pt, isView, context.outer.undetparams))
 //    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
@@ -375,7 +374,6 @@ self: Analyzer =>
        }
 
     private def typedImplicit0(info: ImplicitInfo): SearchResult = {
-
       /** Todo reconcile with definition of stability given in Types.scala */
       def isStable(tp: Type): Boolean = tp match {
         case TypeRef(pre, sym, _) => 
@@ -431,7 +429,7 @@ self: Analyzer =>
 
       incCounter(plausiblyCompatibleImplicits)
 
-      printTyping("typed impl for "+wildPt+"? "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
+      printTyping("typing implicit expecting "+wildPt+" using "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
 
         incCounter(matchingImplicits)
@@ -456,25 +454,21 @@ self: Analyzer =>
               )
             else
               typed1(itree, EXPRmode, wildPt)
+          incCounter(typedImplicits)
+          printTyping("typed implicit "+itree1+":"+itree1.tpe +", pt = "+wildPt)
 
           // after typed1, type parameters may appear in context.undetparams that weren't (and thus aren't) in undetParams
-          incCounter(typedImplicits)
+          // --> if itree is a polymorphic method
+          val itree2 = 
+            if (isView) {
+              (itree1: @unchecked) match { case Apply(fun, _) => fun }
+            } else {
+              adapt(itree1, EXPRmode, wildPt) // this takes care of chained implicits (implicit def's that take implicit args: infers those args)
+            }
 
-          // consider a type that depends on an implicit argument, such as ev.T
-          // more precisely, ev.type#T -- here ev.type is like an undetermined type parameter
-          // TODO: create synthetic type params for these singleton types and propagate them in undetparams,
-          // so that we don't have to approximate them by a wildcard. Also, could use the collected constraints
-          // on the synthetic type param to constrain the search for the implicit value for the corresponding implicit argument
-          object ApproximateImplicitDependentMap extends TypeMap {
-            def apply(tp: Type): Type =
-              if(tp.isImmediatelyDependent && tp.termSymbol.isImplicit) WildcardType
-              else mapOver(tp)
-          }
-
-          printTyping("typed implicit "+itree1+":"+itree1.tpe +" (approx= "+  ApproximateDependentMap(itree1.tpe) +"), pt = "+wildPt)
-          val itree2 = if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
-                       else adapt(itree1 setType ApproximateImplicitDependentMap(itree1.tpe), EXPRmode, wildPt)
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
+
+
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
               case Apply(fun, _) => hasMatchingSymbol(fun)
@@ -517,7 +511,6 @@ self: Analyzer =>
                 case _ =>
               }
 
-              // #3340
               object MethodTypeWithImplicits {
                 def unapply(tp: Type): Option[(List[Symbol])] = tp match {
                   case mt@MethodType(params, res) => if(mt.isImplicit) Some(params) else unapply(res)
@@ -525,6 +518,7 @@ self: Analyzer =>
                 }
               }
 
+              // #3340 -- TODO revisit this! why does it work? I think the adapt above takes care of chaining
               // println("2ndorder: "+(itree2, itree2.tpe match {case MethodTypeWithImplicits(ps) => ps.toString case t => t.toString}))
               val secondOrderImplicitsSatisfiable = try { itree2.tpe match { // TODO: the inferImplicit below will be performed again later -- should be avoided
                 case MethodTypeWithImplicits(params) =>
