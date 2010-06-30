@@ -1,7 +1,7 @@
 object Sessions {
   trait Session[A] {
     type Dual
-
+    type HasDual[D] = Session[A]{type Dual=D}
     def run(p: A, dp: Dual): Unit
   }
 
@@ -43,7 +43,13 @@ object Sessions {
     In{z: Int => System.out.println(z)
     Stop()}}))
 
-  def runSession[A, D1](p: A, dp: D1)(implicit s: Session[A]{type Dual=D1}) =
+  def runSession[S, D: Session[S]#HasDual](p: S, dp: D) =
+    implicitly[Session[S]#HasDual[D]].run(p, dp)
+
+  def runSession[S, D](p: S, dp: D)(implicit s: Session[S]#HasDual[D]) =
+    s.run(p, dp)
+
+  def runSession[S](p: S, dp: s.Dual)(implicit s: Session[S]) =
     s.run(p, dp)
 
   def myRun = runSession(addServer, addClient)
