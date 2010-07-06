@@ -640,20 +640,29 @@ abstract class ClassfileParser {
   }
   
   private def sigToType(sym: Symbol, sig: Name): Type = {
+    println("sigToType of "+ sym +" with sig "+ sig)
+    var indent = ""    
     var index = 0
     val end = sig.length
     def accept(ch: Char) {
       assert(sig(index) == ch)
+      println(indent+ "accept "+ ch +" at "+ index)
       index += 1
     }
     def subName(isDelimiter: Char => Boolean): Name = {
       val start = index
       while (!isDelimiter(sig(index))) { index += 1 }
-      sig.subName(start, index)
+      val res = sig.subName(start, index)
+      println(indent+ "subName "+ start +"--"+ index +": "+ res)
+      res
     }
     def existentialType(tparams: List[Symbol], tp: Type): Type = 
       if (tparams.isEmpty) tp else ExistentialType(tparams, tp)
-    def sig2type(tparams: Map[Name,Symbol], skiptvs: Boolean): Type = {
+
+    def sig2type(tparams: Map[Name,Symbol], skiptvs: Boolean): Type = { val res = {
+      println(indent +"sig2type with "+ tparams)
+      indent = indent + " "
+
       val tag = sig(index); index += 1
       tag match {
         case BYTE_TAG   => definitions.ByteClass.tpe
@@ -757,6 +766,10 @@ abstract class ClassfileParser {
           if (skiptvs) definitions.AnyClass.tpe
           else tparams(n).typeConstructor
       }
+    }
+      println(indent+ "sig2type= "+ res)
+      indent = indent.substring(0, indent.length() - 1)
+      res
     } // sig2type(tparams, skiptvs)
 
     def sig2typeBounds(tparams: Map[Name, Symbol], skiptvs: Boolean): Type = {
@@ -800,7 +813,7 @@ abstract class ClassfileParser {
         classTParams = tparams
         val parents = new ListBuffer[Type]()
         while (index < end) {
-          parents += sig2type(tparams, false)  // here the variance doesnt'matter
+          parents += sig2type(tparams, false)  // here the variance doesn't matter
         }
         ClassInfoType(parents.toList, instanceDefs, sym)
       }
