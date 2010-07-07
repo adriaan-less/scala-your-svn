@@ -1,7 +1,7 @@
 public class Tuppel<T> {
-  private Tuppel( T values ) {}
+  private Tuppel(){}
 
   public static <A> Tuppel<A> get() {
-    return new Tuppel<A>(null) {};
+    return new Tuppel<A>() {};
   }
 }
