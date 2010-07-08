@@ -271,13 +271,14 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         case MethodType(params, res) => params.map(_.tpe) :: allParamTypes(res)
         case _ => Nil
       }
-      
+
+
       assert(clazz != NoSymbol, sym)
       if (settings.debug.value)  log("Decided for host class: " + clazz)
-      
+
       val accName = nme.protName(sym.originalName)
       val hasArgs = sym.tpe.paramTypes != Nil
-      val memberType = sym.tpe // transform(sym.tpe)
+      val memberType = refchecks.toScalaRepeatedParam(sym.tpe) // fix for #2413
       
       // if the result type depends on the this type of an enclosing class, the accessor
       // has to take an object of exactly this type, otherwise it's more general
@@ -411,10 +412,16 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         unit.error(pos, "Implementation restriction: " + msg)
       }
 
+      def accessibleThroughSubclassing: Boolean =
+        (validCurrentOwner
+            && currentOwner.enclClass.thisSym.isSubClass(sym.owner)
+            && !currentOwner.enclClass.isTrait)
+      
       val res = /* settings.debug.value && */
-      ((sym hasFlag PROTECTED) 
+      ((sym hasFlag PROTECTED)
+       && sym.hasFlag(JAVA)
        && !sym.owner.isPackageClass
-       && (!validCurrentOwner || !(currentOwner.enclClass.thisSym isSubClass sym.owner))
+       && !accessibleThroughSubclassing
        && (enclPackage(sym.owner) != enclPackage(currentOwner))
        && (enclPackage(sym.owner) == enclPackage(sym.accessBoundary(sym.owner))))
 
@@ -424,9 +431,12 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         if (host.isPackageClass) false
         else if (host.thisSym != host) {
           if (host.thisSym.tpe.typeSymbol.hasFlag(JAVA))
-            errorRestriction(currentOwner.enclClass + " accesses protected " + sym 
-                             + " from self type " + host.thisSym.tpe)
+            errorRestriction("%s accesses protected %s from self type %s.".format(currentOwner.enclClass, sym, host.thisSym.tpe))
           false
+        } else if (host.isTrait && sym.hasFlag(JAVA)) {
+            errorRestriction(("%s accesses protected %s inside a concrete trait method. " +
+                    "Add an accessor in a class extending %s to work around this bug.").format(currentOwner.enclClass, sym, sym.enclClass))
+            false
         } else res
       } else res
     }

@@ -231,12 +231,27 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         for (member <- impl.info.decls.toList) {
           if (isForwarded(member)) {
             val imember = member.overriddenSymbol(iface)
-            // Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" : "+ atPhase(currentRun.erasurePhase)(imember.info) +" overriding "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
+            // atPhase(currentRun.erasurePhase){ 
+            //   println(""+(clazz, iface, clazz.typeParams, iface.typeParams, imember, clazz.thisType.baseType(iface), clazz.thisType.baseType(iface).memberInfo(imember), imember.info substSym(iface.typeParams, clazz.typeParams)  ))
+            // }
+            // Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
             if (imember.overridingSymbol(clazz) == NoSymbol &&
                 clazz.info.findMember(member.name, 0, lateDEFERRED, false).alternatives.contains(imember)) {
+                  val newSym = atPhase(currentRun.erasurePhase){
+                      val res = imember.cloneSymbol(clazz)
+                      // since we used the member (imember) from the interface that represents the trait that's being mixed in, 
+                      // have to instantiate the interface type params (that may occur in imember's info) as they are seen from the class
+                      // we can't use the member that we get from the implementation class, as it's a clone that was made after erasure, 
+                      // and thus it does not know its info at the beginning of erasure anymore
+                      // optimize: no need if iface has no typeparams
+                      if(iface.typeParams nonEmpty) res.setInfo(clazz.thisType.baseType(iface).memberInfo(imember)) 
+                      res
+                    } // clone before erasure got rid of type info we'll need to generate a javaSig
+                  // now we'll have the type info at (the beginning of) erasure in our history,
+                  newSym.updateInfo(imember.info.cloneInfo(newSym)) // and now newSym has the info that's been transformed to fit this period (no need for asSeenFrom as phase.erasedTypes)
                   val member1 = addMember(
                     clazz,
-                    member.cloneSymbol(clazz) setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
+                    newSym setPos clazz.pos resetFlag (DEFERRED | lateDEFERRED))
                   member1.asInstanceOf[TermSymbol] setAlias member;
                 }
           }
@@ -636,7 +651,10 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         else              lhs INT_!= ZERO
       }
 
-      /** return a 'lazified' version of rhs. 
+      /** return a 'lazified' version of rhs. It uses double-checked locking to ensure
+       *  initialization is performed at most once. Private fields used only in this
+       *  initializer are subsequently set to null.
+       * 
        *  @param clazz The class symbol
        *  @param init The tree which initializes the field ( f = <rhs> )
        *  @param fieldSym The symbol of this lazy field
@@ -647,11 +665,13 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
        *    if ((bitmap$n & MASK) == 0) {
        *       synchronized(this) {
        *         if ((bitmap$n & MASK) == 0) {
-       *           synchronized(this) {
-       *             init // l$ = <rhs>
-       *           }
+       *           init // l$ = <rhs>
        *           bitmap$n = bimap$n | MASK
-       *         }}}
+       *         }
+       *       }
+       *       this.f1 = null
+       *       ... this.fn = null 
+       *    }
        *    l$
        *  }
        *  where bitmap$n is an int value acting as a bitmap of initialized values. It is
@@ -671,14 +691,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         def syncBody  = init ::: List(mkSetFlag(clazz, offset), UNIT)
 
         log("nulling fields inside " + lzyVal + ": " + nulls)
-        val result    = 
-          IF (cond) THEN BLOCK(
-            (gen.mkSynchronized(
-              gen mkAttributedThis clazz,
-              IF (cond) THEN BLOCK(syncBody: _*) ENDIF
-            )
-            :: nulls): _*) ENDIF
-
+        val result    = gen.mkDoubleCheckedLocking(clazz, cond, syncBody, nulls)
         typedPos(init.head.pos)(BLOCK(result, retVal))
       }
 
