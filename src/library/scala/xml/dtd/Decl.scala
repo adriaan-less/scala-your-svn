@@ -1,21 +1,16 @@
 /*                     __                                               *\
  **     ________ ___   / /  ___     Scala API                            **
- **    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+ **    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
  **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
  ** /____/\___/_/ |_/____/_/ | |                                         **
  **                          |/                                          **
  \*                                                                      */
-
-// $Id$
 
 
 package scala.xml
 package dtd
 
 import Utility.sbToString
-import collection.immutable.List
-import collection.mutable.StringBuilder
-
 
 abstract class Decl
 
@@ -114,7 +109,7 @@ case class IntDef(value:String) extends EntityDef {
         val n = tmp.substring(ix, iz);
 
         if( !Utility.isName( n )) 
-          throw new IllegalArgumentException("interal entity def: \""+n+"\" must be an XML Name");
+          throw new IllegalArgumentException("internal entity def: \""+n+"\" must be an XML Name");
 
         tmp = tmp.substring(iz+1, tmp.length());
         ix  = tmp.indexOf('%');

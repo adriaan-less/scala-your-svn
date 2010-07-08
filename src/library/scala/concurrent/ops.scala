@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.concurrent
@@ -23,21 +22,13 @@ object ops
   val defaultRunner: FutureTaskRunner = TaskRunners.threadRunner
 
   /**
-   *  If expression computed successfully return it in <code>Right</code>,
-   *  otherwise return exception in <code>Left</code>.
+   *  If expression computed successfully return it in `Right`,
+   *  otherwise return exception in `Left`.
    */
-  //TODO: make private
-  def tryCatch[A](body: => A): Either[Throwable, A] =
+  private def tryCatch[A](body: => A): Either[Throwable, A] =
     allCatch[A] either body
-  
-  //TODO: make private
-  def tryCatchEx[A](body: => A): Either[Exception, A] =
-    try Right(body) catch {
-      case ex: Exception  => Left(ex)
-    }
-  
-  //TODO: make private
-  def getOrThrow[T <: Throwable, A](x: Either[T, A]): A =
+
+  private def getOrThrow[T <: Throwable, A](x: Either[T, A]): A =
     x.fold[A](throw _, identity _)
 
   /** Evaluates an expression asynchronously.

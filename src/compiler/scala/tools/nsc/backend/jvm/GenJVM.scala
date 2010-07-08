@@ -1,24 +1,23 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Iulian Dragos
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.jvm
 
-import java.io.{DataOutputStream, File, OutputStream}
 import java.nio.ByteBuffer
 
 import scala.collection.immutable.{Set, ListSet}
 import scala.collection.mutable.{Map, HashMap, HashSet}
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.symtab._
-import scala.tools.nsc.util.{Position, NoPosition}
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 
 import ch.epfl.lamp.fjbg._
+import java.io.{ByteArrayOutputStream, DataOutputStream, File, OutputStream}
+import reflect.generic.{PickleFormat, PickleBuffer}
 
 /** This class ...
  *
@@ -34,7 +33,7 @@ abstract class GenJVM extends SubComponent {
   val phaseName = "jvm"
   
   /** Create a new phase */
-  override def newPhase(p: Phase) = new JvmPhase(p)
+  override def newPhase(p: Phase): Phase = new JvmPhase(p)
 
   /** JVM code generation phase
    */
@@ -50,7 +49,7 @@ abstract class GenJVM extends SubComponent {
         for ((sym, cls) <- icodes.classes ; if inliner.isClosureClass(sym) && !deadCode.liveClosures(sym))
           icodes.classes -= sym
 
-      classes.valuesIterator foreach apply
+      classes.values foreach apply
     }
 
     override def apply(cls: IClass) {
@@ -73,15 +72,18 @@ abstract class GenJVM extends SubComponent {
    */
   class BytecodeGenerator {
     import JAccessFlags._
+    
+    def debugLevel = settings.debuginfo.indexOfChoice
 
     val MIN_SWITCH_DENSITY = 0.7
     val INNER_CLASSES_FLAGS =
       (ACC_PUBLIC | ACC_PRIVATE | ACC_PROTECTED | ACC_STATIC | ACC_FINAL | ACC_INTERFACE | ACC_ABSTRACT)
-    val StringBuilderClass = definitions.getClass2("scala.StringBuilder", "scala.collection.mutable.StringBuilder").fullNameString
+    val StringBuilderClass = definitions.getClass2("scala.StringBuilder", "scala.collection.mutable.StringBuilder").fullName
     val BoxesRunTime = "scala.runtime.BoxesRunTime"
 
     val StringBuilderType = new JObjectType(StringBuilderClass)
     val toStringType      = new JMethodType(JObjectType.JAVA_LANG_STRING, JType.EMPTY_ARRAY)
+    val arrayCloneType    = new JMethodType(JObjectType.JAVA_LANG_OBJECT, JType.EMPTY_ARRAY)
     val MethodTypeType    = new JObjectType("java.dyn.MethodType")
     val JavaLangClassType = new JObjectType("java.lang.Class")
     val MethodHandleType  = new JObjectType("java.dyn.MethodHandle")
@@ -93,7 +95,6 @@ abstract class GenJVM extends SubComponent {
     val TransientAtt     = definitions.getClass("scala.transient")
     val VolatileAttr     = definitions.getClass("scala.volatile")
     val RemoteAttr       = definitions.getClass("scala.remote")
-    val ThrowsAttr       = definitions.getClass("scala.throws")
     val BeanInfoAttr     = definitions.getClass("scala.reflect.BeanInfo")
     val BeanInfoSkipAttr = definitions.getClass("scala.reflect.BeanInfoSkip")
     val BeanDisplayNameAttr = definitions.getClass("scala.reflect.BeanDisplayName")
@@ -102,6 +103,16 @@ abstract class GenJVM extends SubComponent {
     lazy val CloneableClass  = definitions.getClass("java.lang.Cloneable")
     lazy val RemoteInterface = definitions.getClass("java.rmi.Remote")
     lazy val RemoteException = definitions.getClass("java.rmi.RemoteException").tpe
+
+
+    val versionPickle = {
+      val vp = new PickleBuffer(new Array[Byte](16), -1, 0)
+      assert(vp.writeIndex == 0)
+      vp.writeNat(PickleFormat.MajorVersion)
+      vp.writeNat(PickleFormat.MinorVersion)
+      vp.writeNat(0)
+      vp
+    }
 
     var clasz: IClass = _
     var method: IMethod = _
@@ -113,9 +124,9 @@ abstract class GenJVM extends SubComponent {
 
     val fjbgContext = new FJBGContext(49, 0)
 
-    val emitSource = settings.debuginfo.level >= 1
-    val emitLines  = settings.debuginfo.level >= 2
-    val emitVars   = settings.debuginfo.level >= 3
+    val emitSource = debugLevel >= 1
+    val emitLines  = debugLevel >= 2
+    val emitVars   = debugLevel >= 3
 
     /** Write a class to disk, adding the Scala signature (pickled type information) and
      *  inner classes.
@@ -124,36 +135,47 @@ abstract class GenJVM extends SubComponent {
      * @param sym    The corresponding symbol, used for looking up pickled information
      */
     def emitClass(jclass: JClass, sym: Symbol) {
-      def addScalaAttr(sym: Symbol): Unit = currentRun.symData.get(sym) match {
-        case Some(pickle) =>
-          val scalaAttr = fjbgContext.JOtherAttribute(jclass,
-                                                  jclass,
-                                                  nme.ScalaSignatureATTR.toString,
-                                                  pickle.bytes,
-                                                  pickle.writeIndex)
-          pickledBytes = pickledBytes + pickle.writeIndex
-          jclass.addAttribute(scalaAttr)
-          currentRun.symData -= sym
-          currentRun.symData -= sym.linkedSym
-          //System.out.println("Generated ScalaSig Attr for " + sym)//debug
-        case _ =>
-          val markerAttr = getMarkerAttr(jclass)
-          jclass.addAttribute(markerAttr)
-          log("Could not find pickle information for " + sym)
-      }
-      if (!(jclass.getName().endsWith("$") && sym.isModuleClass))
-        addScalaAttr(if (isTopLevelModule(sym)) sym.sourceModule else sym);
       addInnerClasses(jclass)
-
       val outfile = getFile(sym, jclass, ".class")
-      val outstream = new DataOutputStream(outfile.output)
+      val outstream = new DataOutputStream(outfile.bufferedOutput)
       jclass.writeTo(outstream)
       outstream.close()
       informProgress("wrote " + outfile)
     }
 
-    private def getMarkerAttr(jclass: JClass): JOtherAttribute =
-      fjbgContext.JOtherAttribute(jclass, jclass, nme.ScalaATTR.toString, new Array[Byte](0), 0)
+    /** Returns the ScalaSignature annotation if it must be added to this class, none otherwise; furthermore, it adds to
+      * jclass the ScalaSig marker attribute (marking that a scala signature annotation is present) or the Scala marker
+      * attribute (marking that the signature for this class is in another file). The annotation that is returned by
+      * this method must be added to the class' annotations list when generating them.
+      * @param jclass The class file that is being readied.
+      * @param sym    The symbol for which the signature has been entered in the symData map. This is different than the
+      *               symbol that is being generated in the case of a mirror class.
+      * @return       An option that is:
+      *                - defined and contains an annotation info of the ScalaSignature type, instantiated with the
+      *                  pickle signature for sym (a ScalaSig marker attribute has been written);
+      *                - undefined if the jclass/sym couple must not contain a signature (a Scala marker attribute has
+      *                  been written). */
+    def scalaSignatureAddingMarker(jclass: JClass, sym: Symbol): Option[AnnotationInfo] =
+      currentRun.symData.get(sym) match {
+        case Some(pickle) if !jclass.getName().endsWith("$") =>
+          val scalaAttr =
+            fjbgContext.JOtherAttribute(jclass, jclass, nme.ScalaSignatureATTR.toString,
+                                        versionPickle.bytes, versionPickle.writeIndex)
+          jclass.addAttribute(scalaAttr)
+          val scalaAnnot = {
+            val sigBytes = ScalaSigBytes(pickle.bytes.take(pickle.writeIndex))
+            AnnotationInfo(sigBytes.sigAnnot, Nil, List((nme.bytes, sigBytes)))
+          }
+          pickledBytes = pickledBytes + pickle.writeIndex
+          currentRun.symData -= sym
+          currentRun.symData -= sym.companionSymbol
+          Some(scalaAnnot)
+        case _ =>
+          val markerAttr =
+            fjbgContext.JOtherAttribute(jclass, jclass, nme.ScalaATTR.toString, new Array[Byte](0), 0)
+          jclass.addAttribute(markerAttr)
+          None
+      }
     
     var serialVUID: Option[Long] = None
     var remoteClass: Boolean = false
@@ -184,7 +206,7 @@ abstract class GenJVM extends SubComponent {
         case _ => ()
       }
 
-      parents = parents.removeDuplicates
+      parents = parents.distinct
 
       if (parents.length > 1) {
         ifaces = new Array[String](parents.length - 1)
@@ -197,8 +219,6 @@ abstract class GenJVM extends SubComponent {
                                   javaName(parents(0).typeSymbol),
                                   ifaces,
                                   c.cunit.source.toString)
-      if (jclass.getName.endsWith("$"))
-        jclass.addAttribute(getMarkerAttr(jclass))
       
       if (isStaticModule(c.symbol) || serialVUID != None || clasz.bootstrapClass.isDefined) {
         if (isStaticModule(c.symbol))
@@ -206,11 +226,11 @@ abstract class GenJVM extends SubComponent {
         addStaticInit(jclass, c.lookupStaticCtor)
         
         if (isTopLevelModule(c.symbol)) {
-          if (c.symbol.linkedClassOfModule == NoSymbol)
+          if (c.symbol.companionClass == NoSymbol)
             dumpMirrorClass(c.symbol, c.cunit.source.toString);
           else
             log("No mirror class for module with linked class: " +
-                c.symbol.fullNameString)
+                c.symbol.fullName)
         }
       }
       else {
@@ -222,7 +242,7 @@ abstract class GenJVM extends SubComponent {
             !(sym.name.toString contains '$') && (sym hasFlag Flags.MODULE) && !sym.isImplClass && !sym.isNestedClass
           }
         
-        val lmoc = c.symbol.linkedModuleOfClass
+        val lmoc = c.symbol.companionModule
         // add static forwarders if there are no name conflicts; see bugs #363 and #1735
         if (lmoc != NoSymbol && !c.symbol.hasFlag(Flags.INTERFACE)) {
           if (isCandidateForForwarders(lmoc) && !settings.noForwarders.value) {
@@ -236,8 +256,9 @@ abstract class GenJVM extends SubComponent {
       clasz.fields foreach genField
       clasz.methods foreach genMethod
 
+      val ssa = scalaSignatureAddingMarker(jclass, c.symbol)
       addGenericSignature(jclass, c.symbol, c.symbol.owner)
-      addAnnotations(jclass, c.symbol.annotations)
+      addAnnotations(jclass, c.symbol.annotations ++ ssa)
       emitClass(jclass, c.symbol)
       
       if (c.symbol hasAnnotation BeanInfoAttr)
@@ -315,7 +336,7 @@ abstract class GenJVM extends SubComponent {
       
       // write the bean information class file.
       val outfile = getFile(c.symbol, beanInfoClass, ".class")
-      val outstream = new DataOutputStream(outfile.output)
+      val outstream = new DataOutputStream(outfile.bufferedOutput)
       beanInfoClass.writeTo(outstream)
       outstream.close()
       informProgress("wrote BeanInfo " + outfile)
@@ -330,10 +351,10 @@ abstract class GenJVM extends SubComponent {
       val buf: ByteBuffer = ByteBuffer.allocate(512)
       var nattr = 0
 
-      // put some radom value; the actual number is determined at the end
+      // put some random value; the actual number is determined at the end
       buf.putShort(0xbaba.toShort)
 
-      for (AnnotationInfo(tp, List(exc), _) <- excs.removeDuplicates if tp.typeSymbol == ThrowsAttr) {
+      for (AnnotationInfo(tp, List(exc), _) <- excs.distinct if tp.typeSymbol == definitions.ThrowsClass) {
         val Literal(const) = exc
         buf.putShort(
           cpool.addClass(
@@ -347,7 +368,7 @@ abstract class GenJVM extends SubComponent {
     }
 
     /** Whether an annotation should be emitted as a Java annotation
-     *   .initialize: if 'annnot' is read from pickle, atp might be un-initialized
+     *   .initialize: if 'annot' is read from pickle, atp might be un-initialized
      */
     private def shouldEmitAnnotation(annot: AnnotationInfo) =
       (annot.atp.typeSymbol.initialize.hasFlag(Flags.JAVA) &&
@@ -394,6 +415,21 @@ abstract class GenJVM extends SubComponent {
               buf.putShort(cpool.addUtf8(const.symbolValue.name.toString).toShort)
           }
 
+        case sb@ScalaSigBytes(bytes) if (!sb.isLong) =>
+          buf.put('s'.toByte)
+          buf.putShort(cpool.addUtf8(sb.encodedBytes).toShort)
+
+        case sb@ScalaSigBytes(bytes) if (sb.isLong) =>
+          buf.put('['.toByte)
+          val stringCount = (sb.encodedBytes.length / 65534) + 1
+          buf.putShort(stringCount.toShort)
+          for (i <- 0 until stringCount) {
+            buf.put('s'.toByte)
+            val j = i * 65535
+            val string = sb.encodedBytes.slice(j, j + 65535)
+            buf.putShort(cpool.addUtf8(string).toShort)
+          }
+
         case ArrayAnnotArg(args) =>
           buf.put('['.toByte)
           buf.putShort(args.length.toShort)
@@ -437,7 +473,7 @@ abstract class GenJVM extends SubComponent {
           && !(sym.isMethod && sym.hasFlag(Flags.LIFTED))
           && !(sym.ownerChain exists (_.isImplClass))) {  // @M don't generate java generics sigs for (members of) implementation classes, as they are monomorphic (TODO: ok?)
         val memberTpe = atPhase(currentRun.erasurePhase)(owner.thisType.memberInfo(sym))
-        // println("addGenericSignature sym: " + sym.fullNameString + " : " + memberTpe + " sym.info: " + sym.info)
+        // println("addGenericSignature sym: " + sym.fullName + " : " + memberTpe + " sym.info: " + sym.info)
         // println("addGenericSignature: "+ (sym.ownerChain map (x => (x.name, x.isImplClass))))
         erasure.javaSig(sym, memberTpe) match {
           case Some(sig) =>
@@ -455,14 +491,18 @@ abstract class GenJVM extends SubComponent {
     }
 
     def addAnnotations(jmember: JMember, annotations: List[AnnotationInfo]) {
-      val toEmit = annotations.filter(shouldEmitAnnotation(_))
+      if (annotations.exists(_.atp.typeSymbol == definitions.DeprecatedAttr)) {
+        val attr = jmember.getContext().JOtherAttribute(
+          jmember.getJClass(), jmember, nme.DeprecatedATTR.toString,
+          new Array[Byte](0), 0)
+        jmember.addAttribute(attr)
+      }
 
+      val toEmit = annotations.filter(shouldEmitAnnotation(_))
       if (toEmit.isEmpty) return
 
       val buf: ByteBuffer = ByteBuffer.allocate(2048)
-
       emitJavaAnnotations(jmember.getConstantPool, buf, toEmit)
-
       addAttribute(jmember, nme.RuntimeAnnotationATTR, buf)
     }
 
@@ -539,7 +579,7 @@ abstract class GenJVM extends SubComponent {
 
     def genField(f: IField) {
       if (settings.debug.value)
-        log("Adding field: " + f.symbol.fullNameString);
+        log("Adding field: " + f.symbol.fullName);
       var attributes = 0
 
       f.symbol.annotations foreach { a => a match {
@@ -564,7 +604,7 @@ abstract class GenJVM extends SubComponent {
     def genMethod(m: IMethod) {
       if (m.isStaticCtor) return
 
-      log("Generating method " + m.symbol.fullNameString)
+      log("Generating method " + m.symbol.fullName)
       method = m
       endPC.clear
       computeLocalVarsIndex(m)
@@ -622,7 +662,7 @@ abstract class GenJVM extends SubComponent {
       }
       
       addGenericSignature(jmethod, m.symbol, clasz.symbol)
-      val (excs, others) = splitAnnotations(m.symbol.annotations, ThrowsAttr)
+      val (excs, others) = splitAnnotations(m.symbol.annotations, definitions.ThrowsClass)
       addExceptionsAttribute(jmethod, excs)
       addAnnotations(jmethod, others)
       addParamAnnotations(jmethod, m.params.map(_.sym.annotations))
@@ -630,7 +670,7 @@ abstract class GenJVM extends SubComponent {
     
     private def addRemoteException(jmethod: JMethod, meth: Symbol) {
       def isRemoteThrows(ainfo: AnnotationInfo) = ainfo match {
-        case AnnotationInfo(tp, List(arg), _) if tp.typeSymbol == ThrowsAttr =>
+        case AnnotationInfo(tp, List(arg), _) if tp.typeSymbol == definitions.ThrowsClass =>
           arg match {
             case Literal(Constant(tpe: Type)) if tpe.typeSymbol == RemoteException.typeSymbol => true
             case _ => false
@@ -641,7 +681,7 @@ abstract class GenJVM extends SubComponent {
       if (remoteClass ||
           (meth.hasAnnotation(RemoteAttr) && jmethod.isPublic())) {
         val c = Constant(RemoteException)
-        val ainfo = AnnotationInfo(ThrowsAttr.tpe, List(Literal(c).setType(c.tpe)), List())
+        val ainfo = AnnotationInfo(definitions.ThrowsClass.tpe, List(Literal(c).setType(c.tpe)), List())
         if (!meth.annotations.exists(isRemoteThrows)) {
           meth.addAnnotation(ainfo)
         }      
@@ -774,7 +814,10 @@ abstract class GenJVM extends SubComponent {
       import JAccessFlags._          
       val moduleName = javaName(module) // + "$"
       val mirrorName = moduleName.substring(0, moduleName.length() - 1)
-      val paramJavaTypes = m.info.paramTypes map toTypeKind
+
+      val methodInfo = module.thisType.memberInfo(m)
+
+      val paramJavaTypes = methodInfo.paramTypes map toTypeKind
       val paramNames: Array[String] = new Array[String](paramJavaTypes.length);
 
       for (i <- 0 until paramJavaTypes.length)
@@ -782,7 +825,7 @@ abstract class GenJVM extends SubComponent {
 
       val mirrorMethod = jclass.addNewMethod(ACC_PUBLIC | ACC_FINAL | ACC_STATIC,
         javaName(m),
-        javaType(m.info.resultType),
+        javaType(methodInfo.resultType),
         javaTypes(paramJavaTypes),
         paramNames);
       val mirrorCode = mirrorMethod.getCode().asInstanceOf[JExtendedCode];
@@ -798,7 +841,7 @@ abstract class GenJVM extends SubComponent {
         i += 1
       }
 
-      mirrorCode.emitINVOKEVIRTUAL(moduleName, mirrorMethod.getName(), mirrorMethod.getType().asInstanceOf[JMethodType])
+      mirrorCode.emitINVOKEVIRTUAL(moduleName, mirrorMethod.getName(), javaType(m).asInstanceOf[JMethodType])
       mirrorCode.emitRETURN(mirrorMethod.getReturnType())
 
       addRemoteException(mirrorMethod, m)
@@ -806,7 +849,7 @@ abstract class GenJVM extends SubComponent {
       if (!m.hasFlag(Flags.DEFERRED))
         addGenericSignature(mirrorMethod, m, module)
         
-      val (throws, others) = splitAnnotations(m.annotations, ThrowsAttr)
+      val (throws, others) = splitAnnotations(m.annotations, definitions.ThrowsClass)
       addExceptionsAttribute(mirrorMethod, throws)
       addAnnotations(mirrorMethod, others)
       addParamAnnotations(mirrorMethod, m.info.params.map(_.annotations))
@@ -821,32 +864,37 @@ abstract class GenJVM extends SubComponent {
     def addForwarders(jclass: JClass, module: Symbol) { addForwarders(jclass, module, _ => true) }
     def addForwarders(jclass: JClass, module: Symbol, cond: (Symbol) => Boolean) {
       def conflictsIn(cls: Symbol, name: Name) =
-        cls.info.nonPrivateMembers.exists(_.name == name)
+        cls.info.members exists (_.name == name)
       
       /** List of parents shared by both class and module, so we don't add forwarders
        *  for methods defined there - bug #1804 */
       lazy val commonParents = {
         val cps = module.info.baseClasses
-        val mps = module.linkedClassOfModule.info.baseClasses
+        val mps = module.companionClass.info.baseClasses
         cps.filter(mps contains)
       }
-      /* the setter doesn't show up in members so we inspect the name */
+      /* The setter doesn't show up in members so we inspect the name
+       * ... and clearly it helps to know how the name is encoded, see ticket #3004.
+       * This logic is grossly inadequate! Name mangling needs a devotee.
+       */
       def conflictsInCommonParent(name: Name) =
-        commonParents exists { cp => name startsWith (cp.name + "$") }
+        commonParents exists { cp => 
+          (name startsWith (cp.name + "$")) || (name containsName ("$" + cp.name + "$"))
+        }
              
       /** Should method `m' get a forwarder in the mirror class? */
       def shouldForward(m: Symbol): Boolean =
         atPhase(currentRun.picklerPhase) (
           m.owner != definitions.ObjectClass 
           && m.isMethod
-          && !m.hasFlag(Flags.CASE | Flags.PROTECTED | Flags.DEFERRED)
+          && !m.hasFlag(Flags.CASE | Flags.PRIVATE | Flags.PROTECTED | Flags.DEFERRED | Flags.SPECIALIZED)
           && !m.isConstructor
           && !m.isStaticMember
           && !(m.owner == definitions.AnyClass) 
-          && !module.isSubClass(module.linkedClassOfModule)
+          && !module.isSubClass(module.companionClass)
           && !conflictsIn(definitions.ObjectClass, m.name)
           && !conflictsInCommonParent(m.name)
-          && !conflictsIn(module.linkedClassOfModule, m.name)
+          && !conflictsIn(module.companionClass, m.name)
         )
       
       assert(module.isModuleClass)
@@ -873,6 +921,8 @@ abstract class GenJVM extends SubComponent {
                                            JClass.NO_INTERFACES,
                                            sourceFile)
       addForwarders(mirrorClass, clasz)
+      val ssa = scalaSignatureAddingMarker(mirrorClass, clasz.companionSymbol)
+      addAnnotations(mirrorClass, clasz.annotations ++ ssa)
       emitClass(mirrorClass, clasz)
     }
 
@@ -986,9 +1036,11 @@ abstract class GenJVM extends SubComponent {
           if (settings.debug.value)
             log("Adding exception handler " + e + "at block: " + e.startBlock + " for " + method + 
                 " from: " + p._1 + " to: " + p._2 + " catching: " + e.cls);
-          jcode.addExceptionHandler(p._1, p._2, 
+          val cls = if (e.cls == NoSymbol || e.cls == definitions.ThrowableClass) null
+                    else javaName(e.cls)
+          jcode.addExceptionHandler(p._1, p._2,
                                     labels(e.startBlock).getAnchor(),
-                                    if (e.cls == NoSymbol) null else javaName(e.cls))
+                                    cls)
         } else 
           log("Empty exception range: " + p)
       }
@@ -1005,7 +1057,7 @@ abstract class GenJVM extends SubComponent {
       varsInBlock.clear
 
       for (instr <- b) {
-        class CompilationError(msg: String) extends Error {
+        class CompilationException(msg: String) extends Exception(msg) {
           override def toString: String = {
             msg + 
             "\nCurrent method: " + method + 
@@ -1015,7 +1067,7 @@ abstract class GenJVM extends SubComponent {
             method.dump
           }
         }
-        def assert(cond: Boolean, msg: String) = if (!cond) throw new CompilationError(msg);
+        def assert(cond: Boolean, msg: String) = if (!cond) throw new CompilationException(msg)
 
         instr match {
           case THIS(clasz) =>
@@ -1048,7 +1100,7 @@ abstract class GenJVM extends SubComponent {
           case LOAD_MODULE(module) =>
 //            assert(module.isModule, "Expected module: " + module)
             if (settings.debug.value)
-              log("genearting LOAD_MODULE for: " + module + " flags: " + 
+              log("generating LOAD_MODULE for: " + module + " flags: " + 
                   Flags.flagsToString(module.flags));
             if (clasz.symbol == module.moduleClass && jmethod.getName() != nme.readResolve.toString)
               jcode.emitALOAD_0()
@@ -1081,6 +1133,11 @@ abstract class GenJVM extends SubComponent {
 
           case CALL_PRIMITIVE(primitive) =>
             genPrimitive(primitive, instr.pos)
+          
+          /** Special handling to access native Array.clone() */
+          case call @ CALL_METHOD(definitions.Array_clone, Dynamic) =>
+            val target: String = javaType(call.targetTypeKind).getSignature()
+            jcode.emitINVOKEVIRTUAL(target, "clone", arrayCloneType)
 
           case call @ CALL_METHOD(method, style) =>
             val owner: String = javaName(method.owner)
@@ -1126,11 +1183,11 @@ abstract class GenJVM extends SubComponent {
           case BOX(kind) =>
             val boxedType = definitions.boxedClass(kind.toType.typeSymbol)
             val mtype = new JMethodType(javaType(boxedType), Array(javaType(kind)))
-            jcode.emitINVOKESTATIC(BoxesRunTime, "boxTo" + boxedType.cleanNameString, mtype)
+            jcode.emitINVOKESTATIC(BoxesRunTime, "boxTo" + boxedType.decodedName, mtype)
 
           case UNBOX(kind) =>
             val mtype = new JMethodType(javaType(kind), Array(JObjectType.JAVA_LANG_OBJECT))
-            jcode.emitINVOKESTATIC(BoxesRunTime, "unboxTo" + kind.toType.typeSymbol.cleanNameString, mtype)
+            jcode.emitINVOKESTATIC(BoxesRunTime, "unboxTo" + kind.toType.typeSymbol.decodedName, mtype)
 
           case NEW(REFERENCE(cls)) =>
             val className = javaName(cls)
@@ -1646,7 +1703,7 @@ abstract class GenJVM extends SubComponent {
 
     def indexOf(local: Local): Int = {
       assert(local.index >= 0,
-             "Invalid index for: " + local + "{" + local.hashCode + "}: ")
+             "Invalid index for: " + local + "{" + local.## + "}: ")
       local.index
     }
 
@@ -1661,7 +1718,7 @@ abstract class GenJVM extends SubComponent {
 
       for (l <- m.locals) {
         if (settings.debug.value)
-          log("Index value for " + l + "{" + l.hashCode + "}: " + idx)
+          log("Index value for " + l + "{" + l.## + "}: " + idx)
         l.index = idx
         idx += sizeOf(l.kind)
       }
@@ -1693,13 +1750,15 @@ abstract class GenJVM extends SubComponent {
         return javaName(definitions.RuntimeNothingClass)
       else if (sym == definitions.NullClass)
         return javaName(definitions.RuntimeNullClass)
+      else if (definitions.primitiveCompanions(sym.companionModule))
+        return javaName(definitions.getModule("scala.runtime." + sym.name))
 
       if (sym.isClass && !sym.rawowner.isPackageClass && !sym.isModuleClass) {
         innerClasses = innerClasses + sym;
       }
 
       (if (sym.isClass || (sym.isModule && !sym.isMethod))
-        sym.fullNameString('/')
+        sym.fullName('/')
       else
         sym.simpleName.toString.trim()) + suffix
     }
@@ -1759,7 +1818,7 @@ abstract class GenJVM extends SubComponent {
 
     /** Calls to methods in 'sym' need invokeinterface? */
     def needsInterfaceCall(sym: Symbol): Boolean = {
-      log("checking for interface call: " + sym.fullNameString)
+      log("checking for interface call: " + sym.fullName)
       // the following call to 'info' may cause certain symbols to fail loading because we're
       // too late in the compilation chain (aliases to overloaded symbols will not be properly
       // resolved, see scala.Range, method super$++ that fails in UnPickler at LazyTypeRefAndAlias.complete
@@ -1814,8 +1873,6 @@ abstract class GenJVM extends SubComponent {
       }
       dir.fileNamed(pathParts.last + suffix)
     }
-
-
     
     /** Merge adjacent ranges. */
     private def mergeEntries(ranges: List[(Int, Int)]): List[(Int, Int)] = 
@@ -1827,7 +1884,7 @@ abstract class GenJVM extends SubComponent {
 
     def assert(cond: Boolean, msg: => String) = if (!cond) {
       method.dump
-      throw new Error(msg + "\nMethod: " + method)
+      abort(msg + "\nMethod: " + method)
     }
 
     def assert(cond: Boolean) { assert(cond, "Assertion failed.") }

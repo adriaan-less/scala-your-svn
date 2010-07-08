@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -24,7 +23,7 @@ import event._
  * @see javax.swing.JSlider
  */
 class Slider extends Component with Orientable.Wrapper with Publisher {
-  override lazy val peer: JSlider = new JSlider
+  override lazy val peer: JSlider = new JSlider with SuperMixin
   
   def min: Int = peer.getMinimum
   def min_=(v: Int) { peer.setMinimum(v) }
@@ -52,10 +51,11 @@ class Slider extends Component with Orientable.Wrapper with Publisher {
   
   def adjusting = peer.getValueIsAdjusting
   
-  def labels: scala.collection.Map[Int, Label] = 
-    new scala.collection.JavaConversions.JMapWrapper[Int, JLabel](
-      peer.getLabelTable.asInstanceOf[java.util.Hashtable[Int, JLabel]])
-      .mapValues(v => (UIElement cachedWrapper v).asInstanceOf[Label])
+  def labels: scala.collection.Map[Int, Label] = {
+    val labelTable = peer.getLabelTable.asInstanceOf[java.util.Hashtable[Int, JLabel]]
+    new scala.collection.JavaConversions.JMapWrapper(labelTable)
+      .mapValues(v => UIElement.cachedWrapper[Label](v))
+  }
   def labels_=(l: scala.collection.Map[Int, Label]) {
     // TODO: do some lazy wrapping
     val table = new java.util.Hashtable[Any, Any]

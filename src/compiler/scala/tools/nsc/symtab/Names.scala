@@ -1,13 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
 
-import scala.util.NameTransformer
+import scala.reflect.NameTransformer
 import scala.io.Codec
 import java.security.MessageDigest
 
@@ -16,7 +15,7 @@ import java.security.MessageDigest
  *  @author  Martin Odersky
  *  @version 1.0, 05/02/2005
  */
-class Names {
+trait Names extends reflect.generic.Names { 
 
 // Operations -------------------------------------------------------------
 
@@ -163,6 +162,9 @@ class Names {
    */
   def newTypeName(bs: Array[Byte], offset: Int, len: Int): Name =
     newTermName(bs, offset, len).toTypeName
+
+  def mkTermName(name: Name) = name.toTermName
+  def mkTypeName(name: Name) = name.toTypeName
 
   def nameChars: Array[Char] = chrs
 
@@ -390,6 +392,8 @@ class Names {
     def decode: String = (
       NameTransformer.decode(toString()) +
       (if (nameDebug && isTypeName) "!" else ""))//debug
+    
+    def isOperatorName: Boolean = decode != toString
   }
 
   private class TermName(index: Int, len: Int, hash: Int) extends Name(index, len) {

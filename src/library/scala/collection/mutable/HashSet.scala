@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -20,6 +19,20 @@ import generic._
  *  @author  Martin Odersky
  *  @version 2.0, 31/12/2006
  *  @since   1
+ *  
+ *  @tparam A     the type of the elements contained in this set.
+ *  
+ *  @define Coll mutable.HashSet
+ *  @define coll mutable hash set
+ *  @define thatinfo the class of the returned collection. In the standard library configuration,
+ *    `That` is always `HashSet[B]` because an implicit of type `CanBuildFrom[HashSet, B, HashSet[B]]`
+ *    is defined in object `HashSet`.
+ *  @define $bfinfo an implicit value of class `CanBuildFrom` which determines the
+ *    result class `That` from the current representation type `Repr`
+ *    and the new element type `B`. This is usually the `canBuildFrom` value
+ *    defined in object `HashSet`.
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 @serializable @SerialVersionUID(1L)
 class HashSet[A] extends Set[A] 
@@ -50,7 +63,7 @@ class HashSet[A] extends Set[A]
     }
   }
 
-  override def clone(): Set[A] = new HashSet[A] ++= this
+  override def clone() = new HashSet[A] ++= this
   
   private def writeObject(s: java.io.ObjectOutputStream) {
     serializeTo(s)
@@ -61,8 +74,11 @@ class HashSet[A] extends Set[A]
   }
 }
 
-/** Factory object for `HashSet` class */
-object HashSet extends SetFactory[HashSet] {
+/** $factoryInfo
+ *  @define Coll mutable.HashSet
+ *  @define coll mutable hash set
+ */
+object HashSet extends MutableSetFactory[HashSet] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, HashSet[A]] = setCanBuildFrom[A]
   override def empty[A]: HashSet[A] = new HashSet[A]
 }

@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package remote
@@ -140,7 +139,7 @@ private[remote] class NetKernel(service: Service) {
 
   def terminate() {
     // tell all proxies to terminate
-    proxies.valuesIterator foreach { p => p.send(Terminate, null) }
+    proxies.values foreach { _.send(Terminate, null) }
 
     // tell service to terminate
     service.terminate()

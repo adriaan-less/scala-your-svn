@@ -1,31 +1,25 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 package parsing
 
-import java.io.{InputStream, Reader, File, FileDescriptor, FileInputStream}
-import collection.mutable.{Stack, StringBuilder}
-import collection.immutable.{List, Nil}
-import collection.{Seq, Iterator}
+import java.io.{ InputStream, Reader, File, FileDescriptor, FileInputStream }
+import collection.mutable.Stack
 
-import org.xml.sax.{ Attributes, InputSource }
+import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
-import javax.xml.parsers.{ SAXParser, SAXParserFactory }
 
 // can be mixed into FactoryAdapter if desired
 trait ConsoleErrorHandler extends DefaultHandler
-{
-  import org.xml.sax.SAXParseException
-  
+{  
   // ignore warning, crimson warns even for entity resolution!
   override def warning(ex: SAXParseException): Unit = { }
   override def error(ex: SAXParseException): Unit = printError("Error", ex) 
@@ -135,7 +129,9 @@ abstract class FactoryAdapter extends DefaultHandler with factory.XMLLoader[Node
 
     hStack push null
     var m: MetaData = Null
-    var scpe: NamespaceBinding = scopeStack.top
+    var scpe: NamespaceBinding = 
+      if (scopeStack.isEmpty) TopScope
+      else scopeStack.top
     
     for (i <- 0 until attributes.getLength()) {
       val qname = attributes getQName i

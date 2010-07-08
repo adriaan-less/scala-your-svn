@@ -1,17 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
 
-import java.awt.{GridBagConstraints}
+import java.awt.{GridBagConstraints, GridBagLayout}
 
 
 object GridBagPanel {
@@ -50,10 +49,10 @@ object GridBagPanel {
  * @see java.awt.GridBagLayout
  */
 class GridBagPanel extends Panel with LayoutContainer {
-  override lazy val peer = new javax.swing.JPanel(new java.awt.GridBagLayout)
+  override lazy val peer = new javax.swing.JPanel(new GridBagLayout) with SuperMixin
   import GridBagPanel._
   
-  private def layoutManager = peer.getLayout.asInstanceOf[java.awt.GridBagLayout]
+  private def layoutManager = peer.getLayout.asInstanceOf[GridBagLayout]
 
   /**
    * Convenient conversion from xy-coords given as pairs to 

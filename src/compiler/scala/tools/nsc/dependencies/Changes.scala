@@ -18,10 +18,14 @@ abstract class Changes {
 
   abstract class Change
 
+  private lazy val annotationsChecked =
+      List(definitions.getClass("scala.specialized")) // Any others that should be checked?
+
   /** Are the new modifiers more restrictive than the old ones? */
   private def moreRestrictive(from: Long, to: Long): Boolean =
     ((((to & PRIVATE) != 0L) && (from & PRIVATE) == 0L)
-     || (((to & PROTECTED) != 0L) && (from & PROTECTED) == 0L))
+     || (((to & PROTECTED) != 0L) && (from & PROTECTED) == 0L)) ||
+    ((from & IMPLICIT) != (to & IMPLICIT))
 
   /** An entity in source code, either a class or a member definition.
    *  Name is fully-qualified.
@@ -35,18 +39,26 @@ abstract class Changes {
   case class Changed(e: Entity)(implicit val reason: String) extends Change {
     override def toString = "Changed(" + e + ")[" + reason + "]"
   }
+  case class ParentChanged(e: Entity) extends Change
   
-  private def sameSymbol(sym1: Symbol, sym2: Symbol): Boolean =
-    sym1.fullNameString == sym2.fullNameString
+  private val changedTypeParams = new mutable.HashSet[String]
 
-  private def sameType(tp1: Type, tp2: Type) = {
+  private def sameSymbol(sym1: Symbol, sym2: Symbol, simple: Boolean = false): Boolean =
+    if (simple) sym1.encodedName == sym2.encodedName else sym1.fullName == sym2.fullName
+  private def sameFlags(sym1: Symbol, sym2: Symbol): Boolean =
+    sym1.flags == sym2.flags
+  private def sameAnnotations(sym1: Symbol, sym2: Symbol): Boolean =
+    annotationsChecked.forall(a =>
+      (sym1.hasAnnotation(a) == sym2.hasAnnotation(a)))
+
+  private def sameType(tp1: Type, tp2: Type)(implicit strict: Boolean) = {
     def typeOf(tp: Type): String = tp.toString + "[" + tp.getClass + "]"
     val res = sameType0(tp1, tp2)
-//    if (!res) println("\t different types: " + typeOf(tp1) + " : " + typeOf(tp2))
+    //if (!res) println("\t different types: " + typeOf(tp1) + " : " + typeOf(tp2))
     res
   }
   
-  private def sameType0(tp1: Type, tp2: Type): Boolean = ((tp1, tp2) match {
+  private def sameType0(tp1: Type, tp2: Type)(implicit strict: Boolean): Boolean = ((tp1, tp2) match {
     /*case (ErrorType, _) => false
     case (WildcardType, _) => false
     case (_, ErrorType) => false
@@ -65,9 +77,18 @@ abstract class Changes {
     case (ConstantType(value1), ConstantType(value2)) =>
       value1 == value2
     case (TypeRef(pre1, sym1, args1), TypeRef(pre2, sym2, args2)) =>
-      sameType(pre1, pre2) && sameSymbol(sym1, sym2) &&
-      ((tp1.isHigherKinded && tp2.isHigherKinded && tp1.normalize =:= tp2.normalize) || 
-         sameTypes(args1, args2))
+      val testSymbols = 
+        if (!sameSymbol(sym1, sym2)) {
+          val v = (!strict && sym1.isType && sym2.isType && sameType(sym1.info, sym2.info))
+          if (v) changedTypeParams += sym1.fullName
+          v
+        } else
+          !sym1.isTypeParameter || !changedTypeParams.contains(sym1.fullName)
+
+      testSymbols && sameType(pre1, pre2) && 
+        (sym1.variance == sym2.variance) &&
+        ((tp1.isHigherKinded && tp2.isHigherKinded && tp1.normalize =:= tp2.normalize) || 
+           sameTypes(args1, args2))
          // @M! normalize reduces higher-kinded case to PolyType's
 
     case (RefinedType(parents1, ref1), RefinedType(parents2, ref2)) =>
@@ -84,29 +105,28 @@ abstract class Changes {
           }
       }
       sameTypes(parents1, parents2) && isSubScope(ref1, ref2) && isSubScope(ref2, ref1)
-      
-    case (MethodType(params1, res1), MethodType(params2, res2)) =>
+    case (mt1 @ MethodType(params1, res1), mt2 @ MethodType(params2, res2)) =>
       // new dependent types: probably fix this, use substSym as done for PolyType
-      (sameTypes(tp1.paramTypes, tp2.paramTypes) &&
-       sameType(res1, res2) &&
-       tp1.isInstanceOf[ImplicitMethodType] == tp2.isInstanceOf[ImplicitMethodType])
-
+      sameTypes(tp1.paramTypes, tp2.paramTypes) &&
+      (tp1.params corresponds tp2.params)((t1, t2) => sameSymbol(t1, t2, true) && sameFlags(t1, t2)) &&
+      sameType(res1, res2) &&
+      mt1.isImplicit == mt2.isImplicit
     case (PolyType(tparams1, res1), PolyType(tparams2, res2)) =>
       sameTypeParams(tparams1, tparams2) && sameType(res1, res2)
     case (ExistentialType(tparams1, res1), ExistentialType(tparams2, res2)) =>
-      sameTypeParams(tparams1, tparams2) && sameType(res1, res2)
+      sameTypeParams(tparams1, tparams2)(false) && sameType(res1, res2)(false)
     case (TypeBounds(lo1, hi1), TypeBounds(lo2, hi2)) =>
-        sameType(lo1, lo2) && sameType(hi1, hi2)
+      sameType(lo1, lo2) && sameType(hi1, hi2)
     case (BoundedWildcardType(bounds), _) =>
       bounds containsType tp2
     case (_, BoundedWildcardType(bounds)) =>
       bounds containsType tp1
-
     case (AnnotatedType(_,_,_), _) =>
-      annotationsConform(tp1, tp2) && annotationsConform(tp2, tp1) && tp1.withoutAnnotations =:= tp2.withoutAnnotations
+      annotationsConform(tp1, tp2) && annotationsConform(tp2, tp1) &&
+      sameType(tp1.withoutAnnotations, tp2.withoutAnnotations)
     case (_, AnnotatedType(_,_,_)) =>
-      annotationsConform(tp1, tp2) && annotationsConform(tp2, tp1) && tp1.withoutAnnotations =:= tp2.withoutAnnotations
-    
+      annotationsConform(tp1, tp2) && annotationsConform(tp2, tp1) &&
+      sameType(tp1.withoutAnnotations, tp2.withoutAnnotations)
     case (_: SingletonType, _: SingletonType) =>
       var origin1 = tp1
       while (origin1.underlying.isInstanceOf[SingletonType]) {
@@ -127,54 +147,65 @@ abstract class Changes {
       ((tp1n ne tp1) || (tp2n ne tp2)) && sameType(tp1n, tp2n)
     }
 
-  private def sameTypeParams(tparams1: List[Symbol], tparams2: List[Symbol]) =
-    sameTypes(tparams1 map (_.info), tparams2 map (_.info))
+  private def sameTypeParams(tparams1: List[Symbol], tparams2: List[Symbol])(implicit strict: Boolean) =
+    sameTypes(tparams1 map (_.info), tparams2 map (_.info)) &&
+    sameTypes(tparams1 map (_.tpe), tparams2 map (_.tpe)) &&
+    (tparams1 corresponds tparams2)((t1, t2) => sameAnnotations(t1, t2))
 
-  def sameTypes(tps1: List[Type], tps2: List[Type]): Boolean = 
-    (tps1.length == tps2.length) && ((tps1, tps2).zipped forall sameType)
+  private def sameTypes(tps1: List[Type], tps2: List[Type])(implicit strict: Boolean) =
+    (tps1 corresponds tps2)(sameType(_, _))
 
-  /** Return the list of changes between 'from' and 'to'.
+  /** Return the list of changes between 'from' and 'toSym.info'.
    */
-  def changeSet(from: Symbol, to: Symbol): List[Change] = {
+  def changeSet(from: Type, toSym: Symbol): List[Change] = {
     implicit val defaultReason = "types"
-//     println("changeSet " + from + "(" + from.info + ")"
-//             + " vs " + to + "(" + to.info + ")")
+    implicit val defaultStrictTypeRefTest = true
+    
+    val to = toSym.info
+    changedTypeParams.clear
+    def omitSymbols(s: Symbol): Boolean = !s.hasFlag(LOCAL | LIFTED | PRIVATE)
     val cs = new mutable.ListBuffer[Change]
 
-    if ((from.info.parents zip to.info.parents) exists { case (t1, t2) => !sameType(t1, t2) })
-      cs += Changed(toEntity(from))(from.info.parents.zip(to.info.parents).toString)
-    if (from.typeParams != to.typeParams)
-      cs += Changed(toEntity(from))(" tparams: " + from.typeParams.zip(to.typeParams))
+    if ((from.parents zip to.parents) exists { case (t1, t2) => !sameType(t1, t2) })
+      cs += Changed(toEntity(toSym))(from.parents.zip(to.parents).toString)
+    if (!sameTypeParams(from.typeParams, to.typeParams)(false))
+      cs += Changed(toEntity(toSym))(" tparams: " + from.typeParams.zip(to.typeParams))
 
     // new members not yet visited
     val newMembers = mutable.HashSet[Symbol]()
-    newMembers ++= to.info.decls.iterator
+    newMembers ++= to.decls.iterator filter omitSymbols
 
-    for (o <- from.info.decls.iterator; 
-         val n = to.info.decl(o.name)) {
+    for (o <- from.decls.iterator filter omitSymbols) {
+      val n = to.decl(o.name)
       newMembers -= n
 
-      if (!o.hasFlag(Flags.PRIVATE | Flags.LOCAL | Flags.LIFTED)) {
-        if (o.isClass)
-          cs ++= changeSet(o, n)
-        else if (n == NoSymbol) 
-          cs += Removed(toEntity(o))
-        else {
-          val newSym = n.suchThat(ov => sameType(ov.tpe, o.tpe))
-          if (newSym == NoSymbol || moreRestrictive(o.flags, newSym.flags)) {
-            cs += Changed(toEntity(o))(n + " changed from " + o.tpe + " to " + n.tpe + " flags: " + Flags.flagsToString(o.flags))
-          } else
-            newMembers -= newSym
-        }
+      if (o.isClass)
+        cs ++= changeSet(o.info, n)
+      else if (n == NoSymbol)
+        cs += Removed(toEntity(o))
+      else {
+        val newSym =
+            o match {
+              case _:TypeSymbol if o.isAliasType =>
+                n.suchThat(ov => sameType(ov.info, o.info))
+              case _                             =>
+                n.suchThat(ov => sameType(ov.tpe, o.tpe))
+             }
+        if (newSym == NoSymbol || moreRestrictive(o.flags, newSym.flags))
+          cs += Changed(toEntity(o))(n + " changed from " + o.tpe + " to " + n.tpe + " flags: " + Flags.flagsToString(o.flags))
+        else
+          newMembers -= newSym
       }
-    }
-    cs ++= (newMembers map (Added compose toEntity))
+    }: Unit // Give the type explicitly until #2281 is fixed
 
+    cs ++= (newMembers map (Added compose toEntity))
     cs.toList
   }
   def removeChangeSet(sym: Symbol): Change = Removed(toEntity(sym))
+  def changeChangeSet(sym: Symbol, msg: String): Change = Changed(toEntity(sym))(msg)
+  def parentChangeSet(sym: Symbol): Change = ParentChanged(toEntity(sym))
 
   private def toEntity(sym: Symbol): Entity =
-    if (sym.isClass) Class(sym.fullNameString)
-    else Definition(sym.fullNameString)
+    if (sym.isClass) Class(sym.fullName)
+    else Definition(sym.fullName)
 }

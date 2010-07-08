@@ -1,14 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
 
 import symtab.Flags._
-import scala.tools.nsc.util.{Position,NoPosition}
 import scala.collection.mutable.ListBuffer
 
 /** This trait ...
@@ -122,40 +120,6 @@ trait Contexts { self: Analyzer =>
     var savedTypeBounds: List[(Symbol, Type)] = List() // saved type bounds
        // for type parameters which are narrowed in a GADT
 
-    def intern0 : Context = {
-      if (this eq NoContext) return this
-      val txt = new Context
-      txt.unit = unit
-      txt.tree = tree
-      txt.owner = owner
-      txt.scope = scope
-      assert(outer ne this) // stupid
-      txt.outer = outer // already interned
-      def fix(what : Context) = 
-        if (what eq this) txt
-        else what
-      txt.enclClass = fix(enclClass)
-      txt.enclMethod = fix(enclMethod)
-      txt.implicitsEnabled = implicitsEnabled
-      txt.variance = variance
-      txt._undetparams = _undetparams
-      txt.depth = depth
-      txt.imports = imports
-      txt.openImplicits = openImplicits
-      txt.prefix = prefix
-      txt.inConstructorSuffix = inConstructorSuffix
-      txt.returnsSeen = returnsSeen
-      txt.reportGeneralErrors = reportGeneralErrors
-      txt.checking = checking
-      txt.retyping = retyping
-      txt.savedTypeBounds = savedTypeBounds
-      txt
-    }
-    override def equals(that: Any): Boolean = that match {
-      case that: AnyRef if this eq that => true
-      case that                         => super.equals(that)
-    }
-
     def undetparams = _undetparams
     def undetparams_=(ps: List[Symbol]) = {
       //System.out.println("undetparams = " + ps);//debug
@@ -180,15 +144,11 @@ trait Contexts { self: Analyzer =>
              scope: Scope, imports: List[ImportInfo]): Context = {
       val c = new Context
       c.unit = unit
-      c.tree = sanitize(tree)
+      c.tree = /*sanitize*/(tree) // used to be for IDE
       c.owner = owner
       c.scope = scope
       
-      c.outer = intern(this)
-      def internIf(txt : Context) = {
-        if (txt eq this) c.outer // already interned!
-        else txt
-      }
+      c.outer = this
       
       tree match {
         case Template(_, _, _) | PackageDef(_, _) =>
@@ -196,7 +156,7 @@ trait Contexts { self: Analyzer =>
           c.prefix = c.owner.thisType
           c.inConstructorSuffix = false
         case _ =>
-          c.enclClass = internIf(this.enclClass)
+          c.enclClass = this.enclClass
           c.prefix =
             if (c.owner != this.owner && c.owner.isTerm) NoPrefix
             else this.prefix
@@ -206,7 +166,7 @@ trait Contexts { self: Analyzer =>
         case DefDef(_, _, _, _, _, _) =>
           c.enclMethod = c
         case _ =>
-          c.enclMethod = internIf(this.enclMethod)
+          c.enclMethod = this.enclMethod
       }
       c.variance = this.variance
       c.depth = if (scope == this.scope) this.depth else this.depth + 1
@@ -291,34 +251,29 @@ trait Contexts { self: Analyzer =>
       argContext
     }
 
-    //todo: remove
-    def makeConstructorSuffixContext = {
-      val c = make(tree)
-      c.inConstructorSuffix = true
-      c
-    }
-
     private def diagString =
       if (diagnostic.isEmpty) ""
       else diagnostic.mkString("\n","\n", "")
 
-    def error(pos: Position, err: Error) {
-      val msg = err.getMessage() + diagString
-      if (reportGeneralErrors)
-        unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
-      else
-        throw err
+    private def addDiagString(msg: String) = {
+      val ds = diagString
+      if (msg endsWith ds) msg else msg + ds
     }
 
-    def error(pos: Position, msg: String) {
-      val msg1 = msg + diagString
-      if (reportGeneralErrors)
-        unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg1 else msg1)
-      else
-        throw new TypeError(pos, msg1)
+    private def unitError(pos: Position, msg: String) = 
+      unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
+
+    def error(pos: Position, err: Throwable) =
+      if (reportGeneralErrors) unitError(pos, addDiagString(err.getMessage()))
+      else throw err
+
+    def error(pos: Position, msg: String) = {
+      val msg1 = addDiagString(msg)
+      if (reportGeneralErrors) unitError(pos, msg1)
+      else throw new TypeError(pos, msg1)
     }
 
-    def warning(pos:  Position, msg: String) {
+    def warning(pos:  Position, msg: String) = {
       if (reportGeneralErrors) unit.warning(pos, msg)
     }
  
@@ -361,7 +316,7 @@ trait Contexts { self: Analyzer =>
     override def toString(): String = {
       if (this == NoContext) "NoContext"
       else owner.toString() + " @ " + tree.getClass() +
-           " " + tree.toString() + ", scope = " + scope.hashCode() +
+           " " + tree.toString() + ", scope = " + scope.## +
            " " + scope.toList + "\n:: " + outer.toString()
     }
 
@@ -371,7 +326,7 @@ trait Contexts { self: Analyzer =>
       var c = this.enclClass
       while (c != NoContext && 
              !clazz.isNonBottomSubClass(c.owner) &&
-             !(c.owner.isModuleClass && clazz.isNonBottomSubClass(c.owner.linkedClassOfModule)))
+             !(c.owner.isModuleClass && clazz.isNonBottomSubClass(c.owner.companionClass)))
         c = c.outer.enclClass
       c
     }
@@ -422,6 +377,7 @@ trait Contexts { self: Analyzer =>
          ||
          (accessWithin(ab) || accessWithin(ab.linkedClassOfClass)) &&
          (!sym.hasFlag(LOCAL) || 
+          sym.owner.isImplClass || // allow private local accesses to impl classes
           (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner) ||
           pre =:= sym.owner.thisType)
          ||
@@ -463,20 +419,35 @@ trait Contexts { self: Analyzer =>
       implicitsCache = null
       if (outer != null && outer != this) outer.resetCache
     }
-    private def collectImplicits(syms: List[Symbol], pre: Type): List[ImplicitInfo] =
-      for (sym <- syms if sym.hasFlag(IMPLICIT) && isAccessible(sym, pre, false))
+
+    /** A symbol `sym` qualifies as an implicit if it has the IMPLICIT flag set,
+     *  it is accessible, and if it is imported there is not already a local symbol
+     *  with the same names. Local symbols override imported ones. This fixes #2866.
+     */
+    private def isQualifyingImplicit(sym: Symbol, pre: Type, imported: Boolean) =
+      sym.hasFlag(IMPLICIT) &&
+      isAccessible(sym, pre, false) && 
+      !(imported && {
+        val e = scope.lookupEntry(sym.name)
+        (e ne null) && (e.owner == scope)
+      })
+
+    private def collectImplicits(syms: List[Symbol], pre: Type, imported: Boolean = false): List[ImplicitInfo] =
+      for (sym <- syms if isQualifyingImplicit(sym, pre, imported))
       yield new ImplicitInfo(sym.name, pre, sym)
 
     private def collectImplicitImports(imp: ImportInfo): List[ImplicitInfo] = {
       val pre = imp.qual.tpe
       def collect(sels: List[ImportSelector]): List[ImplicitInfo] = sels match {
-        case List() => List()
-        case List(ImportSelector(nme.WILDCARD, _, _, _)) => collectImplicits(pre.implicitMembers, pre)
+        case List() => 
+          List()
+        case List(ImportSelector(nme.WILDCARD, _, _, _)) => 
+          collectImplicits(pre.implicitMembers, pre, imported = true)
         case ImportSelector(from, _, to, _) :: sels1 => 
           var impls = collect(sels1) filter (info => info.name != from)
           if (to != nme.WILDCARD) {
             for (sym <- imp.importedSymbol(to).alternatives)
-              if (sym.hasFlag(IMPLICIT) && isAccessible(sym, pre, false)) 
+              if (isQualifyingImplicit(sym, pre, imported = true))
                 impls = new ImplicitInfo(to, pre, sym) :: impls
           }
           impls
@@ -486,12 +457,7 @@ trait Contexts { self: Analyzer =>
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      val nextOuter = 
-        if (owner.isConstructor) {
-          if (outer.tree.isInstanceOf[Template]) outer.outer.outer
-          else outer.outer.outer
-        } else outer
-        // can we can do something smarter to bring back the implicit cache?
+      val nextOuter = if (owner.isConstructor) outer.outer.outer else outer
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()
@@ -510,42 +476,43 @@ trait Contexts { self: Analyzer =>
           } else if (imports != nextOuter.imports) {
             assert(imports.tail == nextOuter.imports)
             collectImplicitImports(imports.head)
+          } else if (owner.isPackageClass) { 
+ 	    // the corresponding package object may contain implicit members. 
+ 	    collectImplicits(owner.tpe.implicitMembers, owner.tpe)
           } else List()
         implicitsCache = if (newImplicits.isEmpty) nextOuter.implicitss
                          else newImplicits :: nextOuter.implicitss
       }
       implicitsCache
     }
-    override def hashCode = {
-      var hc = 0
-      implicit def b2i(b : Boolean) = if (b) 1 else 0
-      // assum enclClass/enclMethod/outer are all interned already.
-      hc += tree.hashCodeStructure
-      def f(txt : Context) = if (txt eq this) 0 else System.identityHashCode(txt)
-      hc += f(enclClass)
-      hc += f(enclMethod)
-      hc += f(outer)
-      hc += owner.hashCode
-      hc += scope.hashCode
-      hc += variance.hashCode
-      hc += _undetparams.hashCode
-      hc += depth
-      hc += imports.hashCode
-      hc += prefix.hashCode
-      hc += inConstructorSuffix
-      hc += checking
-      hc += retyping
-      hc += savedTypeBounds.hashCode
-      hc += (if (unit eq null) 0 else unit.hashCode)
-      hc
+
+    /**
+     * Find a symbol in this context or one of its outers.
+     *
+     * Used to find symbols are owned by methods (or fields), they can't be
+     * found in some scope.
+     *
+     * Examples: companion module of classes owned by a method, default getter
+     * methods of nested methods. See NamesDefaults.scala
+     */
+    def lookup(name: Name, expectedOwner: Symbol) = {
+      var res: Symbol = NoSymbol
+      var ctx = this
+      while(res == NoSymbol && ctx.outer != ctx) {
+        val s = ctx.scope.lookup(name)
+        if (s != NoSymbol && s.owner == expectedOwner)
+          res = s
+        else
+          ctx = ctx.outer
+      }
+      res
     }
-    
   }
   class ImportInfo(val tree: Import, val depth: Int) {
     /** The prefix expression */
     def qual: Tree = tree.symbol.info match {
       case ImportType(expr) => expr
-      case ErrorType => tree
+      case ErrorType => tree setType NoType // fix for #2870
       case _ => throw new FatalError("symbol " + tree.symbol + " has bad type: " + tree.symbol.info);//debug
     }
 
@@ -561,16 +528,16 @@ trait Contexts { self: Analyzer =>
       var renamed = false
       var selectors = tree.selectors
       while (selectors != Nil && result == NoSymbol) {
-        if (selectors.head.name != nme.WILDCARD)
-          notifyImport(name, qual.tpe, selectors.head.name, selectors.head.rename)
+//        if (selectors.head.name != nme.WILDCARD) // used to be for IDE
+//          notifyImport(name, qual.tpe, selectors.head.name, selectors.head.rename)
 
         if (selectors.head.rename == name.toTermName)
-          result = qual.tpe.member(
+          result = qual.tpe.nonLocalMember( // new to address #2733: consider only non-local members for imports
             if (name.isTypeName) selectors.head.name.toTypeName else selectors.head.name)
         else if (selectors.head.name == name.toTermName)
           renamed = true
         else if (selectors.head.name == nme.WILDCARD && !renamed)
-          result = qual.tpe.member(name)
+          result = qual.tpe.nonLocalMember(name)
         selectors = selectors.tail
       }
       result
@@ -589,23 +556,9 @@ trait Contexts { self: Analyzer =>
     }
 
     override def toString() = tree.toString()
-    
-    override def hashCode = tree.hashCodeStructure + depth
-    override def equals(that : Any) = that match {
-      case that : ImportInfo =>
-        depth == that.depth && (tree equalsStructure that.tree)
-      case _ => false
-    }
   }
 
   case class ImportType(expr: Tree) extends Type {
-    override def equals(that : Any) = that match {
-      case ImportType(expr) => this.expr == expr
-      case _                => false
-    }
-    override def hashCode = expr.hashCode
     override def safeToString = "ImportType("+expr+")"
   }
-  protected def intern(txt : Context) = txt
-  
 }

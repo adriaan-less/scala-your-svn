@@ -1,15 +1,13 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
-import collection.mutable.StringBuilder
 
 /** an XML node for processing instructions (PI)
  *
@@ -36,5 +34,5 @@ case class ProcInstr(target: String, proctext: String) extends SpecialNode
    *  to this stringbuffer.
    */
   override def buildString(sb: StringBuilder) =
-    sb append "<?%s%s?>".format(target, (if (proctext.isEmpty) "" else " " + proctext))
+    sb append "<?%s%s?>".format(target, (if (proctext == "") "" else " " + proctext))
 }

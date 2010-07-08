@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -224,8 +223,12 @@ abstract class TreeBrowsers {
               t.symbol.owner.toString
             else 
               "NoSymbol has no owner")
-          if ((t.symbol ne null) && t.symbol.isType)
-            str.append("\ntermSymbol: " + t.symbol.tpe.termSymbol + "\ntypeSymbol: " + t.symbol.tpe.typeSymbol)
+          if ((t.symbol ne null) && t.symbol.isType) {
+            str.append("\ntermSymbol: " + t.symbol.tpe.termSymbol
+                     + "\ntypeSymbol: " + t.symbol.tpe.typeSymbol)
+          if (t.symbol.isTypeSkolem)
+            str.append("\nSkolem of: " + t.symbol.deSkolemize)
+          }
           str.append("\nSymbol tpe: ")
           if (t.symbol ne null) {
             str.append(t.symbol.tpe).append("\n")
@@ -562,7 +565,8 @@ abstract class TreeBrowsers {
       if ((s ne null) && (s != NoSymbol)) {
         var str = flagsToString(s.flags)
         if (s.isStaticMember) str = str + " isStatic ";
-        str + " annotations: " + s.annotations.mkString("", " ", "")
+        (str + " annotations: " + s.annotations.mkString("", " ", "")
+          + (if (s.isTypeSkolem) "\ndeSkolemized annotations: " + s.deSkolemize.annotations.mkString("", " ", "") else "")) 
       } 
       else ""
     }
@@ -680,7 +684,7 @@ abstract class TreeBrowsers {
                         toDocument(thistpe) :/: ", " :/:
                         toDocument(supertpe) ::")"))
       case _ =>
-        throw new Error("Unknown case: " + t.toString() +", "+ t.getClass)
+        Predef.error("Unknown case: " + t.toString() +", "+ t.getClass)
     }
   }
 

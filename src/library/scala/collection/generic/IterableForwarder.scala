@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection.generic
@@ -22,7 +21,7 @@ import collection.mutable.Buffer
  *    <li><code>toString</code>, <code>hashCode</code>, <code>equals</code>,
  *      <code>stringPrefix</code></li>
  *    <li><code>newBuilder</code>, <code>view</code></li>
- *    <li>all calls creating a new iterable objetc of the same kind</li>
+ *    <li>all calls creating a new iterable object of the same kind</li>
  *  </ul>
  *  <p>
  *    The above methods are forwarded by subclass <a href="../IterableProxy.html"
@@ -41,6 +40,6 @@ trait IterableForwarder[+A] extends Iterable[A] with TraversableForwarder[A] {
   // Iterable delegates
   // Iterable methods could be printed by  cat IterableLike.scala | sed -n '/trait Iterable/,$ p' | egrep '^  (override )?def'
   
-  override def iterator = underlying.iterator
+  override def iterator: Iterator[A] = underlying.iterator
   override def sameElements[B >: A](that: Iterable[B]): Boolean = underlying.sameElements(that)
 }

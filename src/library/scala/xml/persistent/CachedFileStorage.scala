@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
 package persistent
@@ -74,7 +73,7 @@ extends java.lang.Thread with scala.util.logging.Logged {
     import scala.io.Source
     import scala.xml.parsing.ConstructingParser
     log("[load]\nloading "+theFile)
-    val src = Source.fromFile(theFile)()
+    val src = Source.fromFile(theFile)
     log("parsing "+theFile)
     val res = ConstructingParser.fromSource(src,false).document.docElem(0)
     switch

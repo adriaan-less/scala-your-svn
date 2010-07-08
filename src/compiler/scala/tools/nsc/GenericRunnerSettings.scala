@@ -1,9 +1,8 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2009 LAMP/EPFL
+ * Copyright 2006-2010 LAMP/EPFL
  * @author  Lex Spoon
  */
 
-// $Id$
 
 package scala.tools.nsc
 
@@ -38,6 +37,4 @@ extends Settings(error) {
     BooleanSetting(
         "-nocompdaemon",
         "do not use the fsc compilation daemon")
-
-  val defines = DefinesSetting
 }

@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -59,7 +58,7 @@ class FileChooser(dir: File) {
   def title: String = peer.getDialogTitle
   def title_=(t: String) { peer.setDialogTitle(t) }
   
-  def accessory: Component = UIElement.cachedWrapper(peer.getAccessory)
+  def accessory: Component = UIElement.cachedWrapper[Component](peer.getAccessory)
   def accessory_=(c: Component) { peer.setAccessory(c.peer) }
   
   def fileHidingEnabled: Boolean = peer.isFileHidingEnabled

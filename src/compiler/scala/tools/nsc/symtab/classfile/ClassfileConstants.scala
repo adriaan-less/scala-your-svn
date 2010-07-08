@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -77,7 +76,7 @@ object ClassfileConstants {
   final val CONSTANT_INTFMETHODREF = 11
   final val CONSTANT_NAMEANDTYPE   = 12
 
-  // tags desribing the type of a literal in attribute values
+  // tags describing the type of a literal in attribute values
   final val BYTE_TAG   = 'B'
   final val CHAR_TAG   = 'C'
   final val DOUBLE_TAG = 'D'

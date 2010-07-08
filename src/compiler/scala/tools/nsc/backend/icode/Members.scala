@@ -1,9 +1,8 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -108,7 +107,7 @@ trait Members { self: ICodes =>
       this
     }
 
-    override def toString() = symbol.fullNameString
+    override def toString() = symbol.fullName
 
     def lookupField(s: Symbol) = fields find (_.symbol == s)
     def lookupMethod(s: Symbol) = methods find (_.symbol == s)
@@ -201,7 +200,7 @@ trait Members { self: ICodes =>
     /* determines whether or not this method is the class static constructor. */
     def isStaticCtor: Boolean = isStatic && symbol.rawname == nme.CONSTRUCTOR
     
-    override def toString() = symbol.fullNameString
+    override def toString() = symbol.fullName
     
     import opcodes._
     def checkLocals: Unit = if (code ne null) {

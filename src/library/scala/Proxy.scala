@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -22,7 +21,7 @@ package scala
  */
 trait Proxy {
   def self: Any
-  override def hashCode: Int = self.hashCode
+  override def hashCode: Int = self.##
   override def equals(that: Any): Boolean = 
     if(that == null) false 
     else that equals self

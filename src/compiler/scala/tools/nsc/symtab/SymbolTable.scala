@@ -1,32 +1,37 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
-import ast.Trees
+
+import ast.{Trees, TreePrinters, DocComments}
 
 import util._
 
-abstract class SymbolTable extends Names
+abstract class SymbolTable extends reflect.generic.Universe
+                              with Names
                               with Symbols
                               with Types
                               with Scopes
                               with Definitions
-                              with Constants
+                              with reflect.generic.Constants
                               with BaseTypeSeqs
                               with InfoTransformers
                               with StdNames
                               with AnnotationInfos
                               with AnnotationCheckers
                               with Trees
+                              with TreePrinters
                               with Positions
+                              with DocComments
 {
   def settings: Settings
   def rootLoader: LazyType
   def log(msg: AnyRef)
+  def abort(msg: String) = throw new Error(msg)
+  def abort() = throw new Error()
 
   /** Are we compiling for Java SE ? */
   def forJVM: Boolean

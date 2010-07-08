@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -22,7 +21,7 @@ import event._
  */
 class ProgressBar extends Component with Orientable.Wrapper {
   override lazy val peer: javax.swing.JProgressBar = 
-    new javax.swing.JProgressBar
+    new javax.swing.JProgressBar with SuperMixin
   
   def min: Int = peer.getMinimum
   def min_=(v: Int) { peer.setMinimum(v) }

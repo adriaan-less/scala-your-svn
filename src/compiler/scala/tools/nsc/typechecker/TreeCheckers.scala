@@ -1,14 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
 
 import scala.tools.nsc.symtab.Flags._
-import scala.tools.nsc.util.{Position, NoPosition}
 
 abstract class TreeCheckers extends Analyzer {
 

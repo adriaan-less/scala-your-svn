@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,13 +14,9 @@ package immutable
 import generic._
 import mutable.Builder
 
-/** A subtrait of <code>collection.Traversable</code> which represents
- *  traversables that cannot be mutated.
- *
- *  @author  Matthias Zenger
- *  @author  Martin Odersky
- *  @version 2.8
- *  @since   2.8
+/** A trait for traversable collections that are guaranteed immutable.
+ *  $traversableInfo
+ *  @define mutability immutable
  */
 trait Traversable[+A] extends scala.collection.Traversable[A] 
                          with GenericTraversableTemplate[A, Traversable] 
@@ -30,11 +25,10 @@ trait Traversable[+A] extends scala.collection.Traversable[A]
   override def companion: GenericCompanion[Traversable] = Traversable
 }
 
-/** A factory object for the trait <code>Traversable</code>.
- *
- *  @author  Martin Odersky
- *  @version 2.8
- *  @since   2.8
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ *  @define coll immutable traversable collection
+ *  @define Coll immutable.Traversable
  */
 object Traversable extends TraversableFactory[Traversable] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = new GenericCanBuildFrom[A]

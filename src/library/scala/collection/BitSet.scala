@@ -1,32 +1,34 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 
 import generic._
 
-/** common base class for mutable and immutable bit sets
- *
- *  @since 1
+/** A common base class for mutable and immutable bitsets.
+ *  $bitsetinfo
  */
 trait BitSet extends Set[Int] 
                 with BitSetLike[BitSet] {
   override def empty: BitSet = BitSet.empty
 }
 
-/** A factory object for bitsets
- *
- *  @since 2.8
+/** $factoryInfo
+ *  @define coll bitset
+ *  @define Coll BitSet
  */
 object BitSet extends BitSetFactory[BitSet] {
-  val empty: BitSet = immutable.BitSet.empty
+  val empty: BitSet = immutable.BitSet.empty  
+  def newBuilder = immutable.BitSet.newBuilder
+  
+  /** $canBuildFromInfo */
+  implicit def canBuildFrom: CanBuildFrom[BitSet, Int, BitSet] = bitsetCanBuildFrom
 }
 

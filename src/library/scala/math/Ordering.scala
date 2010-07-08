@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -133,6 +132,8 @@ object Ordering extends LowPriorityOrderingImplicits {
     override def lteq(x: T, y: T): Boolean = !cmp(y, x)
   }
   
+  def by[T, S: Ordering](f: T => S): Ordering[T] = fromLessThan((x, y) => implicitly[Ordering[S]].lt(f(x), f(y)))
+  
   trait UnitOrdering extends Ordering[Unit] {
     def compare(x: Unit, y: Unit) = 0
   }
@@ -203,15 +204,17 @@ object Ordering extends LowPriorityOrderingImplicits {
   }
   implicit object String extends StringOrdering
 
-  implicit def Option[T](implicit ord: Ordering[T]) : Ordering[Option[T]] = 
-    new Ordering[Option[T]] {
-      def compare(x : Option[T], y : Option[T]) = (x, y) match {
-        case (None, None) => 0
-        case (None, _) => -1
-        case (_, None) => 1
-        case (Some(x), Some(y)) => ord.compare(x, y)
-      }
+  trait OptionOrdering[T] extends Ordering[Option[T]] {
+    def optionOrdering: Ordering[T]
+    def compare(x: Option[T], y: Option[T]) = (x, y) match {
+      case (None, None)       => 0
+      case (None, _)          => -1
+      case (_, None)          => 1
+      case (Some(x), Some(y)) => optionOrdering.compare(x, y)
     }
+  }
+  implicit def Option[T](implicit ord: Ordering[T]): Ordering[Option[T]] =
+    new OptionOrdering[T] { val optionOrdering = ord }
 
   implicit def Iterable[T](implicit ord: Ordering[T]): Ordering[Iterable[T]] = 
     new Ordering[Iterable[T]] {

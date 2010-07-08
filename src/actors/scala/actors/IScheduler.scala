@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -49,14 +48,14 @@ trait IScheduler {
    *
    *  @param  a  the actor to be registered
    */
-  def newActor(a: Reactor): Unit
+  def newActor(a: TrackedReactor): Unit
 
   /** Unregisters an actor from this scheduler, because it
    *  has terminated.
    * 
    *  @param  a  the actor to be registered
    */
-  def terminated(a: Reactor): Unit
+  def terminated(a: TrackedReactor): Unit
 
   /** Registers a closure to be executed when the specified
    *  actor terminates.
@@ -64,7 +63,7 @@ trait IScheduler {
    *  @param  a  the actor
    *  @param  f  the closure to be registered
    */
-  def onTerminate(a: Reactor)(f: => Unit): Unit
+  def onTerminate(a: TrackedReactor)(f: => Unit): Unit
 
   def managedBlock(blocker: scala.concurrent.ManagedBlocker): Unit
 

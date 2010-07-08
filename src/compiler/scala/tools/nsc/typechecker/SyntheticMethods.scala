@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -88,21 +87,28 @@ trait SyntheticMethods extends ast.TreeDSL {
       typer typed { DEF(method) === LIT(nargs) }
     }
 
-    def productElementMethod(accs: List[Symbol]): Tree = {
-      val symToTpe  = makeTypeConstructor(List(IntClass.tpe), AnyClass.tpe)
-      val method    = syntheticMethod(nme.productElement, 0, symToTpe)
+    /** Common code for productElement and (currently disabled) productElementName
+     */
+    def perElementMethod(accs: List[Symbol], methodName: Name, resType: Type, caseFn: Symbol => Tree): Tree = {
+      val symToTpe  = makeTypeConstructor(List(IntClass.tpe), resType)
+      val method    = syntheticMethod(methodName, 0, symToTpe)
       val arg       = method ARG 0
-      val default   = List( DEFAULT ==> THROW(IndexOutOfBoundsExceptionClass, arg) )
+      val default   = List(DEFAULT ==> THROW(IndexOutOfBoundsExceptionClass, arg))
       val cases     =
         for ((sym, i) <- accs.zipWithIndex) yield
-          CASE(LIT(i)) ==> Ident(sym)
-      
+          CASE(LIT(i)) ==> caseFn(sym)
+
       typer typed {
         DEF(method) === {
           arg MATCH { cases ::: default : _* }
         }
       }
     }
+    def productElementMethod(accs: List[Symbol]): Tree =
+      perElementMethod(accs, nme.productElement, AnyClass.tpe, x => Ident(x))
+  
+    // def productElementNameMethod(accs: List[Symbol]): Tree =
+    //   perElementMethod(accs, nme.productElementName, StringClass.tpe, x => Literal(x.name.toString))
 
     def moduleToStringMethod: Tree = {
       val method = syntheticMethod(nme.toString_, FINAL, makeNoArgConstructor(StringClass.tpe))
@@ -123,8 +129,8 @@ trait SyntheticMethods extends ast.TreeDSL {
       }
     }
     
-    def hashCodeTarget: Name =
-      if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
+    def hashCodeTarget: Name = nme.hashCode_
+      // if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
 
     def equalsSym = syntheticMethod(
       nme.equals_, 0, makeTypeConstructor(List(AnyClass.tpe), BooleanClass.tpe)
@@ -173,12 +179,14 @@ trait SyntheticMethods extends ast.TreeDSL {
       
       // returns (Apply, Bind)
       def makeTrees(acc: Symbol, cpt: Type): (Tree, Bind) = {
-        val varName             = context.unit.fresh.newName(clazz.pos.focus, acc.name + "$")
-        val (eqMethod, binding) =
-          if (isRepeatedParamType(cpt))  (nme.sameElements, Star(WILD()))
-          else                           (nme.EQ          , WILD()      )
-        
-        ((varName DOT eqMethod)(Ident(acc)), varName BIND binding)
+        val varName     = context.unit.fresh.newName(clazz.pos.focus, acc.name + "$")
+        val isRepeated  = isRepeatedParamType(cpt)
+        val binding     = if (isRepeated) Star(WILD()) else WILD()
+        val eqMethod: Tree  =
+          if (isRepeated) gen.mkRuntimeCall(nme.sameElements, List(Ident(varName), Ident(acc)))
+          else (varName DOT nme.EQ)(Ident(acc))
+
+        (eqMethod, varName BIND binding)
       }
       
       // Creates list of parameters and a guard for each
@@ -262,6 +270,9 @@ trait SyntheticMethods extends ast.TreeDSL {
             Product_productPrefix   -> (() => productPrefixMethod),
             Product_productArity    -> (() => productArityMethod(accessors.length)),
             Product_productElement  -> (() => productElementMethod(accessors)),
+            // This is disabled pending a reimplementation which doesn't add any
+            // weight to case classes (i.e. inspects the bytecode.)
+            // Product_productElementName  -> (() => productElementNameMethod(accessors)),
             Product_canEqual        -> (() => canEqualMethod)
           )
         }

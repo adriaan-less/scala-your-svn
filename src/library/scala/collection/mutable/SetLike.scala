@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,28 +13,45 @@ package mutable
 
 import generic._
 import script._
+import scala.annotation.migration
 
-/** <p>
- *    A generic template for mutable sets of elements of type <code>A</code>.
+/** A template trait for mutable sets of type `mutable.Set[A]`.
+ *  @tparam A    the type of the elements of the set
+ *  @tparam This the type of the set itself.
+ *
+ *  $setnote
+ * 
+ *  @author  Martin Odersky
+ *  @version 2.8
+ *  @since 2.8
+ *
+ *  @define setnote
+ *  @note
+ *    This trait provides most of the operations of a `mutable.Set` independently of its representation.
+ *    It is typically inherited by concrete implementations of sets.
+ * 
  *    To implement a concrete mutable set, you need to provide implementations
  *    of the following methods:
- *  </p><pre>
- *    <b>def</b> contains(elem: A): Boolean
- *    <b>def</b> iterator: Iterator[A]
- *    <b>def</b> += (elem: A): <b>this.type</b>
- *    <b>def</b> -= (elem: A): <b>this.type</b></pre>
- *  <p>
- *    If you wish that methods <code>like</code>, <code>take</code>,
- *    <code>drop</code>, <code>filter</code> return the same kind of map,
+ *    {{{
+ *       def contains(elem: A): Boolean
+ *       def iterator: Iterator[A]
+ *       def += (elem: A): this.type
+ *       def -= (elem: A): this.type</pre>
+ *    }}}
+ *    If you wish that methods like `take`,
+ *    `drop`, `filter` return the same kind of set,
  *    you should also override:
- *  </p><pre>
- *    <b>def</b> empty: This</pre>
- *  <p>
- *    It is also good idea to override methods <code>foreach</code> and
- *    <code>size</code> for efficiency.
- *  </p>
- * 
- *  @since 2.8
+ *    {{{
+ *       def empty: This</pre>
+ *    }}}
+ *    It is also good idea to override methods `foreach` and
+ *    `size` for efficiency.
+ *  @define addDuplicates
+ *    Note that duplicates (elements for which `equals` yields true) will be
+ *    removed, but it is not specified whether it will be an element of this
+ *    set or a newly added element.
+ *  @define coll mutable set
+ *  @define Coll mutable.Set
  */
 trait SetLike[A, +This <: SetLike[A, This] with Set[A]] 
   extends scala.collection.SetLike[A, This]
@@ -46,16 +62,19 @@ trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
      with Cloneable[mutable.Set[A]] 
 { self =>
   
-  /** A common implementation of <code>newBuilder</code> for all mutable sets
-   *  in terms of <code>empty</code>. Overrides <code>SetLike</code>
-   *  implementation for better efficiency.
+  /** A common implementation of `newBuilder` for all mutable sets
+   *  in terms of `empty`. Overrides the implementation in `collection.SetLike`
+   *  for better efficiency.
    */
   override protected[this] def newBuilder: Builder[A, This] = empty
+  
+  @migration(2, 8, "Set.map now returns a Set, so it will discard duplicate values.")
+  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[This, B, That]): That = super.map(f)(bf)
 
-  /** Adds a new element to the set.
+  /** Adds an element to this $coll.
    *
    *  @param elem the element to be added
-   *  @return true if the element was not yet present in the set.
+   *  @return `true` if the element was not yet present in the set, `false` otherwise.
    */
   def add(elem: A): Boolean = {
     val r = contains(elem)
@@ -63,10 +82,10 @@ trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
     r
   }
 
-  /** Removes a single element from a set.
+  /** Removes an element from this set.
    *
    *  @param elem  The element to be removed.
-   *  @return  true if the element was already present in the set.
+   *  @return  `true` if the element was previously present in the set, `false` otherwise.
    */
   def remove(elem: A): Boolean = {
     val r = contains(elem)
@@ -74,29 +93,33 @@ trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
     r
   }
 
-  /** This method allows one to add or remove an element <code>elem</code>
-   *  from this set depending on the value of parameter <code>included</code>.
-   *  Typically, one would use the following syntax:
-   *  <pre>set(elem) = true</pre>
+  /** Updates the presence of a single element in this set.
    *
+   * This method allows one to add or remove an element `elem`
+   *  from this set depending on the value of parameter `included`.
+   *  Typically, one would use the following syntax:
+   *  {{{
+   *     set(elem) = true  // adds element
+   *     set(elem) = false // removes element
+   *  }}}
+   *
+   *  @param elem     the element to be added or removed
+   *  @param included a flag indicating whether element should be included or excluded.
    */
   def update(elem: A, included: Boolean) {
     if (included) this += elem else this -= elem
   }
 
-  /** Adds a new element to the set.
-   *
-   *  @param elem the element to be added
-   */
+  // abstract methods from Growable/Shrinkable
+  
+  /** Adds a single element to the set. */
   def +=(elem: A): this.type
-
-  /** Removes a single element from a set. 
-   *  @param elem  The element to be removed.
-   */
   def -=(elem: A): this.type
 
-  /** Removes all elements from the set for which the predicate <code>p</code>
-   *  yields the value <code>false</code>.
+  /** Removes all elements from the set for which do not satisfy a predicate.
+   *  @param  p  the predicate used to test elements. Only elements for
+   *             while `p` returns `true` are retained in the set; all others
+   *             are removed.
    */
   def retain(p: A => Boolean): Unit = for (elem <- this.toList) if (!p(elem)) this -= elem
 
@@ -105,109 +128,102 @@ trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
    */
   def clear() { foreach(-=) }
 
-  override def clone(): mutable.Set[A] = empty ++= repr
+  override def clone(): This = empty ++= repr
 
+  /** The result when this set is used as a builder
+   *  @return  the set representation itself.
+   */
   def result: This = repr
 
-  /** Adds a single element to this collection and returns 
-   *  the collection itself.
-   *
+  /** Creates a new set consisting of all the elements of this set and `elem`.
+   *  
+   *  $addDuplicates
+   *  
    *  @param elem  the element to add.
+   *  @return      a new set consisting of elements of this set and `elem`.
    */
-  @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() +=' if you intend to create a new collection.")
- override def + (elem: A): This = { +=(elem); repr }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new set.  To add an element as a\n"+
+    "side effect to an existing set and return that set itself, use +=."
+  )
+  override def + (elem: A): This = clone() += elem
 
-  /** Adds two or more elements to this collection and returns
-   *  the collection itself.
-   *
+  /** Creates a new set consisting of all the elements of this set and two or more
+   *  specified elements.
+   *  
+   *  $addDuplicates
+   *  
    *  @param elem1 the first element to add.
    *  @param elem2 the second element to add.
    *  @param elems the remaining elements to add.
+   *  @return      a new set consisting of all the elements of this set, `elem1`,
+   *               `elem2` and those in `elems`.
    */
-  @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() +=' if you intend to create a new collection.")
-  override def + (elem1: A, elem2: A, elems: A*): This = {
-    this += elem1 += elem2 ++= elems
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new set.  To add the elements as a\n"+
+    "side effect to an existing set and return that set itself, use +=."
+  )
+  override def + (elem1: A, elem2: A, elems: A*): This =
+    clone() += elem1 += elem2 ++= elems
 
-  /** Adds a number of elements provided by a traversable object and returns
-   *  either the collection itself.
+  /** Creates a new set consisting of all the elements of this set and those
+   *  provided by the specified traversable object.
    *
-   *  @param iter     the iterable object.
-   */
-  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=' if you intend to create a new collection.")
-  override def ++(iter: scala.collection.Traversable[A]): This = { 
-    for (elem <- iter) +=(elem)
-    repr
-  }
-
-
-  /** Adds a number of elements provided by an iterator and returns
-   *  the collection itself.
+   *  $addDuplicates
    *
-   *  @param iter   the iterator
+   *  @param xs        the traversable object.
+   *  @return          a new set cconsisting of elements of this set and those in `xs`.
    */
-  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=' if you intend to create a new collection.")
-  override def ++ (iter: Iterator[A]): This = {
-    for (elem <- iter) +=(elem)
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new set.  To add the elements as a\n"+
+    "side effect to an existing set and return that set itself, use ++=."
+  )
+  override def ++(xs: TraversableOnce[A]): This = clone() ++= xs
 
-  /** Removes a single element from this collection and returns 
-   *  the collection itself.
+  /** Creates a new set consisting of all the elements of this set except `elem`.
    *
    *  @param elem  the element to remove.
+   *  @return      a new set consisting of all the elements of this set except `elem`.
    */
-  @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() -=' if you intend to create a new collection.")
-  override def -(elem: A): This = { -=(elem); repr }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new set.  To remove the element as a\n"+
+    "side effect to an existing set and return that set itself, use -=."
+  )
+  override def -(elem: A): This = clone() -= elem
 
-  /** Removes two or more elements from this collection and returns
-   *  the collection itself.
+  /** Creates a new set consisting of all the elements of this set except the two
+   *  or more specified elements.
    *
    *  @param elem1 the first element to remove.
    *  @param elem2 the second element to remove.
    *  @param elems the remaining elements to remove.
+   *  @return      a new set consisting of all the elements of this set except
+   *               `elem1`, `elem2` and `elems`.
    */
-  @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() -=' if you intend to create a new collection.")
-  override def -(elem1: A, elem2: A, elems: A*): This = {
-    this -= elem1 -= elem2 --= elems
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new set.  To remove the elements as a\n"+
+    "side effect to an existing set and return that set itself, use -=."
+  )
+  override def -(elem1: A, elem2: A, elems: A*): This =
+    clone() -= elem1 -= elem2 --= elems
 
-  /** Removes a number of elements provided by a Traversable object and returns
-   *  the collection itself.
+  /** Creates a new set consisting of all the elements of this set except those
+   *  provided by the specified traversable object.
    *
-   *  @param iter     the Traversable object.
+   *  @param xs       the traversable object.
+   *  @return         a new set consisting of all the elements of this set except
+   *                  elements from `xs`.
    */
-  @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() --=' if you intend to create a new collection.")
-  override def --(iter: scala.collection.Traversable[A]): This = { 
-    for (elem <- iter) -=(elem)
-    repr
-  }
-
-  /** Removes a number of elements provided by an iterator and returns
-   *  the collection itself.
-   *
-   *  @param iter   the iterator
-   */
-  @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() --=' if you intend to create a new collection.")
-  override def --(iter: Iterator[A]): This = { 
-    for (elem <- iter) -=(elem)
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new set.  To remove the elements as a\n"+
+    "side effect to an existing set and return that set itself, use --=."
+  )
+  override def --(xs: TraversableOnce[A]): This = clone() --= xs
 
   /** Send a message to this scriptable object.
    *
    *  @param cmd  the message to send.
-   *  @throws <code>Predef.UnsupportedOperationException</code>
+   *  @throws `Predef.UnsupportedOperationException`
    *  if the message was not understood.
    */
    def <<(cmd: Message[A]): Unit = cmd match {

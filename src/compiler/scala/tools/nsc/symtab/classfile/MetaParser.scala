@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -11,7 +10,6 @@ package classfile
 import java.util.{StringTokenizer, NoSuchElementException}
 
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.{Position,NoPosition}
 
 abstract class MetaParser{
 
@@ -78,7 +76,7 @@ abstract class MetaParser{
     val hi =
       if (token == "<") { nextToken(); parseType() }
       else definitions.AnyClass.tpe
-    sym.setInfo(mkTypeBounds(lo, hi))
+    sym.setInfo(TypeBounds(lo, hi))
     locals enter sym;
     sym
   }

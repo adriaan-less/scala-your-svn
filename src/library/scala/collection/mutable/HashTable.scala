@@ -1,34 +1,35 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
 /** This class can be used to construct data structures that are based
- *  on hashtables. Class <code>HashTable[A]</code> implements a hashtable
- *  that maps keys of type <code>A</code> to values of the fully abstract
- *  member type <code>Entry</code>. Classes that make use of <code>HashTable</code>
- *  have to provide an implementation for <code>Entry</code> 
+ *  on hashtables. Class `HashTable[A]` implements a hashtable
+ *  that maps keys of type `A` to values of the fully abstract
+ *  member type `Entry`. Classes that make use of `HashTable`
+ *  have to provide an implementation for `Entry`.
  *
  *  There are mainly two parameters that affect the performance of a hashtable:
  *  the <i>initial size</i> and the <i>load factor</i>. The <i>size</i>
  *  refers to the number of <i>buckets</i> in the hashtable, and the <i>load
  *  factor</i> is a measure of how full the hashtable is allowed to get before
  *  its size is automatically doubled. Both parameters may be changed by
- *  overriding the corresponding values in class <code>HashTable</code>.
+ *  overriding the corresponding values in class `HashTable`.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.0, 31/12/2006
  *  @since   1
+ *  
+ *  @tparam A     type of the elements contained in this hash table.
  */
 trait HashTable[A] {
   import HashTable._
@@ -65,7 +66,7 @@ trait HashTable[A] {
   private def initialCapacity = capacity(initialSize)
   
   /**
-   * Initialises the collection from the input stream. `f` will be called for each key/value pair
+   * Initializes the collection from the input stream. `f` will be called for each key/value pair
    * read from the input stream in the order determined by the stream. This is useful for
    * structures where iteration order is important (e.g. LinkedHashMap).
    */
@@ -108,7 +109,7 @@ trait HashTable[A] {
   
   private def capacity(expectedSize: Int) = if (expectedSize == 0) 1 else powerOfTwo(expectedSize)
   
-  /** Find entry with given key in table, null if not found
+  /** Find entry with given key in table, null if not found.
    */
   protected def findEntry(key: A): Entry = {
     val h = index(elemHashCode(key))
@@ -129,7 +130,7 @@ trait HashTable[A] {
       resize(2 * table.length)
   }
 
-  /** Remove entry from table if present
+  /** Remove entry from table if present.
    */
   protected def removeEntry(key: A) : Entry = {
     val h = index(elemHashCode(key))
@@ -155,7 +156,7 @@ trait HashTable[A] {
     null
   }
 
-  /** An iterator returning all entries
+  /** An iterator returning all entries.
    */
   protected def entriesIterator: Iterator[Entry] = new Iterator[Entry] {
     val iterTable = table
@@ -227,7 +228,7 @@ trait HashTable[A] {
 
   protected def elemEquals(key1: A, key2: A): Boolean = (key1 == key2)
 
-  protected def elemHashCode(key: A) = key.hashCode()
+  protected def elemHashCode(key: A) = if (key == null) 0 else key.##
 
   protected final def improve(hcode: Int) = {
     var h: Int = hcode + ~(hcode << 9)

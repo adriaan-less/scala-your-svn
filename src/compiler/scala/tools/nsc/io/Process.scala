@@ -1,12 +1,13 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  */
 
 package scala.tools.nsc
 package io
 
 import concurrent.ThreadRunner
-import scala.util.Properties.{ isWin, isMac }
+import scala.annotation.tailrec
+import scala.util.Properties.{ isWin, isMac, lineSeparator }
 import scala.util.control.Exception.catching
 import java.lang.{ Process => JProcess, ProcessBuilder => JProcessBuilder }
 import java.io.{ IOException, InputStream, OutputStream, BufferedReader, InputStreamReader, PrintWriter, File => JFile }
@@ -34,11 +35,40 @@ import java.util.concurrent.LinkedBlockingQueue
  
 object Process
 {
-  lazy val javaVmArguments = java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments()
+  def javaVmArguments: List[String] = {
+    import collection.JavaConversions._
+
+    java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().toList
+  }
   lazy val runtime = Runtime.getRuntime()
   
-  private[Process] class ProcessBuilder(val pb: JProcessBuilder)
-  {
+  class Pipe[T](xs: Seq[T], stringify: T => String) {
+    def |(cmd: String): Seq[String] = {
+      val p = Process(cmd)
+      xs foreach (x => p.stdin println stringify(x))
+      p.stdin.close()
+      p.stdout.toList
+    }
+  }
+    
+  object Pipe {
+    /* After importing this implicit you can say for instance
+     *   xs | "grep foo" | "grep bar"
+     * and it will execute shells and pipe input/output.  You can
+     * also implicitly or explicitly supply a function which translates
+     * the opening sequence into Strings; if none is given toString is used.
+     *
+     * Also, once you use :sh in the repl, this is auto-imported.
+     */
+    implicit def seqToPipelinedProcess[T]
+      (xs: Seq[T])
+      (implicit stringify: T => String = (x: T) => x.toString): Pipe[T] =
+    {
+      new Pipe(xs, stringify)
+    }
+  }
+  
+  private[Process] class ProcessBuilder(val pb: JProcessBuilder) {
     def this(cmd: String*) = this(new JProcessBuilder(cmd: _*))
     def start() = new Process(() => pb.start())
 
@@ -55,7 +85,7 @@ object Process
       this
     }
 
-    def withCwd(cwd: File): this.type = {
+    def withCwd(cwd: Path): this.type = {
       if (cwd != null)
         pb directory cwd.jfile
 
@@ -82,10 +112,10 @@ object Process
   def apply(
     command: String,
     env: Map[String, String] = null,
-    cwd: File = null,
+    cwd: Path = null,
     redirect: Boolean = false
   ): Process =
-      exec(shell(command), env, cwd)
+      exec(shell(command), env, cwd, redirect)
 
   /** Executes the given command line.
    *
@@ -95,15 +125,14 @@ object Process
   def exec(
     command: Seq[String],
     env: Map[String, String] = null,
-    cwd: File = null,
+    cwd: Path = null,
     redirect: Boolean = false
   ): Process =
-      new ProcessBuilder(command: _*) withEnv env withCwd cwd start
+      new ProcessBuilder(command: _*) withEnv env withCwd cwd withRedirectedErrorStream redirect start
 }
 import Process._
 
-class Process(processCreator: () => JProcess) extends Iterable[String]
-{
+class Process(processCreator: () => JProcess) extends Iterable[String] {
   lazy val process = processCreator()
   
   def exitValue(): Option[Int] =
@@ -111,32 +140,49 @@ class Process(processCreator: () => JProcess) extends Iterable[String]
     
   def waitFor() = process.waitFor()
   def destroy() = process.destroy()
-  def rerun() = new Process(processCreator)
-    
+  def rerun()   = new Process(processCreator)
+  
+  def slurp()   = _out.slurp()
   def stdout    = iterator
   def iterator  = _out.iterator
   def stderr    = _err.iterator
   lazy val stdin = new PrintWriter(_in, true)
   
   class StreamedConsumer(in: InputStream) extends Thread with Iterable[String] {
-    private val queue = new LinkedBlockingQueue[String]
-    private val reader = new BufferedReader(new InputStreamReader(in))
+    private val queue   = new LinkedBlockingQueue[String]
+    private val reader  = new BufferedReader(new InputStreamReader(in))
+    
+    private def finish() {
+      // make sure this thread is complete
+      join()
+    }
+    
+    def slurp(): String = {
+      finish()
+      queue.toArray map (_ + lineSeparator) mkString
+    }
 
     def iterator = {
-      join()  // make sure this thread is complete
+      finish()
       new Iterator[String] {
         val it = queue.iterator()
         def hasNext = it.hasNext
         def next = it.next
       }
     }
-    override def run() {
-      reader.readLine match { 
-        case null =>
-        case x    =>
-          queue put x
-          run()
+    override final def run() {
+      @tailrec def loop() {      
+        reader.readLine match { 
+          case null =>
+            reader.close()
+          case x    =>
+            queue put x
+            loop()
+        }
       }
+      
+      try loop()
+      catch { case _: IOException => () }
     }
   }
   

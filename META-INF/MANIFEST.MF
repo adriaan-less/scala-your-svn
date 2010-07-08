@@ -28,12 +28,18 @@ Export-Package:
  scala.tools.nsc.matching,
  scala.tools.nsc.plugins,
  scala.tools.nsc.reporters,
+ scala.tools.nsc.settings,
  scala.tools.nsc.symtab,
  scala.tools.nsc.symtab.classfile,
  scala.tools.nsc.transform,
  scala.tools.nsc.typechecker,
  scala.tools.nsc.util,
- ch.epfl.lamp.fjbg
+ scala.tools.util,
+ ch.epfl.lamp.compiler.msil,
+ ch.epfl.lamp.compiler.msil.emit,
+ ch.epfl.lamp.compiler.msil.util,
+ ch.epfl.lamp.fjbg,
+ ch.epfl.lamp.util
 Require-Bundle: 
  org.apache.ant,
  scala.library

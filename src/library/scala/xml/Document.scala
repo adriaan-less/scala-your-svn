@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -86,5 +85,9 @@ class Document extends NodeSeq with pull.XMLEvent {
   // methods for NodeSeq
 
   def theSeq: Seq[Node] = this.docElem
-
+  
+  override def canEqual(other: Any) = other match {
+    case _: Document  => true
+    case _            => false
+  }
 }

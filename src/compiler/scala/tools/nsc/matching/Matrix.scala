@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * Author: Paul Phillips
  */
 
@@ -7,7 +7,6 @@ package scala.tools.nsc
 package matching
 
 import transform.ExplicitOuter
-import util.Position
 import symtab.Flags
 
 trait Matrix extends MatrixAdditions {
@@ -17,7 +16,7 @@ trait Matrix extends MatrixAdditions {
   import analyzer.Typer
   import CODE._
   import Debug._
-  import Flags.{ TRANS_FLAG }
+  import Flags.{ TRANS_FLAG, SYNTHETIC }
 
   /** Translation of match expressions.
    *
@@ -50,7 +49,7 @@ trait Matrix extends MatrixAdditions {
   The is the real work-horse of the algorithm. There is some column whose top-most pattern is a 
   constructor. (Forsimplicity, itisdepicted above asthe left-most column, but anycolumn will do.) 
   The goal is to build a test state with the variablevand some outgoing arcs (one for each construc- 
-  tor and possibly a default arc). Foreach constructorcin the selected column, its arc is deﬁned as 
+  tor and possibly a default arc). Foreach constructor in the selected column, its arc is deﬁned as 
   follows: 
 
   Let {i1,...,ij} be the rows-indices of the patterns in the column that match c. Since the pat- 
@@ -157,7 +156,7 @@ trait Matrix extends MatrixAdditions {
       def tpe = valsym.tpe
 
       lazy val ident  = ID(lhs)
-      lazy val valDef = tracing("typedVal", typer typedValDef (VAL(lhs) === rhs))
+      lazy val valDef = tracing("typedVal", typer typedValDef (VAL(lhs) === rhs) setPos lhs.pos)
 
       override def toString() = "%s: %s = %s".format(lhs, lhs.info, rhs)
     }
@@ -202,7 +201,7 @@ trait Matrix extends MatrixAdditions {
     {
       val n: Name = if (name == null) newName(pos, "temp") else name
       // careful: pos has special meaning 
-      owner.newVariable(pos, n) setInfo tpe setFlag (0L /: flags)(_|_)
+      owner.newVariable(pos, n) setInfo tpe setFlag (SYNTHETIC.toLong /: flags)(_|_)      
     }
     
     def typedValDef(x: Symbol, rhs: Tree) =

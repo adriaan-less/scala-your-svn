@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -21,7 +20,7 @@ import java.awt.event._
  * @see javax.swing.JPasswordField
  */
 class PasswordField(text0: String, columns0: Int) extends TextField(text0, columns0) {
-  override lazy val peer: JPasswordField = new JPasswordField(text0, columns0)
+  override lazy val peer: JPasswordField = new JPasswordField(text0, columns0) with SuperMixin
   def this(text: String) = this(text, 0)
   def this(columns: Int) = this("", columns)
   def this() = this("")

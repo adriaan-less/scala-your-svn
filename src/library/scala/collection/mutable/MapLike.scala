@@ -1,51 +1,26 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
 import generic._
+import annotation.migration
 
-/** <p>
- *    A generic template for mutable maps from keys of type <code>A</code> to
- *    values of type <code>B</code>.
- *  </p>
- *  <p>
- *    To implement a concrete mutable map, you need to provide implementations
- *    of the following methods:
- *  </p><pre>
- *    <b>def</b> get(key: A): Option[B]
- *    <b>def</b> iterator: Iterator[(A, B)]
- *    <b>def</b> += (kv: (A, B)): <b>this.type</b>
- *    <b>def</b> -= (key: A): <b>this.type</b></pre>
- *  <p>
- *    If you wish that methods <code>like</code>, <code>take</code>,
- *    <code>drop</code>, <code>filter</code> return the same kind of map, you
- *    should also override:
- *  </p><pre>
- *   <b>def</b> empty: This</pre>
- *  <p>
- *    If you to avoid the unncessary construction of an <code>Option</code>
- *    object, you could also override <code>apply</code>, <code>update</code>,
- *    and <code>delete</code>.
- *  </p>
- *  <p>
- *    It is also good idea to override methods <code>foreach</code> and
- *    <code>size</code> for efficiency.
- *  </p>
- *
- *  @since 2.8
+/** A template trait for mutable maps.
+ *  $mapNote
+ *  $mapTags
+ *  @since   2.8
  */
 trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
-  extends MapLikeBase[A, B, This] 
+  extends scala.collection.MapLike[A, B, This]
      with Builder[(A, B), This] 
      with Growable[(A, B)]
      with Shrinkable[A]
@@ -54,22 +29,22 @@ trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
 
   import scala.collection.Traversable
 
-  /** <p>
-   *    A common implementation of <code>newBuilder</code> for all mutable maps
-   *    in terms of <code>empty</code>.
-   *  </p>
-   *  <p>
-   *    Overrides <code>MapLike</code> implementation for better efficiency.
-   *  </p>
+  /** A common implementation of `newBuilder` for all mutable maps
+   *    in terms of `empty`.
+   * 
+   *    Overrides `MapLike` implementation for better efficiency.
    */
   override protected[this] def newBuilder: Builder[(A, B), This] = empty
 
-  /** Adds a new mapping from <code>key</code>
-   *  to <code>value</code> to the map. If the map already contains a
-   *  mapping for <code>key</code>, it will be overridden.
+  /** Adds a new key/value pair to this map and optionally returns previously bound value.
+   *  If the map already contains a
+   *  mapping for the key, it will be overridden by the new value.
    *
-   * @param key    The key to update
-   * @param value  The new value
+   * @param key    the key to update
+   * @param value  the new value
+   * @return an option value containing the value associated with the key
+   *         before the `put` operation was executed, or `None` if `key`
+   *         was not defined in the map before.
    */
   def put(key: A, value: B): Option[B] = {
     val r = get(key)
@@ -77,127 +52,142 @@ trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
     r
   }
 
-  /** Adds a new mapping from <code>key</code>
-   *  to <code>value</code> to the map. If the map already contains a
-   *  mapping for <code>key</code>, it will be overridden.
+  /** Adds a new key/value pair to this map.
+   *  If the map already contains a
+   *  mapping for the key, it will be overridden by the new value.
    *
    *  @param key    The key to update
    *  @param value  The new value
-   *  @return   An option consisting of value associated previously associated with `key` in the map,
-   *            or None if `key` was not yet defined in the map.
    */    
   def update(key: A, value: B) { this += ((key, value)) }
 
-  /** Add a new key/value mapping this map.
+  /** Adds a new key/value pair to this map.
+   *  If the map already contains a
+   *  mapping for the key, it will be overridden by the new value.
    *  @param    kv the key/value pair.
    *  @return   the map itself
    */
   def += (kv: (A, B)): this.type
 
-  /** Create a new map consisting of all elements of the current map
-   *  plus the given mapping from <code>key</code> to <code>value</code>.
+  /** Creates a new map consisting of all key/value pairs of the current map
+   *  plus a new pair of a given key and value.
    *
-   *  @param key    The key to ad
+   *  @param key    The key to add
    *  @param value  The new value
-   *  @return       A fresh immutable map
+   *  @return       A fresh immutable map with the binding from `key` to
+   *                `value` added to this map.
    */
-  override def updated[B1 >: B](key: A, value: B1): mutable.Map[A, B1] = this + ((key, value))
+  override def updated[B1 >: B](key: A, value: B1): Map[A, B1] = this + ((key, value))
 
-  /** Add a new key/value mapping and return the map itself.
+  /** Creates a new map containing a new key/value mapping and all the key/value mappings
+   *  of this map.
+   *
+   *  Mapping `kv` will override existing mappings from this map with the same key.
    *
    *  @param kv    the key/value mapping to be added
+   *  @return      a new map containing mappings of this map and the mapping `kv`.
    */
-  @deprecated("This operation will create a new map in the future. To add an element as a side\n"+
-              "effect to an existing map and return that map itself, use +=. If you do want\n"+
-              "to create a fresh map, you can use `clone() +=' to avoid a @deprecated warning.")
- def + (kv: (A, B)): this.type = { update(kv._1, kv._2); this }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new map.  To add an element as a\n"+
+    "side effect to an existing map and return that map itself, use +=."
+  )
+  def + [B1 >: B] (kv: (A, B1)): Map[A, B1] = clone().asInstanceOf[Map[A, B1]] += kv
 
-  /** Adds two or more key/value mappings and return the map itself.
-   *  with the added elements.
-   *
+  /** Creates a new map containing two or more key/value mappings and all the key/value
+   *  mappings of this map.
+   *  
+   *  Specified mappings will override existing mappings from this map with the same keys.
+   *  
    *  @param elem1 the first element to add.
    *  @param elem2 the second element to add.
    *  @param elems the remaining elements to add.
+   *  @return      a new map containing mappings of this map and two or more specified mappings.
    */
-  @deprecated("This operation will create a new map in the future. To add an element as a side\n"+
-              "effect to an existing map and return that map itself, use +=. If you do want to\n"+
-              "create a fresh map, you can use `clone() +=` to avoid a @deprecated warning.")
-  def +(elem1: (A, B), elem2: (A, B), elems: (A, B)*): this.type = 
-    this += elem1 += elem2 ++= elems 
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new map.  To add an element as a\n"+
+    "side effect to an existing map and return that map itself, use +=."
+  )
+  override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *): Map[A, B1] =
+    clone().asInstanceOf[Map[A, B1]] += elem1 += elem2 ++= elems
 
-  /** Adds a number of elements provided by a traversable object
-   *  via its <code>iterator</code> method and returns
-   *  either the collection itself (if it is mutable), or a new collection
-   *  with the added elements.
-   * 
-   *  @param iter     the traversable object.
+  /** Creates a new map containing the key/value mappings provided by the specified traversable object
+   *  and all the key/value mappings of this map.
+   *  
+   *  Note that existing mappings from this map with the same key as those in `xs` will be overriden.
+   *  
+   *  @param xs     the traversable object.
+   *  @return       a new map containing mappings of this map and those provided by `xs`.
    */
-  @deprecated("This operation will create a new map in the future. To add elements as a side\n"+
-              "effect to an existing map and return that map itself, use ++=. If you do want\n"+
-              "to create a fresh map, you can use `clone() ++=` to avoid a @deprecated warning.")
-  def ++(iter: Traversable[(A, B)]): this.type = { for (elem <- iter) +=(elem); this }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new map.  To add the elements as a\n"+
+    "side effect to an existing map and return that map itself, use ++=."
+  )
+  override def ++[B1 >: B](xs: TraversableOnce[(A, B1)]): Map[A, B1] =
+    clone().asInstanceOf[Map[A, B1]] ++= xs
 
-  /** Adds a number of elements provided by an iterator
-   *  via its <code>iterator</code> method and returns
-   *  the collection itself.
-   * 
-   *  @param iter   the iterator
-   */
-  @deprecated("This operation will create a new map in the future. To add elements as a side\n"+
-              "effect to an existing map and return that map itself, use ++=. If you do want\n"+
-              "to create a fresh map, you can use `clone() +=` to avoid a @deprecated warning.")
-  def ++(iter: Iterator[(A, B)]): this.type = { for (elem <- iter) +=(elem); this }
-
-  /** If given key is defined in this map, remove it and return associated value as an Option.
-   *  If key is not present return None.
+  /** Removes a key from this map, returning the value associated previously
+   *  with that key as an option.
    *  @param    key the key to be removed
-   */  
+   *  @return   an option value containing the value associated previously with `key`,
+   *            or `None` if `key` was not defined in the map before.
+   */
   def remove(key: A): Option[B] = {
     val r = get(key)
     this -= key
     r
   }
 
-  /** Delete a key from this map if it is present.
+  /** Removes a key from this map.
    *  @param    key the key to be removed
-   *  @note     same as `delete`.
+   *  @return   the map itself.
    */
   def -= (key: A): this.type
 
-  /** Delete a key from this map if it is present and return the map itself.
+  /** Creates a new map with all the key/value mappings of this map except the key/value mapping
+   *  with the specified key.
+   *  
    *  @param    key the key to be removed
+   *  @return   a new map with all the mappings of this map except that with a key `key`.
    */
-  @deprecated("This operation will create a new map in the future. To add elements as a side\n"+
-              "effect to an existing map and return that map itself, use -=. If you do want\n"+
-              "to create a fresh map, you can use `clone() -=` to avoid a @deprecated warning.")
-  override def -(key: A): This = { -=(key); repr }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new map.  To remove an element as a\n"+
+    "side effect to an existing map and return that map itself, use -=."
+  )
+  override def -(key: A): This = clone() -= key
 
   /** If given key is defined in this map, remove it and return associated value as an Option.
    *  If key is not present return None.
    *  @param    key the key to be removed
    */
-   @deprecated("Use `remove' instead") def removeKey(key: A): Option[B] = remove(key)
+  @deprecated("Use `remove' instead") def removeKey(key: A): Option[B] = remove(key)
 
-
-  /** Removes all elements from the set. After this operation is completed,
-   *  the set will be empty.
+  /** Removes all bindings from the map. After this operation has completed,
+   *  the map will be empty.
    */
-  def clear() { for ((k, v) <- this.iterator) -=(k) }
+  def clear() { keysIterator foreach -= }
   
-  /** Check if this map maps <code>key</code> to a value.
-    * Return that value if it exists, otherwise put <code>default</code>
-    * as that key's value and return it.
-    */
-  def getOrElseUpdate(key: A, default: => B): B =
+  /** If given key is already in this map, returns associated value.
+   *  
+   *  Otherwise, computes value from given expression `op`, stores with key
+   *  in map and returns that value.
+   *  @param  key the key to test
+   *  @param  op  the computation yielding the value to associate with `key`, if
+   *              `key` is previously unbound.
+   *  @return     the value associated with key (either previously or as a result
+   *              of executing the method).
+   */  
+  def getOrElseUpdate(key: A, op: => B): B =
     get(key) match {
       case Some(v) => v
-      case None => val d = default; this(key) = d; d
+      case None => val d = op; this(key) = d; d
     }
 
-  /** This function transforms all the values of mappings contained
-   *  in this map with function <code>f</code>.
-   *
-   * @param f  The transformation to apply
+  /** Applies a transformation function to all values contained in this map.
+   *  The transformation function produces new values from existing keys
+   *  associated values.
+   * 
+   * @param f  the transformation to apply
+   * @return   the map itself.
    */
   def transform(f: (A, B) => B): this.type = {
     this.iterator foreach {
@@ -206,59 +196,51 @@ trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
     this
   }
 
-  /** Retain only those mappings for which the predicate
-   *  <code>p</code> returns <code>true</code>.
+  /** Retains only those mappings for which the predicate
+   *  `p` returns `true`.
    *
    * @param p  The test predicate  
    */
-  @deprecated("cannot be type inferred because of retain in Iterable.")
   def retain(p: (A, B) => Boolean): this.type = {
-    for ((k, v) <- this) if (!p(k, v)) -=(k)
+    for ((k, v) <- this ; if !p(k, v))
+      this -= k
+
     this
   }
 
-  override def clone(): This =
-    empty ++= repr
+  override def clone(): This = empty ++= repr
 
-  /** The result when this map is used as a builder */
+  /** The result when this map is used as a builder
+   *  @return  the map representation itself.
+   */
   def result: This = repr
 
-  /** Removes two or more elements from this collection and returns
-   *  the collection itself.
+  /** Creates a new map with all the key/value mappings of this map except mappings with keys
+   *  equal to any of the two or more specified keys.
    *
    *  @param elem1 the first element to remove.
    *  @param elem2 the second element to remove.
    *  @param elems the remaining elements to remove.
+   *  @return      a new map containing all the mappings of this map except mappings
+   *               with a key equal to `elem1`, `elem2` or any of `elems`.
    */
-  @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() -=' if you intend to create a new collection.")
-  override def -(elem1: A, elem2: A, elems: A*): This = {
-    this -= elem1 -= elem2 --= elems
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new map.  To remove an element as a\n"+
+    "side effect to an existing map and return that map itself, use -=."
+  )
+  override def -(elem1: A, elem2: A, elems: A*): This =
+    clone() -= elem1 -= elem2 --= elems
 
-  /** Removes a number of elements provided by a Traversable object and returns
-   *  the collection itself.
-   *
-   *  @param iter     the Traversable object.
+  /** Creates a new map with all the key/value mappings of this map except mappings with keys
+   *  equal to any of those provided by the specified traversable object.
+   *  
+   *  @param xs       the traversable object.
+   *  @return         a new map with all the key/value mappings of this map except mappings
+   *                  with a key equal to a key from `xs`.
    */
-  @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() --=' if you intend to create a new collection.")
-  override def --(iter: Traversable[A]): This = { 
-    for (elem <- iter) -=(elem)
-    repr
-  }
-
-
-  /** Removes a number of elements provided by an iterator and returns
-   *  the collection itself.
-   *
-   *  @param iter   the iterator
-   */
-  @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() --=' if you intend to create a new collection.")
-  override def --(iter: Iterator[A]): This = { 
-    for (elem <- iter) -=(elem)
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, this operation creates a new map.  To remove the elements as a\n"+
+    "side effect to an existing map and return that map itself, use --=."
+  )  
+  override def --(xs: TraversableOnce[A]): This = clone() --= xs
 }

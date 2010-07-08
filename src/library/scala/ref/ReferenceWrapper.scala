@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.ref
 
@@ -29,4 +28,11 @@ trait ReferenceWrapper[+T <: AnyRef] extends Reference[T] with Proxy {
   def isEnqueued = underlying.isEnqueued
   
   def self = underlying
+}
+
+/**
+ *  @author Philipp Haller
+ */
+private trait ReferenceWithWrapper[T <: AnyRef] {
+  val wrapper: ReferenceWrapper[T]
 }

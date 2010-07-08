@@ -1,19 +1,19 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.util.parsing.combinator.syntactical
-import scala.util.parsing.combinator._
+package scala.util.parsing
+package combinator
+package syntactical
 
-import scala.util.parsing.syntax._
-import scala.collection.mutable.HashMap
+import token._
+import collection.mutable.HashMap
 
 /** This component provides primitive parsers for the standard tokens defined in `StdTokens'.
 *

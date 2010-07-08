@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala Ant Tasks                      **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -71,7 +71,7 @@ class Pack200Task extends MatchingTask {
     * is used to remove empty packages and improve pack200 optimization.
     * @param keep 
     *         true to retain file ordering.
-    *         false to optomize directory structure (DEFAULT).  */ 
+    *         false to optimize directory structure (DEFAULT).  */ 
   def setKeepFileOrder(x: Boolean) { keepFileOrder = x }
 
   /** If false, a single modification time is used for all contained files */
@@ -99,7 +99,7 @@ class Pack200Task extends MatchingTask {
 \*============================================================================*/
 
   /** Gets the list of individual JAR files for processing.
-    * @returns The list of JAR files */
+    * @return The list of JAR files */
   private def getFileList: List[File] = {
     var files: List[File] = Nil
     val fs = getImplicitFileSet

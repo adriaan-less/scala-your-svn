@@ -1,21 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
 package parsing
 
 import factory.NodeFactory
-import collection.Seq
-import collection.immutable.List
-import org.xml.sax.InputSource
-import javax.xml.parsers.{ SAXParser, SAXParserFactory }
 
 /** nobinding adaptor providing callbacks to parser to create elements.
 *   implements hash-consing

@@ -1,8 +1,7 @@
 /* NSC -- new scala compiler
- * Copyright 2004-2009 LAMP/EPFL
+ * Copyright 2004-2010 LAMP/EPFL
  */
 
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -13,7 +12,6 @@ import java.io.IOException
 import ch.epfl.lamp.compiler.msil.{Type => MSILType, Attribute => MSILAttribute, _}
 
 import scala.collection.mutable.{HashMap, HashSet}
-import scala.tools.nsc.util.{Position, NoPosition}
 import classfile.UnPickler
 
 /**
@@ -43,7 +41,7 @@ abstract class TypeParser {
 
   def parse(typ: MSILType, root: Symbol) {
 
-    def handleError(e: Exception) = {
+    def handleError(e: Throwable) = {
       if (settings.debug.value) e.printStackTrace()  //debug
       throw new IOException("type '" + typ.FullName + "' is broken\n(" + e.getMessage() + ")")
     }
@@ -51,11 +49,11 @@ abstract class TypeParser {
     busy = true
 
     if (root.isModule) {
-      this.clazz = root.linkedClassOfModule
+      this.clazz = root.companionClass
       this.staticModule = root
     } else {
       this.clazz = root
-      this.staticModule = root.linkedModuleOfClass
+      this.staticModule = root.companionModule
     }
     try {
       parseClass(typ)
@@ -120,8 +118,8 @@ abstract class TypeParser {
 	staticDefs.enter(nclazz)
 	staticDefs.enter(nmodule)
 
-	assert(nclazz.linkedModuleOfClass == nmodule, nmodule)
-	assert(nmodule.linkedClassOfModule == nclazz, nclazz)
+	assert(nclazz.companionModule == nmodule, nmodule)
+	assert(nmodule.companionClass == nclazz, nclazz)
       }
 
     val fields = typ.getFields()

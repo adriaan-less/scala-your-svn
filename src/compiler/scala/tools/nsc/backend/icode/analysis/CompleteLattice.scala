@@ -1,9 +1,8 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
@@ -40,7 +39,7 @@ trait CompleteLattice {
   def lub(xs: List[Elem], exceptional: Boolean): Elem = try {
     if (xs == Nil) bottom else xs reduceLeft lub2(exceptional)
   } catch {
-      case e: LubError =>
+      case e: LubException =>
         Console.println("Lub on blocks: " + xs)
         throw e
   }

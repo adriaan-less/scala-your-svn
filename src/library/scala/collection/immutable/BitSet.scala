@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,10 +13,12 @@ package immutable
 
 import generic._
 import BitSetLike.{LogWL, updateArray}
+import mutable.{ Builder, AddingBuilder }
 
-/** A base class for immutable bit sets.
- *
- *  @since 1
+/** A class for immutable bitsets.
+ *  $bitsetinfo
+ *  @define Coll immutable.BitSet
+ *  @define coll immutable bitset
  */
 @serializable @SerialVersionUID(1611436763290191562L)
 abstract class BitSet extends Set[Int]  
@@ -35,7 +36,7 @@ abstract class BitSet extends Set[Int]
   /** Adds element to bitset, returning a new set.
    */
   def + (elem: Int): BitSet = {
-    require(elem >= 0)
+    require(elem >= 0, "bitset element must be >= 0")
     if (contains(elem)) this
     else {
       val idx = elem >> LogWL
@@ -46,7 +47,7 @@ abstract class BitSet extends Set[Int]
   /** Removes element from bitset, returning a new set
    */
   def - (elem: Int): BitSet = {
-    require(elem >= 0)
+    require(elem >= 0, "bitset element must be >= 0")
     if (contains(elem)) {
       val idx = elem >> LogWL
       updateWord(idx, word(idx) & ~(1L << elem))
@@ -54,12 +55,18 @@ abstract class BitSet extends Set[Int]
   }
 }
 
-/** A factory object for bitsets */
+/** $factoryInfo
+ *  @define Coll immutable.BitSet
+ *  @define coll immutable bitset
+ */
 object BitSet extends BitSetFactory[BitSet] {
-
   /** The empty bitset */
   val empty: BitSet = new BitSet1(0L)
+  
+  /** An adding builder for immutable Sets. */
+  def newBuilder: Builder[Int, BitSet] = new AddingBuilder[Int, BitSet](empty)
 
+  /** $bitsetCanBuildFrom */
   implicit def canBuildFrom: CanBuildFrom[BitSet, Int, BitSet] = bitsetCanBuildFrom
 
   /** A bitset containing all the bits in an array */

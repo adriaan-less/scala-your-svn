@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -33,7 +32,7 @@ object FormattedTextField {
  * @see javax.swing.JFormattedTextField
  */
 class FormattedTextField(format: java.text.Format) extends TextComponent {
-  override lazy val peer: JFormattedTextField = new JFormattedTextField(format)
+  override lazy val peer: JFormattedTextField = new JFormattedTextField(format) with SuperMixin
   
   import FormattedTextField._
  

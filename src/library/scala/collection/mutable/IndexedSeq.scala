@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,8 +13,10 @@ package mutable
 
 import generic._
 
-/** A subtrait of <code>collection.IndexedSeq</code> which represents sequences
+/** A subtrait of `collection.IndexedSeq` which represents sequences
  *  that can be mutated.
+ *  
+ *  $indexedSeqInfo
  */
 trait IndexedSeq[A] extends Seq[A] 
                    with scala.collection.IndexedSeq[A] 
@@ -24,6 +25,11 @@ trait IndexedSeq[A] extends Seq[A]
   override def companion: GenericCompanion[IndexedSeq]  = IndexedSeq
 }
 
+/** $factoryInfo
+ *  The current default implementation of a $Coll is an `ArrayBuffer`.
+ *  @define coll mutable indexed sequence
+ *  @define Coll mutable.IndexedSeq
+ */
 object IndexedSeq extends SeqFactory[IndexedSeq] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, IndexedSeq[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, IndexedSeq[A]] = new ArrayBuffer[A]

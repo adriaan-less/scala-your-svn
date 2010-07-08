@@ -1,19 +1,21 @@
 /*     ___ ____ ___   __   ___   ___
 **    / _// __// _ | / /  / _ | / _ \  Scala classfile decoder
-**  __\ \/ /__/ __ |/ /__/ __ |/ ___/  (c) 2003-2009, LAMP/EPFL
+**  __\ \/ /__/ __ |/ /__/ __ |/ ___/  (c) 2003-2010, LAMP/EPFL
 ** /____/\___/_/ |_/____/_/ |_/_/      http://scala-lang.org/
 **
 */
 
-// $Id$
 
 package scala.tools.scalap
 
-
-import java.io.{File, PrintStream, OutputStreamWriter, ByteArrayOutputStream}
+import java.io.{PrintStream, OutputStreamWriter, ByteArrayOutputStream}
 import scalax.rules.scalasig._
-import tools.nsc.io.AbstractFile
-import tools.nsc.util.{ClassPath, JavaClassPath}
+import scalax.rules.scalasig.ClassFileParser.{ConstValueIndex, Annotation}
+import tools.nsc.util.{ ClassPath }
+import tools.util.PathResolver
+import ClassPath.DefaultJavaContext
+import tools.nsc.io.{PlainFile, AbstractFile}
+import scala.reflect.generic.ByteCodecs
 
 /**The main object used to execute scalap on the command-line.
  *
@@ -21,6 +23,9 @@ import tools.nsc.util.{ClassPath, JavaClassPath}
  */
 object Main {
   val SCALA_SIG = "ScalaSig"
+  val SCALA_SIG_ANNOTATION = "Lscala/reflect/ScalaSignature;"
+  val BYTES_VALUE = "bytes"
+
   val versionMsg = "Scala classfile decoder " +
           Properties.versionString + " -- " +
           Properties.copyrightString + "\n"
@@ -34,7 +39,8 @@ object Main {
    */
   def usage {
     Console.println("usage: scalap {<option>} <name>")
-    Console.println("where <option> is")
+    Console.println("where <name> is fully-qualified class name or <package_name>.package for package objects")
+    Console.println("and <option> is")
     Console.println("  -private           print private definitions")
     Console.println("  -verbose           print out additional information")
     Console.println("  -version           print out the version number of scalap")
@@ -46,7 +52,7 @@ object Main {
   def isScalaFile(bytes: Array[Byte]): Boolean = {
     val byteCode = ByteCode(bytes)
     val classFile = ClassFileParser.parse(byteCode)
-    classFile.attribute("ScalaSig") match {case Some(_) => true; case None => false}
+    classFile.attribute("ScalaSig").isDefined
   }
 
   /**Processes the given Java class file.
@@ -94,17 +100,31 @@ object Main {
     }
     baos.toString
   }
-
-
-  def decompileScala(bytes: Array[Byte], isPackageObject: Boolean) = {
+  
+  def decompileScala(bytes: Array[Byte], isPackageObject: Boolean): String = {
     val byteCode = ByteCode(bytes)
     val classFile = ClassFileParser.parse(byteCode)
     classFile.attribute(SCALA_SIG).map(_.byteCode).map(ScalaSigAttributeParsers.parse) match {
-      case Some(scalaSig) => Console.println(parseScalaSignature(scalaSig, isPackageObject))
-      case None => //Do nothing
+      // No entries in ScalaSig attribute implies that the signature is stored in the annotation
+      case Some(ScalaSig(_, _, entries)) if entries.length == 0 => unpickleFromAnnotation(classFile, isPackageObject)
+      case Some(scalaSig) => parseScalaSignature(scalaSig, isPackageObject)
+      case None => ""
     }
   }
 
+  def unpickleFromAnnotation(classFile: ClassFile, isPackageObject: Boolean): String = {
+    import classFile._
+    classFile.annotation(SCALA_SIG_ANNOTATION) match {
+      case None => ""
+      case Some(Annotation(_, elements)) =>
+        val bytesElem = elements.find(elem => constant(elem.elementNameIndex) == BYTES_VALUE).get
+        val bytes = ((bytesElem.elementValue match {case ConstValueIndex(index) => constantWrapped(index)})
+                .asInstanceOf[StringBytesPair].bytes)
+        val length = ByteCodecs.decode(bytes)
+        val scalaSig = ScalaSigAttributeParsers.parse(ByteCode(bytes.take(length)))
+        parseScalaSignature(scalaSig, isPackageObject)
+    }
+  }
 
   /**Executes scalap with the given arguments and classpath for the
    *  class denoted by <code>classname</code>.
@@ -126,7 +146,7 @@ object Main {
       }
       val bytes = cfile.toByteArray
       if (isScalaFile(bytes)) {
-        decompileScala(bytes, isPackageObjectFile(encName))
+        Console.println(decompileScala(bytes, isPackageObjectFile(encName)))
       } else {
         // construct a reader for the classfile content
         val reader = new ByteArrayReader(cfile.toByteArray)
@@ -134,18 +154,6 @@ object Main {
         val clazz = new Classfile(reader)
         processJavaClassFile(clazz)
       }
-      // if the class corresponds to the artificial class scala.All.
-      // (to be removed after update of the STARR libraries)
-    } else if (classname == "scala.All") {
-      Console.println("package scala")
-      Console.println("/* Deprecated. Use scala.Nothing instead. */")
-      Console.println("sealed abstract class All")
-      // if the class corresponds to the artificial class scala.AllRef.
-      // (to be removed after update of the STARR libraries)
-    } else if (classname == "scala.AllRef") {
-      Console.println("package scala")
-      Console.println("/* Deprecated. Use scala.Null instead. */")
-      Console.println("sealed abstract class AllRef")
       // if the class corresponds to the artificial class scala.Any.
       // (see member list in class scala.tool.nsc.symtab.Definitions)
     } else if (classname == "scala.Any") {
@@ -263,13 +271,8 @@ object Main {
       verbose = arguments contains "-verbose"
       printPrivates = arguments contains "-private"
       // construct a custom class path
-      val path = arguments.getArgument("-classpath") match {
-        case None => arguments.getArgument("-cp") match {
-          case None => EmptyClasspath
-          case Some(path) => new JavaClassPath("", "", path, "", "")
-        }
-        case Some(path) => new JavaClassPath("", "", path, "", "")
-      }
+      def cparg = List("-classpath", "-cp") map (arguments getArgument _) reduceLeft (_ orElse _)
+      val path = cparg map (PathResolver fromPathString _) getOrElse EmptyClasspath
       // print the classpath if output is verbose
       if (verbose) {
         Console.println(Console.BOLD + "CLASSPATH" + Console.RESET + " = " + path)
@@ -280,13 +283,15 @@ object Main {
   }
 
   object EmptyClasspath extends ClassPath[AbstractFile] {
-    import tools.nsc.util.ClassRep
     /**
      * The short name of the package (without prefix)
      */
     def name: String = ""
-    def classes: List[ClassRep[AbstractFile]] = Nil
-    def packages: List[ClassPath[AbstractFile]] = Nil
-    def sourcepaths: List[AbstractFile] = Nil 
+    def asURLs = Nil
+    def asClasspathString = ""
+    val context = DefaultJavaContext
+    val classes: List[ClassRep] = Nil
+    val packages: List[ClassPath[AbstractFile]] = Nil
+    val sourcepaths: List[AbstractFile] = Nil
   }
 }

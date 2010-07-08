@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -20,8 +19,9 @@ import java.awt.event._
  *
  * @see javax.swing.JTextArea
  */
-class TextArea(text0: String, rows0: Int, columns0: Int) extends TextComponent with TextComponent.HasColumns with TextComponent.HasRows {
-  override lazy val peer: JTextArea = new JTextArea(text0, rows0, columns0)
+class TextArea(text0: String, rows0: Int, columns0: Int) extends TextComponent 
+    with TextComponent.HasColumns with TextComponent.HasRows {
+  override lazy val peer: JTextArea = new JTextArea(text0, rows0, columns0) with SuperMixin
   def this(text: String) = this(text, 0, 0)
   def this(rows: Int, columns: Int) = this("", rows, columns)
   def this() = this("", 0, 0)

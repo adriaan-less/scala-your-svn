@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2002-2009 LAMP/EPFL
+ * Copyright 2002-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package reporters
@@ -103,18 +102,21 @@ class ConsoleReporter(val settings: Settings, reader: BufferedReader, writer: Pr
       writer.flush()
       var line = reader.readLine()
       if (line ne null) {
-	line = line.toLowerCase()
-	if ("abort" startsWith line)
-            throw new Error("user abort")
-	if ("resume" startsWith line) continue = false
+	      line = line.toLowerCase()
+	      if ("abort" startsWith line)
+          abort("user abort")
+	      if ("resume" startsWith line)
+	        continue = false
       }
     }
-  } catch {
+  } 
+  catch {
     case ex: IOException => {
       ex.printStackTrace()
-      throw new Error("input read error")
+      abort("input read error")
     }
   }
 
+  private def abort(msg: String) = throw new Error(msg)
   override def flush() { writer.flush() }
 }

@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.reflect
@@ -27,7 +26,7 @@ import scala.collection.mutable.{WrappedArray, ArrayBuilder}
   * </p>
   */
 @serializable
-trait ClassManifest[T] extends OptManifest[T] {
+trait ClassManifest[T] extends OptManifest[T] with Equals {
 
   /** A class representing the type U to which T would be erased. Note
     * that there is no subtyping relationship between T and U. */
@@ -52,8 +51,18 @@ trait ClassManifest[T] extends OptManifest[T] {
         case _ => false
       }
     }
-    (this.erasure == that.erasure || subtype(this.erasure, that.erasure)) &&
-    subargs(this.typeArguments, that.typeArguments)
+    
+    import Manifest.{ AnyVal, Nothing, Null }
+    
+    that match {
+      // All types which conform to AnyVal will override <:<.
+      case _: AnyValManifest[_]     => false
+      // Anything which conforms to a bottom type will override <:<.
+      case AnyVal | Nothing | Null  => false
+      case _  =>
+        (this.erasure == that.erasure || subtype(this.erasure, that.erasure)) &&
+        subargs(this.typeArguments, that.typeArguments)
+    }
   }
   
   /** Tests whether the type represented by this manifest is a supertype 
@@ -62,15 +71,21 @@ trait ClassManifest[T] extends OptManifest[T] {
     * erasure of the type. */
   def >:>(that: ClassManifest[_]): Boolean =
     that <:< this
-    
+  
+  def canEqual(other: Any) = other match {
+    case _: ClassManifest[_]  => true
+    case _                    => false
+  }
+ 
   /** Tests whether the type represented by this manifest is equal to the
     * type represented by `that' manifest. BE AWARE: the current
     * implementation is an approximation, as the test is done on the
     * erasure of the type. */
   override def equals(that: Any): Boolean = that match {
-    case m: ClassManifest[_] => this.erasure == m.erasure
+    case m: ClassManifest[_] if m canEqual this => this.erasure == m.erasure
     case _ => false
   }
+  override def hashCode = this.erasure.##
 
   protected def arrayClass[T](tp: Predef.Class[_]): Predef.Class[Array[T]] = 
     java.lang.reflect.Array.newInstance(tp, 0).getClass.asInstanceOf[Predef.Class[Array[T]]]
@@ -153,7 +168,7 @@ object ClassManifest {
     case _ => classType[T with AnyRef](clazz).asInstanceOf[ClassManifest[T]]
   }
 
-  def singleType[T](value: Any): Manifest[T] = Manifest.singleType(value)
+  def singleType[T <: AnyRef](value: AnyRef): Manifest[T] = Manifest.singleType(value)
 
   /** ClassManifest for the class type `clazz', where `clazz' is
     * a top-level or static class.
@@ -196,17 +211,22 @@ object ClassManifest {
   /** ClassManifest for the abstract type `prefix # name'. `upperBound' is not
     * strictly necessary as it could be obtained by reflection. It was
     * added so that erasure can be calculated without reflection. */
-  def abstractType[T](prefix: OptManifest[_], name: String, upperBound: ClassManifest[_], args: OptManifest[_]*): ClassManifest[T] =
+  def abstractType[T](prefix: OptManifest[_], name: String, clazz: Predef.Class[_], args: OptManifest[_]*): ClassManifest[T] =
     new (ClassManifest[T] @serializable) {
-      def erasure = upperBound.erasure
+      def erasure = clazz
       override val typeArguments = args.toList
       override def toString = prefix.toString+"#"+name+argString
     }
 
-  /** ClassManifest for the intersection type `parents_0 with ... with parents_n'. */
-  def intersectionType[T](parents: ClassManifest[_]*): ClassManifest[T] =
+  /** ClassManifest for the abstract type `prefix # name'. `upperBound' is not
+    * strictly necessary as it could be obtained by reflection. It was
+    * added so that erasure can be calculated without reflection.
+    * todo: remove after next boostrap
+    */
+  def abstractType[T](prefix: OptManifest[_], name: String, upperbound: ClassManifest[_], args: OptManifest[_]*): ClassManifest[T] =
     new (ClassManifest[T] @serializable) {
-      def erasure = parents.head.erasure
-      override def toString = parents.mkString(" with ")
+      def erasure = upperbound.erasure
+      override val typeArguments = args.toList
+      override def toString = prefix.toString+"#"+name+argString
     }
 }

@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -77,7 +76,7 @@ object TabbedPane {
  * @see javax.swing.JTabbedPane
  */
 class TabbedPane extends Component with Publisher {
-  override lazy val peer: JTabbedPane = new JTabbedPane
+  override lazy val peer: JTabbedPane = new JTabbedPane with SuperMixin
   import TabbedPane._
   
   object pages extends BufferWrapper[Page] {
@@ -99,8 +98,8 @@ class TabbedPane extends Component with Publisher {
     def +=(t: Page): this.type = { t.parent = TabbedPane.this; peer.addTab(t.title, null, t.content.peer, t.tip); this }
     def length = peer.getTabCount
     def apply(n: Int) = new Page(TabbedPane.this, peer.getTitleAt(n),
-                                UIElement.cachedWrapper(peer.getComponentAt(n).asInstanceOf[javax.swing.JComponent]), 
-                                peer.getToolTipTextAt(n))
+      UIElement.cachedWrapper[Component](peer.getComponentAt(n).asInstanceOf[javax.swing.JComponent]), 
+      peer.getToolTipTextAt(n))
   }
   
   def tabLayoutPolicy: Layout.Value = Layout(peer.getTabLayoutPolicy)

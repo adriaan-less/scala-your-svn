@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -20,7 +19,7 @@ import javax.swing.{AbstractButton => JAbstractButton, Icon}
  * 
  * @see javax.swing.AbstractButton
  */
-abstract class AbstractButton extends Component with Action.Trigger with Publisher {
+abstract class AbstractButton extends Component with Action.Trigger.Wrapper with Publisher {
   override lazy val peer: JAbstractButton = new JAbstractButton with SuperMixin {}
 
   def text: String = peer.getText
@@ -40,14 +39,6 @@ abstract class AbstractButton extends Component with Action.Trigger with Publish
   def rolloverIcon_=(b: Icon) = peer.setRolloverIcon(b)
   def rolloverSelectedIcon: Icon = peer.getRolloverSelectedIcon
   def rolloverSelectedIcon_=(b: Icon) = peer.setRolloverSelectedIcon(b)
-  
-  // TODO: we need an action cache
-  private var _action: Action = Action.NoAction
-  def action: Action = _action
-  def action_=(a: Action) { _action = a; peer.setAction(a.peer) }
-  
-  //1.6: def hideActionText: Boolean = peer.getHideActionText
-  //def hideActionText_=(b: Boolean) = peer.setHideActionText(b)
   
   peer.addActionListener(Swing.ActionListener { e =>
     publish(ButtonClicked(AbstractButton.this))

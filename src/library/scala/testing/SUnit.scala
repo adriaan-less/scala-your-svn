@@ -1,17 +1,17 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.testing
 
 import scala.collection.mutable.ArrayBuffer
+import xml.{ Node, NodeSeq }
 
 /**
  * <p>
@@ -235,6 +235,25 @@ object SUnit {
     /** succeeds if actual == true */
     def assertTrue(actual: Boolean) {
       assertTrue("(no message)", actual)
+    }
+
+    /** Temporary patchwork trying to nurse xml forward. */
+    def assertEqualsXML(msg: String, expected: NodeSeq, actual: NodeSeq) {
+      if (!expected.xml_==(actual))
+        fail(msg, expected, actual)
+    }
+    def assertEqualsXML(msg: String, expected: Seq[Node], actual: Seq[Node]) {
+      assertEqualsXML(msg, expected: NodeSeq, actual: NodeSeq)
+    }
+    
+    def assertEqualsXML(expected: NodeSeq, actual: NodeSeq) {
+      assertEqualsXML("(no message)", expected, actual)
+    }
+
+    def assertSameElementsXML(actual: Seq[Node], expected: Seq[Node]) {
+      val res = (actual: NodeSeq) xml_sameElements expected
+
+      assert(res, "\nassertSameElementsXML:\n  actual = %s\n  expected = %s".format(actual, expected))
     }
 
     /** throws <code>AssertFailed</code> with given message <code>msg</code>.

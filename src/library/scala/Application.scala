@@ -1,17 +1,15 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
-import java.lang.System.getProperty
 import scala.compat.Platform.currentTime
 
 /** <p>
@@ -84,7 +82,7 @@ trait Application {
    *  @param args the arguments passed to the main method
    */
   def main(args: Array[String]) {
-    if (getProperty("scala.time") ne null) {
+    if (util.Properties.propIsSet("scala.time")) {
       val total = currentTime - executionStart
       Console.println("[total " + total + "ms]")
     }

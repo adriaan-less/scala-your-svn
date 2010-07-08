@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.compat
@@ -47,7 +46,7 @@ object Platform {
   @inline
   def getClassForName(name: String): Class[_] = java.lang.Class.forName(name)
 
-  val EOL = System.getProperty("line.separator", "\n")
+  val EOL = util.Properties.lineSeparator
 
   @inline
   def currentTime: Long = System.currentTimeMillis()

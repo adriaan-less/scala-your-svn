@@ -1,21 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 
-import collection.immutable
-import collection.immutable.{List, Nil, ::}
-import collection.{Seq, SeqLike}
-import collection.mutable.{Builder, ListBuffer}
-import collection.generic.CanBuildFrom
+import collection.{ mutable, immutable, generic, SeqLike }
+import mutable.{ Builder, ListBuffer }
+import generic.{ CanBuildFrom }
 
 /** This object ...
  *
@@ -43,7 +40,7 @@ object NodeSeq {
  *  @author  Burak Emir
  *  @version 1.0
  */
-abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] {
+abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] with Equality {
   import NodeSeq.seqToNodeSeq // import view magic for NodeSeq wrappers
 
   /** Creates a list buffer as builder for this class */
@@ -56,43 +53,56 @@ abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] {
   def apply(i: Int): Node = theSeq(i)
   def apply(f: Node => Boolean): NodeSeq = filter(f)
 
-  /** structural equality (XXX - this shatters any hope of hashCode equality) */
-  override def equals(x: Any): Boolean = x match {
-    case z:Node      => (length == 1) && z == apply(0)
-    case z:Seq[_]    => sameElements(z)
-    case z:String    => text == z
-    case _           => false
+  def xml_sameElements[A](that: Iterable[A]): Boolean = {
+    val these = this.iterator
+    val those = that.iterator
+    while (these.hasNext && those.hasNext)
+      if (these.next xml_!= those.next)
+        return false
+
+    !these.hasNext && !those.hasNext
+  }
+  def basisForHashCode: Seq[Any] = theSeq
+  override def canEqual(other: Any) = other match {
+    case _: NodeSeq   => true
+    case _            => false
+  }
+  override def strict_==(other: Equality) = other match {
+    case x: NodeSeq => (length == x.length) && (theSeq sameElements x.theSeq)
+    case _          => false
   }
 
-  /** Projection function. Similar to XPath, use <code>this \ "foo"</code>
-   *  to get a list of all elements of this sequence that are labelled with
-   *  <code>"foo"</code>. Use <code>\ "_"</code> as a wildcard. Use 
-   *  <code>ns \ "@foo"</code> to get the unprefixed attribute "foo". 
-   *  Use <code>ns \ "@{uri}foo"</code> to get the prefixed attribute 
-   *  "pre:foo" whose prefix "pre" is resolved to the namespace "uri". 
-   *  For attribute projections, the resulting NodeSeq attribute values are
-   *  wrapped in a Group.
-   *  There is no support for searching a prefixed attribute by
-   *  its literal prefix.
+  /** Projection function, which returns  elements of `this` sequence based on the string `that`. Use:
+   *   - `this \ "foo"` to get a list of all elements that are labelled with `"foo"`;
+   *   - `\ "_"` to get a list of all elements (wildcard);
+   *   - `ns \ "@foo"` to get the unprefixed attribute `"foo"`;
+   *   - `ns \ "@{uri}foo"` to get the prefixed attribute `"pre:foo"` whose prefix `"pre"` is resolved to the
+   *     namespace `"uri"`.
+   *
+   *  For attribute projections, the resulting [[scala.xml.NodeSeq]] attribute values are wrapped in a
+   *  [[scala.xml.Group]].
+   *
+   *  There is no support for searching a prefixed attribute by its literal prefix.
+   *
    *  The document order is preserved.
    *
    *  @param that ...
    *  @return     ...
    */
   def \(that: String): NodeSeq = {
+    def fail = throw new IllegalArgumentException(that)
     def atResult = {
-      def fail = throw new IllegalArgumentException(that)
       lazy val y = this(0)
       val attr = 
         if (that.length == 1) fail
         else if (that(1) == '{') {
           val i = that indexOf '}'
-          if (i == -1) fail            
+          if (i == -1) fail                  
           val (uri, key) = (that.substring(2,i), that.substring(i+1, that.length()))
           if (uri == "" || key == "") fail
           else y.attribute(uri, key)
         }
-        else y.attribute(that.substring(1))
+        else y.attribute(that drop 1)
         
       attr match {
         case Some(x)  => Group(x)
@@ -104,22 +114,26 @@ abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] {
       NodeSeq fromSeq (this flatMap (_.child) filter cond)
       
     that match {
+      case ""                                         => fail
       case "_"                                        => makeSeq(!_.isAtom)
       case _ if (that(0) == '@' && this.length == 1)  => atResult
       case _                                          => makeSeq(_.label == that)
     }
   }
 
-  /** projection function. Similar to XPath, use <code>this \\ 'foo</code>
-   *  to get a list of all elements of this sequence that are labelled with
-   *  <code>"foo"</code>. Use <code>\\ "_"</code> as a wildcard.  Use 
-   *  <code>ns \\ "@foo"</code> to get the unprefixed attribute "foo". 
-   *  Use <code>ns \\ "@{uri}foo"</code> to get each prefixed attribute 
-   *  "pre:foo" whose prefix "pre" is resolved to the namespace "uri". 
-   *  For attribute projections, the resulting NodeSeq attribute values are
-   *  wrapped in a Group.
-   *  There is no support for searching a prefixed attribute by
-   *  its literal prefix.
+  /** Projection function, which returns elements of `this` sequence and of all its subsequences, based on
+   *  the string `that`. Use:
+   *   - `this \\ 'foo` to get a list of all elements that are labelled with `"foo"`;
+   *   - `\\ "_"` to get a list of all elements (wildcard);
+   *   - `ns \\ "@foo"` to get the unprefixed attribute `"foo"`;
+   *   - `ns \\ "@{uri}foo"` to get each prefixed attribute `"pre:foo"` whose prefix `"pre"` is resolved to the
+   *     namespace `"uri"`.
+   *
+   *  For attribute projections, the resulting [[scala.xml.NodeSeq]] attribute values are wrapped in a
+   *  [[scala.xml.Group]].
+   *
+   *  There is no support for searching a prefixed attribute by its literal prefix.
+   *
    *  The document order is preserved.
    *
    *  @param that ...

@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,17 +13,23 @@ package mutable
 
 import generic._
 
-/** <code>Queue</code> objects implement data structures that allow to
+/** `Queue` objects implement data structures that allow to
  *  insert and retrieve elements in a first-in-first-out (FIFO) manner.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  
+ *  @define Coll mutable.Queue
+ *  @define coll mutable queue
+ *  @define orderDependent 
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 @serializable @cloneable
 class Queue[A] extends MutableList[A] with Cloneable[Queue[A]] {
-
   /** Adds all elements to the queue.
    *
    *  @param  elems       the elements to add.
@@ -143,4 +148,9 @@ class Queue[A] extends MutableList[A] with Cloneable[Queue[A]] {
    *  @return the first element.
    */
   def front: A = first0.elem
+}
+
+// !!! TODO - integrate
+object Queue {
+  def apply[A](xs: A*): Queue[A] = new Queue[A] ++= xs
 }

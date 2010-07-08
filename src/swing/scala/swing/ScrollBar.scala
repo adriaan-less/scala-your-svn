@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -23,7 +22,7 @@ object ScrollBar {
 }
 
 class ScrollBar extends Component with Orientable.Wrapper with Adjustable.Wrapper {
-	override lazy val peer = new JScrollBar
+	override lazy val peer: JScrollBar = new JScrollBar with SuperMixin
 
 	def valueIsAjusting = peer.getValueIsAdjusting
 	def valueIsAjusting_=(b : Boolean) = peer.setValueIsAdjusting(b)

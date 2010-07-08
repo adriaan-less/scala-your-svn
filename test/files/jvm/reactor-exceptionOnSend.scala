@@ -3,7 +3,7 @@ import scala.actors.Actor._
 
 case class MyException(text: String) extends Exception(text)
 
-object A extends Reactor {
+object A extends Reactor[Any] {
   override def exceptionHandler = {
     case MyException(text) =>
       println("receiver handles exception")
@@ -19,6 +19,7 @@ object A extends Reactor {
   var state = 0
 
   def act() {
+    try {
     loop {
       react {
         case 'hello if guard() =>
@@ -26,14 +27,24 @@ object A extends Reactor {
           exit()
       }
     }
+    } catch {
+      case e: Throwable if (!e.isInstanceOf[scala.util.control.ControlThrowable] &&
+                            !e.isInstanceOf[MyException]) =>
+        e.printStackTrace()
+    }
   }
 }
 
-object B extends Reactor {
+object B extends Reactor[Any] {
   def act() {
+    try {
     A.start()
     A ! 'hello
     A ! 'hello
+    } catch {
+      case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+        e.printStackTrace()
+    }
   }
 }
 

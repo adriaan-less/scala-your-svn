@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -94,19 +93,19 @@ trait Unapplies extends ast.TreeDSL
   }
   /** returns unapply member's parameter type. */
   def unapplyParameterType(extractor: Symbol) = {
-    val tps = extractor.tpe.paramTypes
-    if (tps.length == 1) tps.head.typeSymbol
+    val ps = extractor.tpe.params
+    if (ps.length == 1) ps.head.tpe.typeSymbol
     else NoSymbol
   }
 
   def copyUntyped[T <: Tree](tree: T): T =
-    returning[T](UnTyper traverse _)(tree.duplicate)
+    returning[T](tree.duplicate)(UnTyper traverse _)
 
-  def copyUntypedInvariant(td: TypeDef): TypeDef =
-    returning[TypeDef](UnTyper traverse _)(
-      treeCopy.TypeDef(td, td.mods &~ (COVARIANT | CONTRAVARIANT), td.name,
-                       td.tparams, td.rhs).duplicate
-    )
+  def copyUntypedInvariant(td: TypeDef): TypeDef = {
+    val copy = treeCopy.TypeDef(td, td.mods &~ (COVARIANT | CONTRAVARIANT), td.name, td.tparams, td.rhs)
+    
+    returning[TypeDef](copy.duplicate)(UnTyper traverse _)
+  }
 
   private def classType(cdef: ClassDef, tparams: List[TypeDef]): Tree = {
     val tycon = REF(cdef.symbol)
@@ -131,21 +130,31 @@ trait Unapplies extends ast.TreeDSL
     }
   }
 
-  /** The module corresponding to a case class; without any member definitions
+  /** The module corresponding to a case class; overrides toString to show the module's name
    */
   def caseModuleDef(cdef: ClassDef): ModuleDef = {
-    def inheritFromFun1 = !(cdef.mods hasFlag ABSTRACT) && cdef.tparams.isEmpty && constrParamss(cdef).length == 1
-    def createFun1      = gen.scalaFunctionConstr(constrParamss(cdef).head map (_.tpt), toIdent(cdef))
-    def parents         = if (inheritFromFun1) List(createFun1) else Nil
-        
-    companionModuleDef(cdef, parents ::: List(gen.scalaScalaObjectConstr))
+    // > MaxFunctionArity is caught in Namers, but for nice error reporting instead of
+    // an abrupt crash we trim the list here.
+    def primaries      = constrParamss(cdef).head take MaxFunctionArity map (_.tpt)
+    def inheritFromFun = !cdef.mods.isAbstract && cdef.tparams.isEmpty && constrParamss(cdef).length == 1
+    def createFun      = gen.scalaFunctionConstr(primaries, toIdent(cdef), abstractFun = true)
+    def parents        = if (inheritFromFun) List(createFun) else Nil
+    def toString       = DefDef(
+      Modifiers(OVERRIDE | FINAL),
+      nme.toString_,
+      Nil,
+      List(Nil),
+      TypeTree(),
+      Literal(Constant(cdef.name.decode)))
+
+    companionModuleDef(cdef, parents ::: List(gen.scalaScalaObjectConstr), List(toString))
   }
 
-  def companionModuleDef(cdef: ClassDef, parents: List[Tree]): ModuleDef = atPos(cdef.pos.focus) {
+  def companionModuleDef(cdef: ClassDef, parents: List[Tree], body: List[Tree] = Nil): ModuleDef = atPos(cdef.pos.focus) {
     ModuleDef(
       Modifiers(cdef.mods.flags & AccessFlags | SYNTHETIC, cdef.mods.privateWithin),
       cdef.name.toTermName,
-      Template(parents, emptyValDef, NoMods, Nil, List(Nil), Nil, cdef.impl.pos.focus))
+      Template(parents, emptyValDef, NoMods, Nil, List(Nil), body, cdef.impl.pos.focus))
   }
 
   private val caseMods = Modifiers(SYNTHETIC | CASE)
@@ -171,10 +180,11 @@ trait Unapplies extends ast.TreeDSL
       case _                                            => nme.unapply
     }
     val cparams   = List(ValDef(Modifiers(PARAM | SYNTHETIC), paramName, classType(cdef, tparams), EmptyTree))
+    val ifNull    = if (constrParamss(cdef).head.size == 0) FALSE else REF(NoneModule)
+    val body      = nullSafe({ case Ident(x) => caseClassUnapplyReturnValue(x, cdef.symbol) }, ifNull)(Ident(paramName))
 
     atPos(cdef.pos.focus)(
-      DefDef(caseMods, method, tparams, List(cparams), TypeTree(),
-        caseClassUnapplyReturnValue(paramName, cdef.symbol))
+      DefDef(caseMods, method, tparams, List(cparams), TypeTree(), body)
     )
   }
 

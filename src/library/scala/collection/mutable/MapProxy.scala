@@ -1,41 +1,39 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
-/** <p>
- *    This is a simple wrapper class for <a href="Map.html"
- *    target="contentFrame"><code>scala.collection.mutable.Map</code></a>.
- *  </p>
- *  <p>
- *    It is most useful for assembling customized map abstractions
- *    dynamically using object composition and forwarding.
- *  </p>
+/** 
+ *  This trait implements a proxy for <a href="Map.html"
+ *  target="contentFrame"><code>scala.collection.mutable.Map</code></a>.
+ *  
+ *  It is most useful for assembling customized map abstractions
+ *  dynamically using object composition and forwarding.
  *
  *  @author  Matthias Zenger, Martin Odersky
  *  @version 2.0, 31/12/2006
  *  @since   1
  */
+trait MapProxy[A, B] extends Map[A, B] with MapProxyLike[A, B, Map[A, B]] {  
+  private def newProxy[B1 >: B](newSelf: Map[A, B1]): MapProxy[A, B1] =
+    new MapProxy[A, B1] { val self = newSelf }
 
-trait MapProxy[A, B] extends Map[A, B] with MapProxyLike[A, B, Map[A, B]]
-{  
   override def repr = this
   override def empty: MapProxy[A, B] = new MapProxy[A, B] { val self = MapProxy.this.self.empty }
+  override def updated [B1 >: B](key: A, value: B1) = newProxy(self.updated(key, value))
   
-  override def +(kv: (A, B)) = { self.update(kv._1, kv._2) ; this }
-  override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *) = 
-    { self.+(elem1, elem2, elems: _*) ; this }
-    
-  override def -(key: A) = { self.remove(key); this }
+  override def + [B1 >: B] (kv: (A, B1)): Map[A, B1] = newProxy(self + kv)
+  override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *) = newProxy(self.+(elem1, elem2, elems: _*))
+  override def ++[B1 >: B](xs: TraversableOnce[(A, B1)]) = newProxy(self ++ xs)
+  override def -(key: A) = newProxy(self - key)
   
   override def += (kv: (A, B)) = { self += kv ; this }
   override def -= (key: A) = { self -= key ; this }

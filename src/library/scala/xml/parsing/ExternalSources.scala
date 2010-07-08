@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -21,8 +20,7 @@ import scala.io.Source
  *  @author  Burak Emir
  *  @version 1.0
  */
-trait ExternalSources
-{ 
+trait ExternalSources { 
   self: ExternalSources with MarkupParser with MarkupHandler =>
 
   /** ...
@@ -39,6 +37,6 @@ trait ExternalSources
       case x                          => x take ((x lastIndexOf separator) + 1)
     }
     
-    Source.fromPath(fileStr + systemId)()
+    Source.fromFile(fileStr + systemId)
   }
 }

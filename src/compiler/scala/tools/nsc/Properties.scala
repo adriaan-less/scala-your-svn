@@ -1,9 +1,8 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2009 LAMP/EPFL
+ * Copyright 2006-2010 LAMP/EPFL
  * @author  Stephane Micheloud
  */
 
-// $Id$
 
 package scala.tools.nsc
 
@@ -13,12 +12,14 @@ object Properties extends scala.util.PropertiesTrait {
   protected def pickJarBasedOn  = classOf[Global]
   
   // settings based on jar properties
-  val fileEndingString      = prop("file.ending", ".scala|.java")
-  val residentPromptString  = prop("resident.prompt", "\nnsc> ")
-  val shellPromptString     = prop("shell.prompt", "\nscala> ")
+  def fileEndingString      = scalaPropOrElse("file.ending", ".scala|.java")
+  def residentPromptString  = scalaPropOrElse("resident.prompt", "\nnsc> ")
+  def shellPromptString     = scalaPropOrElse("shell.prompt", "\nscala> ")
   
+  // settings based on system properties
+  def msilLibPath           = propOrNone("msil.libpath")
+
   // derived values
-  val cmdName               = if (isWin) "scala.bat" else "scala"
-  val fileEndings           = fileEndingString.split("""\|""").toList
-  
+  def isEmacsShell          = propOrEmpty("env.emacs") != ""
+  def fileEndings           = fileEndingString.split("""\|""").toList
 }

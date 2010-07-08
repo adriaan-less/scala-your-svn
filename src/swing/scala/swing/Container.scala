@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -30,7 +29,7 @@ object Container {
       override def remove(n: Int): Component = { 
         val c = peer.getComponent(n)
         peer.remove(n)
-        UIElement.cachedWrapper(c)
+        UIElement.cachedWrapper[Component](c)
       }
       protected def insertAt(n: Int, c: Component) { peer.add(c.peer, n) }
       def +=(c: Component): this.type = { peer.add(c.peer) ; this }
@@ -41,11 +40,11 @@ object Container {
     peer.addContainerListener(new java.awt.event.ContainerListener {
       def componentAdded(e: java.awt.event.ContainerEvent) { 
         publish(ComponentAdded(Wrapper.this, 
-                               UIElement.cachedWrapper(e.getChild.asInstanceOf[javax.swing.JComponent]))) 
+          UIElement.cachedWrapper[Component](e.getChild.asInstanceOf[javax.swing.JComponent]))) 
       }
       def componentRemoved(e: java.awt.event.ContainerEvent) { 
         publish(ComponentRemoved(Wrapper.this, 
-                                 UIElement.cachedWrapper(e.getChild.asInstanceOf[javax.swing.JComponent]))) 
+          UIElement.cachedWrapper[Component](e.getChild.asInstanceOf[javax.swing.JComponent]))) 
       }
     })
   }

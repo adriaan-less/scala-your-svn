@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,26 +13,28 @@ package mutable
 
 import generic._
 
-/** A subtrait of <code>collection.Seq</code> which represents sequences
+
+/** A subtrait of `collection.Seq` which represents sequences
  *  that can be mutated.
- *  The class adds an <code>update</code> method to <code>collection.Seq</code>.
  *
- *  @since 2.8
+ *  $seqInfo
+ * 
+ *  The class adds an `update` method to `collection.Seq`.
+ *  
+ *  @define Coll mutable.Seq
+ *  @define coll mutable sequence
  */
 trait Seq[A] extends Iterable[A] 
                      with scala.collection.Seq[A] 
                      with GenericTraversableTemplate[A, Seq]
                      with SeqLike[A, Seq[A]] { 
   override def companion: GenericCompanion[Seq] = Seq
-
-  def update(idx: Int, elem: A)
 }
 
-/** A factory object for the trait <code>Seq</code>.
- *        
- *  @author  Martin Odersky
- *  @version 2.8
- *  @since   2.8
+/** $factoryInfo
+ *  The current default implementation of a $Coll is an `ArrayBuffer`.
+ *  @define coll mutable sequence
+ *  @define Coll mutable.Seq
  */
 object Seq extends SeqFactory[Seq] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[A]] = new GenericCanBuildFrom[A]

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -21,10 +21,11 @@ import generic._
  */
 trait SetProxyLike[A, +This <: SetLike[A, This] with Set[A]] extends SetLike[A, This] with IterableProxyLike[A, This]
 { 
+  def empty: This
   // def empty: This
-  // def + (elem: A): This
-  // def - (elem: A): This
   override def contains(elem: A): Boolean = self.contains(elem)
+  override def + (elem: A) = self.+(elem)
+  override def - (elem: A) = self.-(elem)
   override def isEmpty: Boolean = self.isEmpty
   override def apply(elem: A): Boolean = self.apply(elem)
   override def intersect(that: Set[A]) = self.intersect(that)

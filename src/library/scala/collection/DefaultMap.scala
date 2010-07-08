@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,7 +13,7 @@ package scala.collection
 import generic._
 
 /** <p>
- *    A default map which implements the <code>updated</code> and <code>-</code>
+ *    A default map which implements the <code>+</code> and <code>-</code>
  *    methods of maps.<br/>
  *    Instances that inherit from <code>DefaultMap[A, B]</code> still have to
  *    define:

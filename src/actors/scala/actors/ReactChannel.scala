@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: InputChannel.scala 18844 2009-09-30 20:28:49Z phaller $
 
 package scala.actors
 
@@ -15,7 +14,7 @@ package scala.actors
  *
  * @author Philipp Haller
  */
-private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[Msg] {
+private[actors] class ReactChannel[Msg](receiver: ReplyReactor) extends InputChannel[Msg] {
 
   private case class SendToReactor(channel: ReactChannel[Msg], msg: Msg)
 

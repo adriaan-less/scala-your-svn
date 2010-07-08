@@ -1,18 +1,17 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.runtime
 
 import java.lang.Character
-import collection.{IndexedSeq, IndexedSeqView}
+import collection.immutable.NumericRange
 
 /** <p>
  *    For example, in the following code
@@ -48,6 +47,7 @@ final class RichChar(x: Char) extends Proxy with Ordered[Char] {
   def isSpaceChar: Boolean = Character.isSpaceChar(x)
   def isHighSurrogate: Boolean = Character.isHighSurrogate(x)
   def isLowSurrogate: Boolean = Character.isLowSurrogate(x)
+  def isSurrogate: Boolean = isHighSurrogate || isLowSurrogate
   def isUnicodeIdentifierStart: Boolean = Character.isUnicodeIdentifierStart(x)
   def isUnicodeIdentifierPart: Boolean = Character.isUnicodeIdentifierPart(x)
   def isIdentifierIgnorable: Boolean = Character.isIdentifierIgnorable(x)
@@ -82,22 +82,14 @@ final class RichChar(x: Char) extends Proxy with Ordered[Char] {
   @deprecated("Use ch.isUpper instead")
   def isUpperCase: Boolean = isUpper
   
-  /** Create a <code>[Char]</code> over the characters from 'x' to 'y' - 1
+  /** Create a <code>[Char]</code> over the characters from 'x' to 'limit' - 1
    */
-  def until(limit: Char): IndexedSeqView[Char, IndexedSeq[Char]] =
-    if (limit <= x) IndexedSeq.empty.view
-    else
-      new IndexedSeqView[Char, IndexedSeq[Char]] {
-        protected def underlying = IndexedSeq.empty[Char]
-        def length = limit - x
-        def apply(i: Int): Char = {
-          require(i >= 0 && i < length)
-          (x + i).toChar
-        }
-      }
+  def until(limit: Char): NumericRange[Char] = 
+    new NumericRange.Exclusive(x, limit, 1.toChar)
 
-  /** Create a <code>IndexedSeqView[Char]</code> over the characters from 'x' to 'y'
+  /** Create a <code>IndexedSeqView[Char]</code> over the characters from 'x' to 'limit'
    */
-  def to(y: Char): IndexedSeqView[Char, IndexedSeq[Char]] = until((y + 1).toChar)
+  def to(limit: Char): NumericRange[Char] = 
+    new NumericRange.Inclusive(x, limit, 1.toChar)
 
 }

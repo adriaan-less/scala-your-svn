@@ -1,8 +1,7 @@
 /* NSC -- new scala compiler
- * Copyright 2004-2009 LAMP/EPFL
+ * Copyright 2004-2010 LAMP/EPFL
  */
 
-// $Id$
 
 package scala.tools.nsc
 package symtab

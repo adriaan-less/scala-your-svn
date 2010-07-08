@@ -1,19 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package mutable
 
-/** This class implements priority queues using a heap. The
+/** This class servers as a proxy for priority queues. The
  *  elements of the queue have to be ordered in terms of the
- *  <code>Ordered[T]</code> class.
+ *  `Ordered[T]` class.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
@@ -22,7 +21,6 @@ package mutable
 abstract class PriorityQueueProxy[A](implicit ord: Ordering[A]) extends PriorityQueue[A]
          with Proxy
 {
-
   def self: PriorityQueue[A]
 
   /** Creates a new iterator over all elements contained in this
@@ -48,21 +46,11 @@ abstract class PriorityQueueProxy[A](implicit ord: Ordering[A]) extends Priority
    */
   override def +=(elem: A): this.type = { self += elem; this }
 
-  /** Adds all elements provided by an <code>Iterable</code> object
-   *  into the priority queue.
-   *
-   *  @param  iter        an iterable object
-   */
-  def ++=(iter: scala.collection.Iterable[A]): this.type = {
-    self ++= iter
-    this
-  }
-
   /** Adds all elements provided by an iterator into the priority queue.
    *
    *  @param  it        an iterator
    */
-  override def ++=(it: Iterator[A]): this.type = {
+  override def ++=(it: TraversableOnce[A]): this.type = {
     self ++= it
     this
   }

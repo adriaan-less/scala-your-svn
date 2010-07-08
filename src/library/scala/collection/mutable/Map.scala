@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,8 +13,11 @@ package mutable
 
 import generic._
 
-/**
- * @since 1
+/** A base trait for maps that can be mutated.
+ *  $mapNote
+ *  $mapTags
+ *  @since 1.0
+ *  @author  Matthias Zenger
  */
 trait Map[A, B] 
   extends Iterable[(A, B)]
@@ -36,11 +38,16 @@ trait Map[A, B]
   }
   */
 }
-/* Factory object for `Map` class
- * Currently this returns a HashMap.
+
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `HashMap`.
+ *  @define coll mutable map
+ *  @define Coll mutable.Map
  */
 object Map extends MutableMapFactory[Map] {
+  /** $canBuildFromInfo */
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), Map[A, B]] = new MapCanBuildFrom[A, B]
+
   def empty[A, B]: Map[A, B] = new HashMap[A, B]
 }
 

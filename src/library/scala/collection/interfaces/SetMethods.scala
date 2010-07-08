@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -21,9 +21,8 @@ trait AddableMethods[A, +This <: Addable[A, This]] {
   protected def repr: This
   def +(elem: A): This
   def + (elem1: A, elem2: A, elems: A*): This
-  def ++ (elems: Traversable[A]): This
-  def ++ (iter: Iterator[A]): This
-} 
+  def ++ (xs: TraversableOnce[A]): This
+}
 
 /**
  * @since 2.8
@@ -32,8 +31,7 @@ trait SubtractableMethods[A, +This <: Subtractable[A, This]] {
   protected def repr: This
   def -(elem: A): This
   def -(elem1: A, elem2: A, elems: A*): This
-  def --(elems: Traversable[A]): This
-  def --(iter: Iterator[A]): This
+  def --(xs: TraversableOnce[A]): This
 }
 
 /**

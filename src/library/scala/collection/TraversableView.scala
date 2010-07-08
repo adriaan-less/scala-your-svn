@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,18 +14,14 @@ import generic._
 import mutable.Builder
 import TraversableView.NoBuilder
 
-/** <p>
- *    A base class for views of <a href="../Traversable.html"
- *    target="ContentFrame"><code>Traversable<code></a>.<br/>
- *    Every subclass has to implenment the <code>foreach</code> method.
- *  </p>
- *
- *  @author Martin Odersky
- *  @version 2.8
- *  @since   2.8
+/** A base trait for non-strict views of traversable collections.
+ *  $traversableViewInfo
  */
 trait TraversableView[+A, +Coll] extends TraversableViewLike[A, Coll, TraversableView[A, Coll]]
 
+/** An object containing the necessary implicit definitions to make
+ *  `TraversableView`s work. Its definitions are generally not accessed directly by clients.
+ */
 object TraversableView {
   class NoBuilder[A] extends Builder[A, Nothing] {
     def +=(elem: A): this.type = this

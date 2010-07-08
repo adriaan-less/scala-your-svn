@@ -2,8 +2,7 @@ import collection._
 
 object Test extends Application {
 
-  def orderedTraversableTest(empty: Traversable[Int]) 
-  {
+  def orderedTraversableTest(empty: Traversable[Int]) {
     println("new test starting with "+empty)
     assert(empty.isEmpty)
     val ten = empty ++ List(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
@@ -30,8 +29,8 @@ object Test extends Application {
     val (o, e) = ten.partition(_ % 2 == 0)
     assert(o.size == e.size)
     val gs = ten groupBy (x => x / 4)
-    val vs1 = (for (k <- gs.keysIterator; v <- gs(k).toIterable.iterator) yield v).toList
-    val vs2 = gs.values.toList.flatten
+    val vs1 = (for (k <- gs.keysIterator; v <- gs(k).toIterable.iterator) yield v).toList.sorted
+    val vs2 = gs.values.toList.flatten.sorted
 //    val vs2 = gs.values.toList flatMap (xs => xs)
     assert(ten.head == 1)
     assert(ten.tail.head == 2)
@@ -80,7 +79,7 @@ object Test extends Application {
     val tenPlus = ten map (_ + 1)
     assert((ten zip tenPlus) forall { case (x, y) => x + 1 == y })
     val dble = ten flatMap (x => List(x, x))
-    assert(dble.removeDuplicates == ten)
+    assert(dble.distinct == ten)
     assert(ten.length == 10)
     assert(ten(0) == 1 && ten(9) == 10)
     assert((ten lengthCompare 10) == 0 && (ten lengthCompare 1) > 0 && (ten lengthCompare 11) < 0)
@@ -113,6 +112,9 @@ object Test extends Application {
     assert(ten.endsWith(List(9, 10)))
     assert(ten.endsWith(List()))
     assert(ten.indexOfSlice(List(3, 4, 5)) == 2, ten.indexOfSlice(List(3, 4, 5)))
+    assert(ten.lastIndexOfSlice(List(8, 9, 10)) == 7)
+    assert(ten.lastIndexOfSlice(List(1, 2, 3)) == 0)
+    assert(ten.lastIndexOfSlice(List(9, 10, 11)) == -1)
     assert(ten contains 1)
     assert(ten contains 10)
     assert(!(ten contains 0))
@@ -122,7 +124,7 @@ object Test extends Application {
     assert((ten diff (ten filter (_ % 2 == 0))) == (ten filterNot  (_ % 2 == 0)))
     assert((ten intersect ten) == ten)
     assert((ten intersect List(5)) == List(5))
-    assert((ten ++ ten).removeDuplicates == ten)
+    assert((ten ++ ten).distinct == ten)
     assert(ten.patch(3, List(4, 5, 6, 7), 4) == ten)
     assert(ten.patch(0, List(1, 2, 3), 9) == List(1, 2, 3, 10))
     assert(empty.padTo(10, 7) == Array.fill(10)(7).toSeq)
@@ -170,7 +172,7 @@ object Test extends Application {
     m += (("D" -> "D"), ("E" -> "E"), ("F" -> "F"))
     m ++= List(("G" -> "G"), ("H" -> "H"), ("I" -> "I"))
     m ++= ('J' to 'Z') map (x => (x.toString -> x.toString))
-    println(m)
+    println(m.toList.sorted)
     assert(!m.isEmpty)
     assert(m.keySet forall (k => (m get k) == Some(k))) 
     assert(m.keySet forall (k => (m apply k) == k)) 
@@ -185,7 +187,7 @@ object Test extends Application {
     assert(mm.isEmpty, mm)
     def m3 = empty ++ m1
     assert(m1 == m3)
-    println(m3)
+    println(m3.toList.sorted)
     val m4 = m3 filterNot { case (k, v) => k != "A" }
     assert(m4.size == 1, m4)
   }

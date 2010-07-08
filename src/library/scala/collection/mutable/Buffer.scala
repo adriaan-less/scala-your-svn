@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -18,12 +17,17 @@ import generic._
  *  appending, prepending, or inserting new elements. It is also
  *  possible to access and modify elements in a random access fashion
  *  via the index of the element in the current sequence.
-  *
+ *  
  *  @author Matthias Zenger
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   1
-  */
+ *  
+ *  @tparam A    type of the elements contained in this buffer.
+ *  
+ *  @define Coll Buffer
+ *  @define coll buffer
+ */
 @cloneable
 trait Buffer[A] extends Seq[A] 
                    with GenericTraversableTemplate[A, Buffer]
@@ -31,7 +35,9 @@ trait Buffer[A] extends Seq[A]
   override def companion: GenericCompanion[Buffer] = Buffer
 }
 
-/** Factory object for <code>Buffer</code> trait.
+/** $factoryInfo
+ *  @define coll buffer
+ *  @define Coll Buffer
  */
 object Buffer extends SeqFactory[Buffer] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Buffer[A]] = new GenericCanBuildFrom[A]

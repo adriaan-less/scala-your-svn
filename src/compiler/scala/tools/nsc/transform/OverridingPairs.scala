@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -15,7 +14,7 @@ import annotation.tailrec
 /** A class that yields a kind of iterator (`Cursor`),
  *  which yields all pairs of overriding/overridden symbols
  *  that are visible in some baseclass, unless there's a parent class
- *  that aleady contains the same pairs.
+ *  that already contains the same pairs.
  *  @author Martin Odersky
  *  @version 1.0
  */
@@ -42,7 +41,7 @@ abstract class OverridingPairs {
      */
     protected def parents: List[Type] = base.info.parents
 
-    /** Does `sym1` match `sym2` so that it qualifies as overiding.
+    /** Does `sym1` match `sym2` so that it qualifies as overriding.
      *  Types always match. Term symbols match if their membertypes
      *  relative to <base>.this do
      */
@@ -99,10 +98,14 @@ abstract class OverridingPairs {
 
     private val size = base.info.baseClasses.length
 
-    /** A map from baseclasses of <base> to ints, with smaller ints meansing lower in
-     *  lineraizatuon order.
+    /** A map from baseclasses of <base> to ints, with smaller ints meaning lower in
+     *  linearization order.
      */
     private val index = new HashMap[Symbol, Int]
+
+    // Note: overridingPairs can be called at odd instances by the Eclipse plugin
+    // Soemtimes symbols are not yet defined and we get missing keys.
+    // The implementation here is hardened so that it does not crash on a missing key.
 
     { var i = 0
       for (bc <- base.info.baseClasses) {
@@ -126,22 +129,37 @@ abstract class OverridingPairs {
     { for (i <- List.range(0, size))
         subParents(i) = new BitSet(size);
       for (p <- parents) {
-        val pIndex = index(p.typeSymbol)
-        for (bc <- p.baseClasses) 
-          if (p.baseType(bc) =:= self.baseType(bc))
-            include(subParents(index(bc)), pIndex)
-          else if (settings.debug.value)
-            log("SKIPPING "+p+" -> "+p.baseType(bc)+" / "+self.baseType(bc)+" from "+base)
+        index get p.typeSymbol match {
+          case Some(pIndex) =>
+            for (bc <- p.baseClasses) 
+              if (p.baseType(bc) =:= self.baseType(bc))
+                index get bc match {
+                  case Some(bcIndex) =>
+                    include(subParents(bcIndex), pIndex)
+                  case None =>
+                }
+              else if (settings.debug.value)
+                log("SKIPPING "+p+" -> "+p.baseType(bc)+" / "+self.baseType(bc)+" from "+base)
+          case None =>
+        }
       }
-    }
+   }
 
     /** Do `sym1` and `sym2` have a common subclass in `parents`?
      *  In that case we do not follow their overriding pairs
      */
     private def hasCommonParentAsSubclass(sym1: Symbol, sym2: Symbol) = {
-      val index1 = index(sym1.owner)
-      val index2 = index(sym2.owner)
-      intersectionContainsElementLeq(subParents(index1), subParents(index2), index1 min index2)
+      index get sym1.owner match {
+        case Some(index1) =>
+          index get sym2.owner match {
+            case Some(index2) =>
+              intersectionContainsElementLeq(subParents(index1), subParents(index2), index1 min index2)
+            case None =>
+              false
+          }
+        case None =>
+          false
+      }
     }
 
     /** The scope entries that have already been visited as overridden
@@ -157,13 +175,13 @@ abstract class OverridingPairs {
     /** The current entry candidate for overridden */
     private var nextEntry = curEntry
 
-    /** The current candidate symbol for overridding */
+    /** The current candidate symbol for overriding */
     var overriding: Symbol = _
 
-    /** If not null: The symbol overridden by overridding */
+    /** If not null: The symbol overridden by overriding */
     var overridden: Symbol = _
 
-    //@M: note that next is called once during object initialisation
+    //@M: note that next is called once during object initialization
     def hasNext: Boolean = curEntry ne null
 
     @tailrec

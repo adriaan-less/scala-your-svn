@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -74,6 +73,21 @@ object Numeric {
     def toDouble(x: Byte): Double = x.toDouble
   }
   implicit object ByteIsIntegral extends ByteIsIntegral with Ordering.ByteOrdering
+  
+  trait CharIsIntegral extends Integral[Char] {
+    def plus(x: Char, y: Char): Char = (x + y).toChar
+    def minus(x: Char, y: Char): Char = (x - y).toChar
+    def times(x: Char, y: Char): Char = (x * y).toChar
+    def quot(x: Char, y: Char): Char = (x / y).toChar
+    def rem(x: Char, y: Char): Char = (x % y).toChar
+    def negate(x: Char): Char = (-x).toChar
+    def fromInt(x: Int): Char = x.toChar
+    def toInt(x: Char): Int = x.toInt
+    def toLong(x: Char): Long = x.toLong
+    def toFloat(x: Char): Float = x.toFloat
+    def toDouble(x: Char): Double = x.toDouble
+  }
+  implicit object CharIsIntegral extends CharIsIntegral with Ordering.CharOrdering
   
   trait LongIsIntegral extends Integral[Long] {
     def plus(x: Long, y: Long): Long = x + y

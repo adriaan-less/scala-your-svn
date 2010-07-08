@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: ThreadPoolScheduler.scala 18948 2009-10-06 17:30:27Z phaller $
 
 package scala.actors.scheduler
 
@@ -112,7 +111,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
           }
 
           if (terminating)
-            throw new QuitException
+            throw new QuitControl
 
           if (!suspending) {
             gc()
@@ -122,26 +121,26 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
             if (coreSize - activeBlocked < numCores && coreSize < maxSize) {
               coreSize = numCores + activeBlocked
               executor.setCorePoolSize(coreSize)
-            } else if (terminate && allTerminated) {
+            } else if (terminate && allActorsTerminated) {
               // if all worker threads idle terminate
               if (executor.getActiveCount() == 0) {
                 Debug.info(this+": initiating shutdown...")
                 Debug.info(this+": corePoolSize = "+coreSize+", maxPoolSize = "+maxSize)
                 
                 terminating = true
-                throw new QuitException
+                throw new QuitControl
               }
             }
           } else {
             drainedTasks = executor.shutdownNow()
             Debug.info(this+": drained "+drainedTasks.size()+" tasks")
             terminating = true
-            throw new QuitException
+            throw new QuitControl
           }
         } // sync
       }
     } catch {
-      case _: QuitException =>
+      case _: QuitControl =>
         executor.shutdown()
         // allow thread to exit
     }

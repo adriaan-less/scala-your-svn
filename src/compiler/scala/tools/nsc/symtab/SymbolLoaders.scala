@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -11,12 +10,14 @@ import java.io.{File, IOException}
  
 import ch.epfl.lamp.compiler.msil.{Type => MSILType, Attribute => MSILAttribute}
 
-import scala.collection.mutable.{HashMap, HashSet}
+import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 import scala.compat.Platform.currentTime
 import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.util.{Position, NoPosition, ClassPath, ClassRep, JavaClassPath, MsilClassPath}
+import scala.tools.nsc.util.{ ClassPath, JavaClassPath }
 import classfile.ClassfileParser
 import Flags._
+
+import util.Statistics._
 
 /** This class ...
  *
@@ -62,7 +63,7 @@ abstract class SymbolLoaders {
         informTime("loaded " + description, start)
         ok = true
         setSource(root)
-        setSource(root.linkedSym) // module -> class, class -> module
+        setSource(root.companionSymbol) // module -> class, class -> module
       } catch {
         case ex: IOException =>
           ok = false
@@ -73,7 +74,7 @@ abstract class SymbolLoaders {
             else "error while loading " + root.name + ", " + msg);
       }
       initRoot(root)
-      if (!root.isPackageClass) initRoot(root.linkedSym)
+      if (!root.isPackageClass) initRoot(root.companionSymbol)
     }
 
     override def load(root: Symbol) { complete(root) }
@@ -108,7 +109,7 @@ abstract class SymbolLoaders {
     def enterClassAndModule(root: Symbol, name: String, completer: SymbolLoader) {
       val owner = if (root.isRoot) definitions.EmptyPackageClass else root
       val className = newTermName(name)
-      assert(owner.info.decls.lookup(name) == NoSymbol, owner.fullNameString + "." + name)
+      assert(owner.info.decls.lookup(name) == NoSymbol, owner.fullName + "." + name)
       val clazz = owner.newClass(NoPosition, name.toTypeName)
       val module = owner.newModule(NoPosition, name)
       clazz setInfo completer
@@ -116,12 +117,12 @@ abstract class SymbolLoaders {
       module.moduleClass setInfo moduleClassLoader
       owner.info.decls enter clazz
       owner.info.decls enter module
-      assert(clazz.linkedModuleOfClass == module, module)
-      assert(module.linkedClassOfModule == clazz, clazz)
+      assert(clazz.companionModule == module, module)
+      assert(module.companionClass == clazz, clazz)
     }
 
     /**
-     * Tells wether a class with both a binary and a source representation
+     * Tells whether a class with both a binary and a source representation
      * (found in classpath and in sourcepath) should be re-compiled. Behaves
      * similar to javac, i.e. if the source file is newer than the classfile,
      * a re-compile is triggered.
@@ -129,12 +130,12 @@ abstract class SymbolLoaders {
     protected def needCompile(bin: T, src: AbstractFile): Boolean
 
     /**
-     * Tells wether a class should be loaded and entered into the package
+     * Tells whether a class should be loaded and entered into the package
      * scope. On .NET, this method returns `false' for all synthetic classes
      * (anonymous classes, implementation classes, module classes), their
      * symtab is encoded in the pickle of another class.
      */
-    protected def doLoad(cls: ClassRep[T]): Boolean
+    protected def doLoad(cls: classpath.AnyClassRep): Boolean
 
     protected def newClassLoader(bin: T): SymbolLoader
 
@@ -166,29 +167,40 @@ abstract class SymbolLoaders {
       val pkgModule = root.info.decl(nme.PACKAGEkw)
       if (pkgModule.isModule && !pkgModule.rawInfo.isInstanceOf[SourcefileLoader]) {
         //println("open "+pkgModule)//DEBUG
-        openPackageModule(pkgModule)
+        openPackageModule(pkgModule)()
       }
     }
   }
 
-  def openPackageModule(m: Symbol) = {
-    val owner = m.owner
-    for (member <- m.info.decls.iterator) {
-      // todo: handle overlapping definitions in some way: mark as errors
-      // or treat as abstractions. For now the symbol in the package module takes precedence.
-      for (existing <- owner.info.decl(member.name).alternatives)
-        owner.info.decls.unlink(existing)
+  def openPackageModule(module: Symbol)(packageClass: Symbol = module.owner): Unit = {
+    // unlink existing symbols in the package
+    for (member <- module.info.decls.iterator) {
+      if (!member.hasFlag(PRIVATE) && !member.isConstructor) {
+        // todo: handle overlapping definitions in some way: mark as errors
+        // or treat as abstractions. For now the symbol in the package module takes precedence.
+        for (existing <- packageClass.info.decl(member.name).alternatives)
+          packageClass.info.decls.unlink(existing)
+      }
     }
-    for (member <- m.info.decls.iterator) {
-      owner.info.decls.enter(member)
+    // enter non-private decls the class
+    for (member <- module.info.decls.iterator) {
+      if (!member.hasFlag(PRIVATE) && !member.isConstructor) {
+        packageClass.info.decls.enter(member)
+      }
+    }
+    // enter decls of parent classes
+    for (pt <- module.info.parents; val p = pt.typeSymbol) {
+      if (p != definitions.ObjectClass && p != definitions.ScalaObjectClass) {
+        openPackageModule(p)(packageClass)
+      }
     }
   }
 
-  class JavaPackageLoader(classpath: ClassPath[AbstractFile]) extends PackageLoader(classpath) {
+  class JavaPackageLoader(classpath: ClassPath[AbstractFile]) extends PackageLoader(classpath) {    
     protected def needCompile(bin: AbstractFile, src: AbstractFile) =
       (src.lastModified >= bin.lastModified)
 
-    protected def doLoad(cls: ClassRep[AbstractFile]) = true
+    protected def doLoad(cls: classpath.AnyClassRep) = true
 
     protected def newClassLoader(bin: AbstractFile) =
       new ClassfileLoader(bin)
@@ -201,7 +213,7 @@ abstract class SymbolLoaders {
     protected def needCompile(bin: MSILType, src: AbstractFile) =
       false // always use compiled file on .net
 
-    protected def doLoad(cls: ClassRep[MSILType]) = {
+    protected def doLoad(cls: classpath.AnyClassRep) = {
       if (cls.binary.isDefined) {
         val typ = cls.binary.get
         if (typ.IsDefined(clrTypes.SCALA_SYMTAB_ATTR, false)) {
@@ -224,15 +236,6 @@ abstract class SymbolLoaders {
   }
 
   class ClassfileLoader(val classfile: AbstractFile) extends SymbolLoader {
-
-    /**
-     * @FIXME: iulian,
-     * there should not be a new ClassfileParser for every loaded classfile, this object
-     * should be outside the class ClassfileLoader! This was changed by Sean in r5494.
-     * 
-     * However, when pulling it out, loading "java.lang.Object" breaks with:
-     *   "illegal class file dependency between java.lang.Object and java.lang.Class"
-     */
     private object classfileParser extends ClassfileParser {
       val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
     }
@@ -240,11 +243,18 @@ abstract class SymbolLoaders {
     protected def description = "class file "+ classfile.toString
 
     protected def doComplete(root: Symbol) {
+      val start = startTimer(classReadNanos)
       classfileParser.parse(classfile, root)
+      stopTimer(classReadNanos, start)
     }
+    override protected def sourcefile = classfileParser.srcfile
   }
 
   class MSILTypeLoader(typ: MSILType) extends SymbolLoader {
+    private object typeParser extends clr.TypeParser {
+      val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
+    }
+
     protected def description = "MSILType "+ typ.FullName + ", assembly "+ typ.Assembly.FullName
     protected def doComplete(root: Symbol) { typeParser.parse(typ, root) }
   }
@@ -260,12 +270,12 @@ abstract class SymbolLoaders {
     protected def doComplete(root: Symbol) { root.sourceModule.initialize }
   }
 
-  private object typeParser extends clr.TypeParser {
-    val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
-  }
-
   object clrTypes extends clr.CLRTypes {
     val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
     if (global.forMSIL) init()
   }
+
+  /** used from classfile parser to avoid cyclies */
+  var parentsLevel = 0
+  var pendingLoadActions: List[() => Unit] = Nil
 }

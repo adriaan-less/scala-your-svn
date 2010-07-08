@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2002-2009 LAMP/EPFL
+ * Copyright 2002-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package reporters
@@ -31,7 +30,8 @@ abstract class Reporter {
   }
 
   var cancelled: Boolean = false
-  def hasErrors: Boolean = ERROR.count != 0 || cancelled
+  def hasErrors: Boolean = ERROR.count > 0 || cancelled
+  def hasWarnings: Boolean = WARNING.count > 0
 
   /** Flush all output */
   def flush() { }
@@ -41,6 +41,15 @@ abstract class Reporter {
   private var source: SourceFile = _
   def setSource(source: SourceFile) { this.source = source }
   def getSource: SourceFile = source
+  def withSource[A](src: SourceFile)(op: => A) = {
+    val oldSource = source
+    try {
+      source = src
+      op 
+    } finally { 
+      source = oldSource 
+    }
+  }
 
   def    info(pos: Position, msg: String, force: Boolean) { info0(pos, msg,    INFO, force) }
   def warning(pos: Position, msg: String                ) { info0(pos, msg, WARNING, false) }

@@ -1,22 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 package dtd
 
 import util.regexp.WordExp
-import util.automata.{DetWordAutom, SubsetConstruction, WordBerrySethi}
-import collection.mutable.{HashSet, StringBuilder}
-import collection.immutable.{List, Nil}
-import collection.Seq
+import util.automata._
 import Utility.sbToString
 import PartialFunction._
 

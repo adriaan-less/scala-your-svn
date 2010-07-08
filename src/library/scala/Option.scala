@@ -1,18 +1,14 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala
 
-object Option
-{
+object Option {
   /** An implicit conversion that converts an option to an iterable value
    */
   implicit def option2Iterable[A](xo: Option[A]): Iterable[A] = xo.toList
@@ -24,6 +20,11 @@ object Option
    *  @return   Some(value) if value != null, None if value == null
    */
   def apply[A](x: A): Option[A] = if (x == null) None else Some(x)
+  
+  /** An Option factory which returns None in a manner consistent with
+   *  the collections hierarchy.
+   */
+  def empty[A] : Option[A] = None
 }
 
 /** This class represents optional values. Instances of <code>Option</code>
@@ -35,6 +36,7 @@ object Option
  *  @version 1.1, 16/01/2007
  */
 sealed abstract class Option[+A] extends Product {
+  self =>
 
   /** True if the option is the <code>None</code> value, false otherwise.
    */
@@ -45,7 +47,7 @@ sealed abstract class Option[+A] extends Product {
   def isDefined: Boolean = !isEmpty
 
   /** get the value of this option.
-   *  @requires that the option is nonEmpty.
+   *  @note The option must be nonEmpty.
    *  @throws Predef.NoSuchElementException if the option is empty.
    */
   def get: A
@@ -89,6 +91,22 @@ sealed abstract class Option[+A] extends Product {
   def filter(p: A => Boolean): Option[A] = 
     if (isEmpty || p(this.get)) this else None
     
+  /** Necessary to keep Option from being implicitly converted to
+   *  Iterable in for comprehensions.
+   */
+  def withFilter(p: A => Boolean): WithFilter = new WithFilter(p)
+
+  /** We need a whole WithFilter class to honor the "doesn't create a new
+   *  collection" contract even though it seems unlikely to matter much in a
+   *  collection with max size 1.
+   */
+  class WithFilter(p: A => Boolean) {
+    def map[B](f: A => B): Option[B] = self filter p map f
+    def flatMap[B](f: A => Option[B]): Option[B] = self filter p flatMap f
+    def foreach[U](f: A => U): Unit = self filter p foreach f
+    def withFilter(q: A => Boolean): WithFilter = new WithFilter(x => p(x) && q(x))
+  }
+
   /** If the option is nonempty, p(value), otherwise false.
    *
    *  @param  p   the predicate to test
@@ -110,7 +128,7 @@ sealed abstract class Option[+A] extends Product {
    *
    *  @param  pf   the partial function.
    */
-  def partialMap[B](pf: PartialFunction[Any, B]): Option[B] =
+  def collect[B](pf: PartialFunction[A, B]): Option[B] =
     if (!isEmpty && pf.isDefinedAt(this.get)) Some(pf(this.get)) else None  
 
   /** If the option is nonempty return it,

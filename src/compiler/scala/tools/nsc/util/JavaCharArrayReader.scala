@@ -1,13 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package util
 
-import scala.tools.nsc.util.SourceFile.{LF, FF, CR, SU}
+import Chars._
 
 class JavaCharArrayReader(buf: IndexedSeq[Char], start: Int, /* startline: int, startcol: int, */
                       decodeUni: Boolean, error: String => Unit) extends Iterator[Char] with Cloneable {
@@ -121,15 +120,4 @@ class JavaCharArrayReader(buf: IndexedSeq[Char], start: Int, /* startline: int, 
 
   def copy: JavaCharArrayReader =
     new JavaCharArrayReader(buf, bp, /* nextcol, nextline, */ decodeUni, error)
-
-  def digit2int(ch: Char, base: Int): Int = {
-    if ('0' <= ch && ch <= '9' && ch < '0' + base)
-      ch - '0'
-    else if ('A' <= ch && ch < 'A' + base - 10)
-      ch - 'A' + 10
-    else if ('a' <= ch && ch < 'a' + base - 10)
-      ch - 'a' + 10
-    else
-      -1
-  }
 }

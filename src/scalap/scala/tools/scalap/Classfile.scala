@@ -1,11 +1,10 @@
 /*     ___ ____ ___   __   ___   ___
 **    / _// __// _ | / /  / _ | / _ \    Scala classfile decoder
-**  __\ \/ /__/ __ |/ /__/ __ |/ ___/    (c) 2003-2006, LAMP/EPFL
+**  __\ \/ /__/ __ |/ /__/ __ |/ ___/    (c) 2003-2010, LAMP/EPFL
 ** /____/\___/_/ |_/____/_/ |_/_/
 **
 */
 
-// $Id$
 
 package scala.tools.scalap
 
@@ -26,6 +25,7 @@ class Classfile(in: ByteArrayReader) {
   val fields = readMembers(true)
   val methods = readMembers(false)
   val attribs = readAttribs
+  def scalaSigAttribute = attribs find (_.toString == Main.SCALA_SIG)
   
   def readAttribs = {
     val n = in.nextChar
@@ -121,7 +121,7 @@ class Classfile(in: ByteArrayReader) {
   /** **/
   case class Member(field: Boolean, flags: Int, name: Int, tpe: Int, attribs: List[Attribute])
   case class Attribute(name: Int, data: Array[Byte]) {
-    override def toString = pool(name) match {
+    override def toString = (pool(name): @unchecked) match {
       case pool.UTF8(s) => s
     }
     def reader: ByteArrayReader = new ByteArrayReader(data)

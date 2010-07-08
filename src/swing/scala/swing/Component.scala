@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -79,6 +78,9 @@ abstract class Component extends UIElement {
     }
   }
   
+  def name: String = peer.getName
+  def name_=(s: String) = peer.setName(s)
+  
   /**
    * Used by certain layout managers, e.g., BoxLayout or OverlayLayout to 
    * align components relative to each other.
@@ -100,12 +102,12 @@ abstract class Component extends UIElement {
   def tooltip: String = peer.getToolTipText
   def tooltip_=(t: String) = peer.setToolTipText(t)
   
-  def inputVerifier: this.type => Boolean = { a =>
-    peer.getInputVerifier().verify(a.peer)
+  def inputVerifier: Component => Boolean = { a =>
+    peer.getInputVerifier.verify(a.peer)
   }
-  def inputVerifier_=(v: this.type => Boolean) { 
+  def inputVerifier_=(v: Component => Boolean) { 
     peer.setInputVerifier(new javax.swing.InputVerifier {
-      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper(c))
+      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper[Component](c))
     })
   }
 
@@ -114,7 +116,7 @@ abstract class Component extends UIElement {
   }
   def verifyOnTraversal_=(v: (Component, Component) => Boolean) { 
     peer.setInputVerifier(new javax.swing.InputVerifier {
-      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper(c))
+      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper[Component](c))
     })
   }*/
   
@@ -198,7 +200,7 @@ abstract class Component extends UIElement {
   def requestFocusInWindow() = peer.requestFocusInWindow()
   def hasFocus: Boolean = peer.isFocusOwner
   
-  override def onFirstSubscribe {
+  protected override def onFirstSubscribe {
     super.onFirstSubscribe
     // TODO: deprecated, remove after 2.8
     peer.addComponentListener(new java.awt.event.ComponentListener {
@@ -218,7 +220,7 @@ abstract class Component extends UIElement {
 
     peer.addFocusListener(new java.awt.event.FocusListener {
       def other(e: java.awt.event.FocusEvent) = e.getOppositeComponent match {
-        case c: JComponent => Some(UIElement.cachedWrapper(c))
+        case c: JComponent => Some(UIElement.cachedWrapper[Component](c))
         case _ => None
       }
     
@@ -234,8 +236,8 @@ abstract class Component extends UIElement {
       def propertyChange(e: java.beans.PropertyChangeEvent) { 
         e.getPropertyName match {
           case "font" => publish(FontChanged(Component.this))
-          case "background" => publish(ForegroundChanged(Component.this))
-          case "foreground" => publish(BackgroundChanged(Component.this))
+          case "background" => publish(BackgroundChanged(Component.this))
+          case "foreground" => publish(ForegroundChanged(Component.this))
           case _ =>
           /*case "focusable" =>
           case "focusTraversalKeysEnabled" =>

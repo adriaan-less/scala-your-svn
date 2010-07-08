@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2009 LAMP/EPFL
+ * Copyright 2007-2010 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -11,6 +11,7 @@ package nest
 import java.io.{File, PrintStream, FileOutputStream, BufferedReader,
                 InputStreamReader, StringWriter, PrintWriter}
 import java.util.StringTokenizer
+import scala.util.Properties.{ setProp }
 import scala.tools.nsc.io.Directory
 
 import scala.actors.Actor._
@@ -19,25 +20,18 @@ import scala.actors.TIMEOUT
 trait DirectRunner {
 
   def fileManager: FileManager
+  
+  import PartestDefaults.numActors
 
-  private val numActors = Integer.parseInt(System.getProperty("scalatest.actors", "8"))
-
-  if ((System.getProperty("partest.debug", "false") equals "true") ||
-      (System.getProperty("scalatest.debug", "false") equals "true"))
+  if (isPartestDebug)
     scala.actors.Debug.level = 3
-
-  private val coreProp = try {
-    System.getProperty("actors.corePoolSize")
-  } catch {
-    case ace: java.security.AccessControlException =>
-      null
-  }
-  if (coreProp == null) {
+  
+  if (PartestDefaults.poolSize.isEmpty) {
     scala.actors.Debug.info("actors.corePoolSize not defined")
-    System.setProperty("actors.corePoolSize", "16")
+    setProp("actors.corePoolSize", "16")
   }
 
-  def runTestsForFiles(kindFiles: List[File], kind: String): (Int, Int) = {
+  def runTestsForFiles(kindFiles: List[File], kind: String): scala.collection.immutable.Map[String, Int] = {    
     val len = kindFiles.length
     val (testsEach, lastFrag) = (len/numActors, len%numActors)
     val last = numActors-1
@@ -51,28 +45,34 @@ trait DirectRunner {
         worker ! RunTests(kind, toTest)
       worker
     }
-    var succs = 0; var fails = 0
+
     var logsToDelete: List[File] = List()
     var outdirsToDelete: List[File] = List()
+    var results = new scala.collection.immutable.HashMap[String, Int]
     workers foreach { w =>
       receiveWithin(3600 * 1000) {
-        case Results(s, f, logs, outdirs) =>
-          logsToDelete = logsToDelete ::: logs.filter(_.toDelete)
-          outdirsToDelete = outdirsToDelete ::: outdirs
-          succs += s
-          fails += f
+        case Results(res, logs, outdirs) =>
+          logsToDelete :::= logs filter (_.toDelete)
+          outdirsToDelete :::= outdirs
+          results ++= res
         case TIMEOUT =>
           // add at least one failure
           NestUI.verbose("worker timed out; adding failed test")
-          fails += 1
+          results += ("worker timed out; adding failed test" -> 2)
       }
     }
-    for (x <- logsToDelete ::: outdirsToDelete) {
-      NestUI.verbose("deleting "+x)
-      Directory(x).deleteRecursively()
+    
+    if (isPartestDebug)
+      fileManager.showTestTimings()
+
+    if (!isPartestDebug) {
+      for (x <- logsToDelete ::: outdirsToDelete) {
+        NestUI.verbose("deleting "+x)
+        Directory(x).deleteRecursively()
+      }
     }
     
-    (succs, fails)
+    results
   }
 
 }

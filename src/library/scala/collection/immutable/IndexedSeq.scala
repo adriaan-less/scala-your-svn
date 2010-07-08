@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: IndexedSeq.scala 19072 2009-10-13 12:19:59Z rompf $
 
 package scala.collection
 package immutable
@@ -14,10 +13,9 @@ package immutable
 import generic._
 import mutable.{ArrayBuffer, Builder}
 
-/** A subtrait of <code>collection.IndexedSeq</code> which represents sequences
- *  that cannot be mutated.
- *
- *  @since 2.8
+/** A subtrait of `collection.IndexedSeq` which represents indexed sequences
+ *  that are guaranteed immutable.
+ *  $indexedSeqInfo
  */
 trait IndexedSeq[+A] extends Seq[A] 
                     with scala.collection.IndexedSeq[A] 
@@ -26,8 +24,10 @@ trait IndexedSeq[+A] extends Seq[A]
   override def companion: GenericCompanion[IndexedSeq] = IndexedSeq
 }
 
-/**
- * @since 2.8
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ *  @define coll indexed sequence
+ *  @define Coll IndexedSeq
  */
 object IndexedSeq extends SeqFactory[IndexedSeq] {
   @serializable
@@ -36,5 +36,5 @@ object IndexedSeq extends SeqFactory[IndexedSeq] {
     def apply(idx: Int) = buf.apply(idx)
   }
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, IndexedSeq[A]] = new GenericCanBuildFrom[A]
-  def newBuilder[A]: Builder[A, IndexedSeq[A]] = new ArrayBuffer[A] mapResult (buf => new Impl(buf))
+  def newBuilder[A]: Builder[A, IndexedSeq[A]] = Vector.newBuilder[A]
 }

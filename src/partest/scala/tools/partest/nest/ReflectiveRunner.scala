@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2009 LAMP/EPFL
+ * Copyright 2007-2010 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -8,6 +8,13 @@
 package scala.tools.partest
 package nest
 
+import scala.tools.nsc.Properties.{ setProp, propOrEmpty }
+import scala.tools.nsc.util.ClassPath
+import scala.tools.nsc.io
+import io.Path
+import RunnerUtils._
+import java.net.URLClassLoader
+
 /* This class is used to load an instance of DirectRunner using
  * a custom class loader.
  * The purpose is to "auto-detect" a good classpath for the
@@ -15,19 +22,17 @@ package nest
  * the main NestRunner can be started merely by putting its
  * class on the classpath (ideally).
  */
-class ReflectiveRunner extends RunnerUtils {
+class ReflectiveRunner {
   // TODO: we might also use fileManager.CLASSPATH
   // to use the same classes as used by `scala` that
-  // was used to start the runner.
-  
-  import java.net.URLClassLoader
-  import java.io.File.pathSeparator
-  import utils.Properties.{ sysprop, syspropset }
-  
+  // was used to start the runner.  
   val sepRunnerClassName = "scala.tools.partest.nest.ConsoleRunner"
 
   def main(args: String) {
     val argList = (args.split("\\s")).toList
+    
+    if (isPartestDebug)
+      showAllJVMInfo
 
     // find out which build to test
     val buildPath = searchPath("--buildpath", argList)
@@ -43,25 +48,28 @@ class ReflectiveRunner extends RunnerUtils {
         new ConsoleFileManager
 
     import fileManager.
-      { latestCompFile, latestLibFile, latestActFile, latestPartestFile, latestFjbgFile }
+      { latestCompFile, latestLibFile, latestPartestFile, latestFjbgFile }
     val files =
-      Array(latestCompFile, latestLibFile, latestActFile, latestPartestFile, latestFjbgFile)
+      Array(latestCompFile, latestLibFile, latestPartestFile, latestFjbgFile) map (x => io.File(x))
 
-    val sepUrls   = files map { _.toURL }
+    val sepUrls   = files map (_.toURL)
     val sepLoader = new URLClassLoader(sepUrls, null)
 
-    if (fileManager.debug)
+    if (isPartestDebug)
       println("Loading classes from:\n" + sepUrls.mkString("\n"))
     
-    val paths = (if (classPath.isEmpty) files.slice(0, 4) else files) map { _.getPath }
-    val newClasspath = paths mkString pathSeparator
+    val paths = classPath match {
+      case Some(cp) => Nil
+      case _        => files.toList map (_.path)
+    }
+    val newClasspath = ClassPath.join(paths: _*)
     
-    syspropset("java.class.path", newClasspath)
-    syspropset("scala.home", "")
+    setProp("java.class.path", newClasspath)
+    setProp("scala.home", "")
     
-    if (fileManager.debug)
+    if (isPartestDebug)
       for (prop <- List("java.class.path", "sun.boot.class.path", "java.ext.dirs"))
-        println(prop + ": " + sysprop(prop))
+        println(prop + ": " + propOrEmpty(prop))
 
     try {
       val sepRunnerClass  = sepLoader loadClass sepRunnerClassName
