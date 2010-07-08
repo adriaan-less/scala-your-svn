@@ -271,13 +271,14 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         case MethodType(params, res) => params.map(_.tpe) :: allParamTypes(res)
         case _ => Nil
       }
-      
+
+
       assert(clazz != NoSymbol, sym)
       if (settings.debug.value)  log("Decided for host class: " + clazz)
-      
+
       val accName = nme.protName(sym.originalName)
       val hasArgs = sym.tpe.paramTypes != Nil
-      val memberType = sym.tpe // transform(sym.tpe)
+      val memberType = refchecks.toScalaRepeatedParam(sym.tpe) // fix for #2413
       
       // if the result type depends on the this type of an enclosing class, the accessor
       // has to take an object of exactly this type, otherwise it's more general
