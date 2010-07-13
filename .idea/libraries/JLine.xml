@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="JLine">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/lib/jline.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/src/jline/src/main/java" />
+    </SOURCES>
+  </library>
+</component>

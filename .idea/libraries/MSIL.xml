@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="MSIL">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/lib/msil.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/src/msil" />
+    </SOURCES>
+  </library>
+</component>
