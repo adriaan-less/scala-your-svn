@@ -1,8 +1,8 @@
 object Sessions {
-  trait Session[A] {
+  trait Session[This] {
     type Dual
-    type HasDual[D] = Session[A]{type Dual=D}
-    def run(p: A, dp: Dual): Unit
+    // type HasDual[D] = Session[This]{type Dual=D}
+    def run(p: This, dp: Dual): Unit
   }
 
   implicit object StopSession extends Session[Stop] {
@@ -49,8 +49,15 @@ object Sessions {
   def runSession[S, D](p: S, dp: D)(implicit s: Session[S]#HasDual[D]) =
     s.run(p, dp)
 
-  def runSession[S](p: S, dp: s.Dual)(implicit s: Session[S]) =
+  def runSession[S, D](p: S, dp: D)(implicit s: Session[S]{type Dual=D}) =
     s.run(p, dp)
+
+  // TODO: can we relax the ordering restrictions on dependencies so that we can
+  // def runSession[S](p: S, dp: s.Dual)(implicit s: Session[S]) =
+  //   s.run(p, dp)
+  // to emphasise similarity of type parameters and implicit arguments:
+  // def runSession[S][val s: Session[S]](p: S, dp: s.Dual) =
+  //   s.run(p, dp)
 
   def myRun = runSession(addServer, addClient)
 }
