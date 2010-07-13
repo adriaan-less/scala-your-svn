@@ -560,6 +560,8 @@ trait Typers { self: Analyzer =>
      *  If symbol refers to package object, insert `.package` as second to last selector.
      *  (exception for some symbols in scala package which are dealiased immediately)
      *  Call checkAccessible, which sets tree's attributes.
+     *  Also note that checkAccessible looks up sym on pre without checking that pre is well-formed 
+     *  (illegal type applications in pre will be skipped -- that's why typedSelect wraps the resulting tree in a TreeWithDeferredChecks)
      *  @return modified tree and new prefix type
      */
     private def makeAccessible(tree: Tree, sym: Symbol, pre: Type, site: Tree): (Tree, Type) =
@@ -2819,16 +2821,6 @@ trait Typers { self: Analyzer =>
         res
       }
 
-    class SymInstance(val sym: Symbol, val tp: Type) {
-      override def equals(other: Any): Boolean = other match {
-        case that: SymInstance =>
-          this.sym == that.sym && this.tp =:= that.tp
-        case _ =>
-          false
-      }
-      override def hashCode: Int = sym.hashCode * 41 + tp.hashCode
-    }
-
     /** convert skolems to existentials */
     def packedType(tree: Tree, owner: Symbol): Type = {
       def defines(tree: Tree, sym: Symbol) = 
@@ -2864,7 +2856,7 @@ trait Typers { self: Analyzer =>
         }
       }
       // add all local symbols of `tp' to `localSyms'
-      // expanding higher-kinded types into individual copies for each instance.
+      // TODO: expand higher-kinded types into individual copies for each instance.
       def addLocals(tp: Type) {
         val remainingSyms = new ListBuffer[Symbol]
         def addIfLocal(sym: Symbol, tp: Type) {
@@ -2974,9 +2966,9 @@ trait Typers { self: Analyzer =>
     }
 
     private[this] var typingIndent: String = ""
-    @inline def deindentTyping() = if (printTypings) typingIndent = typingIndent.substring(0, typingIndent.length() - 2)
-    @inline def indentTyping() = if (printTypings) typingIndent += "  "
-    @inline def printTyping(s: => String) = if (printTypings) println(typingIndent+s)
+    @inline final def deindentTyping() = if (printTypings) typingIndent = typingIndent.substring(0, typingIndent.length() - 2)
+    @inline final def indentTyping() = if (printTypings) typingIndent += "  "
+    @inline final def printTyping(s: => String) = if (printTypings) println(typingIndent+s)
 
     /**
      *  @param tree ...
@@ -3545,9 +3537,9 @@ trait Typers { self: Analyzer =>
             case Select(_, _) => treeCopy.Select(tree, qual, name)
             case SelectFromTypeTree(_, _) => treeCopy.SelectFromTypeTree(tree, qual, name)
           }
-          //if (name.toString == "Elem") println("typedSelect "+qual+":"+qual.tpe+" "+sym+"/"+tree1+":"+tree1.tpe)
           val (tree2, pre2) = makeAccessible(tree1, sym, qual.tpe, qual)
           val result = stabilize(tree2, pre2, mode, pt)
+
           def isPotentialNullDeference() = {
             phase.id <= currentRun.typerPhase.id &&
             !sym.isConstructor &&
@@ -3558,7 +3550,20 @@ trait Typers { self: Analyzer =>
           if (settings.Xchecknull.value && isPotentialNullDeference && unit != null)
             unit.warning(tree.pos, "potential null pointer dereference: "+tree)
 
-          result
+          result match {
+            // could checkAccessible (called by makeAccessible) potentially have skipped checking a type application in qual?
+            case SelectFromTypeTree(qual@TypeTree(), name) if qual.tpe.typeArgs nonEmpty => // TODO: somehow the new qual is not checked in refchecks
+              treeCopy.SelectFromTypeTree(
+                result,
+                (TypeTreeWithDeferredRefCheck(){ () => val tp = qual.tpe; val sym = tp.typeSymbolDirect
+                  // will execute during refchecks -- TODO: make private checkTypeRef in refchecks public and call that one?
+                  checkBounds(qual.pos, tp.prefix, sym.owner, sym.typeParams, tp.typeArgs, "")
+                  qual // you only get to see the wrapped tree after running this check :-p
+                }) setType qual.tpe,
+                name)
+            case _ =>
+              result
+          }
         }
       }
 
@@ -3691,6 +3696,7 @@ trait Typers { self: Analyzer =>
                       else atPos(tree.pos)(Select(qual, name))
                     // atPos necessary because qualifier might come from startContext
           val (tree2, pre2) = makeAccessible(tree1, defSym, pre, qual)
+          // assert(pre.typeArgs isEmpty) // no need to add #2416-style check here, right?
           stabilize(tree2, pre2, mode, pt)
         }
       }
@@ -3714,9 +3720,9 @@ trait Typers { self: Analyzer =>
         } else if (!tpt1.hasSymbol) {
           errorTree(tree, tpt1.tpe+" does not take type parameters")
         } else {
-          val tparams = tpt1.symbol.typeParams 
+          val tparams = tpt1.symbol.typeParams
           if (tparams.length == args.length) {
-          // @M: kind-arity checking is done here and in adapt, full kind-checking is in checkKindBounds (in Infer)
+            // @M: kind-arity checking is done here and in adapt, full kind-checking is in checkKindBounds (in Infer)
             val args1 = 
               if(!tpt1.symbol.rawInfo.isComplete)
                 args mapConserve (typedHigherKindedType(_, mode))
@@ -3727,11 +3733,8 @@ trait Typers { self: Analyzer =>
                   //@M! the polytype denotes the expected kind
               }
             val argtypes = args1 map (_.tpe)
-            val owntype = if (tpt1.symbol.isClass || tpt1.symbol.isNonClassType) 
-                             // @M! added the latter condition
-                             appliedType(tpt1.tpe, argtypes) 
-                          else tpt1.tpe.instantiateTypeParams(tparams, argtypes)
-            (args, tparams).zipped map { (arg, tparam) => arg match {
+
+            (args, tparams).zipped foreach { (arg, tparam) => arg match {
               // note: can't use args1 in selector, because Bind's got replaced 
               case Bind(_, _) => 
                 if (arg.symbol.isAbstractType)
@@ -3741,7 +3744,17 @@ trait Typers { self: Analyzer =>
                       glb(List(arg.symbol.info.bounds.hi, tparam.info.bounds.hi.subst(tparams, argtypes))))
               case _ =>
             }}
-            TypeTree(owntype) setOriginal(tree) // setPos tree.pos
+
+            val result = TypeTree(appliedType(tpt1.tpe, argtypes)) setOriginal(tree) // setPos tree.pos (done by setOriginal)
+            if(tpt1.tpe.isInstanceOf[PolyType]) // did the type application (performed by appliedType) involve an unchecked beta-reduction?
+              (TypeTreeWithDeferredRefCheck(){ () =>
+                // wrap the tree and include the bounds check -- refchecks will perform this check (that the beta reduction was indeed allowed) and unwrap
+                // we can't simply use original in refchecks because it does not contains types
+                // (and the only typed trees we have have been mangled so they're not quite the original tree anymore)
+                checkBounds(result.pos, tpt1.tpe.prefix, tpt1.symbol.owner, tpt1.symbol.typeParams, argtypes, "")
+                result // you only get to see the wrapped tree after running this check :-p
+              }).setType(result.tpe)
+            else result
           } else if (tparams.length == 0) {
             errorTree(tree, tpt1.tpe+" does not take type parameters")
           } else {
@@ -4053,7 +4066,7 @@ trait Typers { self: Analyzer =>
         case SelectFromTypeTree(qual, selector) =>
           val qual1 = typedType(qual, mode)
           if (qual1.tpe.isVolatile) error(tree.pos, "illegal type selection from volatile type "+qual.tpe) 
-          typedSelect(typedType(qual, mode), selector)
+          typedSelect(qual1, selector)
 
         case CompoundTypeTree(templ) =>
           typedCompoundTypeTree(templ)
@@ -4069,6 +4082,7 @@ trait Typers { self: Analyzer =>
         case etpt @ ExistentialTypeTree(_, _) =>
           newTyper(context.makeNewScope(tree, context.owner)).typedExistentialTypeTree(etpt, mode)
 
+        case dc@TypeTreeWithDeferredRefCheck() => dc // TODO: should we re-type the wrapped tree? then we need to change TypeTreeWithDeferredRefCheck's representation to include the wrapped tree explicitly (instead of in its closure)
         case tpt @ TypeTree() =>
           if (tpt.original != null)
             tree setType typedType(tpt.original, mode).tpe

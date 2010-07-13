@@ -497,7 +497,7 @@ self: Analyzer =>
 
               // filter out failures from type inference, don't want to remove them from undetParams2!
               // we must be conservative in leaving type params in undetparams
-              val (okParams, okArgs, _) = adjustTypeArgs(undetParams2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
+              val AdjustedTypeArgs(okParams, okArgs) = adjustTypeArgs(undetParams2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
               val subst = new TreeTypeSubstituter(okParams, okArgs)
               subst traverse itree2 
 
@@ -867,7 +867,7 @@ self: Analyzer =>
       def mot(tp0: Type): Tree = {
         val tp1 = tp0.normalize
         tp1 match {
-          case ThisType(_) | SingleType(_, _) =>
+          case ThisType(_) | SingleType(_, _) if !(tp1 exists {tp => tp.typeSymbol.isExistentiallyBound}) => // can't generate a reference to a value that's abstracted over by an existential
             manifestFactoryCall("singleType", tp, gen.mkAttributedQualifier(tp1)) 
           case ConstantType(value) =>
             manifestOfType(tp1.deconst, full)
