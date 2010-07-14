@@ -16,6 +16,9 @@
 
 package com.example.android.contactmanager
 
+import scala.android.provider.ContactsContract
+import scala.android.provider.ContactsContract.CommonDataKinds.{Email, Phone, StructuredName}
+
 import android.accounts.{Account, AccountManager, AuthenticatorDescription,
                          OnAccountsUpdateListener}
 import android.app.Activity
@@ -23,7 +26,6 @@ import android.content.{ContentProviderOperation, Context}
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.provider.ContactsContract
 import android.util.Log
 import android.view.{LayoutInflater, View, ViewGroup}
 import android.widget.{AdapterView, ArrayAdapter, Button, EditText, ImageView,
@@ -42,18 +44,18 @@ object ContactAdder {
 
   // Prepare list of supported account types
   // Note: Other types are available in ContactsContract.CommonDataKinds
-  //       Also, be aware that type IDs differ between Phone and Email, and MUST be computed
-  //       separately.
+  //       Also, be aware that type IDs differ between Phone and Email, and
+  //       MUST be computed separately.
   private final val mContactEmailTypes = Array(
-    ContactsContract.CommonDataKinds.Email.TYPE_HOME,
-    ContactsContract.CommonDataKinds.Email.TYPE_WORK,
-    ContactsContract.CommonDataKinds.Email.TYPE_MOBILE,
-    ContactsContract.CommonDataKinds.Email.TYPE_OTHER)
+    Phone.TYPE_HOME,
+    Phone.TYPE_WORK,
+    Phone.TYPE_MOBILE,
+    Phone.TYPE_OTHER)
   private final val mContactPhoneTypes = Array(
-    ContactsContract.CommonDataKinds.Phone.TYPE_HOME,
-    ContactsContract.CommonDataKinds.Phone.TYPE_WORK,
-    ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE,
-    ContactsContract.CommonDataKinds.Phone.TYPE_OTHER)
+    Phone.TYPE_HOME,
+    Phone.TYPE_WORK,
+    Phone.TYPE_MOBILE,
+    Phone.TYPE_OTHER)
 
   /**
    * Obtain the AuthenticatorDescription for a given account type.
@@ -96,13 +98,13 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
     setContentView(R.layout.contact_adder)
 
     // Obtain handles to UI objects
-    mAccountSpinner = findViewById(R.id.accountSpinner).asInstanceOf[Spinner]
-    mContactNameEditText = findViewById(R.id.contactNameEditText).asInstanceOf[EditText]
-    mContactPhoneEditText = findViewById(R.id.contactPhoneEditText).asInstanceOf[EditText]
-    mContactEmailEditText = findViewById(R.id.contactEmailEditText).asInstanceOf[EditText]
-    mContactPhoneTypeSpinner = findViewById(R.id.contactPhoneTypeSpinner).asInstanceOf[Spinner]
-    mContactEmailTypeSpinner = findViewById(R.id.contactEmailTypeSpinner).asInstanceOf[Spinner]
-    mContactSaveButton = findViewById(R.id.contactSaveButton).asInstanceOf[Button]
+    mAccountSpinner = findView(R.id.accountSpinner)
+    mContactNameEditText = findView(R.id.contactNameEditText)
+    mContactPhoneEditText = findView(R.id.contactPhoneEditText)
+    mContactEmailEditText = findView(R.id.contactEmailEditText)
+    mContactPhoneTypeSpinner = findView(R.id.contactPhoneTypeSpinner)
+    mContactEmailTypeSpinner = findView(R.id.contactEmailTypeSpinner)
+    mContactSaveButton = findView(R.id.contactSaveButton)
 
     // Prepare model for account spinner
     mAccounts = new ArrayList[AccountData]()
@@ -111,9 +113,9 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
 
     // Populate list of account types for phone
     var adapter = new ArrayAdapter[String](this, android.R.layout.simple_spinner_item)
-    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+    adapter setDropDownViewResource android.R.layout.simple_spinner_dropdown_item
     for (phoneType <- mContactPhoneTypes) {
-      adapter.add(ContactsContract.CommonDataKinds.Phone.getTypeLabel(
+      adapter.add(Phone.getTypeLabel(
             this.getResources,
             phoneType,
             getString(R.string.undefinedTypeLabel)).toString)
@@ -123,9 +125,9 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
 
     // Populate list of account types for email
     adapter = new ArrayAdapter[String](this, android.R.layout.simple_spinner_item)
-    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+    adapter setDropDownViewResource android.R.layout.simple_spinner_dropdown_item
     for (emailType <- mContactEmailTypes) {
-      adapter.add(ContactsContract.CommonDataKinds.Email.getTypeLabel(
+      adapter.add(Email.getTypeLabel(
             this.getResources(),
             emailType,
             getString(R.string.undefinedTypeLabel)).toString)
@@ -138,7 +140,7 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
     AccountManager.get(this).addOnAccountsUpdatedListener(this, null, true)
 
     // Register handlers for UI elements
-    mAccountSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
+    mAccountSpinner setOnItemSelectedListener new OnItemSelectedListener() {
       def onItemSelected(parent: AdapterView[_], view: View, position: Int, i: Long) {
         updateAccountSelection()
       }
@@ -147,12 +149,12 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
         // We don't need to worry about nothing being selected, since Spinners don't allow
         // this.
       }
-    })
-    mContactSaveButton.setOnClickListener(new View.OnClickListener() {
+    }
+    mContactSaveButton setOnClickListener new View.OnClickListener() {
       def onClick(v: View) {
         onSaveButtonClicked()
       }
-    })
+    }
   }
 
   /**
@@ -183,36 +185,36 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
     //       coresponding entry in the ContactsContract.Contacts provider for us.
     val ops = new ArrayList[ContentProviderOperation]()
     ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-                .withValue(ContactsContract2.RawContacts.ACCOUNT_TYPE, mSelectedAccount.getType)
-                .withValue(ContactsContract2.RawContacts.ACCOUNT_NAME, mSelectedAccount.getName)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, mSelectedAccount.getType)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, mSelectedAccount.getName)
                 .build());
     ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract2.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract2.Data.MIMETYPE,
-                           ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-                .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                           StructuredName.CONTENT_ITEM_TYPE)
+                .withValue(StructuredName.DISPLAY_NAME, name)
                 .build());
     ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract2.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract2.Data.MIMETYPE,
-                           ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-                .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
-                .withValue(ContactsContract2.CommonDataKinds.Phone.TYPE, phoneType)
-                .build());
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                           Phone.CONTENT_ITEM_TYPE)
+                .withValue(Phone.NUMBER, phone)
+                .withValue(Phone.TYPE, phoneType)
+                .build())
     ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract2.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract2.Data.MIMETYPE,
-                           ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
-                .withValue(ContactsContract2.CommonDataKinds.Email.DATA, email)
-                .withValue(ContactsContract2.CommonDataKinds.Email.TYPE, emailType)
-                .build());
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                           Email.CONTENT_ITEM_TYPE)
+                .withValue(Email.DATA, email)
+                .withValue(Email.TYPE, emailType)
+                .build())
 
     // Ask the Contact provider to create a new contact
     Log.i(TAG,"Selected account: " + mSelectedAccount.getName + " (" +
-                mSelectedAccount.getType + ")")
-    Log.i(TAG,"Creating contact: " + name);
+                                     mSelectedAccount.getType + ")")
+    Log.i(TAG,"Creating contact: " + name)
     try {
-      getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops)
+      getContentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
     } catch {
       case e: Exception =>
         // Display warning
@@ -350,4 +352,8 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
       convertView1
     }
   }
+
+  @inline
+  private final def findView[V <: View](id: Int) =
+    findViewById(id).asInstanceOf[V]
 }
