@@ -20,7 +20,7 @@ import util.Statistics._
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Implicits { 
+trait Implicits {
 self: Analyzer =>
 
   import global._
@@ -845,6 +845,8 @@ self: Analyzer =>
             } else if (sym.isExistentiallyBound && full) {
               manifestFactoryCall("wildcardType", tp,
                                   findManifest(tp.bounds.lo), findManifest(tp.bounds.hi))
+            } else if(undetParams contains sym) { // looking for a manifest of a type parameter that hasn't been inferred by now, can't do much, but let's not fail
+              mot(NothingClass.tpe)               // TODO: should we include the mapping from sym -> NothingClass.tpe in the SearchResult? (it'll get instantiated to nothing anyway, I think)
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
             }
