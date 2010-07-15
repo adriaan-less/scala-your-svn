@@ -43,7 +43,7 @@ trait BaseTypeSeqs {
 
     /** The type at i'th position in this sequence; lazy types are returned evaluated. */
     def apply(i: Int): Type = elems(i) match {
-      case NoType =>
+      case NoType if pending.keySet contains i => // the NoType was put there by us since it's in pending's keys -- #3676 says it might come from outer space as well
         pending = Map()
         elems(i) = AnyClass.tpe
         throw CyclicInheritance 
