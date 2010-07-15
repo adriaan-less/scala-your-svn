@@ -1,0 +1,7 @@
+t3676.scala:9: error: object creation impossible, since method newBuilder in class GenericCompanion of type [A]scala.collection.mutable.Builder[A,MyColl[A]] is not defined
+object MyColl extends SeqFactory[MyColl]
+       ^
+t3676.scala:9: error: type arguments [MyColl] do not conform to class SeqFactory's type parameter bounds [CC[X] <: Seq[X] with scala.collection.generic.GenericTraversableTemplate[X,CC]]
+object MyColl extends SeqFactory[MyColl]
+                      ^
+two errors found
