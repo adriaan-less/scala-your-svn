@@ -202,6 +202,8 @@ trait Typers { self: Analyzer =>
           if (res != SearchFailure) {
             argBuff += mkArg(res.tree, param.name)
           } else if (param.hasFlag(DEFAULTPARAM)) {
+            // don't pass the default argument here, but start emitting named arguments for the following args
+            // TODO: resolve argument, do type inference, keep emitting positional args?
             mkArg = mkNamedArg
             // TODO: infer type params based on default value for arg
             // for (ar <- argResultsBuff) ar.subst traverse defaultVal
