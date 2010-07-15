@@ -178,10 +178,15 @@ trait Typers { self: Analyzer =>
      */
     def applyImplicitArgs(fun: Tree): Tree = fun.tpe match {
       case MethodType(params, _) =>
-        var positional = true
         val argResultsBuff = new ListBuffer[SearchResult]()
+        val argBuff = new ListBuffer[Tree]()
 
-        // DEPMETTODO: replace singleton types that depend on (earlier) implicit arguments by type parameters
+        def mkPositionalArg(argTree: Tree, paramName: Name) = argTree
+        def mkNamedArg(argTree: Tree, paramName: Name) = atPos(argTree.pos)(new AssignOrNamedArg(Ident(paramName), (argTree)))
+        var mkArg: (Tree, Name) => Tree = mkPositionalArg
+
+        // DEPMETTODO: instantiate type vars that depend on earlier implicit args (see adapt (4.1))
+        //
         // apply the substitutions (undet type param -> type) that were determined
         // by implicit resolution of implicit arguments on the left of this argument
         for(param <- params) {
@@ -193,29 +198,29 @@ trait Typers { self: Analyzer =>
           argResultsBuff += res
           if(res.undetParams nonEmpty)
             context.undetparams = (context.undetparams ++ res.undetParams).distinct
+
+          if (res != SearchFailure) {
+            argBuff += mkArg(res.tree, param.name)
+          } else if (param.hasFlag(DEFAULTPARAM)) {
+            mkArg = mkNamedArg
+            // TODO: infer type params based on default value for arg
+            // for (ar <- argResultsBuff) ar.subst traverse defaultVal
+            // val targs = exprTypeArgs(context.undetparams, defaultVal.tpe, paramTp)
+            // substExpr(tree, tparams, targs, pt)
+          } else {
+            context.error(
+              fun.pos, "could not find implicit value for "+
+              (if (param.name startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
+               else "parameter "+param.name+": ")+param.tpe)            
+          }
         }
 
-        val argResults = argResultsBuff.toList
-        val args = argResults.zip(params) flatMap {
-          case (arg, param) =>
-            if (arg != SearchFailure) {
-              if (positional) List(arg.tree)
-              else List(atPos(arg.tree.pos)(new AssignOrNamedArg(Ident(param.name), (arg.tree))))
-            } else {
-              if (!param.hasFlag(DEFAULTPARAM))
-                context.error(
-                  fun.pos, "could not find implicit value for "+
-                  (if (param.name startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
-                   else "parameter "+param.name+": ")+param.tpe)
-              positional = false
-              Nil
-            }
+        for(ar <- argResultsBuff) {
+          ar.subst traverse fun
+          for (arg <- argBuff) ar.subst traverse arg
         }
-        for (s <- argResults map (_.subst)) {
-          s traverse fun
-          for (arg <- args) s traverse arg
-        }
-        new ApplyToImplicitArgs(fun, args) setPos fun.pos
+
+        new ApplyToImplicitArgs(fun, argBuff.toList) setPos fun.pos
       case ErrorType =>
         fun
     }
@@ -814,7 +819,7 @@ trait Typers { self: Analyzer =>
           val paramtp = singleType(NoPrefix, param)
           new TypeVar(paramtp, new TypeConstraint, List(), List())
         }
-        tree.tpe = MethodType(mt.params, mt.resultType(tvars)) // implicit args can only be depended on in result type
+        tree.tpe = MethodType(mt.params, mt.resultType(tvars)) // implicit args can only be depended on in result type: TODO this may be generalised so that the only constraint is dependencies are acyclic
         if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
           // try{
             context.undetparams = inferExprInstance(

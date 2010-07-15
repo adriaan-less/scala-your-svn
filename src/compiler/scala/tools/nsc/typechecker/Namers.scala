@@ -832,6 +832,11 @@ trait Namers { self: Analyzer =>
       def thisMethodType(restpe: Type) =  {
         import scala.collection.mutable.ListBuffer
         val okParams = ListBuffer[Symbol]()
+        // can we relax these restrictions? see test/files/pos/depmet_implicit_oopsla_session_2.scala and neg/depmet_try_implicit.scala for motivation
+        // should allow forward references since type selections on implicit args are like type parameters: 
+        // def foo[T](a: T, x: w.T2)(implicit w: ComputeT2[T])
+        // is more compact than: def foo[T, T2](a: T, x: T2)(implicit w: ComputeT2[T, T2])
+        // moreover, the latter is not an encoding of the former, which hides type inference of T2, so you can specify T while T2 is purely computed
         val checkDependencies: TypeTraverser = new TypeTraverser {
           def traverse(tp: Type) = {
             tp match {

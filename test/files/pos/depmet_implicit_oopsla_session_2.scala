@@ -76,7 +76,7 @@ object Sessions {
   //   s.run(p, dp)
 
   // TODO: can we relax the ordering restrictions on dependencies so that we can write
-  //  one possibility: graph of dependencies between argument lists must be acyclic
+  //  one possibility: graph of dependencies between arguments must be acyclic
   // def runSession[S](p: S, dp: s.Dual)(implicit s: Session[S]) =
   //   s.run(p, dp)
   // to emphasise similarity of type parameters and implicit arguments:
