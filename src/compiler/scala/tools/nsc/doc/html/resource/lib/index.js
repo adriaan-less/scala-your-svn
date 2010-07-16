@@ -95,9 +95,9 @@ function prepareEntityList() {
 /* Configures the text filter  */
 function configureTextFilter() {
     scheduler.add("init", function() {
-        $("#filter").append("<div id='textfilter'><input type='text' accesskey='/'/></div>");
+        $("#filter").append("<div id='textfilter'><span class='pre'/><input type='text' accesskey='/'/><span class='post'/></div>");
         var input = $("#textfilter > input");
-	    resizeFilterBlock();
+        resizeFilterBlock();
         input.bind("keyup", function(event) {
             if (event.keyCode == 27) { // escape
                 input.attr("value", "");
@@ -105,7 +105,13 @@ function configureTextFilter() {
             textFilter();
         });
         input.focus(function(event) { input.select(); });
-	});
+    });
+    scheduler.add("init", function() {
+        $("#textfilter > .post").click(function(){
+            $("#textfilter > input").attr("value", "");
+            textFilter();
+        });
+    });
 }
 
 // Filters all focused templates and packages. This function should be made less-blocking.
@@ -227,9 +233,9 @@ function focusFilter(package) {
         domCache.update();
         $("#focusfilter").show();
         $("#kindfilter").hide();
-	    resizeFilterBlock();
+        resizeFilterBlock();
         focusFilterState = package;
-	    kindFilterSync();
+        kindFilterSync();
     });
 }
 

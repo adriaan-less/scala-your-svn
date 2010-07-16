@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,10 +14,9 @@ package immutable
 import generic._
 import mutable.Builder
 
-/** A subtrait of <code>collection.LinearSeq</code> which represents sequences
- *  that cannot be mutated.
- *
- *  @since 2.8
+/** A subtrait of `collection.LinearSeq` which represents sequences that
+ *  are guaranteed immutable.
+ *  $linearSeqInfo
  */
 trait LinearSeq[+A] extends Seq[A] 
                             with scala.collection.LinearSeq[A] 
@@ -27,8 +25,10 @@ trait LinearSeq[+A] extends Seq[A]
   override def companion: GenericCompanion[LinearSeq] = LinearSeq
 }
 
-/**
- * @since 2.8
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `List`.
+ *  @define coll immutable linear sequence
+ *  @define Coll immutable.LinearSeq
  */
 object LinearSeq extends SeqFactory[LinearSeq] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, LinearSeq[A]] = new GenericCanBuildFrom[A]

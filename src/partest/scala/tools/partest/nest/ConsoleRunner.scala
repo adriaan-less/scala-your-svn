@@ -15,7 +15,6 @@ import RunnerUtils._
 import scala.tools.nsc.Properties.{ versionMsg, setProp }
 import scala.tools.nsc.util.CommandLineParser
 import scala.tools.nsc.io
-import scala.tools.nsc.interpreter.returning
 import io.{ Path, Process }
 
 class ConsoleRunner extends DirectRunner {
@@ -36,7 +35,7 @@ class ConsoleRunner extends DirectRunner {
       TestSet("shootout", pathFilter, "Testing shootout tests"),
       TestSet("script", pathFilter, "Testing script tests"),
       TestSet("scalacheck", pathFilter, "Testing ScalaCheck tests"),
-      TestSet("scalap", pathFilter, "Run scalap decompiler tests")
+      TestSet("scalap", _.isDirectory, "Run scalap decompiler tests")
     )
   }
 

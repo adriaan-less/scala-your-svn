@@ -3,7 +3,6 @@
  * @author Nikolay Mihaylov
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.msil
@@ -325,7 +324,7 @@ abstract class GenMSIL extends SubComponent {
         annType.CreateType() // else, GetConstructors can't be used
         val constr: ConstructorInfo = annType.GetConstructors()(0)
         // prevent a second call of CreateType, only needed because there's no
-        // otehr way than GetConstructors()(0) to get the constructor, if there's
+        // other way than GetConstructors()(0) to get the constructor, if there's
         // no constructor symbol available.
 
         val args: Array[Byte] =
@@ -601,7 +600,7 @@ abstract class GenMSIL extends SubComponent {
       genBlocks(linearization)
 
       // RETURN inside exception blocks are replaced by Leave. The target of the
-      // levae is a `Ret` outside any exception block (generated here).
+      // leave is a `Ret` outside any exception block (generated here).
       if (handlerReturnMethod == m) {
         mcode.MarkLabel(handlerReturnLabel)
         if (handlerReturnKind != UNIT)
@@ -1053,7 +1052,7 @@ abstract class GenMSIL extends SubComponent {
               }
 
               var doEmit = true
-              types.get(msym.owner) match {
+              getTypeOpt(msym.owner) match {
                 case Some(typ) if (typ.IsEnum) => {
                   def negBool = {
                     mcode.Emit(OpCodes.Ldc_I4_0)
@@ -1467,7 +1466,7 @@ abstract class GenMSIL extends SubComponent {
     def emitBrBool(cond: TestOp, dest: Label) {
       cond match {
         // EQ -> Brfalse, NE -> Brtrue; this is because we come from
-        // a CZJUMP. If the value on the stack is 0 (e.g. a boolen
+        // a CZJUMP. If the value on the stack is 0 (e.g. a boolean
         // method returned false), and we are in the case EQ, then
         // we need to emit Brfalse (EQ Zero means false). vice versa
         case EQ => mcode.Emit(OpCodes.Brfalse, dest)
@@ -1577,9 +1576,9 @@ abstract class GenMSIL extends SubComponent {
           mf = mf | FieldAttributes.Static
         else {
           mf = mf | MethodAttributes.Virtual
-          if (sym.isFinal && !types(sym.owner).IsInterface)
+          if (sym.isFinal && !getType(sym.owner).IsInterface)
             mf = mf | MethodAttributes.Final
-          if (sym.hasFlag(Flags.DEFERRED) || types(sym.owner).IsInterface)
+          if (sym.hasFlag(Flags.DEFERRED) || getType(sym.owner).IsInterface)
             mf = mf | MethodAttributes.Abstract
         }
       }
@@ -1599,7 +1598,7 @@ abstract class GenMSIL extends SubComponent {
       if (sym.isStaticMember)
         mf = mf | FieldAttributes.Static
 
-      // TRANSIENT: "not nerialized", VOLATILE: doesn't exist on .net
+      // TRANSIENT: "not serialized", VOLATILE: doesn't exist on .net
       // TODO: add this annotation also if the class has the custom attribute
       // System.NotSerializedAttribute
       sym.annotations.foreach( a => a match {
@@ -1679,8 +1678,14 @@ abstract class GenMSIL extends SubComponent {
       sym.tpe.paramTypes.map(msilType).toArray
     }
 
-    def getType(sym: Symbol): MsilType = types.get(sym) match {
-      case Some(typ) => typ
+    def getType(sym: Symbol) = getTypeOpt(sym).getOrElse(abort(showsym(sym)))
+
+    /**
+     * Get an MSIL type form a symbol. First look in the clrTypes.types map, then
+     * lookup the name using clrTypes.getType
+     */
+    def getTypeOpt(sym: Symbol): Option[MsilType] = types.get(sym) match {
+      case typ @ Some(_) => typ
       case None =>
         def typeString(sym: Symbol): String = {
           val s = if (sym.isNestedClass) typeString(sym.owner) +"+"+ sym.simpleName
@@ -1690,10 +1695,10 @@ abstract class GenMSIL extends SubComponent {
         val name = typeString(sym)
         val typ = clrTypes.getType(name)
         if (typ == null)
-          abort(showsym(sym) + " with name " + name)
+          None
         else {
-          clrTypes.types(sym) = typ
-          typ
+          types(sym) = typ
+          Some(typ)
         }
     }
 
@@ -1703,10 +1708,20 @@ abstract class GenMSIL extends SubComponent {
     }
 
     def createTypeBuilder(iclass: IClass) {
+      /**
+       * First look in the clrTypes.types map, then see if it's a class we're
+       * currently compiling by looking at the icodes.classes map, then finally
+       * lookup the name using clrTypes.getType (by calling getType).
+       */
       def msilTypeFromSym(sym: Symbol): MsilType = {
-	types.get(sym) match {
-          case Some(mtype) => mtype
-          case None => createTypeBuilder(classes(sym)); types(sym)
+        types.get(sym).getOrElse {
+          classes.get(sym) match {
+            case Some(iclass) =>
+              createTypeBuilder(iclass)
+              types (sym)
+            case None =>
+              getType(sym)
+          }
         }
       }
 
@@ -1874,7 +1889,7 @@ abstract class GenMSIL extends SubComponent {
 
     /** Adds a static initializer which creates an instance of the module
      *  class (calls the primary constructor). A special primary constructor
-     *  will be generated (notInitializedModules) which stores the new intance
+     *  will be generated (notInitializedModules) which stores the new instance
      *  in the MODULE$ field right after the super call.
      */
     private def addStaticInit(sym: Symbol) {
@@ -2131,7 +2146,7 @@ abstract class GenMSIL extends SubComponent {
       }
 
     /*
-     * add maping for member with name and paramTypes to member
+     * add mapping for member with name and paramTypes to member
      * newName of newClass (same parameters)
      */
     private def mapMethod(

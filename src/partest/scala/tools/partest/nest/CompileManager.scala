@@ -40,6 +40,7 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
 
   def newSettings(out: Option[String]) = {
     val settings = new TestSettings(fileManager)
+    settings.usejavacp.value = true
     settings.deprecation.value = true
     settings.nowarnings.value = false
     settings.encoding.value = "ISO-8859-1"    // XXX why?
@@ -80,7 +81,7 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
     
     NestUI.verbose("scalac options: "+allOpts)
     
-    val command = new CompilerCommand(args, testSettings, _ => (), false)
+    val command = new CompilerCommand(args, testSettings)
     val global = newGlobal(command.settings, logWriter)
     val testRep: ExtConsoleReporter = global.reporter.asInstanceOf[ExtConsoleReporter]
     

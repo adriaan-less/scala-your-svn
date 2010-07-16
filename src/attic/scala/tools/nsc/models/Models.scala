@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package models
@@ -262,7 +261,6 @@ abstract class Models {
   }
 
   abstract class ValOrDefMod(parent0: Composite) extends MemberComposite(parent0) with HasClassObjects {
-    def treey = tree.asInstanceOf[ValOrDefDef]
     override def replacedBy(tree0: Tree): Boolean =
       super.replacedBy(tree0) && tree0.isInstanceOf[ValOrDefDef]
 
@@ -296,7 +294,6 @@ abstract class Models {
 
   abstract class ImplMod(parent0: Composite)
   extends MemberComposite(parent0) with HasClassObjects {
-    def treey = tree.asInstanceOf[ImplDef]
     override def replacedBy(tree0: Tree): Boolean =
       super.replacedBy(tree0) && tree0.isInstanceOf[ImplDef]
     override def isMember(tree: Tree): Boolean = (super.isMember(tree) ||
@@ -361,7 +358,6 @@ abstract class Models {
       super.replacedBy(tree0) && tree0.isInstanceOf[ModuleDef]
   }
   class TypeMod(parent0: Composite) extends MemberMod(parent0) {
-    def treey = tree.asInstanceOf[TypeDef];
     override def replacedBy(tree0 : Tree) : Boolean = (super.replacedBy(tree0) && tree0.isInstanceOf[TypeDef]);
   }
   def SourceMod(original: CompilationUnit) = new SourceMod(original)

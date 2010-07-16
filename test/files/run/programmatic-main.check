@@ -8,6 +8,7 @@ refchecks
 liftcode
 uncurry
 tailcalls
+specialize
 explicitouter
 erasure
 lazyvals

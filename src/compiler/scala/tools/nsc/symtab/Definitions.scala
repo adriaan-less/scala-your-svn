@@ -2,26 +2,20 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
 
 import scala.collection.mutable.{HashMap, HashSet}
-import scala.tools.nsc.util.{Position, NoPosition}
+import scala.tools.nsc.util.NoPosition
 import Flags._
+import PartialFunction._
 
 trait Definitions extends reflect.generic.StandardDefinitions {
   self: SymbolTable =>
 
   object definitions extends AbsDefinitions {
     def isDefinitionsInitialized = isInitialized
-    
-    // Working around bug #2133
-    private object definitionHelpers {
-      def cond[T](x: T)(f: PartialFunction[T, Boolean]) = (f isDefinedAt x) && f(x)
-    }
-    import definitionHelpers._
 
     // symbols related to packages
     var emptypackagescope: Scope = null //debug
@@ -42,6 +36,9 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val JavaLangPackage    = getModule(sn.JavaLang)
     lazy val ScalaPackage       = getModule("scala")
     lazy val ScalaPackageClass  = ScalaPackage.tpe.typeSymbol
+    
+    lazy val RuntimePackage       = getModule("scala.runtime")
+    lazy val RuntimePackageClass  = RuntimePackage.tpe.typeSymbol
 
     lazy val ScalaCollectionImmutablePackage: Symbol = getModule("scala.collection.immutable")
     lazy val ScalaCollectionImmutablePackageClass: Symbol = ScalaCollectionImmutablePackage.tpe.typeSymbol
@@ -81,9 +78,13 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val NothingClass = newClass(ScalaPackageClass, nme.Nothing, anyparam) setFlag (ABSTRACT | TRAIT | FINAL)
     lazy val RuntimeNothingClass  = getClass("scala.runtime.Nothing$")
     lazy val RuntimeNullClass     = getClass("scala.runtime.Null$")
-    
+
+    lazy val AnyValCompanionClass = getClass("scala.runtime.AnyValCompanion").setFlag(SEALED | ABSTRACT | TRAIT)
+
     // the scala value classes
-    lazy val UnitClass    = newClass(ScalaPackageClass, nme.Unit, anyvalparam).setFlag(ABSTRACT | FINAL)
+    lazy val UnitClass    =                             
+      newClass(ScalaPackageClass, nme.Unit, anyvalparam).setFlag(ABSTRACT | FINAL)
+    
     lazy val ByteClass    = newValueClass(nme.Byte, 'B', 2)
     lazy val ShortClass   = newValueClass(nme.Short, 'S', 4)
     lazy val CharClass    = newValueClass(nme.Char, 'C', 3)
@@ -128,6 +129,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val BeanGetterTargetClass      = getClass("scala.annotation.target.beanGetter")
     lazy val BeanSetterTargetClass      = getClass("scala.annotation.target.beanSetter")
     lazy val ParamTargetClass           = getClass("scala.annotation.target.param")
+    lazy val ScalaInlineClass           = getClass("scala.inline")
+    lazy val ScalaNoInlineClass         = getClass("scala.noinline")
 
     // fundamental reference classes
     lazy val ScalaObjectClass     = getClass("scala.ScalaObject")
@@ -216,12 +219,12 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def Array_length  = getMember(ArrayClass, nme.length)
       lazy val Array_clone   = getMember(ArrayClass, nme.clone_)
     lazy val ArrayModule  = getModule("scala.Array")
-      def ArrayModule_apply = getMember(ArrayModule, nme.apply)
     
     // reflection / structural types
     lazy val SoftReferenceClass     = getClass("java.lang.ref.SoftReference")
     lazy val WeakReferenceClass     = getClass("java.lang.ref.WeakReference")
     lazy val MethodClass            = getClass(sn.MethodAsObject)
+      def methodClass_setAccessible = getMember(MethodClass, nme.setAccessible)
     lazy val EmptyMethodCacheClass  = getClass("scala.runtime.EmptyMethodCache")
     lazy val MethodCacheClass       = getClass("scala.runtime.MethodCache")
       def methodCache_find  = getMember(MethodCacheClass, nme.find_)
@@ -237,6 +240,9 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val CodeClass            = getClass(sn.Code)
     lazy val CodeModule           = getModule(sn.Code)
       def Code_lift = getMember(CodeModule, nme.lift_)
+
+    lazy val ScalaSignatureAnnotation = getClass("scala.reflect.ScalaSignature")
+    lazy val ScalaLongSignatureAnnotation = getClass("scala.reflect.ScalaLongSignature")
     
     // invoke dynamic support
     lazy val LinkageModule = getModule("java.dyn.Linkage")
@@ -289,7 +295,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val ProductRootClass: Symbol = getClass("scala.Product")
       def Product_productArity = getMember(ProductRootClass, nme.productArity)
       def Product_productElement = getMember(ProductRootClass, nme.productElement)
-      def Product_productElementName = getMember(ProductRootClass, nme.productElementName)
+      // def Product_productElementName = getMember(ProductRootClass, nme.productElementName)
       def Product_productPrefix = getMember(ProductRootClass, nme.productPrefix)
       def Product_canEqual = getMember(ProductRootClass, nme.canEqual_)
       
@@ -419,6 +425,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
 
     // boxed classes
     lazy val ObjectRefClass         = getClass("scala.runtime.ObjectRef")
+    lazy val VolatileObjectRefClass = getClass("scala.runtime.VolatileObjectRef")
     lazy val BoxesRunTimeClass      = getModule("scala.runtime.BoxesRunTime")
     lazy val BoxedNumberClass       = getClass(sn.BoxedNumber)
     lazy val BoxedCharacterClass    = getClass(sn.BoxedCharacter)
@@ -443,7 +450,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val BooleanBeanPropertyAttr: Symbol = getClass(sn.BooleanBeanProperty)
     
     lazy val AnnotationDefaultAttr: Symbol = {
-      val attr = newClass(RootClass, nme.AnnotationDefaultATTR, List(AnnotationClass.typeConstructor))
+      val attr = newClass(RuntimePackageClass, nme.AnnotationDefaultATTR, List(AnnotationClass.typeConstructor))
       // This attribute needs a constructor so that modifiers in parsed Java code make sense
       attr.info.decls enter (attr newConstructor NoPosition setInfo MethodType(Nil, attr.tpe))
       attr
@@ -506,7 +513,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
         else sym.info.member(fullname.subName(i, j).toTypeName)
       if (result == NoSymbol) {
         if (settings.debug.value)
-          { Console.println(sym.info); Console.println(sym.info.members) }//debug
+          { log(sym.info); log(sym.info.members) }//debug
         throw new MissingRequirementError((if (module) "object " else "class ") + fullname)
       }
       result
@@ -576,11 +583,13 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     val boxedModule = new HashMap[Symbol, Symbol]
     val unboxMethod = new HashMap[Symbol, Symbol] // Type -> Method
     val boxMethod = new HashMap[Symbol, Symbol] // Type -> Method
+    val primitiveCompanions = new HashSet[Symbol]
 
     def isUnbox(m: Symbol) = unboxMethod.valuesIterator contains m
     def isBox(m: Symbol) = boxMethod.valuesIterator contains m
 
     val refClass = new HashMap[Symbol, Symbol]
+    val volatileRefClass = new HashMap[Symbol, Symbol]
     val abbrvTag = new HashMap[Symbol, Char]
     private val numericWeight = new HashMap[Symbol, Int]
     
@@ -594,6 +603,17 @@ trait Definitions extends reflect.generic.StandardDefinitions {
         case None => false
       }
 
+    /** Create a companion object for scala.Unit.
+     */
+    private def initUnitCompanionObject() {
+      val module = ScalaPackageClass.newModule(NoPosition, "Unit")
+      ScalaPackageClass.info.decls.enter(module)
+      val mclass = module.moduleClass
+      mclass.setInfo(ClassInfoType(List(AnyRefClass.tpe, AnyValCompanionClass.tpe), new Scope, mclass))
+      module.setInfo(mclass.tpe)
+      primitiveCompanions += module
+    }
+
     private[symtab] def newValueClass(name: Name, tag: Char, weight: Int): Symbol = {
       val boxedName = sn.Boxed(name)
 
@@ -601,15 +621,17 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       boxedClass(clazz) = getClass(boxedName)
       boxedModule(clazz) = getModule(boxedName)
       refClass(clazz) = getClass("scala.runtime." + name + "Ref")
+      volatileRefClass(clazz) = getClass("scala.runtime.Volatile" + name + "Ref")
       abbrvTag(clazz) = tag
       if (weight > 0) numericWeight(clazz) = weight
 
       val module = ScalaPackageClass.newModule(NoPosition, name)
       ScalaPackageClass.info.decls.enter(module)
       val mclass = module.moduleClass
-      mclass.setInfo(ClassInfoType(List(), new Scope, mclass))
+      mclass.setInfo(ClassInfoType(List(AnyRefClass.tpe, AnyValCompanionClass.tpe), new Scope, mclass))
       module.setInfo(mclass.tpe)
-      
+      primitiveCompanions += module
+
       val box = newMethod(mclass, nme.box, List(clazz.typeConstructor), boxedClass(clazz).tpe)
       boxMethod(clazz) = box
       val unbox = newMethod(mclass, nme.unbox, List(ObjectClass.typeConstructor), clazz.typeConstructor)
@@ -767,6 +789,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       abbrvTag(UnitClass) = 'V'
 
       initValueClasses()
+      initUnitCompanionObject()
 
       // members of class scala.Any
       Any_== = newMethod(AnyClass, nme.EQ, anyparam, booltype) setFlag FINAL
@@ -790,23 +813,23 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       Object_synchronized = newPolyMethodCon(
         ObjectClass, nme.synchronized_,
         tparam => msym => MethodType(msym.newSyntheticValueParams(List(tparam.typeConstructor)), tparam.typeConstructor)) setFlag FINAL
-      
+
       String_+ = newMethod(
         StringClass, "+", anyparam, stringtype) setFlag FINAL
 
       val forced = List( // force initialization of every symbol that is entered as a side effect
-        AnnotationDefaultAttr,
+        AnnotationDefaultAttr, // #2264
         RepeatedParamClass,
         JavaRepeatedParamClass,
         ByNameParamClass,
-        UnitClass,   
-        ByteClass,   
-        ShortClass,  
-        CharClass,   
-        IntClass,    
-        LongClass,   
-        FloatClass,  
-        DoubleClass, 
+        UnitClass,
+        ByteClass,
+        ShortClass,
+        CharClass,
+        IntClass,
+        LongClass,
+        FloatClass,
+        DoubleClass,
         BooleanClass,
         AnyClass,
         AnyRefClass,
@@ -819,9 +842,6 @@ trait Definitions extends reflect.generic.StandardDefinitions {
         Object_asInstanceOf
       )
 
-      // #2264
-      var tmp = AnnotationDefaultAttr
-      tmp = RepeatedParamClass // force initalization
       if (forMSIL) {
         val intType = IntClass.typeConstructor
         val intParam = List(intType)
@@ -869,7 +889,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     var nbScalaCallers: Int = 0
     def newScalaCaller(delegateType: Type): Symbol = {
       assert(forMSIL, "scalaCallers can only be created if target is .NET")
-      // object: reference to object on which to call (scala-)metod
+      // object: reference to object on which to call (scala-)method
       val paramTypes: List[Type] = List(ObjectClass.tpe)
       val name: String =  "$scalaCaller$$" + nbScalaCallers
       // tparam => resultType, which is the resultType of PolyType, i.e. the result type after applying the

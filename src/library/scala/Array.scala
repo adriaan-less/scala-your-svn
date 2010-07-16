@@ -6,13 +6,12 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
 import scala.collection.generic._
-import scala.collection.mutable.{ArrayBuilder, GenericArray}
+import scala.collection.mutable.{ArrayBuilder, ArraySeq}
 import compat.Platform.arraycopy
 import scala.reflect.ClassManifest
 import scala.runtime.ScalaRunTime.{array_apply, array_update}
@@ -24,15 +23,15 @@ class FallbackArrayBuilding {
 
   /** A builder factory that generates a generic array.
    *  Called instead of Array.newBuilder if the element type of an array
-   *  does not have a class manifest. Note that fallbackBuilder fcatory
+   *  does not have a class manifest. Note that fallbackBuilder factory
    *  needs an implicit parameter (otherwise it would not be dominated in implicit search
    *  by Array.canBuildFrom). We make sure that that implicit search is always
-   *  succesfull. 
+   *  successfull. 
    */
-  implicit def fallbackCanBuildFrom[T](implicit m: DummyImplicit): CanBuildFrom[Array[_], T, GenericArray[T]] = 
-    new CanBuildFrom[Array[_], T, GenericArray[T]] { 
-      def apply(from: Array[_]) = GenericArray.newBuilder[T]
-      def apply() = GenericArray.newBuilder[T]
+  implicit def fallbackCanBuildFrom[T](implicit m: DummyImplicit): CanBuildFrom[Array[_], T, ArraySeq[T]] = 
+    new CanBuildFrom[Array[_], T, ArraySeq[T]] { 
+      def apply(from: Array[_]) = ArraySeq.newBuilder[T]
+      def apply() = ArraySeq.newBuilder[T]
     }
 }
 
@@ -207,6 +206,7 @@ object Array extends FallbackArrayBuilding {
    */
   def fill[T: ClassManifest](n: Int)(elem: => T): Array[T] = {
     val b = newBuilder[T]
+    b.sizeHint(n)
     var i = 0
     while (i < n) {
       b += elem
@@ -270,6 +270,7 @@ object Array extends FallbackArrayBuilding {
    */	
   def tabulate[T: ClassManifest](n: Int)(f: Int => T): Array[T] = {
     val b = newBuilder[T]
+    b.sizeHint(n)
     var i = 0
     while (i < n) {
       b += f(i)
@@ -343,6 +344,8 @@ object Array extends FallbackArrayBuilding {
   def range(start: Int, end: Int, step: Int): Array[Int] = {
     if (step == 0) throw new IllegalArgumentException("zero step")
     val b = newBuilder[Int]
+    b.sizeHint(Range.count(start, end, step, false))
+
     var i = start
     while (if (step < 0) end < i else i < end) {
       b += i
@@ -360,12 +363,18 @@ object Array extends FallbackArrayBuilding {
    */
   def iterate[T: ClassManifest](start: T, len: Int)(f: T => T): Array[T] = {
     val b = newBuilder[T]
-    var acc = start
-    var i = 0
-    while (i < len) {
+    
+    if (len > 0) {
+      b.sizeHint(len)
+      var acc = start
+      var i = 1
       b += acc
-      acc = f(acc)
-      i += 1
+      
+      while (i < len) {
+        acc = f(acc)
+        i += 1
+        b += acc
+      }
     }
     b.result
   }

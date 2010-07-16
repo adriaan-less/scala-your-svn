@@ -20,16 +20,20 @@ object Test extends Application {
 
 
   // anonymous functions
+  {
+    def doMod(f: Int => Unit) { f(20) }
+    var var1 = 0
+    doMod(var1 = _)
+    println(var1)
+
+    synchronized(var1 = 30)
+    println(var1)
+
+    var var2 = 0
+    def delay(var2: => Int) = { var2 }
+    println(delay(var2 = 40))
+  }
   val f1: (Int, String) => Unit = test1(_, _); f1(6, "~")
-  val f2: Int => Unit = test1(a = _, b = get("+")); f2(get(7))
-  val f3 = test1(b = _: String, a = get(8)); f3(get("+"))
-  val f4: (Int, String) => Unit = test1(_, b = _); f4(9, "?")
-
-  val f5: Int => (String, Int) => Unit = test2(v = get(38), u = _)_
-  f5(get(39))(get("|"), 10)
-
-  val f6: (Double, String) => Unit = test3(get(13), _)(d = _, c = get("x"))
-  f6(get(2.233), get("<"))
 
 
   test4(14)
@@ -151,10 +155,6 @@ object Test extends Application {
   println(c1.print)
   val c2 = C("dflkj", c = Some(209): Option[Int])(None, "!!")
   println(c2.print)
-  val a_f: String => A[String, Nothing] = new A[String, Nothing](b = _)(d = 100)
-  println(a_f("20").print)
-  val c_f: Int => C[Int] = C("dlfkj", c = 10, b = _)(35, e = "dlkf")
-  println(c_f(11).print)
 
 
   // "super" qualifier
@@ -295,6 +295,61 @@ object Test extends Application {
     class A[T](f: String = "ski!")
     class C extends A
   }
+
+  object t3178 {
+    def foo(x: String) = x
+    def foo(x: Int) = x
+    def bar(foo: Int) = foo
+    bar(foo = 1)
+  }
+
+
+  // #3207
+  trait P3207[T] {
+    class Inner(val f: T => Unit = (x: T) => println(x))
+  }
+
+  object Test3207_1 {
+    val p = new P3207[Int] {}
+    val q = new p.Inner() {
+      def g = 0
+    }
+  }
+
+  object Test3207_2 {
+    val p = new P3207[Int] {
+      val inner = new Inner() {
+        def g = 0
+      }
+    }
+  }
+
+  // #3344
+  def m3344_1 = { case class C(x: Int); C(1).copy(2).x }
+  m3344_1
+  def m3344_2 = { class C(val x: Int = 1); new C().x }
+  m3344_2
+
+  // #3338
+  object t3338 {
+    class Container {
+      class GenericClass[T](arg: String = "")
+    }
+
+    object Container extends Container
+
+    class Test {
+      val a = new Container.GenericClass()
+    }
+  }
+  (new t3338.Test).a
+
+
+  // subclassing and defaults in both class constructors
+  class CBLAH(val x: Int = 1)
+  class DBLAH(val y: String = "2") extends CBLAH()
+  (new DBLAH())
+
 
   // DEFINITIONS
   def test1(a: Int, b: String) = println(a +": "+ b)

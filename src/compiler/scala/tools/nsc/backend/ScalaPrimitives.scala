@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -562,9 +561,9 @@ abstract class ScalaPrimitives {
   
   def isPrimitive(sym: Symbol): Boolean = primitives contains sym
 
-  /** Return the code for the givem symbol. */
+  /** Return the code for the given symbol. */
   def getPrimitive(sym: Symbol): Int = {
-    assert(isPrimitive(sym), "Unkown primitive " + sym)
+    assert(isPrimitive(sym), "Unknown primitive " + sym)
     primitives(sym)
   }
 

@@ -6,13 +6,9 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala
 
-object Option
-{
+object Option {
   /** An implicit conversion that converts an option to an iterable value
    */
   implicit def option2Iterable[A](xo: Option[A]): Iterable[A] = xo.toList
@@ -24,6 +20,11 @@ object Option
    *  @return   Some(value) if value != null, None if value == null
    */
   def apply[A](x: A): Option[A] = if (x == null) None else Some(x)
+  
+  /** An Option factory which returns None in a manner consistent with
+   *  the collections hierarchy.
+   */
+  def empty[A] : Option[A] = None
 }
 
 /** This class represents optional values. Instances of <code>Option</code>
@@ -127,7 +128,7 @@ sealed abstract class Option[+A] extends Product {
    *
    *  @param  pf   the partial function.
    */
-  def partialMap[B](pf: PartialFunction[A, B]): Option[B] =
+  def collect[B](pf: PartialFunction[A, B]): Option[B] =
     if (!isEmpty && pf.isDefinedAt(this.get)) Some(pf(this.get)) else None  
 
   /** If the option is nonempty return it,

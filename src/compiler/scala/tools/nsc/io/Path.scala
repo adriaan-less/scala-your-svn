@@ -9,9 +9,7 @@ import java.io.{
   FileInputStream, FileOutputStream, BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter, 
   BufferedInputStream, BufferedOutputStream, RandomAccessFile, File => JFile }
 import java.net.{ URI, URL }
-import collection.{ Seq, Traversable }
-import PartialFunction._
-import scala.util.Random.nextASCIIString
+import scala.util.Random.alphanumeric
 
 /** An abstraction for filesystem paths.  The differences between
  *  Path, File, and Directory are primarily to communicate intent.
@@ -28,19 +26,16 @@ import scala.util.Random.nextASCIIString
  *  @since   2.8
  */
 
-object Path
-{
+object Path {
   private val ZipMagicNumber = List[Byte](80, 75, 3, 4)
+  private def magicNumberIsZip(f: Path) = f.isFile && (f.toFile.bytes().take(4).toList == ZipMagicNumber)
   
   /** If examineFile is true, it will look at the first four bytes of the file
    *  and see if the magic number indicates it may be a jar or zip.
    */
-  def isJarOrZip(f: Path): Boolean = isJarOrZip(f, false)
-  def isJarOrZip(f: Path, examineFile: Boolean): Boolean = (
-       (f hasExtension "zip")
-    || (f hasExtension "jar")
-    || (examineFile && f.isFile && (f.toFile.bytes().take(4).toList == ZipMagicNumber))
-  )
+  def isJarOrZip(f: Path): Boolean = isJarOrZip(f, true)
+  def isJarOrZip(f: Path, examineFile: Boolean): Boolean =
+    f.hasExtension("zip", "jar") || (examineFile && magicNumberIsZip(f))
 
   // not certain these won't be problematic, but looks good so far
   implicit def string2path(s: String): Path = apply(s)
@@ -72,8 +67,9 @@ object Path
     if (jfile.isFile) new File(jfile)
     else if (jfile.isDirectory) new Directory(jfile)
     else new Path(jfile)
-    
-  private[io] def randomPrefix = nextASCIIString(6)
+
+  /** Avoiding any shell/path issues by only using alphanumerics. */
+  private[io] def randomPrefix = alphanumeric take 6 mkString
   private[io] def fail(msg: String) = throw FileOperationException(msg)
 }
 import Path._
@@ -108,6 +104,22 @@ class Path private[io] (val jfile: JFile) {
   def /(child: Path): Path = if (isEmpty) child else new Path(new JFile(jfile, child.path))
   def /(child: Directory): Directory = /(child: Path).toDirectory
   def /(child: File): File = /(child: Path).toFile
+  
+  /** If this path is a container, recursively iterate over its contents.
+   *  The supplied condition is a filter which is applied to each element,
+   *  with that branch of the tree being closed off if it is true.  So for
+   *  example if the condition is true for some subdirectory, nothing
+   *  under that directory will be in the Iterator; but otherwise each
+   *  file and subdirectory underneath it will appear.
+   */
+  def walkFilter(cond: Path => Boolean): Iterator[Path] =
+    if (isFile) toFile walkFilter cond
+    else if (isDirectory) toDirectory walkFilter cond
+    else Iterator.empty
+  
+  /** Equivalent to walkFilter(_ => false).
+   */
+  def walk: Iterator[Path] = walkFilter(_ => true)
 
   // identity
   def name: String = jfile.getName()
@@ -158,10 +170,17 @@ class Path private[io] (val jfile: JFile) {
     case -1   => ""
     case idx  => name drop (idx + 1)
   }
-  // compares against extension in a CASE INSENSITIVE way.
-  def hasExtension(other: String) = extension.toLowerCase == other.toLowerCase
+  // compares against extensions in a CASE INSENSITIVE way.
+  def hasExtension(ext: String, exts: String*) = {
+    val xs = (ext +: exts) map (_.toLowerCase)
+    xs contains extension.toLowerCase
+  }
   // returns the filename without the extension.
   def stripExtension: String = name stripSuffix ("." + extension)
+  // returns the Path with the extension.
+  def addExtension(ext: String): Path = Path(path + "." + ext)
+  // changes the existing extension out for a new one
+  def changeExtension(ext: String): Path = Path((path stripSuffix extension) + ext)
   
   // conditionally execute
   def ifFile[T](f: File => T): Option[T] = if (isFile) Some(f(toFile)) else None

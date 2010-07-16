@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.ant.sabbus
 
@@ -61,7 +60,7 @@ class Use extends MatchingTask {
         if (errors > 0)
           error("Compilation failed with " + errors + " error" + (if (errors > 1) "s" else "") + ".")
         else if (warnings > 0)
-          log("Compilation suceeded with " + warnings + " warning" + (if (warnings > 1) "s" else "") + ".")
+          log("Compilation succeeded with " + warnings + " warning" + (if (warnings > 1) "s" else "") + ".")
       }
       catch {
         case CompilationFailure(msg, ex) =>

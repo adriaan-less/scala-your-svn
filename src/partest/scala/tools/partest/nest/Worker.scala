@@ -257,6 +257,7 @@ class Worker(val fileManager: FileManager) extends Actor {
         "-classpath " + join(outDir.toString, CLASSPATH)
       ) ::: propertyOptions ::: List(
         "scala.tools.nsc.MainGenericRunner",
+        "-usejavacp",
         "Test",
         "jvm"
       )
@@ -370,10 +371,10 @@ class Worker(val fileManager: FileManager) extends Actor {
 
     def compileFilesIn(dir: File, kind: String, logFile: File, outDir: File) {
       val testFiles = dir.listFiles.toList filter isJavaOrScala
-      
+
       def isInGroup(f: File, num: Int) = SFile(f).stripExtension endsWith ("_" + num)
       val groups = (0 to 9).toList map (num => testFiles filter (f => isInGroup(f, num)))
-      val noGroupSuffix = testFiles -- groups.flatten      
+      val noGroupSuffix = testFiles filterNot (groups.flatten contains)
 
       def compileGroup(g: List[File]) {
         val (scalaFiles, javaFiles) = g partition isScala
@@ -511,6 +512,8 @@ class Worker(val fileManager: FileManager) extends Actor {
             val changesDir = new File(file, fileBase + ".changes")
             if (changesDir.isFile || !testFile.isFile) {
               // if changes exists then it has to be a dir
+              if (!testFile.isFile) NestUI.verbose("invalid build manager test file")
+              if (changesDir.isFile) NestUI.verbose("invalid build manager changes directory")
               succeeded = false
               (null, null, null, null)
             } else {
@@ -551,7 +554,7 @@ class Worker(val fileManager: FileManager) extends Actor {
               val testCompile = (line: String) => {
                 NestUI.verbose("compiling " + line)
                 val args = (line split ' ').toList
-                val command = new CompilerCommand(args, settings, error, true)
+                val command = new CompilerCommand(args, settings)
                 bM.update(filesToSet(settings.sourcepath.value, command.files), Set.empty)
                 !reporter.hasErrors
               }
@@ -611,8 +614,8 @@ class Worker(val fileManager: FileManager) extends Actor {
                 loop()
                 testReader.close()
               }
-
-              fileManager.mapFile(logFile, "tmp", file, _.replace(sourcepath, ""))
+              fileManager.mapFile(logFile, "tmp", file, _.replace(sourcepath, "").
+                      replaceAll(java.util.regex.Matcher.quoteReplacement("\\"), "/"))
 
               diffCheck(compareOutput(file, fileBase, kind, logFile))
             }
@@ -672,7 +675,7 @@ class Worker(val fileManager: FileManager) extends Actor {
             settings.sourcepath.value = sourcepath
             settings.classpath.value = fileManager.CLASSPATH
             reporter = new ConsoleReporter(settings, scala.Console.in, logConsoleWriter)
-            val command = new CompilerCommand(argList, settings, error, false)
+            val command = new CompilerCommand(argList, settings)
             object compiler extends Global(command.settings, reporter)
 
             // simulate resident compiler loop
@@ -684,7 +687,7 @@ class Worker(val fileManager: FileManager) extends Actor {
               NestUI.verbose("cmdArgs: "+cmdArgs)
               val sett = new Settings(error)
               sett.sourcepath.value = sourcepath
-              val command = new CompilerCommand(cmdArgs, sett, error, true)
+              val command = new CompilerCommand(cmdArgs, sett)
               (new compiler.Run) compile command.files
             }
 
@@ -817,14 +820,6 @@ class Worker(val fileManager: FileManager) extends Actor {
 
       case "scalap" => {
 
-        def decompileFile(clazz: Class[_], packObj: Boolean) = {
-          val byteCode = ByteCode.forClass(clazz)
-          val classFile = ClassFileParser.parse(byteCode)
-          val Some(sig) = classFile.attribute("ScalaSig").map(_.byteCode).map(ScalaSigAttributeParsers.parse)
-          import scala.tools.scalap.Main._
-          parseScalaSignature(sig, packObj)
-        }
-
         runInContext(file, kind, (logFile: File, outDir: File) => {
           val sourceDir = file.getParentFile
           val sourceDirName = sourceDir.getName
@@ -851,7 +846,8 @@ class Worker(val fileManager: FileManager) extends Actor {
               val loader = new URLClassLoader(Array(url), getClass.getClassLoader)
               val clazz = loader.loadClass(className)
 
-              val result = decompileFile(clazz, isPackageObject)
+              val byteCode = ByteCode.forClass(clazz)
+              val result = scala.tools.scalap.Main.decompileScala(byteCode.bytes, isPackageObject)
 
               try {
                 val fstream = new FileWriter(logFile);
@@ -1050,9 +1046,11 @@ class Worker(val fileManager: FileManager) extends Actor {
     fs flatMap (s => Option(AbstractFile getFile (pre + s))) toSet
   
   private def copyTestFiles(testDir: File, destDir: File) {
-    testDir.listFiles.toList filter (f => isJavaOrScala(f) && f.isFile) foreach { f =>
-      fileManager.copyFile(f, new File(destDir, f.getName))
-    }
+    val invalidExts = List("changes", "svn", "obj")
+    testDir.listFiles.toList filter (
+            f => (isJavaOrScala(f) && f.isFile) || 
+                 (f.isDirectory && !(invalidExts.contains(SFile(f).extension)))) foreach
+      { f => fileManager.copyFile(f, destDir) }
   }
 
   def showLog(logFile: File) {

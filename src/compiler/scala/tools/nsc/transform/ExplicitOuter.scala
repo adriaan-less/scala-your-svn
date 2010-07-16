@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -62,6 +61,12 @@ abstract class ExplicitOuter extends InfoTransform
     result
   }
 
+  /** Issue a migration warning for instance checks which might be on an Array and
+   *  for which the type parameter conforms to Seq, because these answers changed in 2.8.
+   */
+  def isArraySeqTest(lhs: Type, rhs: Type) =
+    ArrayClass.tpe <:< lhs.widen && rhs.widen.matchesPattern(SeqClass.tpe)
+
   def outerAccessor(clazz: Symbol): Symbol = {
     val firstTry = clazz.info.decl(nme.expandedName(nme.OUTER, clazz))
     if (firstTry != NoSymbol && firstTry.outerSource == clazz) firstTry
@@ -84,7 +89,7 @@ abstract class ExplicitOuter extends InfoTransform
    *      <p>
    *        Add an outer accessor <code>$outer$$C</code> to every inner class
    *        with fully qualified name <code>C</code> that is not an interface.
-   *        The outer accesssor is abstract for traits, concrete for other
+   *        The outer accessor is abstract for traits, concrete for other
    *        classes.
    *      </p>
    *      <p>
@@ -295,7 +300,6 @@ abstract class ExplicitOuter extends InfoTransform
    *  </p>
    */
   class ExplicitOuterTransformer(unit: CompilationUnit) extends OuterPathTransformer(unit) {
-
     /** The definition tree of the outer accessor of current class
      */
     def outerFieldDef: Tree = VAL(outerField(currentClass)) === EmptyTree
@@ -324,7 +328,9 @@ abstract class ExplicitOuter extends InfoTransform
       val path = 
         if (mixinClass.owner.isTerm) THIS(mixinClass.owner.enclClass)
         else gen.mkAttributedQualifier(currentClass.thisType baseType mixinClass prefix)
-      val rhs = ExplicitOuterTransformer.this.transform(path)
+      // Need to cast for nested outer refs in presence of self-types. See ticket #3274.
+      val rhs = gen.mkAsInstanceOf(ExplicitOuterTransformer.this.transform(path), 
+          outerAcc.info.resultType)
       
       // @S: atPos not good enough because of nested atPos in DefDef method, which gives position from wrong class!
       rhs setPos currentClass.pos
@@ -354,8 +360,7 @@ abstract class ExplicitOuter extends InfoTransform
         
         localTyper typed (DEF(method) === {
           new ChangeOwnerTraverser(currentOwner, method) traverse guard
-          new TreeSymSubstituter(vs, method.paramss.head) traverse guard
-          guard
+          new TreeSymSubstituter(vs, method.paramss.head) transform (guard)
         })
       }
       
@@ -483,8 +488,14 @@ abstract class ExplicitOuter extends InfoTransform
           matchTranslation(mch)
           
         case _ =>
-          val x = super.transform(tree)
+          if (settings.Xmigration28.value) tree match {
+            case TypeApply(fn @ Select(qual, _), args) if fn.symbol == Object_isInstanceOf || fn.symbol == Any_isInstanceOf =>
+              if (isArraySeqTest(qual.tpe, args.head.tpe))
+                unit.warning(tree.pos, "An Array will no longer match as Seq[_].")
+            case _ => ()
+          }
 
+          val x = super.transform(tree)
           if (x.tpe eq null) x
           else x setType transformInfo(currentOwner, x.tpe)
       }

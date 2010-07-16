@@ -13,7 +13,6 @@ trait CPSUtils {
   val verbose: Boolean = System.getProperty("cpsVerbose", "false") == "true"
   def vprintln(x: =>Any): Unit = if (verbose) println(x)
 
-
   lazy val MarkerCPSSym = definitions.getClass("scala.util.continuations.cpsSym")
   lazy val MarkerCPSTypes = definitions.getClass("scala.util.continuations.cpsParam")
   lazy val MarkerCPSSynth = definitions.getClass("scala.util.continuations.cpsSynth")

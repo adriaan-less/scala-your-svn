@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
 package scala.tools.nsc
@@ -18,8 +17,7 @@ import scala.collection.mutable.ArrayBuffer
  * @author Philippe Altherr
  * @version 1.0, 23/03/2004
  */
-object AbstractFile
-{
+object AbstractFile {
   /** Returns "getFile(new File(path))". */
   def getFile(path: String): AbstractFile = getFile(Path(path))
   def getFile(path: Path): AbstractFile = getFile(path.toFile)
@@ -56,7 +54,7 @@ object AbstractFile
    * @return     ...
    */
   def getURL(url: URL): AbstractFile =
-    Option(url) partialMap { case url: URL if Path.isJarOrZip(url.getPath) => ZipArchive fromURL url } orNull
+    Option(url) collect { case url: URL if Path.isJarOrZip(url.getPath) => ZipArchive fromURL url } orNull
 }
 
 /**
@@ -231,7 +229,7 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
    * creating an empty file if it does not already existing.
    */
   def fileNamed(name: String): AbstractFile = {
-    assert(isDirectory)
+    assert(isDirectory, "Tried to find '%s' in '%s' but it is not a directory".format(name, path))
     Option(lookupName(name, false)) getOrElse new PlainFile((sfile.get / name).createFile())
   }
   
@@ -240,7 +238,7 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
    * does not already exist.
    */
   def subdirectoryNamed(name: String): AbstractFile = {
-    assert (isDirectory)
+    assert (isDirectory, "Tried to find '%s' in '%s' but it is not a directory".format(name, path))
     Option(lookupName(name, true)) getOrElse new PlainFile((sfile.get / name).createDirectory())
   }
   

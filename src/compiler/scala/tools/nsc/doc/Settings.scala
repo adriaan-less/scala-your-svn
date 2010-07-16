@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package doc
@@ -32,4 +31,6 @@ class Settings(error: String => Unit) extends scala.tools.nsc.Settings(error) {
 
   // working around issue described in r18708.
   suppressVTWarn.value = true
+  
+  // TODO: add a new setting for whether or not to document sourceless entities (e.g., Any, Unit, etc)
 }

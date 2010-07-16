@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -160,7 +159,7 @@ abstract class Pickler extends SubComponent {
     private def putSymbols(syms: List[Symbol]) =
       syms foreach putSymbol
 
-    /** Store type and everythig it refers to in map <code>index</code>.
+    /** Store type and everything it refers to in map <code>index</code>.
      *
      *  @param tp ...
      */

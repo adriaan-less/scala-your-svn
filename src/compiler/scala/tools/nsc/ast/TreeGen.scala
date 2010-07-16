@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -14,8 +13,7 @@ import symtab.SymbolTable
 /** XXX to resolve: TreeGen only assumes global is a SymbolTable, but
  *  TreeDSL at the moment expects a Global.  Can we get by with SymbolTable?
  */
-abstract class TreeGen
-{
+abstract class TreeGen {
   val global: SymbolTable
 
   import global._
@@ -31,10 +29,13 @@ abstract class TreeGen
   
   private def isRootOrEmptyPackageClass(s: Symbol) = s.isRoot || s.isEmptyPackageClass
   
-  def scalaFunctionConstr(argtpes: List[Tree], restpe: Tree): Tree = 
-    AppliedTypeTree(
-      scalaDot(newTypeName("Function"+argtpes.length)),
-      argtpes ::: List(restpe))
+  def scalaFunctionConstr(argtpes: List[Tree], restpe: Tree, abstractFun: Boolean = false): Tree = {
+    val cls = if (abstractFun)
+      mkAttributedRef(AbstractFunctionClass(argtpes.length))
+    else
+      mkAttributedRef(FunctionClass(argtpes.length))
+    AppliedTypeTree(cls, argtpes ::: List(restpe))
+  }
 
   /** Builds a reference to value whose type is given stable prefix.
    *  The type must be suitable for this.  For example, it
@@ -136,7 +137,7 @@ abstract class TreeGen
     assert(!tree.tpe.isInstanceOf[MethodType], tree)
     assert(!pt.typeSymbol.isPackageClass)
     assert(!pt.typeSymbol.isPackageObjectClass)
-    assert(pt eq pt.normalize) //@MAT only called during erasure, which already takes care of that
+    assert(pt eq pt.normalize, tree +" : "+ debugString(pt) +" ~>"+ debugString(pt.normalize)) //@MAT only called during erasure, which already takes care of that
     atPos(tree.pos)(mkAsInstanceOf(tree, pt, false))
   }
 
@@ -191,8 +192,21 @@ abstract class TreeGen
   def mkAsInstanceOf(value: Tree, tpe: Type, any: Boolean = true): Tree =
     mkTypeApply(value, tpe, (if (any) Any_asInstanceOf else Object_asInstanceOf))
 
+  /** Cast `tree' to 'pt', unless tpe is a subtype of pt, or pt is Unit.  */
+  def maybeMkAsInstanceOf(tree: Tree, pt: Type, tpe: Type, beforeRefChecks: Boolean = false): Tree =
+    if ((pt == UnitClass.tpe) || (tpe <:< pt)) {
+      log("no need to cast from " + tpe + " to " + pt)
+      tree
+    } else
+      atPos(tree.pos) {
+        if (beforeRefChecks)
+          TypeApply(mkAttributedSelect(tree, Any_asInstanceOf), List(TypeTree(pt)))
+        else
+          mkAsInstanceOf(tree, pt)
+      }
+
   def mkClassOf(tp: Type): Tree = 
-    Literal(Constant(tp)) setType ClassType(tp)
+    Literal(Constant(tp)) setType ConstantType(Constant(tp))// ClassType(tp)
 
   def mkCheckInit(tree: Tree): Tree = {
     val tpe =
@@ -381,5 +395,22 @@ abstract class TreeGen
     ensureNonOverlapping(containing, exprs)
     if (prefix.isEmpty) containing
     else Block(prefix, containing) setPos (prefix.head.pos union containing.pos)
+  }
+
+  /** Return a double-checked locking idiom around the syncBody tree. It guards with 'cond' and
+   *  synchronizez on 'clazz.this'. Additional statements can be included after initialization,
+   *  (outside the synchronized block).
+   *
+   *  The idiom works only if the condition is using a volatile field.
+   *  @see http://www.cs.umd.edu/~pugh/java/memoryModel/DoubleCheckedLocking.html
+   */
+  def mkDoubleCheckedLocking(clazz: Symbol, cond: Tree, syncBody: List[Tree], stats: List[Tree]): Tree = {
+    If(cond,
+       Block(
+         mkSynchronized(
+           mkAttributedThis(clazz),
+           If(cond, Block(syncBody: _*), EmptyTree)) ::
+         stats: _*),
+       EmptyTree)
   }
 }

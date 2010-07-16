@@ -28,6 +28,8 @@ abstract class SelectiveCPSTransform extends PluginComponent with
   protected def newTransformer(unit: CompilationUnit): Transformer =
     new CPSTransformer(unit)
 
+  /** This class does not change linearization */
+  override def changesBaseClasses = false
 
   /** - return symbol's transformed type, 
    */
@@ -84,6 +86,9 @@ abstract class SelectiveCPSTransform extends PluginComponent with
           log("found shift: " + tree)
           atPos(tree.pos) {
             val funR = gen.mkAttributedRef(MethShiftR) // TODO: correct?
+            //gen.mkAttributedSelect(gen.mkAttributedSelect(gen.mkAttributedSelect(gen.mkAttributedIdent(ScalaPackage),
+            //ScalaPackage.tpe.member("util")), ScalaPackage.tpe.member("util").tpe.member("continuations")), MethShiftR)
+            //gen.mkAttributedRef(ModCPS.tpe,  MethShiftR) // TODO: correct?
             log(funR.tpe)
             Apply(
                 TypeApply(funR, targs).setType(appliedType(funR.tpe, targs.map((t:Tree) => t.tpe))),
@@ -116,7 +121,121 @@ abstract class SelectiveCPSTransform extends PluginComponent with
             ).setType(transformCPSType(tree.tpe))
           }
 
-        case Block(stms, expr) => 
+      case Try(block, catches, finalizer) =>
+        // currently duplicates the catch block into a partial function.
+        // this is kinda risky, but we don't expect there will be lots
+        // of try/catches inside catch blocks (exp. blowup unlikely).
+
+        // CAVEAT: finalizers are surprisingly tricky!
+        // the problem is that they cannot easily be removed
+        // from the regular control path and hence will
+        // also be invoked after creating the Context object.
+        
+        /*
+        object Test {
+          def foo1 = {
+            throw new Exception("in sub")
+            shift((k:Int=>Int) => k(1))
+            10
+          }
+          def foo2 = {
+            shift((k:Int=>Int) => k(2))
+            20
+          }
+          def foo3 = {
+            shift((k:Int=>Int) => k(3))
+            throw new Exception("in sub")
+            30
+          }
+          def foo4 = {
+            shift((k:Int=>Int) => 4)
+            throw new Exception("in sub")
+            40
+          }
+          def bar(x: Int) = try {
+            if (x == 1)
+              foo1
+            else if (x == 2)
+              foo2
+            else if (x == 3)
+              foo3
+            else //if (x == 4)
+              foo4
+          } catch {
+            case _ =>
+              println("exception")
+              0
+          } finally {
+            println("done")
+          }
+        }
+        
+        reset(Test.bar(1)) // should print: exception,done,0
+        reset(Test.bar(2)) // should print: done,20 <-- but prints: done,done,20
+        reset(Test.bar(3)) // should print: exception,done,0 <-- but prints: done,exception,done,0
+        reset(Test.bar(4)) // should print: 4 <-- but prints: done,4
+        */
+
+        val block1 = transform(block)
+        val catches1 = transformCaseDefs(catches)
+        val finalizer1 = transform(finalizer)
+
+        if (hasAnswerTypeAnn(tree.tpe)) {
+          //vprintln("CPS Transform: " + tree + "/" + tree.tpe + "/" + block1.tpe)
+
+          val (stms, expr1) = block1 match {
+            case Block(stms, expr) => (stms, expr)
+            case expr => (Nil, expr)
+          }
+
+          val targettp = transformCPSType(tree.tpe)
+          
+//          val expr2 = if (catches.nonEmpty) {
+            val pos = catches.head.pos
+            val argSym = currentOwner.newValueParameter(pos, "$ex").setInfo(ThrowableClass.tpe)
+            val rhs = Match(Ident(argSym), catches1)
+            val fun = Function(List(ValDef(argSym)), rhs)
+            val funSym = currentOwner.newValueParameter(pos, "$catches").setInfo(appliedType(PartialFunctionClass.tpe, List(ThrowableClass.tpe, targettp)))
+            val funDef = localTyper.typed(atPos(pos) { ValDef(funSym, fun) })
+            val expr2 = localTyper.typed(atPos(pos) { Apply(Select(expr1, expr1.tpe.member("flatMapCatch")), List(Ident(funSym))) })
+
+            argSym.owner = fun.symbol
+            val chown = new ChangeOwnerTraverser(currentOwner, fun.symbol)
+            chown.traverse(rhs)
+            
+            val exSym = currentOwner.newValueParameter(pos, "$ex").setInfo(ThrowableClass.tpe)
+            val catch2 = { localTyper.typedCases(tree, List(
+              CaseDef(Bind(exSym, Typed(Ident("_"), TypeTree(ThrowableClass.tpe))), 
+                Apply(Select(Ident(funSym), "isDefinedAt"), List(Ident(exSym))), 
+                Apply(Ident(funSym), List(Ident(exSym))))
+            ), ThrowableClass.tpe, targettp) }
+
+            //typedCases(tree, catches, ThrowableClass.tpe, pt)
+
+            localTyper.typed(Block(List(funDef), treeCopy.Try(tree, treeCopy.Block(block1, stms, expr2), catch2, finalizer1)))
+
+
+/*
+          disabled for now - see notes above
+          
+          val expr3 = if (!finalizer.isEmpty) {
+            val pos = finalizer.pos
+            val finalizer2 = duplicateTree(finalizer1)
+            val fun = Function(List(), finalizer2)
+            val expr3 = localTyper.typed(atPos(pos) { Apply(Select(expr2, expr2.tpe.member("mapFinally")), List(fun)) })
+
+            val chown = new ChangeOwnerTraverser(currentOwner, fun.symbol)
+            chown.traverse(finalizer2)
+
+            expr3
+          } else
+            expr2
+*/
+        } else {
+          treeCopy.Try(tree, block1, catches1, finalizer1)
+        }
+
+      case Block(stms, expr) => 
         
           val (stms1, expr1) = transBlock(stms, expr)
           treeCopy.Block(tree, stms1, expr1)
@@ -143,16 +262,20 @@ abstract class SelectiveCPSTransform extends PluginComponent with
               log("found marked ValDef "+name+" of type " + vd.symbol.tpe)
 
               val tpe = vd.symbol.tpe
-              val rhs1 = transform(rhs)
+              val rhs1 = atOwner(vd.symbol) { transform(rhs) }
 
+              new ChangeOwnerTraverser(vd.symbol, currentOwner).traverse(rhs1) // TODO: don't traverse twice
+              
               log("valdef symbol " + vd.symbol + " has type " + tpe)
               log("right hand side " + rhs1 + " has type " + rhs1.tpe)
 
               log("currentOwner: " + currentOwner)
               log("currentMethod: " + currentMethod)
 
-
               val (bodyStms, bodyExpr) = transBlock(rest, expr)
+              // FIXME: result will later be traversed again by TreeSymSubstituter and
+              // ChangeOwnerTraverser => exp. running time.
+              // Should be changed to fuse traversals into one.
               
               val specialCaseTrivial = bodyExpr match {
                 case Apply(fun, args) =>
@@ -165,12 +288,14 @@ abstract class SelectiveCPSTransform extends PluginComponent with
               
               def applyTrivial(ctxValSym: Symbol, body: Tree) = {
                 
-                new TreeSymSubstituter(List(vd.symbol), List(ctxValSym)).traverse(body)
+                val body1 = (new TreeSymSubstituter(List(vd.symbol), List(ctxValSym)))(body)
                 
-                val body2 = localTyper.typed(atPos(vd.symbol.pos) { body })
+                val body2 = localTyper.typed(atPos(vd.symbol.pos) { body1 })
                 
-                if ((body2.tpe == null) || !(body2.tpe.typeSymbol.tpe <:< Context.tpe)) {
-                  println(body2 + "/" + body2.tpe)
+                // in theory it would be nicer to look for an @cps annotation instead
+                // of testing for Context
+                if ((body2.tpe == null) || !(body2.tpe.typeSymbol == Context)) {
+                  //println(body2 + "/" + body2.tpe)
                   unit.error(rhs.pos, "cannot compute type for CPS-transformed function result")
                 }
                 body2
@@ -178,22 +303,24 @@ abstract class SelectiveCPSTransform extends PluginComponent with
               
               def applyCombinatorFun(ctxR: Tree, body: Tree) = {
                 val arg = currentOwner.newValueParameter(ctxR.pos, name).setInfo(tpe)
-                new TreeSymSubstituter(List(vd.symbol), List(arg)).traverse(body)
-                val fun = localTyper.typed(atPos(vd.symbol.pos) { Function(List(ValDef(arg)), body) }) // types body as well
+                val body1 = (new TreeSymSubstituter(List(vd.symbol), List(arg)))(body)
+                val fun = localTyper.typed(atPos(vd.symbol.pos) { Function(List(ValDef(arg)), body1) }) // types body as well
                 arg.owner = fun.symbol
-                new ChangeOwnerTraverser(currentOwner, fun.symbol).traverse(body)
+                new ChangeOwnerTraverser(currentOwner, fun.symbol).traverse(body1)
+                
+                // see note about multiple traversals above
 
                 log("fun.symbol: "+fun.symbol)
                 log("fun.symbol.owner: "+fun.symbol.owner)
                 log("arg.owner: "+arg.owner)
               
                 log("fun.tpe:"+fun.tpe)
-                log("return type of fun:"+body.tpe)
+                log("return type of fun:"+body1.tpe)
               
                 var methodName = "map"
               
-                if (body.tpe != null) {
-                  if (body.tpe.typeSymbol.tpe <:< Context.tpe)
+                if (body1.tpe != null) {
+                  if (body1.tpe.typeSymbol == Context)
                     methodName = "flatMap"
                 }
                 else
@@ -206,12 +333,18 @@ abstract class SelectiveCPSTransform extends PluginComponent with
                 })
               }
               
+              def mkBlock(stms: List[Tree], expr: Tree) = if (stms.nonEmpty) Block(stms, expr) else expr
+              
               try { 
                 if (specialCaseTrivial) {
                   log("will optimize possible tail call: " + bodyExpr)
+                  
+                  // FIXME: flatMap impl has become more complicated due to
+                  // exceptions. do we need to put a try/catch in the then part??
+                  
                   // val ctx = <rhs>
                   // if (ctx.isTrivial)
-                  //   val <lhs> = ctx.getTrivialValue; ...
+                  //   val <lhs> = ctx.getTrivialValue; ...    <--- TODO: try/catch ??? don't bother for the moment...
                   // else
                   //   ctx.flatMap { <lhs> => ... }
                   val ctxSym = currentOwner.newValue(vd.symbol.name + "$shift").setInfo(rhs1.tpe)
@@ -220,9 +353,9 @@ abstract class SelectiveCPSTransform extends PluginComponent with
                   val argSym = currentOwner.newValue(vd.symbol.name).setInfo(tpe)
                   val argDef = localTyper.typed(ValDef(argSym, Select(ctxRef, ctxRef.tpe.member("getTrivialValue"))))
                   val switchExpr = localTyper.typed(atPos(vd.symbol.pos) {
-                    val body2 = duplicateTree(Block(bodyStms, bodyExpr)) // dup before typing!
+                    val body2 = duplicateTree(mkBlock(bodyStms, bodyExpr)) // dup before typing!
                     If(Select(ctxRef, ctxSym.tpe.member("isTrivial")),
-                      applyTrivial(argSym, Block(argDef::bodyStms, bodyExpr)),
+                      applyTrivial(argSym, mkBlock(argDef::bodyStms, bodyExpr)),
                       applyCombinatorFun(ctxRef, body2))
                   })
                   (List(ctxDef), switchExpr)
@@ -230,7 +363,7 @@ abstract class SelectiveCPSTransform extends PluginComponent with
                   // ctx.flatMap { <lhs> => ... }
                   //     or
                   // ctx.map { <lhs> => ... }
-                  (Nil, applyCombinatorFun(rhs1, Block(bodyStms, bodyExpr)))
+                  (Nil, applyCombinatorFun(rhs1, mkBlock(bodyStms, bodyExpr)))
                 }
               } catch {
                 case ex:TypeError =>
@@ -239,8 +372,9 @@ abstract class SelectiveCPSTransform extends PluginComponent with
               }
               
             case _ => 
+                val stm1 = transform(stm)
                 val (a, b) = transBlock(rest, expr)
-                (transform(stm)::a, b)
+                (stm1::a, b)
             }
       }
     }

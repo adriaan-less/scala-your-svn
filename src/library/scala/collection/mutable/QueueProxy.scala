@@ -6,15 +6,16 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
-/** <code>Queue</code> objects implement data structures that allow to
+/** `Queue` objects implement data structures that allow to
  *  insert and retrieve elements in a first-in-first-out (FIFO) manner.
- *
+ *  
+ *  @tparam A   type of the elements in this queue proxy.
+ *  
  *  @author  Matthias Zenger
  *  @version 1.1, 03/05/2004
  *  @since   1
@@ -45,24 +46,13 @@ trait QueueProxy[A] extends Queue[A] with Proxy {
    */
   override def +=(elem: A): this.type = { self += elem; this }
 
-  /** Adds all elements provided by an <code>Iterable</code> object
-   *  at the end of the queue. The elements are prepended in the order they
-   *  are given out by the iterator.
-   *
-   *  @param  iter        an iterable object
-   */
-  def ++=(iter: scala.collection.Iterable[A]): this.type = {
-    self ++= iter
-    this
-  }
-
   /** Adds all elements provided by an iterator
    *  at the end of the queue. The elements are prepended in the order they
    *  are given out by the iterator.
    *
    *  @param  iter        an iterator
    */
-  override def ++=(it: Iterator[A]): this.type = {
+  override def ++=(it: TraversableOnce[A]): this.type = {
     self ++= it
     this
   }

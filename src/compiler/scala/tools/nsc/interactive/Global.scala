@@ -7,7 +7,7 @@ import scala.collection.mutable.{LinkedHashMap, SynchronizedMap}
 import scala.concurrent.SyncVar
 import scala.util.control.ControlThrowable
 import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.util.{SourceFile, Position, RangePosition, OffsetPosition, NoPosition, WorkScheduler}
+import scala.tools.nsc.util.{SourceFile, Position, RangePosition, NoPosition, WorkScheduler}
 import scala.tools.nsc.reporters._
 import scala.tools.nsc.symtab._
 import scala.tools.nsc.ast._
@@ -110,7 +110,7 @@ self =>
   // ----------------- Polling ---------------------------------------
 
   /** Called from runner thread and signalDone:
-   *  Poll for exeptions. 
+   *  Poll for exceptions. 
    *  Poll for work reload/typedTreeAt/doFirst commands during background checking.
    */
   def pollForWork() {
@@ -269,7 +269,7 @@ self =>
     firsts = fs ::: (firsts diff fs)
   }
 
-  // ----------------- Implementations of client commmands -----------------------
+  // ----------------- Implementations of client commands -----------------------
   
   def respond[T](result: Response[T])(op: => T): Unit =
     try {

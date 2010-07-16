@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,6 +14,16 @@ package immutable
 import generic._
 
 /**
+ * A generic trait for immutable maps. Concrete classes have to provide
+ * functionality for the abstract methods in `Map`:
+ *
+ * {{{
+ *    def get(key: A): Option[B]
+ *    def iterator: Iterator[(A, B)]
+ *    def + [B1 >: B](kv: (A, B1)): Map[A, B1]
+ *    def -(key: A): Map[A, B]
+ * }}}
+ * 
  * @since 1
  */
 trait Map[A, +B] extends Iterable[(A, B)] 
@@ -38,10 +47,13 @@ trait Map[A, +B] extends Iterable[(A, B)]
   def withDefaultValue[B1 >: B](d: B1): Map[A, B1] = new Map.WithDefault[A, B1](this, x => d)
 }
 
-/**
- * @since 1
+/** $factoryInfo
+ *  @define Coll immutable.Map
+ *  @define coll immutable map
  */
 object Map extends ImmutableMapFactory[Map] {
+  
+  /** $mapCanBuildFromInfo */
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), Map[A, B]] = new MapCanBuildFrom[A, B]
 
   def empty[A, B]: Map[A, B] = EmptyMap.asInstanceOf[Map[A, B]]

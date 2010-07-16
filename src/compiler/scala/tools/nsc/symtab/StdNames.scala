@@ -2,12 +2,12 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
 
 import scala.reflect.NameTransformer
+import util.Chars.isOperatorPart
 
 trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
 
@@ -94,6 +94,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val SELECTOR_DUMMY = newTermName("<unapply-selector>")
 
     val MODULE_INSTANCE_FIELD = newTermName("MODULE$")
+    val SPECIALIZED_INSTANCE  = newTermName("specInstance$")
 
     def isLocalName(name: Name) = name.endsWith(LOCAL_SUFFIX)
     def isSetterName(name: Name) = name.endsWith(SETTER_SUFFIX)
@@ -101,18 +102,8 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     def isTraitSetterName(name: Name) = isSetterName(name) && name.pos(TRAIT_SETTER_SEPARATOR_STRING) < name.length
     def isOpAssignmentName(name: Name) = 
       name(name.length - 1) == '=' &&
-      isOperatorCharacter(name(0)) &&
+      isOperatorPart(name(0)) &&
       name(0) != '=' && name != NEraw && name != LEraw && name != GEraw
-      
-    def isOperatorCharacter(c: Char) = c match {
-      case '~' | '!' | '@' | '#' | '%' | 
-           '^' | '*' | '+' | '-' | '<' |
-           '>' | '?' | ':' | '=' | '&' | 
-           '|' | '\\'| '/' => true
-      case _ =>
-        val chtp = Character.getType(c)
-        chtp == Character.MATH_SYMBOL.toInt || chtp == Character.OTHER_SYMBOL.toInt
-      }
 
     /** The expanded setter name of `name' relative to this class `base` 
      */
@@ -130,6 +121,26 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
         name.subName(i, name.length)
       } else name
     }
+
+    /** Return the original name and the types on which this name
+     *  is specialized. For example,
+     *  {{{
+     *     splitSpecializedName("foo$mIcD$sp") == ('foo', "I", "D")
+     *  }}}
+     *  `foo$mIcD$sp` is the name of a method specialized on two type
+     *  parameters, the first one belonging to the method itself, on Int,
+     *  and another one belonging to the enclosing class, on Double.
+     */
+    def splitSpecializedName(name: Name): (Name, String, String) =
+      if (name.endsWith("$sp")) {
+        val name1 = name.subName(0, name.length - 3)
+        val idxC = name1.lastPos('c')
+        val idxM = name1.lastPos('m', idxC)
+        (name1.subName(0, idxM - 1).toString,
+         name1.subName(idxC + 1, name1.length).toString,
+         name1.subName(idxM + 1, idxC).toString)
+      } else
+        (name, "", "")
 
     def localToGetter(name: Name): Name = {
       assert(isLocalName(name))//debug
@@ -174,7 +185,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
       
     /** The name of an accessor for protected symbols. */
     def protName(name: Name): Name = newTermName(PROTECTED_PREFIX + name)
-      
+
     /** The name of a setter for protected symbols. Used for inherited Java fields. */
     def protSetterName(name: Name): Name = newTermName(PROTECTED_PREFIX + "set" + name)
     
@@ -263,6 +274,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val assume_ = newTermName("assume")
     val asInstanceOf_ = newTermName("asInstanceOf")
     val box = newTermName("box")
+    val bytes = newTermName("bytes")
     val canEqual_ = newTermName("canEqual")
     val checkInitialized = newTermName("checkInitialized")
     val classOf = newTermName("classOf")
@@ -295,6 +307,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val hasNext = newTermName("hasNext")
     val head = newTermName("head")
     val invoke_ = newTermName("invoke")
+    val isArray = newTermName("isArray")
     val isInstanceOf_ = newTermName("isInstanceOf")
     val isDefinedAt = newTermName("isDefinedAt")
     val isEmpty = newTermName("isEmpty")
@@ -316,12 +329,13 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val print = newTermName("print")
     val productArity = newTermName("productArity")
     val productElement = newTermName("productElement")
-    val productElementName = newTermName("productElementName")
+    // val productElementName = newTermName("productElementName")
     val productPrefix = newTermName("productPrefix")
     val readResolve = newTermName("readResolve")
     val sameElements = newTermName("sameElements")
     val scala_ = newTermName("scala")
     val self = newTermName("self")
+    val setAccessible = newTermName("setAccessible")
     val synchronized_ = newTermName("synchronized")
     val tail = newTermName("tail")
     val toArray = newTermName("toArray")

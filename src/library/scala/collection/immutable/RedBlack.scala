@@ -6,14 +6,14 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package immutable
 
-/**
- * @since 2.3
+/** A base class containing the implementations for `TreeMaps` and `TreeSets`.
+ *  
+ *  @since 2.3
  */
 @serializable @SerialVersionUID(8691885935445612921L)
 abstract class RedBlack[A] {

@@ -102,7 +102,7 @@ trait Symbols { self: Universe =>
      */
     def sourceModule: Symbol = NoSymbol
 
-    /** If symbol is an object defition, it's implied associated class,
+    /** If symbol is an object definition, it's implied associated class,
      *  otherwise NoSymbol
      */
     def moduleClass: Symbol
@@ -119,6 +119,7 @@ trait Symbols { self: Universe =>
           def isTrait: Boolean = isClass && hasFlag(TRAIT) // refined later for virtual classes.
     final def hasDefault = isParameter && hasFlag(DEFAULTPARAM)
     final def isAbstractClass = isClass && hasFlag(ABSTRACT)
+    // XXX This is unlikely to be correct: it's not looking for the ABSOVERRIDE flag?
     final def isAbstractOverride = isTerm && hasFlag(ABSTRACT) && hasFlag(OVERRIDE)
     final def isBridge = hasFlag(BRIDGE)
     final def isCase = hasFlag(CASE)

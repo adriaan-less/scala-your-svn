@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -14,7 +13,6 @@ package scala.swing
 import event._
 import javax.swing.{JList, JComponent, JComboBox, JTextField, ComboBoxModel, AbstractListModel, ListCellRenderer}
 import java.awt.event.ActionListener
-
 
 object ComboBox {
   /**
@@ -205,8 +203,8 @@ class ComboBox[A](items: Seq[A]) extends Component with Publisher {
     peer.setEditor(editor(this).comboBoxPeer)
   }
   
-  def prototypeDisplayValue: Option[A] = Swing.toOption(peer.getPrototypeDisplayValue)
+  def prototypeDisplayValue: Option[A] = toOption[A](peer.getPrototypeDisplayValue)
   def prototypeDisplayValue_=(v: Option[A]) { 
-    peer.setPrototypeDisplayValue(Swing.toNull(v.map(_.asInstanceOf[AnyRef]))) 
+    peer.setPrototypeDisplayValue(v map toAnyRef orNull)
   }
 }

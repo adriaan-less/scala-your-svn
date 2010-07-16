@@ -6,42 +6,34 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.collection
 package mutable
 
-import generic._
-import compat.Platform.arraycopy
-import scala.reflect.Manifest
+import java.lang.{ StringBuilder => JavaStringBuilder }
+import annotation.migration
 
-/** <p>
- *    A mutable sequence of characters.  This class provides an API compatible
- *    with <a class="java/lang/StringBuilder" href="" target="_top">
- *    <code>java.lang.StringBuilder</code></a>.
- *  </p>generic/
+/** A builder for mutable sequence of characters.  This class provides an API
+ *  mostly compatible with java.lang.StringBuilder, except where there are conflicts
+ *  with the Scala collections API (such as the `reverse` method.)
  *
  *  @author Stephane Micheloud
  *  @author Martin Odersky
  *  @version 2.8
- *  @since   2.8
+ *  @since   2.7
  */
 @serializable
 @SerialVersionUID(0 - 8525408645367278351L)
-final class StringBuilder(initCapacity: Int, private val initValue: String)
+final class StringBuilder(private val underlying: JavaStringBuilder)
       extends Builder[Char, String]
-         with IndexedSeq[Char] {
-
-  require(initCapacity >= 0)
-
-  import scala.collection.Seq
-
-  /** The value is used for character storage. */
-  private var array = new Array[Char](initCapacity + initValue.length)
-
-  /** The count is the number of characters used. */
-  private var count: Int = 0
+         with java.lang.CharSequence
+         with IndexedSeq[Char] 
+         with IndexedSeqOptimized[Char, IndexedSeq[Char]] {
+  
+  /** Constructs a string builder initialized with String initValue
+   *  and with additional Char capacity initCapacity.
+   */
+  def this(initCapacity: Int, initValue: String) =
+    this(new JavaStringBuilder(initValue.length + initCapacity) append initValue)
 
   /** Constructs a string builder with no characters in it and an 
    *  initial capacity of 16 characters.
@@ -49,11 +41,10 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
   def this() = this(16, "")
 
   /** Constructs a string builder with no characters in it and an 
-   *  initial capacity specified by the <code>capacity</code> argument. 
+   *  initial capacity specified by the capacity argument. 
    *
    *  @param  capacity  the initial capacity.
-   *  @throws NegativeArraySizeException  if the <code>capacity</code>
-   *                    argument is less than <code>0</code>.
+   *  @throws NegativeArraySizeException  if capacity < 0.
    */
   def this(capacity: Int) = this(capacity, "")
 
@@ -62,206 +53,139 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    */
   def this(str: String) = this(16, str)
 
-  append(initValue)
-
-  def toArray: Array[Char] = array
-
-  def length: Int = count
-  def length_=(n: Int) { setLength(n) }
+  def toArray: Array[Char] = {
+    val arr = new Array[Char](length)
+    underlying.getChars(0, length, arr, 0)
+    arr
+  }
+  
+  def length: Int = underlying.length()
+  def length_=(n: Int) { underlying.setLength(n) }
  
   /** Clears the builder contents.
    */
   def clear(): Unit = setLength(0)
 
- /** Sets the length of the character sequence.
+  /** Sets the length of the character sequence.  If the current sequence
+   *  is shorter than the given length, it is padded with nulls; if it is
+   *  longer, it is truncated.
    *
-   *  @param  newLength  the new length
-   *  @throws IndexOutOfBoundsException  if the <code>n</code> argument is negative.
+   *  @param  len  the new length
+   *  @throws IndexOutOfBoundsException if the argument is negative.
    */
-  def setLength(n: Int) {
-    require(n >= 0, n)
-    while (count < n) append('\0')
-    count = n
-  }
+  def setLength(len: Int) { underlying setLength len }
 
-  /** Returns the current capacity. The capacity is the amount of storage 
-   *  available for newly inserted characters, beyond which an allocation 
-   *  will occur.
+  /** Returns the current capacity, which is the size of the underlying array.
+   *  A new array will be allocated if the current capacity is exceeded.
    *
-   *  @return  the current capacity
+   *  @return  the capacity
    */
-  def capacity: Int = array.length
+  def capacity: Int = underlying.capacity()
 
-  /** Same as <code>ensureCapacity</code>. */
-  @deprecated("use `ensureCapacity' instead. An assignment is misleading because\n"+
+  @deprecated("Use `ensureCapacity' instead. An assignment is misleading because\n"+
               "it can never decrease the capacity.")
   def capacity_=(n: Int) { ensureCapacity(n) }
 
-  /** <p>
-   *    Ensures that the capacity is at least equal to the specified minimum.
-   *    If the current capacity is less than the argument, then a new internal
-   *    array is allocated with greater capacity. The new capacity is the larger of: 
-   *  </p>
-   *  <ul>
-   *    <li>The <code>n</code> argument. 
-   *    <li>Twice the old capacity, plus <code>2</code>. 
-   *  </ul>
-   *  <p>
-   *    If the <code>n</code> argument is non-positive, this
-   *    method takes no action and simply returns.
-   *  </p>
+  /** Ensure that the capacity is at least the given argument.
+   *  If the argument is greater than the current capacity, new
+   *  storage will be allocated with size equal to the given
+   *  argument or to (2 * capacity + 2), whichever is larger.
    *
-   *  @param n the minimum desired capacity.
+   *  @param newCapacity    the minimum desired capacity.
    */
-  def ensureCapacity(n: Int) {
-    if (n > array.length) {
-      var newsize = (array.length * 2) max 1
-      while (n > newsize)
-        newsize = newsize * 2
-      val newar = new Array[Char](newsize)
-      arraycopy(array, 0, newar, 0, count)
-      array = newar
-    }
-  }
+  def ensureCapacity(newCapacity: Int): Unit = underlying ensureCapacity newCapacity
       
-  /** <p>
-   *    Returns the <code>Char</code> value in this sequence at the specified index.
-   *    The first <code>Char</code> value is at index <code>0</code>, the next at index
-   *    <code>1</code>, and so on, as in array indexing.
-   *  </p>
-   *  <p>
-   *    The index argument must be greater than or equal to
-   *    <code>0</code>, and less than the length of this sequence.
-   *  </p>
+  /** Returns the Char at the specified index, counting from 0 as in Arrays.
    *
-   *  @param  index   the index of the desired <code>Char</code> value.
-   *  @return         the <code>Char</code> value at the specified index.
-   *  @throws IndexOutOfBoundsException  if <code>index</code> is 
-   *                  negative or greater than or equal to <code>length()</code>.
+   *  @param  index   the index to look up
+   *  @return         the Char at the given index.
+   *  @throws IndexOutOfBoundsException  if the index is out of bounds.
    */
-  def charAt(index: Int): Char = {
-    if (index < 0 || index >= count)
-      throw new StringIndexOutOfBoundsException(index)
-    array(index)
-  }
+  def charAt(index: Int): Char = underlying charAt index
 
-  /** Same as <code>charAt</code>. */
-  def apply(i: Int): Char = charAt(i)
+  /** Equivalent to charAt.
+   */
+  def apply(index: Int): Char = underlying charAt index
 
-  /** <p>
-   *    Removes the <code>Char</code> at the specified position in this
-   *    sequence. This sequence is shortened by one <code>Char</code>.
-   *  </p>
+  /** Removes the Char at the specified index.  The sequence is
+   *  shortened by one.
    *
-   *  @param  index  Index of <code>Char</code> to remove
-   *  @return        This object.
-   *  @throws StringIndexOutOfBoundsException  if the <code>index</code>
-   *	             is negative or greater than or equal to <code>length()</code>.
+   *  @param  index  The index to remove.
+   *  @return        This StringBuilder.
+   *  @throws IndexOutOfBoundsException  if the index is out of bounds.
    */
   def deleteCharAt(index: Int): StringBuilder = {
-    if (index < 0 || index >= count)
-      throw new StringIndexOutOfBoundsException(index)
-    arraycopy(array, index + 1, array, index, count - index - 1)
-    count -= 1
+    underlying deleteCharAt index
     this
   }
 
-  /** <p>
-   *    The character at the specified index is set to <code>ch</code>. This 
-   *    sequence is altered to represent a new character sequence that is 
-   *    identical to the old character sequence, except that it contains the 
-   *    character <code>ch</code> at position <code>index</code>. 
-   *  </p>
-   *  <p>
-   *    The index argument must be greater than or equal to 
-   *    <code>0</code>, and less than the length of this sequence. 
-   *  </p>
+  /** Update the sequence at the given index to hold the specified Char.
    *
-   *  @param  index   the index of the character to modify.
-   *  @param  ch      the new character.
-   *  @throws IndexOutOfBoundsException  if <code>index</code> is 
-   *                  negative or greater than or equal to <code>length()</code>.
+   *  @param  index   the index to modify.
+   *  @param  ch      the new Char.
+   *  @throws IndexOutOfBoundsException  if the index is out of bounds.
    */
-  def setCharAt(index: Int, ch: Char) {
-    if (index < 0 || index >= count)
-      throw new StringIndexOutOfBoundsException(index)
-    array(index) = ch
-  }
+  def setCharAt(index: Int, ch: Char): Unit = underlying.setCharAt(index, ch)
 
-  /** Same as <code>setCharAt</code>. */
-  def update(i: Int, c: Char) { setCharAt(i, c) }
+  /** Equivalent to setCharAt.
+   */
+  def update(i: Int, c: Char): Unit = setCharAt(i, c)
 
-  /** Returns a new <code>String</code> that contains a subsequence of
-   *  characters currently contained in this character sequence. The 
-   *  substring begins at the specified index and extends to the end of
-   *  this sequence.
+  /** Returns a new String made up of a subsequence of this sequence,
+   *  beginning at the given index and extending to the end of the sequence.
+   *
+   *  target.substring(start)  is equivalent to  target.drop(start)
    * 
-   *  @param  start  The beginning index, inclusive.
-   *  @return        The new string.
-   *  @throws StringIndexOutOfBoundsException  if <code>start</code> is
-   *                 less than zero, or greater than the length of this object.
+   *  @param  start  The starting index, inclusive.
+   *  @return        The new String.
+   *  @throws IndexOutOfBoundsException  if the index is out of bounds.
    */
-  def substring(start: Int): String = substring(start, count)
+  def substring(start: Int): String = substring(start, length)
 
-  /** Returns a new <code>String</code> that contains a subsequence of
-   *  characters currently contained in this sequence. The 
-   *  substring begins at the specified <code>start</code> and 
-   *  extends to the character at index <code>end - 1</code>.
+  /** Returns a new String made up of a subsequence of this sequence,
+   *  beginning at the start index (inclusive) and extending to the
+   *  end index (exclusive).
+   *
+   *  target.substring(start, end)  is equivalent to  target.slice(start, end).mkString
    *
    *  @param  start  The beginning index, inclusive.
    *  @param  end    The ending index, exclusive.
-   *  @return The new string.
-   *  @throws StringIndexOutOfBoundsException  if <code>start</code>
-   *                 or <code>end</code> are negative or greater than
-   *		     <code>length()</code>, or <code>start</code> is
-   *		     greater than <code>end</code>.
+   *  @return The new String.
+   *  @throws StringIndexOutOfBoundsException If either index is out of bounds,
+   *          or if start > end.
    */
-  def substring(start: Int, end: Int): String = {
-    if (start < 0)
-      throw new StringIndexOutOfBoundsException(start)
-    if (end > count)
-      throw new StringIndexOutOfBoundsException(end)
-    if (start > end)
-      throw new StringIndexOutOfBoundsException(end - start)
-    new String(array, start, end - start)
-  }
+  def substring(start: Int, end: Int): String = underlying.substring(start, end)
 
+  /** For implementing CharSequence.
+   */
   def subSequence(start: Int, end: Int): java.lang.CharSequence = substring(start, end)
 
-  /* Appends the string representation of the <code>Any</code> argument.
+  /** Appends the given Char to the end of the sequence.
    */
   def +=(x: Char): this.type = { append(x); this }
 
+  /** !!! This should create a new sequence.
+   */
   def +(x: Char): this.type = { +=(x); this }
 
-
-  /** <p>
-   *    Appends the string representation of the <code>Any</code> 
-   *    argument.
-   *  </p>
-   *  <p>
-   *    The argument is converted to a string as if by the method 
-   *    <code>String.valueOf</code>, and the characters of that 
-   *    string are then appended to this sequence.
-   *  </p>
+  /** Appends the string representation of the given argument,
+   *  which is converted to a String with String.valueOf.
    *
    *  @param  x   an <code>Any</code> object.
-   *  @return     a reference to this object.
+   *  @return     this StringBuilder.
    */
-  def append(x: Any): StringBuilder =
-    append(String.valueOf(x))
+  def append(x: Any): StringBuilder = {
+    underlying append String.valueOf(x)
+    this
+  }
 
-  /** Appends the specified string to this character sequence.
+  /** Appends the given String to this sequence.
    *
-   *  @param  s   a string.
-   *  @return     a reference to this object.
+   *  @param  s   a String.
+   *  @return     this StringBuilder.
    */
   def append(s: String): StringBuilder = {
-    val str = if (s == null) "null" else s
-    val len = str.length
-    ensureCapacity(count + len)
-    str.getChars(0, len, array, count)
-    count += len
+    underlying append s
     this
   }
 
@@ -270,589 +194,240 @@ final class StringBuilder(initCapacity: Int, private val initValue: String)
    *  @param sb
    *  @return 
    */
-  def append(sb: StringBuilder): StringBuilder =
-    if (sb == null)
-      append("null")
-    else {
-      val len = sb.length
-      ensureCapacity(count + len)
-      arraycopy(sb.toArray, 0, array, count, len)
-      count += len
-      this
-    }
-
-  /** <p>
-   *    Appends the string representation of the <code>Char</code> sequence 
-   *    argument to this sequence.
-   *  </p>
-   *  <p>
-   *    The characters of the sequence argument are appended, in order,
-   *    to the contents of this sequence. The length of this sequence
-   *    increases by the length of the argument.
-   *  </p>
-   *
-   *  @param  x  the characters to be appended.
-   *  @return    a reference to this object.
-   */
-  def appendAll(x: Seq[Char]): StringBuilder =
-    appendAll(x.toArray, 0, x.length)
-
-  @deprecated("use appendAll instead. This method is deprecated because of the\n"+
-              "possible confusion with `append(Any)'.")
-  def append(x: Seq[Char]): StringBuilder =
-    appendAll(x)
-      
-  /** <p>
-   *    Appends the string representation of the <code>Char</code> array 
-   *    argument to this sequence.
-   *  </p>
-   *  <p>
-   *    The characters of the array argument are appended, in order, to 
-   *    the contents of this sequence. The length of this sequence
-   *    increases by the length of the argument.
-   *  </p>
-   *
-   *  @param  x  the characters to be appended.
-   *  @return    a reference to this object.
-   */
-  def appendAll(x: Array[Char]): StringBuilder =
-    appendAll(x, 0, x.length)
-
-  @deprecated("use appendAll instead. This method is deprecated because\n"+
-              "of the possible confusion with `append(Any)'.")
-  def append(x: Array[Char]): StringBuilder =
-    appendAll(x)
-
-  /** <p>
-   *    Appends the string representation of a subarray of the
-   *    <code>char</code> array argument to this sequence.
-   *  </p>
-   *  <p>
-   *    Characters of the <code>Char</code> array <code>x</code>, starting at
-   *    index <code>offset</code>, are appended, in order, to the contents
-   *    of this sequence. The length of this sequence increases
-   *    by the value of <code>len</code>.
-   *  </p>
-   *
-   *  @param  x      the characters to be appended.
-   *  @param  offset the index of the first <code>Char</code> to append.
-   *  @param  len    the number of <code>Char</code>s to append.
-   *  @return        a reference to this object.
-   */
-  def appendAll(x: Array[Char], offset: Int, len: Int): StringBuilder = {
-    ensureCapacity(count + len)
-    arraycopy(x, offset, array, count, len)
-    count += len
+  def append(sb: StringBuilder): StringBuilder = {
+    underlying append sb
     this
   }
 
-  @deprecated("use appendAll instead. This method is deprecated because\n"+
-              "of the possible confusion with `append(Any, Int, Int)'.")
-  def append(x: Array[Char], offset: Int, len: Int): StringBuilder = 
-    appendAll(x, offset, len)
-
-  /** <p>
-   *    Appends the string representation of the <code>Boolean</code> 
-   *    argument to the sequence.
-   *  </p>
-   *  <p>
-   *    The argument is converted to a string as if by the method 
-   *    <code>String.valueOf</code>, and the characters of that 
-   *   string are then appended to this sequence. 
-   *  </p>
+  /** Appends all the Chars in the given Seq[Char] to this sequence.
    *
-   *   @param  x  a <code>Boolean</code>.
-   *   @return    a reference to this object.
+   *  @param  xs  the characters to be appended.
+   *  @return     this StringBuilder.
    */
-  def append(x: Boolean): StringBuilder = append(String.valueOf(x))
-  def append(x: Byte): StringBuilder = append(String.valueOf(x))
+  def appendAll(xs: TraversableOnce[Char]): StringBuilder = appendAll(xs.toArray)
 
-  def append(x: Char): StringBuilder = {
-    ensureCapacity(count + 1)
-    array(count) = x
-    count += 1
+  /** Appends all the Chars in the given Array[Char] to this sequence.
+   *
+   *  @param  xs  the characters to be appended.
+   *  @return     a reference to this object.
+   */
+  def appendAll(xs: Array[Char]): StringBuilder = {
+    underlying append xs
     this
   }
 
-  def append(x: Short): StringBuilder =
-    append(String.valueOf(x))
+  /** Appends a portion of the given Array[Char] to this sequence.
+   *
+   *  @param  xs      the Array containing Chars to be appended.
+   *  @param  offset  the index of the first Char to append.
+   *  @param  len     the numbers of Chars to append.
+   *  @return         this StringBuilder.
+   */
+  def appendAll(xs: Array[Char], offset: Int, len: Int): StringBuilder = {
+    underlying.append(xs, offset, len)
+    this
+  }
 
-  def append(x: Int): StringBuilder =
-    append(String.valueOf(x))
+  /** Append the String representation of the given primitive type
+   *  to this sequence.  The argument is converted to a String with
+   *  String.valueOf.
+   *
+   *  @param   x  a primitive value
+   *  @return     This StringBuilder.
+   */
+  def append(x: Boolean): StringBuilder = { underlying append x ; this }
+  def append(x: Byte): StringBuilder = { underlying append x ; this }
+  def append(x: Short): StringBuilder = { underlying append x ; this }
+  def append(x: Int): StringBuilder = { underlying append x ; this }
+  def append(x: Long): StringBuilder = { underlying append x ; this }
+  def append(x: Float): StringBuilder = { underlying append x ; this }
+  def append(x: Double): StringBuilder = { underlying append x ; this }
+  def append(x: Char): StringBuilder = { underlying append x ; this }
 
-  def append(x: Long): StringBuilder =
-    append(String.valueOf(x))
-
-  def append(x: Float): StringBuilder =
-    append(String.valueOf(x))
-
-  def append(x: Double): StringBuilder = 
-    append(String.valueOf(x))
-
-  /** Removes the characters in a substring of this sequence.
-   *  The substring begins at the specified <code>start</code> and extends to
-   *  the character at index <code>end - 1</code> or to the end of the
-   *  sequence if no such character exists. If
-   *  <code>start</code> is equal to <code>end</code>, no changes are made.
+  /** Remove a subsequence of Chars from this sequence, starting at the
+   *  given start index (inclusive) and extending to the end index (exclusive)
+   *  or to the end of the String, whichever comes first.
    *
    *  @param  start  The beginning index, inclusive.
    *  @param  end    The ending index, exclusive.
-   *  @return        This object.
-   *  @throws StringIndexOutOfBoundsException  if <code>start</code>
-   *                 is negative, greater than <code>length()</code>, or
-   *		     greater than <code>end</code>.
+   *  @return        This StringBuilder.
+   *  @throws StringIndexOutOfBoundsException   if start < 0 || start > end
    */
   def delete(start: Int, end: Int): StringBuilder = {
-    if (start < 0 || start > end)
-      throw new StringIndexOutOfBoundsException(start)
-    val end0 = if (end > count) count else end
-    val len = end0 - start
-    if (len > 0) {
-      arraycopy(array, start + len, array, start, count - end0)
-      count -= len
-    }
+    underlying.delete(start, end)
     this
   }
 
-  /** Replaces the characters in a substring of this sequence
-   *  with characters in the specified <code>String</code>. The substring
-   *  begins at the specified <code>start</code> and extends to the character
-   *  at index <code>end - 1</code> or to the end of the sequence if no such
-   *  character exists. First the characters in the substring are removed and
-   *  then the specified <code>String</code> is inserted at <code>start</code>.
+  /** Replaces a subsequence of Chars with the given String.  The semantics
+   *  are as in delete, with the String argument then inserted at index 'start'.
    * 
    *  @param  start  The beginning index, inclusive.
    *  @param  end    The ending index, exclusive.
-   *  @param  str    String that will replace previous contents.
-   *  @return        This object.
-   *  @throws StringIndexOutOfBoundsException  if <code>start</code>
-   *                 is negative, greater than <code>length()</code>, or
-   *		     greater than <code>end</code>.
+   *  @param  str    The String to be inserted at the start index.
+   *  @return        This StringBuilder.
+   *  @throws StringIndexOutOfBoundsException if start < 0, start > length, or start > end
    */
-  def replace(start: Int, end: Int, str: String) {
-    if (start < 0 || start > count || start > end)
-      throw new StringIndexOutOfBoundsException(start)
-
-    val end0 = if (end > count) count else end
-    val len = str.length()
-    val newCount = count + len - (end0 - start)
-    ensureCapacity(newCount)
-
-    arraycopy(array, end, array, start + len, count - end)
-    str.getChars(0, len, array, start)  
-    count = newCount
+  def replace(start: Int, end: Int, str: String): StringBuilder = {
+    underlying.replace(start, end, str)
     this
   }
 
-  /** Inserts the string representation of a subarray of the <code>str</code>
-   *  array argument into this sequence. The subarray begins at the specified
-   *  <code>offset</code> and extends <code>len</code> <code>char</code>s.
-   *  The characters of the subarray are inserted into this sequence at
-   *  the position indicated by <code>index</code>. The length of this
-   *  sequence increases by <code>len</code> <code>Char</code>s.
+  /** Inserts a subarray of the given Array[Char] at the given index
+   *  of this sequence.
    *
-   * @param  index   position at which to insert subarray.
-   * @param  str     a <code>Char</code> array.
-   * @param  offset  the index of the first <code>char</code> in subarray to
-   *                 be inserted.
-   * @param  len     the number of <code>Char</code>s in the subarray to
-   *                 be inserted.
-   * @return         This object
-   * @throws StringIndexOutOfBoundsException  if <code>index</code>
-   *                 is negative or greater than <code>length()</code>, or
-   *                 <code>offset</code> or <code>len</code> are negative, or
-   *                 <code>(offset+len)</code> is greater than
-   *                 <code>str.length</code>.
+   * @param  index   index at which to insert the subarray.
+   * @param  str     the Array from which Chars will be taken.
+   * @param  offset  the index of the first Char to insert.
+   * @param  len     the number of Chars from 'str' to insert.
+   * @return         This StringBuilder.
+   *
+   * @throws StringIndexOutOfBoundsException  if index < 0, index > length,
+   *         offset < 0, len < 0, or (offset + len) > str.length.
    */
   def insertAll(index: Int, str: Array[Char], offset: Int, len: Int): StringBuilder = {
-    if (index < 0 || index > count)
-      throw new StringIndexOutOfBoundsException(index)
-    if (offset < 0 || len < 0 || offset > str.length - len)
-      throw new StringIndexOutOfBoundsException(
-                "offset " + offset + ", len " + len +
-                ", str.length " + str.length)
-    ensureCapacity(count + len)
-    arraycopy(array, index, array, index + len, count - index)
-    arraycopy(str, offset, array, index, len)
-    count += len
+    underlying.insert(index, str, offset, len)
     this
   }
+
+  /** Inserts the String representation (via String.valueOf) of the given
+   *  argument into this sequence at the given index.
+   *
+   *  @param  index   the index at which to insert.
+   *  @param  x       a value.
+   *  @return         this StringBuilder.
+   *  @throws StringIndexOutOfBoundsException  if the index is out of bounds.
+   */
+  def insert(index: Int, x: Any): StringBuilder = insert(index, String.valueOf(x))
+  
+  /** Inserts the String into this character sequence.
+   *
+   *  @param  index the index at which to insert.
+   *  @param  x     a String.
+   *  @return       this StringBuilder.
+   *  @throws StringIndexOutOfBoundsException  if the index is out of bounds.
+   */
+  def insert(index: Int, x: String): StringBuilder = {
+    underlying.insert(index, x)
+    this
+  }
+
+  /** Inserts the given Seq[Char] into this sequence at the given index.
+   *
+   *  @param  index the index at which to insert.
+   *  @param  xs    the Seq[Char].
+   *  @return       this StringBuilder.
+   *  @throws StringIndexOutOfBoundsException  if the index is out of bounds.
+   */
+  def insertAll(index: Int, xs: TraversableOnce[Char]): StringBuilder = insertAll(index, xs.toArray)
+
+  /** Inserts the given Array[Char] into this sequence at the given index.
+   *
+   *  @param  index the index at which to insert.
+   *  @param  xs    the Array[Char].
+   *  @return       this StringBuilder.
+   *  @throws StringIndexOutOfBoundsException  if the index is out of bounds.
+   */
+  def insertAll(index: Int, xs: Array[Char]): StringBuilder = {
+    underlying.insert(index, xs)
+    this
+  }
+
+  /** Calls String.valueOf on the given primitive value, and inserts the
+   *  String at the given index.
+   *
+   *  @param  index the offset position.
+   *  @param  x     a primitive value.
+   *  @return       this StringBuilder.
+   */
+  def insert(index: Int, x: Boolean): StringBuilder = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Byte): StringBuilder    = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Short): StringBuilder   = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Int): StringBuilder     = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Long): StringBuilder    = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Float): StringBuilder   = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Double): StringBuilder  = insert(index, String.valueOf(x))
+  def insert(index: Int, x: Char): StringBuilder    = insert(index, String.valueOf(x))
+  
+  @deprecated("Use appendAll instead. This method is deprecated because of the\n"+
+              "possible confusion with `append(Any)'.")
+  def append(x: Seq[Char]): StringBuilder = appendAll(x)
+
+  @deprecated("use appendAll instead. This method is deprecated because\n"+
+              "of the possible confusion with `append(Any)'.")
+  def append(x: Array[Char]): StringBuilder = appendAll(x)
+
+  @deprecated("use appendAll instead. This method is deprecated because\n"+
+              "of the possible confusion with `append(Any, Int, Int)'.")
+  def append(x: Array[Char], offset: Int, len: Int): StringBuilder = appendAll(x, offset, len)
 
   @deprecated("use insertAll instead. This method is deprecated because of the\n"+
               "possible confusion with `insert(Int, Any, Int, Int)'.")
   def insert(index: Int, str: Array[Char], offset: Int, len: Int): StringBuilder = 
     insertAll(index, str, offset, len)
 
-  /** <p>
-   *    Inserts the string representation of the <code>Any</code> 
-   *    argument into this character sequence.
-   *  </p>
-   *  <p>
-   *    The second argument is converted to a string as if by the method 
-   *    <code>String.valueOf</code>, and the characters of that 
-   *    string are then inserted into this sequence at the indicated 
-   *    offset. 
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 
-   *    <code>0</code>, and less than or equal to the length of this 
-   *    sequence.
-   *  </p>
+  @deprecated("use insertAll instead. This method is deprecated because of\n"+
+              "the possible confusion with `insert(Int, Any)'.")
+  def insert(at: Int, x: Seq[Char]): StringBuilder = insertAll(at, x)
+
+  @deprecated("use insertAll instead. This method is deprecated because of\n"+
+              "the possible confusion with `insert(Int, Any)'.")
+  def insert(at: Int, x: Array[Char]): StringBuilder = insertAll(at, x)
+
+  /** Finds the index of the first occurrence of the specified substring.
    *
-   *  @param  offset  the offset.
-   *  @param  x       an <code>Any</code> value.
-   *  @return         a reference to this object.
-   *  @throws StringIndexOutOfBoundsException  if the offset is invalid.
+   *  @param    str       the target string to search for
+   *  @return             the first applicable index where target occurs, or -1 if not found.
    */
-  def insert(at: Int, x: Any): StringBuilder =
-    insert(at, String.valueOf(x))
+  def indexOf(str: String): Int = underlying.indexOf(str)
+
+  /** Finds the index of the first occurrence of the specified substring.
+   *
+   *  @param    str       the target string to search for
+   *  @param    fromIndex the smallest index in the source string to consider
+   *  @return             the first applicable index where target occurs, or -1 if not found.
+   */
+  def indexOf(str: String, fromIndex: Int): Int = underlying.indexOf(str, fromIndex)
+
+  /** Finds the index of the last occurrence of the specified substring.
+   *
+   *  @param    str       the target string to search for
+   *  @return             the last applicable index where target occurs, or -1 if not found.
+   */
+  def lastIndexOf(str: String): Int = underlying.lastIndexOf(str)
+
+  /** Finds the index of the last occurrence of the specified substring.
+   *
+   *  @param    str       the target string to search for
+   *  @param    fromIndex the smallest index in the source string to consider
+   *  @return             the last applicable index where target occurs, or -1 if not found.
+   */
+  def lastIndexOf(str: String, fromIndex: Int): Int = underlying.lastIndexOf(str, fromIndex)
   
-  /** Inserts the string into this character sequence.
+  /** Creates a new StringBuilder with the reversed contents of this one.
+   *  If surrogate pairs are present, they are treated as indivisible units: each
+   *  pair will appear in the same order in the updated sequence.
    *
-   *  @param  at  the offset position.
-   *  @param  x   a string.
-   *  @return     a reference to this object.
-   *  @throws StringIndexOutOfBoundsException  if the offset is invalid.
+   *  @return   the reversed StringBuilder
    */
-  def insert(at: Int, x: String): StringBuilder = {
-    if (at < 0 || at > count)
-      throw new StringIndexOutOfBoundsException(at)
-    val str = if (x == null) "null" else x
-    val len = str.length
-    ensureCapacity(count + len)
-    arraycopy(array, at, array, at + len, count - at)
-    str.getChars(0, len, array, at)
-    count += len
+  @migration(2, 8, "Since 2.8 reverse returns a new instance.  Use 'reverseContents' to update in place.")
+  override def reverse: StringBuilder = new StringBuilder(new JavaStringBuilder(underlying) reverse)
+  
+  override def clone(): StringBuilder = new StringBuilder(new JavaStringBuilder(underlying))
+
+  /** Like reverse, but destructively updates the target StringBuilder.
+   *
+   *  @return   the reversed StringBuilder (same as the target StringBuilder)
+   */
+  def reverseContents(): StringBuilder = {
+    underlying.reverse()
     this
   }
 
-  /** Inserts the string representation of the <code>Char</code> sequence 
-   *  argument into this sequence.
+  /** Returns a new String representing the data in this sequence.
    *
-   *  @param  at  the offset position.
-   *  @param  x   a character sequence.
-   *  @return     a reference to this object.
-   *  @throws StringIndexOutOfBoundsException  if the offset is invalid.
+   *  @return  the current contents of this sequence as a String
    */
-  def insertAll(at: Int, x: Seq[Char]): StringBuilder =
-    insertAll(at, x.toArray)
-
-  @deprecated("use insertAll instead. This method is deprecated because of\n"+
-              "the possible confusion with `insert(Int, Any)'.")
-  def insert(at: Int, x: Seq[Char]): StringBuilder =
-    insertAll(at, x)
-
-  /** Inserts the string representation of the <code>Char</code> array 
-   *  argument into this sequence.
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a character array.
-   *  @return     a reference to this object.
-   *  @throws StringIndexOutOfBoundsException  if the offset is invalid.
-   */
-  def insertAll(at: Int, x: Array[Char]): StringBuilder = {
-    if (at < 0 || at > count)
-      throw new StringIndexOutOfBoundsException(at)
-    val len = x.length
-    ensureCapacity(count + len)
-    arraycopy(array, at, array, at + len, count - at)
-    arraycopy(x, 0, array, at, len)
-    count += len
-    this
-  }
-
-  @deprecated("use insertAll instead. This method is deprecated because of\n"+
-              "the possible confusion with `insert(Int, Any)'.")
-  def insert(at: Int, x: Array[Char]): StringBuilder = 
-    insertAll(at, x)
-
-  /** <p>
-   *    Inserts the string representation of the <code>Boolean</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Boolean</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Boolean): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Inserts the string representation of the <code>Byte</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Byte</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Byte): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Inserts the string representation of the <code>Char</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Char</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Char): StringBuilder = {
-    if (at < 0 || at > count)
-      throw new StringIndexOutOfBoundsException(at)
-    ensureCapacity(count + 1)
-    arraycopy(array, at, array, at + 1, count - at)
-    array(at) = x
-    count += 1
-    this
-  }
-
-  /** <p>
-   *    Inserts the string representation of the <code>Short</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Short</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Short): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Inserts the string representation of the <code>Int</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Int</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Int): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Inserts the string representation of the <code>Long</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Long</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Long): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Inserts the string representation of the <code>Float</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Float</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Float): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Inserts the string representation of the <code>Double</code> argument
-   *    into this sequence.
-   *  </p>
-   *  <p>
-   *    The offset argument must be greater than or equal to 0, and less than
-   *    or equal to the length of this sequence.
-   *  </p>
-   *
-   *  @param  at  the offset position.
-   *  @param  x   a <code>Double</code> value.
-   *  @return     a reference to this object.
-   */
-  def insert(at: Int, x: Double): StringBuilder =
-    insert(at, String.valueOf(x))
-
-  /** <p>
-   *    Returns the index within this string of the first occurrence of the
-   *    specified substring. The integer returned is the smallest value 
-   *    <i>k</i> such that:
-   *  </p>
-   *  <blockquote><pre>
-   *  this.toString().startsWith(str, <i>k</i>)</pre>
-   *  </blockquote>
-   *  <p>
-   *    is <code>true</code>.
-   *  </p>
-   *
-   *  @param  str  any string.
-   *  @return      if the string argument occurs as a substring within this
-   *               object, then the index of the first character of the first
-   *               such substring is returned; if it does not occur as a
-   *               substring, <code>-1</code> is returned.
-   *  @throws NullPointerException if <code>str</code> is <code>null</code>.
-   */
-  def indexOf(str: String): Int = indexOf(str, 0)
-
-  /** <p>
-   *    Returns the index within this string of the first occurrence of the
-   *    specified substring, starting at the specified index. The integer
-   *    returned is the smallest value <code>k</code> for which:
-   *  </p><pre>
-   *    k >= math.min(fromIndex, str.length()) &&
-   *                   this.toString().startsWith(str, k)</pre>
-   *  <p>
-   *    If no such value of <code>k</code> exists, then <code>-1</code>
-   *    is returned.
-   *  </p>
-   *
-   *  @param str        the substring for which to search.
-   *  @param fromIndex  the index from which to start the search.
-   *  @return           the index within this string of the first occurrence
-   *                    of the specified substring, starting at the specified index.
-   */
-  def indexOf(str: String, fromIndex: Int): Int = indexOfSlice(str.toIndexedSeq, fromIndex)
-
-  /** <p>
-   *    Returns the index within this string of the rightmost occurrence
-   *    of the specified substring.  The rightmost empty string "" is
-   *    considered to occur at the index value <code>this.length()</code>. 
-   *    The returned index is the largest value <i>k</i> such that 
-   *  </p>
-   *  <blockquote><pre>
-   *  this.toString().startsWith(str, k)</pre>
-   *  </blockquote>
-   *  <p>
-   *    is true.
-   *  </p>
-   *
-   * @param  str  the substring to search for.
-   * @return      if the string argument occurs one or more times as a substring
-   *              within this object, then the index of the first character of
-   *              the last such substring is returned. If it does not occur as
-   *              a substring, <code>-1</code> is returned.
-   * @throws NullPointerException  if <code>str</code> is <code>null</code>.
-   */
-  def lastIndexOf(str: String): Int = lastIndexOf(str, count)
-
-  /** <p>
-   *    Returns the index within this string of the last occurrence of the
-   *    specified substring. The integer returned is the largest value
-   *    <code>k</code> such that:
-   *  </p><pre>val
-   *    k <= math.min(fromIndex, str.length()) &&
-   *                   this.toString().startsWith(str, k)</pre>
-   *  <p>
-   *    If no such value of <code>k</code> exists, then <code>-1</code>
-   *    is returned.
-   *  </p>
-   *
-   *  @param  str        the substring to search for.
-   *  @param  fromIndex  the index to start the search from.
-   *  @return            the index within this sequence of the last occurrence
-   *                     of the specified substring.
-   */
-  def lastIndexOf(str: String, fromIndex: Int): Int = lastIndexOfSlice(str.toIndexedSeq, fromIndex)
-
-  /** <p>
-   *    Causes this character sequence to be replaced by the reverse of the
-   *    sequence. If there are any surrogate pairs included in the sequence,
-   *    these are treated as single characters for the reverse operation.
-   *    Thus, the order of the high-low surrogates is never reversed.
-   *  </p>
-   *  <p>
-   *    Let <i>n</i> be the character length of this character sequence
-   *    (not the length in <code>Char</code> values) just prior to
-   *    execution of the <code>reverse</code> method. Then the
-   *    character at index <i>k</i> in the new character sequence is
-   *    equal to the character at index <i>n-k-1</i> in the old
-   *    character sequence.
-   *  </p>
-   *
-   *  @return  a reference to this object.
-   */
-  override def reverse(): StringBuilder = {
-    var hasSurrogate = false
-    val n = count - 1
-    var j = (n-1) >> 1
-    while (j >= 0) {
-      val temp = array(j)
-      val temp2 = array(n - j)
-      if (!hasSurrogate)
-        hasSurrogate =
-          (temp >= Character.MIN_HIGH_SURROGATE && temp <= Character.MAX_LOW_SURROGATE) ||
-       	  (temp2 >= Character.MIN_HIGH_SURROGATE && temp2 <= Character.MAX_LOW_SURROGATE)
-      array(j) = temp2
-      array(n - j) = temp
-      j -= 1
-    }
-    if (hasSurrogate) {
-      // Reverse back all valid surrogate pairs
-      var i = 0
-      while (i < count - 1) {
-        val c2 = array(i)
-	if (Character.isLowSurrogate(c2)) {
-          val c1 = array(i + 1)
-          if (Character.isHighSurrogate(c1)) {
-            array(i) = c1; i += 1
-            array(i) = c2
-          }
-        }
-        i += 1
-      }
-    }
-    this
-  }
-
-  /** Returns a string representing the data in this sequence.
-   *  A new <code>String</code> object is allocated and initialized to 
-   *  contain the character sequence currently represented by this 
-   *  object. This <code>String</code> is then returned. Subsequent 
-   *  changes to this sequence do not affect the contents of the 
-   *  <code>String</code>.
-   *
-   *  @return  a string representation of this sequence of characters.
-   */
-  override def toString: String = new String(array, 0, count)
+  override def toString = underlying.toString
   
   def result(): String = toString
-}
-
-
-object StringBuilder
-{
-  // method <code>java.util.Arrays.copyOf</code> exists since 1.6
-  private def copyOf(src: Array[Char], newLength: Int): Array[Char] = {
-    val dest = new Array[Char](newLength)
-    arraycopy(src, 0, dest, 0, src.length min newLength)
-    dest
-  }
 }

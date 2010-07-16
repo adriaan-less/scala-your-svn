@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -45,7 +44,7 @@ object Flags extends reflect.generic.Flags {
   /** These modifiers appear in TreePrinter output. */
   final val PrintableFlags: Long =
     ExplicitFlags | LOCAL | SYNTHETIC | STABLE | CASEACCESSOR |
-    ACCESSOR | SUPERACCESSOR | PARAMACCESSOR | BRIDGE | STATIC | VBRIDGE
+    ACCESSOR | SUPERACCESSOR | PARAMACCESSOR | BRIDGE | STATIC | VBRIDGE | SPECIALIZED
 
   /** The two bridge flags */
   final val BRIDGES = BRIDGE | VBRIDGE
@@ -59,6 +58,13 @@ object Flags extends reflect.generic.Flags {
 
   /** Module flags inherited by their module-class */
   final val ModuleToClassFlags: Long = AccessFlags | MODULE | PACKAGE | CASE | SYNTHETIC | JAVA
+
+  def getterFlags(fieldFlags: Long): Long = 
+    ACCESSOR + 
+    (if ((fieldFlags & MUTABLE) != 0) fieldFlags & ~MUTABLE & ~PRESUPER else fieldFlags & ~PRESUPER | STABLE)
+
+  def setterFlags(fieldFlags: Long): Long = 
+    getterFlags(fieldFlags) & ~STABLE & ~CASEACCESSOR
 
   private def listToString(ss: List[String]): String =
     ss.filter("" !=).mkString("", " ", "")
@@ -98,6 +104,7 @@ object Flags extends reflect.generic.Flags {
     else if (flag == TRANS_FLAG  ) "<trans-flag>"
     else if (flag == LOCKED      ) "<locked>"
     else if (flag == LAZY        ) "lazy"
+    else if (flag == SPECIALIZED ) "<specialized>"
     else flag.toInt match {
       case IMPLICIT      => "implicit"
       case FINAL         => "final"

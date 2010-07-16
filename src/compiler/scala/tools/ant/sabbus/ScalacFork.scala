@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.ant
 package sabbus
@@ -71,10 +70,7 @@ class ScalacFork extends MatchingTask with ScalacShared with TaskArgs {
     settings.d = destinationDir
     
     compTarget foreach (settings.target = _)
-    compilationPath foreach { x =>
-      settings.classpath = x
-      settings.javaignorecp = true    // ensures java classpath will not be used
-    }
+    compilationPath foreach (settings.classpath = _)
     sourcePath foreach (settings.sourcepath = _)
     params foreach (settings.more = _)
     
@@ -112,7 +108,7 @@ class ScalacFork extends MatchingTask with ScalacShared with TaskArgs {
     // dump the arguments to a file and do "java @file"
     val tempArgFile = io.File.makeTemp("scalacfork")
     val tokens = settings.toArgs ++ (includedFiles map (_.getPath))
-    tempArgFile writeAll List(tokens mkString " ")
+    tempArgFile writeAll (tokens mkString " ")
     
     val paths = List(Some(tempArgFile.toAbsolute.path), argfile).flatten map (_.toString)
     val res = execWithArgFiles(java, paths)

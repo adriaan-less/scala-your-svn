@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -221,9 +220,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     var vparamss1 = 
       vparamss map (vps => vps.map { vd =>
         atPos(vd.pos.focus) {
-          val pa = if (vd.hasFlag(PRIVATE | LOCAL)) 0L else PARAMACCESSOR
           ValDef(
-            Modifiers(vd.mods.flags & (IMPLICIT | DEFAULTPARAM | BYNAMEPARAM) | PARAM | pa) withAnnotations vd.mods.annotations,
+            Modifiers(vd.mods.flags & (IMPLICIT | DEFAULTPARAM | BYNAMEPARAM) | PARAM | PARAMACCESSOR) withAnnotations vd.mods.annotations,
             vd.name, vd.tpt.duplicate, vd.rhs.duplicate)
         }})
     val (edefs, rest) = body span treeInfo.isEarlyDef
@@ -260,7 +258,7 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     } 
     // println("typed template, gvdefs = "+gvdefs+", parents = "+parents+", constrs = "+constrs)
     constrs foreach (ensureNonOverlapping(_, parents ::: gvdefs))
-    // remove defaults
+    // vparamss2 are used as field definitions for the class. remove defaults
     val vparamss2 = vparamss map (vps => vps map { vd => 
       treeCopy.ValDef(vd, vd.mods &~ DEFAULTPARAM, vd.name, vd.tpt, EmptyTree)
     })
@@ -292,6 +290,14 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
 
   def Ident(sym: Symbol): Ident =
     Ident(sym.name) setSymbol sym
+
+  /** Block factory that flattens directly nested blocks. 
+   */
+  def Block(stats: Tree*): Block = stats match {
+    case Seq(b @ Block(_, _)) => b
+    case Seq(stat) => Block(stats.toList, Literal(Constant(())))
+    case Seq(_, rest @ _*) => Block(stats.init.toList, stats.last)
+  }
 
   /** A synthetic term holding an arbitrary type.  Not to be confused with
     * with TypTree, the trait for trees that are only used for type trees.
@@ -331,6 +337,9 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
        extends TermTree
 
   case class Parens(args: List[Tree]) extends Tree // only used during parsing
+
+  /** emitted by typer, eliminated by refchecks **/
+  case class TypeTreeWithDeferredRefCheck()(val check: () => TypeTree) extends AbsTypeTree
 
 // ----- subconstructors --------------------------------------------
 
@@ -377,6 +386,7 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     def Ident(tree: Tree, name: Name): Ident
     def Literal(tree: Tree, value: Constant): Literal
     def TypeTree(tree: Tree): TypeTree
+    def TypeTreeWithDeferredRefCheck(tree: Tree): TypeTreeWithDeferredRefCheck
     def Annotated(tree: Tree, annot: Tree, arg: Tree): Annotated
     def SingletonTypeTree(tree: Tree, ref: Tree): SingletonTypeTree
     def SelectFromTypeTree(tree: Tree, qualifier: Tree, selector: Name): SelectFromTypeTree
@@ -464,6 +474,9 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       new Literal(value).copyAttrs(tree)
     def TypeTree(tree: Tree) =
       new TypeTree().copyAttrs(tree)
+    def TypeTreeWithDeferredRefCheck(tree: Tree) = tree match {
+      case dc@TypeTreeWithDeferredRefCheck() => new TypeTreeWithDeferredRefCheck()(dc.check).copyAttrs(tree)
+    }
     def Annotated(tree: Tree, annot: Tree, arg: Tree) =
       new Annotated(annot, arg).copyAttrs(tree)
     def SingletonTypeTree(tree: Tree, ref: Tree) =
@@ -664,6 +677,10 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       case t @ TypeTree() => t
       case _ => treeCopy.TypeTree(tree)
     }
+    def TypeTreeWithDeferredRefCheck(tree: Tree) = tree match {
+      case t @ TypeTreeWithDeferredRefCheck() => t
+      case _ => treeCopy.TypeTreeWithDeferredRefCheck(tree)
+    }
     def Annotated(tree: Tree, annot: Tree, arg: Tree) = tree match {
       case t @ Annotated(annot0, arg0)
       if (annot0==annot) => t
@@ -810,6 +827,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
         treeCopy.Literal(tree, value)
       case TypeTree() =>
         treeCopy.TypeTree(tree)
+      case TypeTreeWithDeferredRefCheck() =>
+        treeCopy.TypeTreeWithDeferredRefCheck(tree)
       case Annotated(annot, arg) =>
         treeCopy.Annotated(tree, transform(annot), transform(arg))
       case SingletonTypeTree(ref) =>
@@ -872,6 +891,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
         traverse(definition) 
       case Parens(ts) =>
         traverseTrees(ts)
+      case TypeTreeWithDeferredRefCheck() => // TODO: should we traverse the wrapped tree?
+      // (and rewrap the result? how to update the deferred check? would need to store wrapped tree instead of returning it from check)
       case _ => super.traverse(tree)
     }
     
@@ -935,19 +956,34 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
 
   lazy val EmptyTreeTypeSubstituter = new TreeTypeSubstituter(List(), List())
 
-  class TreeSymSubstituter(from: List[Symbol], to: List[Symbol]) extends Traverser {
+  /** Substitute symbols in 'from' with symbols in 'to'. Returns a new
+   *  tree using the new symbols and whose Ident and Select nodes are
+   *  name-consistent with the new symbols. 
+   */
+  class TreeSymSubstituter(from: List[Symbol], to: List[Symbol]) extends Transformer {
     val symSubst = new SubstSymMap(from, to)
-    override def traverse(tree: Tree) {
+    override def transform(tree: Tree): Tree = {
       def subst(from: List[Symbol], to: List[Symbol]) {
         if (!from.isEmpty)
           if (tree.symbol == from.head) tree setSymbol to.head
           else subst(from.tail, to.tail)
       }
+
       if (tree.tpe ne null) tree.tpe = symSubst(tree.tpe)
-      if (tree.hasSymbol) subst(from, to)
-      super.traverse(tree)
+      if (tree.hasSymbol) {
+        subst(from, to)
+        tree match {
+          case Ident(name0) if tree.symbol != NoSymbol =>
+            treeCopy.Ident(tree, tree.symbol.name)
+          case Select(qual, name0) =>
+            treeCopy.Select(tree, transform(qual), tree.symbol.name)
+          case _ =>
+            super.transform(tree)
+        }
+      } else
+        super.transform(tree)
     }
-    override def apply[T <: Tree](tree: T): T = super.apply(tree.duplicate)
+    def apply[T <: Tree](tree: T): T = transform(tree).asInstanceOf[T]
     override def toString() = "TreeSymSubstituter("+from+","+to+")"
   }
 

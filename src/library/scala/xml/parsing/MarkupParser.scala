@@ -208,7 +208,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       case _:ProcInstr => ;
       case _:Comment => ;
       case _:EntityRef => // todo: fix entities, shouldn't be "special"
-        reportSyntaxError("no entity references alllowed here");
+        reportSyntaxError("no entity references allowed here");
       case s:SpecialNode =>
         if (s.toString().trim().length > 0) //non-empty text nodes not allowed
           elemCount = elemCount + 2;
@@ -310,7 +310,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
   def xEntityValue(): String = {
     val endch = ch
     nextch
-    while (ch != endch) {
+    while (ch != endch && !eof) {
       putChar(ch)
       nextch
     }
@@ -556,7 +556,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
     if (ch != '\'' && ch != '"')
       reportSyntaxError("quote ' or \" expected");
     nextch
-    while (ch != endch) {
+    while (ch != endch && !eof) {
       putChar(ch)
       nextch
     }
@@ -572,7 +572,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
     if (ch!='\'' && ch != '"')
       reportSyntaxError("quote ' or \" expected");
     nextch
-    while (ch != endch) {
+    while (ch != endch && !eof) {
       putChar(ch)
       //Console.println("hello '"+ch+"'"+isPubIDChar(ch));
       if (!isPubIDChar(ch))

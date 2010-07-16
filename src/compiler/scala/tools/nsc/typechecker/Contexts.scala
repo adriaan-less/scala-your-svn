@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -252,34 +251,29 @@ trait Contexts { self: Analyzer =>
       argContext
     }
 
-    //todo: remove
-    def makeConstructorSuffixContext = {
-      val c = make(tree)
-      c.inConstructorSuffix = true
-      c
-    }
-
     private def diagString =
       if (diagnostic.isEmpty) ""
       else diagnostic.mkString("\n","\n", "")
 
-    def error(pos: Position, err: Throwable) {
-      val msg = err.getMessage() + diagString
-      if (reportGeneralErrors)
-        unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
-      else
-        throw err
+    private def addDiagString(msg: String) = {
+      val ds = diagString
+      if (msg endsWith ds) msg else msg + ds
     }
 
-    def error(pos: Position, msg: String) {
-      val msg1 = msg + diagString
-      if (reportGeneralErrors)
-        unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg1 else msg1)
-      else
-        throw new TypeError(pos, msg1)
+    private def unitError(pos: Position, msg: String) = 
+      unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
+
+    def error(pos: Position, err: Throwable) =
+      if (reportGeneralErrors) unitError(pos, addDiagString(err.getMessage()))
+      else throw err
+
+    def error(pos: Position, msg: String) = {
+      val msg1 = addDiagString(msg)
+      if (reportGeneralErrors) unitError(pos, msg1)
+      else throw new TypeError(pos, msg1)
     }
 
-    def warning(pos:  Position, msg: String) {
+    def warning(pos:  Position, msg: String) = {
       if (reportGeneralErrors) unit.warning(pos, msg)
     }
  
@@ -322,7 +316,7 @@ trait Contexts { self: Analyzer =>
     override def toString(): String = {
       if (this == NoContext) "NoContext"
       else owner.toString() + " @ " + tree.getClass() +
-           " " + tree.toString() + ", scope = " + scope.hashCode() +
+           " " + tree.toString() + ", scope = " + scope.## +
            " " + scope.toList + "\n:: " + outer.toString()
     }
 
@@ -490,7 +484,29 @@ trait Contexts { self: Analyzer =>
                          else newImplicits :: nextOuter.implicitss
       }
       implicitsCache
-    }    
+    }
+
+    /**
+     * Find a symbol in this context or one of its outers.
+     *
+     * Used to find symbols are owned by methods (or fields), they can't be
+     * found in some scope.
+     *
+     * Examples: companion module of classes owned by a method, default getter
+     * methods of nested methods. See NamesDefaults.scala
+     */
+    def lookup(name: Name, expectedOwner: Symbol) = {
+      var res: Symbol = NoSymbol
+      var ctx = this
+      while(res == NoSymbol && ctx.outer != ctx) {
+        val s = ctx.scope.lookup(name)
+        if (s != NoSymbol && s.owner == expectedOwner)
+          res = s
+        else
+          ctx = ctx.outer
+      }
+      res
+    }
   }
   class ImportInfo(val tree: Import, val depth: Int) {
     /** The prefix expression */

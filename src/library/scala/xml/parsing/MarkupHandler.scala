@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -70,7 +69,7 @@ abstract class MarkupHandler extends Logged
    */
   def elemEnd(pos: Int, pre: String, label: String): Unit = ()
 
-  /** callback method invoked by MarkupParser after parsing an elementm,
+  /** callback method invoked by MarkupParser after parsing an element,
    *  between the elemStart and elemEnd callbacks
    *
    *  @param pos      the position in the source file

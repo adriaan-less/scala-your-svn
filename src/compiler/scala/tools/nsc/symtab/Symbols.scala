@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
 package scala.tools.nsc
@@ -107,7 +106,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  the annotations attached to member a definition (class, method, type, field).
      */
     def annotations: List[AnnotationInfo] = {
-      // .initialize: the type completer o f the symbol parses the annotations,
+      // .initialize: the type completer of the symbol parses the annotations,
       // see "def typeSig" in Namers
       val annots1 = initialize.rawannots map {
         case LazyAnnotationInfo(annot) => annot()
@@ -331,6 +330,14 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     final def newRefinementClass(pos: Position) =
       newClass(pos, nme.REFINE_CLASS_NAME.toTypeName)
 
+    /** Create a new getter for current symbol (which must be a field)
+     */
+    final def newGetter: Symbol = {
+      val getter = owner.newMethod(pos.focus, nme.getterName(name)).setFlag(getterFlags(flags))
+      getter.privateWithin = privateWithin
+      getter.setInfo(MethodType(List(), tpe))
+    }
+
     final def newErrorClass(name: Name) = {
       val clazz = newClass(pos, name).setFlag(SYNTHETIC | IS_ERROR)
       clazz.setInfo(ClassInfoType(List(), new ErrorScope(this), clazz))
@@ -389,10 +396,9 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** Is this symbol a type but not a class? */
     def isNonClassType = false 
 
-    /** Term symbols with the exception of static parts of Java classes and packages
-     *  and the faux companion objects of primitives.  (See tickets #1392 and #3123.)
+    /** Term symbols with the exception of static parts of Java classes and packages.
      */
-    final def isValue = isTerm && !(isModule && (hasFlag(PACKAGE | JAVA) || isValueClass(companionClass)))
+    final def isValue = isTerm && !(isModule && hasFlag(PACKAGE | JAVA))
 
     final def isVariable  = isTerm && hasFlag(MUTABLE) && !isMethod
     
@@ -442,7 +448,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     final def isScalaPackageClass: Boolean = isPackageClass && owner.isRoot && name == nme.scala_.toTypeName ||
                                     isPackageObjectClass && owner.isScalaPackageClass // not printed as a prefix
     
-    /** Is symbol a monomophic type?
+    /** Is symbol a monomorphic type?
      *  assumption: if a type starts out as monomorphic, it will not acquire 
      *  type parameters in later phases.
      */
@@ -456,18 +462,18 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       }
 
     def isDeprecated        = hasAnnotation(DeprecatedAttr)
-    def deprecationMessage  = getAnnotationArg(DeprecatedAttr, 0) partialMap { case Literal(const) => const.stringValue }
+    def deprecationMessage  = getAnnotationArg(DeprecatedAttr, 0) collect { case Literal(const) => const.stringValue }
     // !!! when annotation arguments are not literal strings, but any sort of 
     // assembly of strings, there is a fair chance they will turn up here not as
     // Literal(const) but some arbitrary AST.  However nothing in the compiler
     // prevents someone from writing a @migration annotation with a calculated
     // string.  So this needs attention.  For now the fact that migration is
     // private[scala] ought to provide enough protection.
-    def migrationMessage    = getAnnotationArg(MigrationAnnotationClass, 2) partialMap {
+    def migrationMessage    = getAnnotationArg(MigrationAnnotationClass, 2) collect {
       case Literal(const) => const.stringValue
       case x              => x.toString           // should not be necessary, but better than silently ignoring an issue
     }
-    def elisionLevel        = getAnnotationArg(ElidableMethodClass, 0) partialMap { case Literal(Constant(x: Int)) => x }
+    def elisionLevel        = getAnnotationArg(ElidableMethodClass, 0) collect { case Literal(Constant(x: Int)) => x }
 
     /** Does this symbol denote a wrapper object of the interpreter or its class? */
     final def isInterpreterWrapper = 
@@ -588,7 +594,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** A a member of class `base' is incomplete if
      *  (1) it is declared deferred or
      *  (2) it is abstract override and its super symbol in `base' is
-     *      nonexistent or inclomplete.
+     *      nonexistent or incomplete.
      *
      *  @param base ...
      *  @return     ...
@@ -600,6 +606,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         supersym == NoSymbol || supersym.isIncompleteIn(base)
       }
 
+    // Does not always work if the rawInfo is a SourcefileLoader, see comment
+    // in "def coreClassesFirst" in Global.
     final def exists: Boolean =
       this != NoSymbol && (!owner.isPackageClass || { rawInfo.load(this); rawInfo != NoType })
 
@@ -769,6 +777,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       assert(phaseId(infos.validFrom) <= phase.id)
       if (phaseId(infos.validFrom) == phase.id) infos = infos.prev
       infos = TypeHistory(currentPeriod, info, infos)
+      validTo = if (info.isComplete) currentPeriod else NoPeriod
       this
     }
 
@@ -904,8 +913,12 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       else {
         val current = phase
         try {
-          while (phase.keepsTypeParams) phase = phase.prev
-          rawInfo.typeParams 
+          while ((phase.prev ne NoPhase) && phase.prev.keepsTypeParams) phase = phase.prev
+//          while (phase.keepsTypeParams && (phase.prev ne NoPhase))        phase = phase.prev
+          if (phase ne current) phase = phase.next
+          if (settings.debug.value && (phase ne current))
+            log("checking unsafeTypeParams(" + this + ") at: " + current + " reading at: " + phase)
+          rawInfo.typeParams
         } finally {
           phase = current
         }
@@ -916,7 +929,20 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  type parameters later.
      */
     def typeParams: List[Symbol] =
-      if (isMonomorphicType) List() else { rawInfo.load(this); rawInfo.typeParams }
+      if (isMonomorphicType) 
+        List() 
+      else { 
+        if (validTo == NoPeriod) {
+          val current = phase
+          try {
+            phase = phaseOf(infos.validFrom)
+            rawInfo.load(this)
+          } finally {
+            phase = current
+          }
+        }
+        rawInfo.typeParams 
+      }
     
     /** The value parameter sections of this symbol.
      */
@@ -1157,7 +1183,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     /** The directly or indirectly inherited mixins of this class
      *  except for mixin classes inherited by the superclass. Mixin classes appear
-     *  in linearlization order.
+     *  in linearization order.
      */
     def mixinClasses: List[Symbol] = {
       val sc = superClass
@@ -1275,7 +1301,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      * Returns the rawInfo of the owner. If the current phase has flat classes, it first
      * applies all pending type maps to this symbol.
      *
-     * Asssume this is the ModuleSymbol for B in the follwing definition:
+     * assume this is the ModuleSymbol for B in the following definition:
      *   package p { class A { object B { val x = 1 } } }
      *
      * The owner after flatten is "package p" (see "def owner"). The flatten type map enters
@@ -1290,7 +1316,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     /** If this symbol is an implementation class, its interface, otherwise the symbol itself
      *  The method follows two strategies to determine the interface.
-     *   - during or after erasure, it takes the last parent of the implementatation class
+     *   - during or after erasure, it takes the last parent of the implementation class
      *     (which is always the interface, by convention)
      *   - before erasure, it looks up the interface name in the scope of the owner of the class.
      *     This only works for implementation classes owned by other classes or traits.
@@ -1735,20 +1761,22 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     private var mtpePeriod = NoPeriod
     private var mtpePre: Type = _
     private var mtpeResult: Type = _
+    private var mtpeInfo: Type = _
 
     override def cloneSymbolImpl(owner: Symbol): Symbol = 
       new MethodSymbol(owner, pos, name).copyAttrsFrom(this)
 
     def typeAsMemberOf(pre: Type): Type = {
       if (mtpePeriod == currentPeriod) {
-        if (mtpePre eq pre) return mtpeResult
+        if ((mtpePre eq pre) && (mtpeInfo eq info)) return mtpeResult
       } else if (isValid(mtpePeriod)) {
         mtpePeriod = currentPeriod
-        if (mtpePre eq pre) return mtpeResult
+        if ((mtpePre eq pre) && (mtpeInfo eq info)) return mtpeResult
       }
       val res = pre.computeMemberType(this)
       mtpePeriod = currentPeriod
       mtpePre = pre
+      mtpeInfo = info
       mtpeResult = res
       res
     }
@@ -1800,7 +1828,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       tpeCache
     }
 
-    // needed for experimentlal code for early types as type parameters
+    // needed for experimental code for early types as type parameters
     // def refreshType() { tpePeriod = NoPeriod }
 
     override def typeConstructor: Type = {
@@ -1935,7 +1963,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         newTypeName(rawname+"$trait") // (part of DEVIRTUALIZE)
       } else if (phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname+idString, rawowner))
           flatname = newTypeName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname
@@ -2005,7 +2033,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     override def sourceModule_=(module: Symbol) { this.module = module }
   }
 
-  /** An object repreesenting a missing symbol */
+  /** An object representing a missing symbol */
   object NoSymbol extends Symbol(null, NoPosition, nme.NOSYMBOL) {
     setInfo(NoType)
     privateWithin = this

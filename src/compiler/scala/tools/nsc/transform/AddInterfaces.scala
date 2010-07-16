@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -116,7 +115,7 @@ abstract class AddInterfaces extends InfoTransform {
    *  </p>
    *  <ul>
    *    <li>
-   *      for every interface member of <code>iface</code> its implemention
+   *      for every interface member of <code>iface</code> its implementation
    *      method, if one is needed.
    *    </li>
    *    <li>
@@ -162,7 +161,8 @@ abstract class AddInterfaces extends InfoTransform {
         case ClassInfoType(parents, decls, _) =>
           assert(phase == implClassPhase)
           ClassInfoType(
-            ObjectClass.tpe :: (parents.tail map mixinToImplClass) ::: List(iface.tpe),
+            ObjectClass.tpe :: (parents.tail map mixinToImplClass filter (_.typeSymbol != ObjectClass))
+              ::: List(iface.tpe),
             implDecls(sym, decls),
             sym)
         case PolyType(tparams, restpe) =>

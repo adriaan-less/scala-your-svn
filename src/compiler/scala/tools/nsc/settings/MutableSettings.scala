@@ -4,15 +4,13 @@
  */
 // $Id$
 
-package scala.tools.nsc
+package scala.tools
+package nsc
 package settings
 
-import io.AbstractFile
-import util.{ ClassPath, CommandLineParser }
-import annotation.elidable
+import io.{AbstractFile, VirtualDirectory}
 import scala.tools.util.StringOps
 import scala.collection.mutable.ListBuffer
-import interpreter.{ returning }
 
 /** A mutable Settings object.
  */
@@ -84,7 +82,7 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
 
   /** Split the given line into parameters.
    */
-  def splitParams(line: String) = CommandLineParser.tokenize(line, errorFn)
+  def splitParams(line: String) = cmd.Parser.tokenize(line, errorFn)
 
   /** Returns any unprocessed arguments.
    */
@@ -97,10 +95,7 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
     ): Option[List[String]] =
       lookupSetting(cmd) match {
         case None       => errorFn("Parameter '" + cmd + "' is not recognised by Scalac.") ; None          
-        case Some(cmd)  =>
-          val res = setter(cmd)(args)
-          cmd.postSetHook()
-          res
+        case Some(cmd)  => setter(cmd)(args)
       }
 
     // if arg is of form -Xfoo:bar,baz,quux
@@ -184,10 +179,8 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
     val prepend = new StringSetting(name + "/p", "", "", "") with InternalSetting
     val append = new StringSetting(name + "/a", "", "", "") with InternalSetting
 
-    /** Not flipping this part on just yet.
     add[StringSetting](prepend)
     add[StringSetting](append)
-     */ 
     add(new PathSetting(name, arg, descr, default, prepend, append))
   }
 
@@ -195,10 +188,15 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
   trait SettingValue extends AbsSettingValue {
     protected var v: T
     protected var setByUser: Boolean = false
+    def postSetHook(): Unit
     
     def isDefault: Boolean = !setByUser
     def value: T = v
-    def value_=(arg: T) = { setByUser = true ; v = arg }
+    def value_=(arg: T) = {
+      setByUser = true
+      v = arg
+      postSetHook()
+    }
   }
 
   /** A class for holding mappings from source directories to
@@ -293,7 +291,11 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
         classFile.path.startsWith(outDir.path)
 
       singleOutDir match {
-        case Some(d) => Nil
+        case Some(d) =>
+          d match {
+              case _: VirtualDirectory => Nil
+              case _                   => List(d.lookupPathUnchecked(srcPath, false))
+          }
         case None =>
           (outputs filter (isBelow _).tupled) match {
             case Nil => Nil
@@ -309,7 +311,7 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
   abstract class Setting(val name: String, val helpDescription: String) extends AbsSetting with SettingValue with Mutable {
     /** Will be called after this Setting is set for any extra work. */
     private var _postSetHook: this.type => Unit = (x: this.type) => ()
-    def postSetHook() = { _postSetHook(this) ; this }
+    def postSetHook(): Unit = _postSetHook(this)
     def withPostSetHook(f: this.type => Unit): this.type = { _postSetHook = f ; this }
 
     /** The syntax defining this setting in a help string */
@@ -428,7 +430,7 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
     prependPath: StringSetting,
     appendPath: StringSetting)
   extends StringSetting(name, arg, descr, default) {
-    import ClassPath.join
+    import util.ClassPath.join
     def prepend(s: String) = prependPath.value = join(s, prependPath.value)
     def append(s: String) = appendPath.value = join(appendPath.value, s)
     
@@ -469,6 +471,7 @@ class MutableSettings(val errorFn: String => Unit) extends AbsSettings with Scal
       Some(rest)
     }
     override def tryToSetColon(args: List[String]) = tryToSet(args)
+    override def tryToSetFromPropertyValue(s: String) = tryToSet(s.trim.split(" +").toList)
     def unparse: List[String] = value map { name + ":" + _ }
 
     withHelpSyntax(name + ":<" + arg + ">")

@@ -13,8 +13,7 @@ package partest
 
 import scala.actors.Actor._
 import scala.util.Properties.setProp
-import scala.tools.nsc.io
-import io.{ Directory }
+import scala.tools.nsc.io.{ Directory, Path => SPath }
 import nsc.Settings
 import nsc.util.ClassPath
 import util.PathResolver
@@ -149,7 +148,7 @@ class PartestTask extends Task with CompilationPathProperty {
   private var debug = false
 
   def fileSetToDir(fs: FileSet) = Directory(fs getDir getProject)
-  def fileSetToArray(fs: FileSet): Array[io.Path] = {
+  def fileSetToArray(fs: FileSet): Array[SPath] = {
     val root = fileSetToDir(fs)
     (fs getDirectoryScanner getProject).getIncludedFiles map (root / _)
   }
@@ -165,7 +164,7 @@ class PartestTask extends Task with CompilationPathProperty {
       def shouldExclude(name: String) = (name endsWith ".obj") || (name startsWith ".")
     
       val fileTests = getFiles(Some(fs)) filterNot (x => shouldExclude(x.getName))
-      val dirTests: Iterator[io.Path] = fileSetToDir(fs).dirs filterNot (x => shouldExclude(x.name))
+      val dirTests: Iterator[SPath] = fileSetToDir(fs).dirs filterNot (x => shouldExclude(x.name))
       val dirResult = dirTests.toList.toArray map (_.jfile)
       
       dirResult ++ fileTests
@@ -183,8 +182,10 @@ class PartestTask extends Task with CompilationPathProperty {
   private def getScalapFiles       = getFiles(scalapFiles)
 
   override def execute() {
-    if (isPartestDebug)
+    if (isPartestDebug || debug) {
       setProp("partest.debug", "true")
+      nest.NestUI._verbose = true
+    }
     
     srcDir foreach (x => setProp("partest.srcdir", x))
     
@@ -236,7 +237,7 @@ class PartestTask extends Task with CompilationPathProperty {
         val results: Iterable[(String, Int)] = antRunner.reflectiveRunTestsForFiles(files, name)
         val (succs, fails) = resultsToStatistics(results)
 
-        val failed: Iterable[String] = results partialMap {
+        val failed: Iterable[String] = results collect {
           case (path, 1)    => path + " [FAILED]"
           case (path, 2)    => path + " [TIMOUT]"
         }

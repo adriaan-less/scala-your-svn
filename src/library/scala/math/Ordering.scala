@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -130,7 +129,8 @@ object Ordering extends LowPriorityOrderingImplicits {
     override def lt(x: T, y: T): Boolean = cmp(x, y)
     override def gt(x: T, y: T): Boolean = cmp(y, x)
     override def gteq(x: T, y: T): Boolean = !cmp(x, y)
-    override def lteq(x: T, y: T): Boolean = !cmp(y, x)
+    override def lteq(x: T, y: T
+      ): Boolean = !cmp(y, x)
   }
   
   def by[T, S: Ordering](f: T => S): Ordering[T] = fromLessThan((x, y) => implicitly[Ordering[S]].lt(f(x), f(y)))
@@ -205,15 +205,17 @@ object Ordering extends LowPriorityOrderingImplicits {
   }
   implicit object String extends StringOrdering
 
-  implicit def Option[T](implicit ord: Ordering[T]) : Ordering[Option[T]] = 
-    new Ordering[Option[T]] {
-      def compare(x : Option[T], y : Option[T]) = (x, y) match {
-        case (None, None) => 0
-        case (None, _) => -1
-        case (_, None) => 1
-        case (Some(x), Some(y)) => ord.compare(x, y)
-      }
+  trait OptionOrdering[T] extends Ordering[Option[T]] {
+    def optionOrdering: Ordering[T]
+    def compare(x: Option[T], y: Option[T]) = (x, y) match {
+      case (None, None)       => 0
+      case (None, _)          => -1
+      case (_, None)          => 1
+      case (Some(x), Some(y)) => optionOrdering.compare(x, y)
     }
+  }
+  implicit def Option[T](implicit ord: Ordering[T]): Ordering[Option[T]] =
+    new OptionOrdering[T] { val optionOrdering = ord }
 
   implicit def Iterable[T](implicit ord: Ordering[T]): Ordering[Iterable[T]] = 
     new Ordering[Iterable[T]] {

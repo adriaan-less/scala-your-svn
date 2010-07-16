@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -88,7 +87,7 @@ trait SyntheticMethods extends ast.TreeDSL {
       typer typed { DEF(method) === LIT(nargs) }
     }
 
-    /** Common code for productElement and productElementName
+    /** Common code for productElement and (currently disabled) productElementName
      */
     def perElementMethod(accs: List[Symbol], methodName: Name, resType: Type, caseFn: Symbol => Tree): Tree = {
       val symToTpe  = makeTypeConstructor(List(IntClass.tpe), resType)
@@ -108,8 +107,8 @@ trait SyntheticMethods extends ast.TreeDSL {
     def productElementMethod(accs: List[Symbol]): Tree =
       perElementMethod(accs, nme.productElement, AnyClass.tpe, x => Ident(x))
   
-    def productElementNameMethod(accs: List[Symbol]): Tree =
-      perElementMethod(accs, nme.productElementName, StringClass.tpe, x => Literal(x.name.toString))
+    // def productElementNameMethod(accs: List[Symbol]): Tree =
+    //   perElementMethod(accs, nme.productElementName, StringClass.tpe, x => Literal(x.name.toString))
 
     def moduleToStringMethod: Tree = {
       val method = syntheticMethod(nme.toString_, FINAL, makeNoArgConstructor(StringClass.tpe))
@@ -130,8 +129,8 @@ trait SyntheticMethods extends ast.TreeDSL {
       }
     }
     
-    def hashCodeTarget: Name =
-      if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
+    def hashCodeTarget: Name = nme.hashCode_
+      // if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
 
     def equalsSym = syntheticMethod(
       nme.equals_, 0, makeTypeConstructor(List(AnyClass.tpe), BooleanClass.tpe)
@@ -271,7 +270,9 @@ trait SyntheticMethods extends ast.TreeDSL {
             Product_productPrefix   -> (() => productPrefixMethod),
             Product_productArity    -> (() => productArityMethod(accessors.length)),
             Product_productElement  -> (() => productElementMethod(accessors)),
-            Product_productElementName  -> (() => productElementNameMethod(accessors)),
+            // This is disabled pending a reimplementation which doesn't add any
+            // weight to case classes (i.e. inspects the bytecode.)
+            // Product_productElementName  -> (() => productElementNameMethod(accessors)),
             Product_canEqual        -> (() => canEqualMethod)
           )
         }
