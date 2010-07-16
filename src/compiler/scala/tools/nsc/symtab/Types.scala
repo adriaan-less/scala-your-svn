@@ -1729,10 +1729,11 @@ A type's typeSymbol should never be inspected directly.
 
     def normalize0: Type =
       if (isHigherKinded) {
-        // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+        println("HKnorm: "+(sym.info.typeParams, pre, sym, dummyArgs, sym.info))
         // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
-        typeFunAnon(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
+        typeFunAnon(sym.info.typeParams, typeRef(pre, sym, dummyArgs))
       } else if (sym.isAliasType) { // beta-reduce
+        println("alias norm: "+(pre, sym, args, sym.info.typeParams))
         if(sym.info.typeParams.length == args.length) // don't do partial application
           transform(sym.info.resultType).normalize // cycles have been checked in typeRef
         else
@@ -2288,7 +2289,7 @@ A type's typeSymbol should never be inspected directly.
     override def normalize: Type =
       if  (constr.instValid) constr.inst
       else if (isHigherKinded) {  // get here when checking higher-order subtyping of the typevar by itself (TODO: check whether this ever happens?)
-        typeFun(params, applyArgs(params map (_.typeConstructor)))
+        typeFunAnon(params, applyArgs(params map (_.typeConstructor)))
       } else {
         super.normalize
       }
@@ -2587,22 +2588,24 @@ A type's typeSymbol should never be inspected directly.
   /** A creator for anonymous type functions, where the symbol for the type function still needs to be created 
    */
   def typeFunAnon(tps: List[Symbol], body: Type): Type = {
+    val outer = tps.head.owner.owner // type params were owned by type member/param, the latter's owner will now receive a new anonymous type alias
     // symbol that represents an anonymous type function
     // owner of its type params -- similar to value-level anonymous functions ANON_FUN_NAME
-    val outer = body.typeSymbol.owner.enclClass
     val synthOwner = outer.newAliasType(nme.ANON_TYPE_FUN_NAME).setFlag(SYNTHETIC).setInfo(NoType)
     outer.info.decls.enter(synthOwner)
 
     val tps1 = cloneSymbols(tps, synthOwner)
 
-    // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
     val tpfun = typeFun(tps1, body substSym (tps, tps1))
     synthOwner.setInfo(tpfun)
+
+    println("typeFunAnon"+(tps, body, tps.head.ownerChain, outer.info.decls.mkString(";\n"), synthOwner.defString))
+
     tpfun
   }
   
   /** A creator for a type functions, assuming the type parameters tps already have the right owner 
-     (the type symbol that represents the anonymous type function)
+   *  (the type symbol that represents the type function)
    */
   def typeFun(tps: List[Symbol], body: Type): Type = {
     // assert(tps nonEmpty)

@@ -36,7 +36,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     "_"+nextexid
   }
 
-/*                                 
+/*
   type Position;
   def NoPos : Position;
   def FirstPos : Position;
