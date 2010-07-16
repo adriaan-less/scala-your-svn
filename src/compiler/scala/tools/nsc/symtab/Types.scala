@@ -2579,7 +2579,7 @@ A type's typeSymbol should never be inspected directly.
   def polyType(tparams: List[Symbol], tpe: Type): Type = 
     if (tparams.isEmpty) tpe 
     else 
-      typeFun(tparams, tpe match { // TODO: when NullarMethodTypes land, this becomes simply `typeFun(tparams, tpe)`
+      typeFun(tparams, tpe match { // TODO: when NullaryMethodTypes land, this becomes simply `typeFun(tparams, tpe)`
         case PolyType(List(), tpe1) => tpe1 // tpe was a nullary method type, squash together with type params
         case _ => tpe
       })
