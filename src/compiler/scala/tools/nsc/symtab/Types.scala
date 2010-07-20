@@ -2222,13 +2222,13 @@ A type's typeSymbol should never be inspected directly.
 
     def addLoBound(tp: Type, numBound: Boolean = false) {
       assert(tp != this) // implies there is a cycle somewhere (?)
-      //println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
+      println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addLoBound(tp, numBound)
     }
 
     def addHiBound(tp: Type, numBound: Boolean = false) {
       // assert(tp != this)
-      //println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
+      println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addHiBound(tp, numBound)
     }
 
