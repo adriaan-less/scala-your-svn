@@ -1717,30 +1717,41 @@ A type's typeSymbol should never be inspected directly.
 
     private var normalized: Type = null
 
+    private def betaReduce: Type = {
+      val modern = appliedType(sym.info, typeArgs mapConserve (_.dealias)).asSeenFrom(pre, sym.owner)
+      val old = transform(sym.info.resultType)
+      // assert(old ne this, this)
+      if(!(old =:= modern)) println("betaReduce delta: "+(old, "\n=/:= "+ modern.toString))
+      modern
+    }
     override def dealias: Type = 
       if (sym.isAliasType && sym.info.typeParams.length == args.length) {
-        val xform = transform(sym.info.resultType)
-        assert(xform ne this, this)
-        xform.dealias
+        betaReduce.dealias
       } else this
 
     override def remove(clazz: Symbol): Type = 
       if (sym == clazz && !args.isEmpty) args.head else this
 
     def normalize0: Type =
-      if (isHigherKinded) {
-        // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
-        // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
-        PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
-      } else if (sym.isAliasType) { // beta-reduce
-        if(sym.info.typeParams.length == args.length) // don't do partial application
-          transform(sym.info.resultType).normalize // cycles have been checked in typeRef
-        else
+      if (sym.isAliasType) { // beta-reduce
+        if (isHigherKinded) {
+          // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+          // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
+          PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
+        } else if(sym.info.typeParams.length == args.length) { // don't do partial application
+          betaReduce.normalize // cycles have been checked in typeRef
+        } else {
+          println("error: "+(pre, sym, sym.info, sym.info.typeParams, args))
           ErrorType
+        }
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
         //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
         // see typedTypeConstructor in Typers
+      // } else if (args nonEmpty){ // this causes havoc
+      //   val argsNorm = args mapConserve (_.normalize)
+      //   if(argsNorm ne args) TypeRef(pre, sym, argsNorm)
+      //   else this
       } else {
         super.normalize
       }
