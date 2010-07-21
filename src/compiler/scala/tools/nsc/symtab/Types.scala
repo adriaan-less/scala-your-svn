@@ -1755,13 +1755,17 @@ A type's typeSymbol should never be inspected directly.
         PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
       } else if (sym.isAliasType) { // beta-reduce
         if(sym.info.typeParams.length == args.length) // don't do partial application
-          transform(sym.info.resultType).normalize // cycles have been checked in typeRef
+          appliedType(pre.memberInfo(sym), typeArgsOrDummies).normalize // cycles have been checked in typeRef
         else
           ErrorType
       } else if (sym.isRefinementClass) {
         sym.info.normalize // @MO to AM: OK?
         //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
         // see typedTypeConstructor in Typers
+      } else if (args nonEmpty){
+        val argsNorm = args mapConserve (_.normalize)
+        if(argsNorm ne args) TypeRef(pre, sym, argsNorm)
+        else this
       } else {
         super.normalize
       }
