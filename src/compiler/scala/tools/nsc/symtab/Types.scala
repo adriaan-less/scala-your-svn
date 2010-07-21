@@ -2226,13 +2226,13 @@ A type's typeSymbol should never be inspected directly.
 
     def addLoBound(tp: Type, numBound: Boolean = false) {
       assert(tp != this) // implies there is a cycle somewhere (?)
-      println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
+      // println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addLoBound(tp, numBound)
     }
 
     def addHiBound(tp: Type, numBound: Boolean = false) {
       // assert(tp != this)
-      println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
+      // println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addHiBound(tp, numBound)
     }
 
@@ -4330,7 +4330,7 @@ A type's typeSymbol should never be inspected directly.
    */
   private def isSubType2(tp1: Type, tp2: Type, depth: Int): Boolean = {
     if (tp1 eq tp2) return true
-    def trace(msg: String)(body: => Boolean) = {println(tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); val res = body; println(res +" for "+ tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); res}
+    @inline def trace(msg: String)(body: => Boolean) = body //{println(tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); val res = body; println(res +" for "+ tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); res}
 
     if (isErrorOrWildcard(tp1)) return true
     if (isErrorOrWildcard(tp2)) return true
@@ -4340,7 +4340,7 @@ A type's typeSymbol should never be inspected directly.
     if (tp2 eq NoPrefix) return (tp1 eq NoPrefix) || tp1.typeSymbol.isPackageClass
     if (isSingleType(tp1) && isSingleType(tp2) ||
         isConstantType(tp1) && isConstantType(tp2)) return tp1 =:= tp2
-    if (tp1.isHigherKinded || tp2.isHigherKinded) return trace("HK"){Thread.dumpStack; isHKSubType0(tp1, tp2, depth)}
+    if (tp1.isHigherKinded || tp2.isHigherKinded) return trace("HK"){isHKSubType0(tp1, tp2, depth)}
 
     /** First try, on the right:
      *   - unwrap Annotated types, BoundedWildcardTypes,
