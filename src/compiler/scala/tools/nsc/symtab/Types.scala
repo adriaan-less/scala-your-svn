@@ -1936,14 +1936,20 @@ A type's typeSymbol should never be inspected directly.
 
     override def boundSyms = params ::: resultType.boundSyms
     
-    override def resultType(actuals: List[Type]) = {
-      val map = new InstantiateDependentMap(params, actuals)
-      val rawResTpe = map.apply(resultType)
-      if (phase.erasedTypes)
-        rawResTpe
-      else
-        existentialAbstraction(map.existentialsNeeded, rawResTpe)
-    }
+    override def resultType(actuals: List[Type]) = 
+      if(isTrival) resultType
+      else {
+        if(actuals.length == params.length)  {
+          val res = (new InstantiateDependentMap(params, actuals))(resultType)
+          println("resultTypeDep "+(actuals, res))
+          res
+        } else {
+          // Thread.dumpStack()
+          println("resultType "+(actuals, params, resultType))
+          if (phase.erasedTypes) res
+          else existentialAbstraction(params, res)
+        }
+      }
 
     override def finalResultType: Type = resultType.finalResultType
 
@@ -3270,6 +3276,7 @@ A type's typeSymbol should never be inspected directly.
 
   /** A base class to compute all substitutions */
   abstract class SubstMap[T](from: List[Symbol], to: List[T]) extends TypeMap {
+    assert(from.length == to.length, "Unsound substitution from "+ from +" to "+ to)
 
     /** Are `sym' and `sym1' the same.
      *  Can be tuned by subclasses.
@@ -3518,8 +3525,6 @@ A type's typeSymbol should never be inspected directly.
 */
 
   class InstantiateDependentMap(params: List[Symbol], actuals: List[Type]) extends SubstTypeMap(params, actuals) {
-    def existentialsNeeded: List[Symbol] = List()
-
     override protected def renameBoundSyms(tp: Type): Type = tp match {
       case MethodType(ps, restp) => tp // the whole point of this substitution is to instantiate these args
       case _ => super.renameBoundSyms(tp)
