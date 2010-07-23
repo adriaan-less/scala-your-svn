@@ -1738,17 +1738,21 @@ A type's typeSymbol should never be inspected directly.
     private var normalized: Type = null
 
     @inline private def betaReduce: Type = {
-      val modern = appliedType(sym.info, typeArgs mapConserve (_.dealias)).asSeenFrom(pre, sym.owner)
+      assert(sym.info.typeParams.length == typeArgs.length, this)
+      val modern = appliedType(sym.info, typeArgs mapConserve (_.dealias)).asSeenFrom(pre, sym.owner) // new style: also dealias type args for more tplevel computation
       val old = transform(sym.info.resultType)
-      // assert(old ne this, this)
+      assert(old ne this, this)
+      assert(modern ne this, this)
       if(!(old =:= modern)) println("betaReduce delta: "+(old, "\n=/:= "+ modern.toString))
       modern
     }
 
     // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
     // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
-    @inline private def etaExpand: Type =
-      PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
+    @inline private def etaExpand: Type = {
+      val tpars = sym.info.typeParams // must go through sym.info for typeParams to initialise symbol
+      PolyType(tpars, typeRef(pre, sym, tpars map (_.tpeHK))) // todo: also beta-reduce?
+    }
 
     override def dealias: Type = 
       if (sym.isAliasType && sym.info.typeParams.length == args.length) {
@@ -1757,24 +1761,18 @@ A type's typeSymbol should never be inspected directly.
 
     def normalize0: Type =
       if (pre eq WildcardType) WildcardType // arises when argument-dependent types are approximated (see def depoly in implicits)
-      else if (sym.isAliasType) { 
-        if (isHigherKinded) { // eta-expand
-          etaExpand
-        } else if(sym.info.typeParams.length == args.length) { // beta-reduce, but don't do partial application
-          betaReduce.normalize // cycles have been checked in typeRef
-        } else {
-          println("error: "+(pre, sym, sym.info, sym.info.typeParams, args))
-          ErrorType
-        }
-      } else if (sym.isRefinementClass) {
-        sym.info.normalize // @MO to AM: OK?
-        //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
-        // see typedTypeConstructor in Typers
-      // } else if (args nonEmpty){ // this causes havoc
+      else if (isHigherKinded) etaExpand   // eta-expand, subtyping relies on eta-expansion of higher-kinded types
+      else if (sym.isAliasType && sym.info.typeParams.length == args.length) 
+                               betaReduce.normalize // beta-reduce, but don't do partial application -- cycles have been checked in typeRef
+      else if (sym.isRefinementClass) 
+                               sym.info.normalize // I think this is okay, but see #1241 (r12414), #2208, and typedTypeConstructor in Typers
+      // else if (args nonEmpty){ // this causes havoc
       //   val argsNorm = args mapConserve (_.normalize)
       //   if(argsNorm ne args) TypeRef(pre, sym, argsNorm)
       //   else this
-      } else {
+      else {
+        if(sym.isAliasType) println("!!error: "+(pre, sym, sym.info, sym.info.typeParams, args))
+
         super.normalize
       }
 
