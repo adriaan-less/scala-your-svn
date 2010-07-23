@@ -1916,9 +1916,10 @@ A type's typeSymbol should never be inspected directly.
    */
   case class MethodType(override val params: List[Symbol],
                         override val resultType: Type) extends Type {
-    override val isTrivial: Boolean =
-      params.forall(_.tpe.isTrivial) && resultType.isTrivial
-    
+    override def isTrivial: Boolean = isTrivial0
+    private lazy val isTrivial0 =
+      resultType.isTrivial && params.forall{p => p.tpe.isTrivial && !(params.exists(_.tpe.contains(p)) || resultType.contains(p))}
+
     def isImplicit = params.nonEmpty && params.head.isImplicit
     def isJava = false // can we do something like for implicits? I.e. do Java methods without parameters need to be recognized?
 
@@ -1932,17 +1933,17 @@ A type's typeSymbol should never be inspected directly.
     override def boundSyms = params ::: resultType.boundSyms
     
     override def resultType(actuals: List[Type]) = 
-      if(isTrival) resultType
+      if(isTrivial) resultType
       else {
         if(actuals.length == params.length)  {
           val res = (new InstantiateDependentMap(params, actuals))(resultType)
-          println("resultTypeDep "+(actuals, res))
+          // println("resultTypeDep "+(params, actuals, resultType, "\n= "+ res))
           res
         } else {
           // Thread.dumpStack()
-          println("resultType "+(actuals, params, resultType))
-          if (phase.erasedTypes) res
-          else existentialAbstraction(params, res)
+          // println("resultType "+(params, actuals, resultType))
+          if (phase.erasedTypes) resultType
+          else existentialAbstraction(params, resultType)
         }
       }
 
