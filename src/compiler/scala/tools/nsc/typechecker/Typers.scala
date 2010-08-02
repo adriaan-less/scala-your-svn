@@ -816,32 +816,18 @@ trait Typers { self: Analyzer =>
         context.undetparams = context.undetparams ::: tparams1
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
       case mt: MethodType if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
-        // replace singleton types that depend on implicit arguments by type variables, since they behave like type parameters (we're trying to infer them -- in applyImplicitArgs)
-        val tvars = mt.params map {param => 
-          val paramtp = singleType(NoPrefix, param)
-          new TypeVar(paramtp, new TypeConstraint, List(), List())
+        if (context.undetparams nonEmpty) { // (9)  // && (mode & POLYmode) == 0 -- disabled to make implicits in new collection work; we should revisit this.
+          context.undetparams =
+            inferExprInstance(tree, context.extractUndetparams(), pt,
+                    // approximate types that depend on arguments since dependency on implicit argument is like dependency on type parameter
+                    mt.approximate,
+                    // if we are looking for a manifest, instantiate type to Nothing anyway,
+                    // as we would get ambiguity errors otherwise. Example
+                    // Looking for a manifest of Nil: This mas many potential types,
+                    // so we need to instantiate to minimal type List[Nothing].
+                    mt.params exists (p => isManifest(p.tpe)))
         }
-        tree.tpe = MethodType(mt.params, mt.resultType(tvars)) // implicit args can only be depended on in result type: TODO this may be generalised so that the only constraint is dependencies are acyclic
-        if (!context.undetparams.isEmpty/* && (mode & POLYmode) == 0 disabled to make implicits in new collection work; we should revisit this. */) { // (9)
-          // try{
-            context.undetparams = inferExprInstance(
-              tree, context.extractUndetparams(), pt, mt.params exists (p => isManifest(p.tpe)))
-                // if we are looking for a manifest, instantiate type to Nothing anyway,
-                // as we would get amnbiguity errors otherwise. Example
-                // Looking for a manifest of Nil: This mas many potential types,
-                // so we need to instantiate to minimal type List[Nothing].
-          // } catch {
-          //   case e: Throwable => e.printStackTrace(); throw e
-          // }
-        } 
-        // types have been inferred in tree.tpe, but typevars that refer to implicit args remain: replace typevars by their origin
-        // substSym: method type will have been cloned by typer during inference (params are now tree.tpe.asInstanceOf[MethodType].params), 
-        // but typevars still point to old param symbols (mt.params)
-        // the typevars were only there to prevent inferExprInstance from choking on them
-        tree.tpe = typeVarToOriginMap(tree.tpe).substSym(mt.params, tree.tpe.asInstanceOf[MethodType].params) 
 
-        // TODO: pass tvars on to applyImplicitArgs, which should take their constraints into account while inferring values for the corresponding implicit arguments
-        // it's sound not to do so, becaus the tree is type checked again anyway, it could potentially make the search more precise
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
@@ -1760,7 +1746,7 @@ trait Typers { self: Analyzer =>
         if (isRepeatedParamType(vparam1.symbol.tpe))
           error(vparam1.pos, "*-parameter must come last")
 
-      var tpt1 = checkNoEscaping.privates(meth, typedType(ddef.tpt))           
+      var tpt1 = checkNoEscaping.privates(meth, typedType(ddef.tpt))
       if (!settings.YdepMethTpes.value) {
         for (vparams <- vparamss1; vparam <- vparams) {
           checkNoEscaping.locals(context.scope, WildcardType, vparam.tpt); ()

@@ -1716,7 +1716,7 @@ A type's typeSymbol should never be inspected directly.
     override def typeConstructor = TypeRef(pre, sym, List())
 
     // a reference (in a Scala program) to a type that has type parameters, but where the reference does not include type arguments
-    // note that it doesn't matter whether the symbol refers to a java or scala symbol, 
+    // note that it doesn't matter whether the symbol refers to a java or scala symbol,
     // it does matter whether it occurs in java or scala code
     // typerefs w/o type params that occur in java signatures/code are considered raw types, and are represented as existential types
     override def isHigherKinded = (args.isEmpty && !typeParamsDirect.isEmpty)
@@ -1776,8 +1776,7 @@ A type's typeSymbol should never be inspected directly.
    // TODO: this would not be necessary if we could replace the call to sym.unsafeTypeParams in typeParamsDirect
    // by a call to sym.typeParams, but need to verify that that does not lead to spurious "illegal cycle" errors
    // the need for refreshing the cache is illustrated by #2278
-   // TODO: no test case in the suite because don't know how to tell partest to compile in different runs,
-   //       and in a specific order
+   // TODO: test case that is compiled  in a specific order and in different runs
     private var normalizeTyparCount = -1
 
     override def normalize: Type = {
@@ -1946,6 +1945,9 @@ A type's typeSymbol should never be inspected directly.
           else existentialAbstraction(params, resultType)
         }
       }
+
+    // implicit args can only be depended on in result type: TODO this may be generalised so that the only constraint is dependencies are acyclic
+    def approximate: MethodType = MethodType(params, resultApprox)
 
     override def finalResultType: Type = resultType.finalResultType
 
