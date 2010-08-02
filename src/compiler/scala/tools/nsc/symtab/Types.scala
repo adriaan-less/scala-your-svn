@@ -2547,8 +2547,11 @@ A type's typeSymbol should never be inspected directly.
    *  todo: see how we can clean this up a bit
    */
   def typeRef(pre: Type, sym: Symbol, args: List[Type]): Type = {
-    var sym1 = if (sym.isAbstractType) rebind(pre, sym) else sym
-    def transform(tp: Type): Type = 
+    var sym1 = rebind(pre, sym) // used to only rebind if(sym.isAbstractType), 
+       // however, that's too strict since type alias selection needs to be rebound as well
+       // e.g., when type parameters that are referenced by the alias are instantiated in the prefix
+       // see pos/depmet_rebind_typealias
+    def transform(tp: Type): Type =
       tp.resultType.asSeenFrom(pre, sym1.owner).instantiateTypeParams(sym1.typeParams, args)
     if (sym1.isAliasType && sym1.info.typeParams.length == args.length) {
       if (!sym1.lockOK)
