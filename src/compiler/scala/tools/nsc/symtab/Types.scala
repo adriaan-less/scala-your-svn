@@ -2482,9 +2482,22 @@ A type's typeSymbol should never be inspected directly.
    *  todo: see how we can clean this up a bit
    */
   def typeRef(pre: Type, sym: Symbol, args: List[Type]): Type = {
-    var sym1 = if (sym.isAbstractType) rebind(pre, sym) else sym
-    def transform(tp: Type): Type = 
+    def rebindTR(pre: Type, sym: Symbol): Symbol = {
+      lazy val symRebound = rebind(pre, sym)
+      if(!sym.isAbstractType && (symRebound ne sym)) {
+        println("should rebind? "+(pre, "\n"+ sym, sym.info, "\n"+ symRebound, symRebound.info))
+        Thread.dumpStack()
+      }
+      if(sym.isAbstractType) symRebound else sym // used to only rebind if(sym.isAbstractType)
+         // however, that's too strict since type alias selection needs to be rebound as well
+         // e.g., when type parameters that are referenced by the alias are instantiated in the prefix
+         // see pos/depmet_rebind_typealias
+    }
+    val sym1 = rebindTR(pre, sym)
+
+    def transform(tp: Type): Type =
       tp.resultType.asSeenFrom(pre, sym1.owner).instantiateTypeParams(sym1.typeParams, args)
+
     if (sym1.isAliasType && sym1.info.typeParams.length == args.length) {
       if (!sym1.lockOK)
         throw new TypeError("illegal cyclic reference involving " + sym1)
@@ -2501,8 +2514,7 @@ A type's typeSymbol should never be inspected directly.
     } else {
       val pre1 = removeSuper(pre, sym1)
       if (pre1 ne pre) {
-        if (sym1.isAbstractType) sym1 = rebind(pre1, sym1)
-        typeRef(pre1, sym1, args)
+        typeRef(pre1, rebindTR(pre1, sym1), args)
       } 
       else if (sym1.isClass && pre.isInstanceOf[CompoundType]) {
         // sharpen prefix so that it is maximal and still contains the class.
