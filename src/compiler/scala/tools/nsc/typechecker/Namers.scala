@@ -769,48 +769,6 @@ trait Namers { self: Analyzer =>
         tpt setPos meth.pos.focus
       }
 
-/*
-      def convertToDeBruijn(vparams: List[Symbol], level: Int): TypeMap = new TypeMap {
-        def debruijnFor(param: Symbol) =
-          DeBruijnIndex(level, vparams indexOf param)
-        def apply(tp: Type) = {
-          tp match {
-            case SingleType(_, sym) =>
-              if (settings.YdepMethTpes.value && sym.owner == meth && (vparams contains sym)) {
-                debruijnFor(sym)
-              } else tp
-            case MethodType(params, restpe) =>
-              val params1 = this.mapOver(params)
-              val restpe1 = convertToDeBruijn(vparams, level + 1)(restpe)
-              if ((params1 eq params) && (restpe1 eq restpe)) tp
-              else copyMethodType(tp, params1, restpe1)
-            case _ =>
-              mapOver(tp)
-          }
-        }
-
-        // AnnotatedTypes can contain trees in the annotation arguments. When accessing a
-        // parameter in an annotation, set the type of the Ident to the DeBruijnIndex
-        object treeTrans extends TypeMapTransformer {
-          override def transform(tree: Tree): Tree =
-            tree match {
-              case Ident(name) if (vparams contains tree.symbol) =>
-                val dtpe = debruijnFor(tree.symbol)
-                val dsym =
-                  context.owner.newLocalDummy(tree.symbol.pos)
-                  .newValue(tree.symbol.pos, name)
-
-                dsym.setFlag(PARAM)
-                dsym.setInfo(dtpe)
-                Ident(name).setSymbol(dsym).copyAttrs(tree).setType(dtpe)
-              case tree => super.transform(tree)
-            }
-        }
-
-        // for type annotations (which may contain trees)
-        override def mapOver(arg: Tree) = Some(treeTrans.transform(arg))
-      }
-*/
 
       /** Called for all value parameter lists, right to left 
        *  @param vparams the symbols of one parameter list

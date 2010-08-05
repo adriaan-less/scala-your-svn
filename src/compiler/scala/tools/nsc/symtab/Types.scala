@@ -1935,9 +1935,10 @@ A type's typeSymbol should never be inspected directly.
       if(isTrivial) resultType
       else {
         if(actuals.length == params.length)  {
-          val res = (new InstantiateDependentMap(params, actuals))(resultType)
-          // println("resultTypeDep "+(params, actuals, resultType, "\n= "+ res))
-          res
+          val idm = new InstantiateDependentMap(params, actuals)
+          val res = idm(resultType)
+          // println("resultTypeDep "+(params, actuals, resultType, idm.existentialsNeeded, "\n= "+ res))
+          existentialAbstraction(idm.existentialsNeeded, res)
         } else {
           // Thread.dumpStack()
           // println("resultType "+(params, actuals, resultType))
@@ -3531,7 +3532,60 @@ A type's typeSymbol should never be inspected directly.
       case _ => super.renameBoundSyms(tp)
     }
     // TODO: should we optimise this? only need to consider singletontypes
-    // TODODEPMET: existential abstraction for annotations?
+
+    override val dropNonConstraintAnnotations = true
+
+    def existentialsNeeded: List[Symbol] = existSyms.filter(_ ne null).toList
+
+    private val existSyms: Array[Symbol] = new Array(actuals.length)
+    private def haveExistential(i: Int) = {assert((i >= 0) && (i <= actuals.length)); existSyms(i) ne null}
+
+    /* Return the type symbol for referencing a parameter inside the existential quantifier. 
+     * (Only needed if the actual is unstable.)
+     */
+    def existSymFor(actualIdx: Int) =
+      if (haveExistential(actualIdx)) existSyms(actualIdx)
+      else {
+        val oldSym = params(actualIdx)
+        val symowner = oldSym.owner
+        val bound = singletonBounds(actuals(actualIdx))
+
+        val sym = symowner.newExistential(oldSym.pos, oldSym.name+".type")
+        sym.setInfo(bound)
+        sym.setFlag(oldSym.flags)
+
+        existSyms(actualIdx) = sym
+        sym
+      }
+
+    //AM propagate more info to annotations -- this seems a bit ad-hoc... (based on code by spoon)
+    override def mapOver(arg: Tree, giveup: ()=>Nothing): Tree = {
+      object treeTrans extends Transformer {
+        override def transform(tree: Tree): Tree = {
+          tree match {
+            case RefParamAt(pid) =>
+              if(actuals(pid) isStable) mkAttributedQualifier(actuals(pid), tree.symbol)
+              else {
+                val sym = existSymFor(pid)
+                (Ident(sym.name)
+                 copyAttrs tree
+                 setType typeRef(NoPrefix, sym, Nil))
+              }
+            case _ => super.transform(tree)
+          }
+        }
+        object RefParamAt {
+          def unapply(tree: Tree): Option[(Int)] = tree match {
+            case Ident(_) =>
+              val pid = params indexOf tree.symbol
+              if(pid != -1) Some((pid)) else None
+            case _ => None
+          }
+        }
+      }
+
+      treeTrans.transform(arg)
+    }
   }
 
 
