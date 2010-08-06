@@ -2884,16 +2884,17 @@ A type's typeSymbol should never be inspected directly.
       if((pre ne pre1) && sym.isAliasType) // only need to rebind type aliases here, as typeRef already handles abstract types (they are allowed to be rebound more liberally)
         (pre, pre1) match {
           case (RefinedType(_, decls), RefinedType(_, decls1)) =>
-            // don't look at parents -- it would be an error to override alias types
+            // don't look at parents -- it would be an error to override alias types anyway
             val sym1 = decls1.lookup(sym.name)
             assert(decls.lookupAll(sym.name).toList.length == 1)
             assert(decls1.lookupAll(sym.name).toList.length == 1)
             assert(sym1.isAliasType)
-            println("coevolved "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
+            // println("coevolved "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
             sym1
           case _ => 
             val sym1 = pre1.nonPrivateMember(sym.name).suchThat(sym => sym.isAliasType)
-            println("??coevolve "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
+            // println("??coevolve for "+(pre.getClass, pre1.getClass))
+            // println("??coevolve "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
             sym // TODO: is there another way a typeref's symbol can refer to a symbol defined in its pre?
         }
       else sym
