@@ -1,7 +1,7 @@
 object Sessions {
   trait Session[This] {
     type Dual
-    // type HasDual[D] = Session[This]{type Dual=D}
+    type HasDual[D] = Session[This]{type Dual=D}
     def run(p: This, dp: Dual): Unit
   }
 
@@ -27,7 +27,7 @@ object Sessions {
        sessionDOut.run(p.y, dp.func(p.x))
   }
 
-  sealed case class Stop
+  sealed case class Stop()
   sealed case class In[-A, +B](func: A => B)
   sealed case class Out[+A, +B](x: A, y: B)
 
@@ -46,13 +46,13 @@ object Sessions {
   def runSession[S, D: Session[S]#HasDual](p: S, dp: D) =
     implicitly[Session[S]#HasDual[D]].run(p, dp)
 
-  def runSession[S, D](p: S, dp: D)(implicit s: Session[S]#HasDual[D]) =
-    s.run(p, dp)
+  // def runSession[S, D](p: S, dp: D)(implicit s: Session[S]#HasDual[D]) =
+  //   s.run(p, dp)
+  // 
+  // def runSession[S, D](p: S, dp: D)(implicit s: Session[S]{type Dual=D}) =
+  //   s.run(p, dp)
 
-  def runSession[S, D](p: S, dp: D)(implicit s: Session[S]{type Dual=D}) =
-    s.run(p, dp)
-
-  // TODO: can we relax the ordering restrictions on dependencies so that we can
+  // TODO: can we relax the ordering restrictions on dependencies so that we can use
   // def runSession[S](p: S, dp: s.Dual)(implicit s: Session[S]) =
   //   s.run(p, dp)
   // to emphasise similarity of type parameters and implicit arguments:
