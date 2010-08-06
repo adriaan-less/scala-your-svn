@@ -7,13 +7,14 @@ package model
 import comment._
 
 import scala.collection._
+import scala.util.matching.Regex
 
 import symtab.Flags
 
 import model.{ RootPackage => RootPackageEntity }
 
 /** This trait extracts all required information for documentation from compilation units */
-class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory: ModelFactory with CommentFactory =>
+class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory: ModelFactory with CommentFactory with TreeFactory =>
 
   import global._
   import definitions.{ ObjectClass, ScalaObjectClass, RootPackage, EmptyPackage, NothingClass, AnyClass, AnyRefClass }
@@ -169,7 +170,17 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
       }
       if (!settings.docsourceurl.isDefault)
         inSource map { case (file, _) =>
-          new java.net.URL(settings.docsourceurl.value + "/" + fixPath(file.path).replaceFirst("^" + assumedSourceRoot, ""))
+          val filePath = fixPath(file.path).replaceFirst("^" + assumedSourceRoot, "").stripSuffix(".scala")
+          val tplOwner = this.inTemplate.qualifiedName
+          val tplName = this.name
+          val patches = new Regex("""€\{(FILE_PATH|TPL_OWNER|TPL_NAME)\}""")
+          val patchedString = patches.replaceAllIn(settings.docsourceurl.value, { m => m.group(1) match {
+              case "FILE_PATH" => filePath
+              case "TPL_OWNER" => tplOwner
+              case "TPL_NAME" => tplName
+            }
+          })
+          new java.net.URL(patchedString)
         }
       else None
     }
@@ -442,7 +453,8 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
           (currentRun.units filter (_.source.file == aSym.sourceFile)).toList match {
             case List(unit) =>
               (unit.body find (_.symbol == aSym)) match {
-                case Some(ValDef(_,_,_,rhs)) => Some(rhs.toString)
+                case Some(ValDef(_,_,_,rhs)) => 
+                  Some(makeTree(rhs))
                 case _ => None
               }
             case _ => None
@@ -545,7 +557,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
   }
 
   def isEmptyJavaObject(aSym: Symbol): Boolean = {
-    val hasMembers = aSym.info.members.exists(s => localShouldDocument(s) && (!s.isConstructor || s.owner == aSym))
+    def hasMembers = aSym.info.members.exists(s => localShouldDocument(s) && (!s.isConstructor || s.owner == aSym))
     aSym.isModule && aSym.hasFlag(Flags.JAVA) && !hasMembers
   }
 
