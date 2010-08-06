@@ -1739,7 +1739,10 @@ A type's typeSymbol should never be inspected directly.
 
     @inline private def betaReduce: Type = {
       assert(sym.info.typeParams.length == typeArgs.length, this)
-      appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner) // transform(sym.info.resultType)
+      // isHKSubType0 introduces synthetic type params so that betaReduce can first apply sym.info to typeArgs before calling asSeenFrom
+      // asSeenFrom then skips synthetic type params, which are used to reduce HO subtyping to first-order subtyping, but which can't be instantiated from the given prefix and class
+      appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner)
+      // transform(sym.info.resultType) // TODO: why is this not enough in the context of dependent method types? find example
     }
 
     // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
@@ -3255,7 +3258,7 @@ A type's typeSymbol should never be inspected directly.
             else if (pre1.isStable) singleType(pre1, sym) 
             else pre1.memberType(sym).resultType //todo: this should be rolled into existential abstraction
           }
-        case TypeRef(prefix, sym, args) if (sym.isTypeParameter) =>
+        case TypeRef(prefix, sym, args) if (sym.isTypeParameter && !sym.hasFlag(SYNTHETIC)) => // synthetic: see higher-order subtyping in 
           def toInstance(pre: Type, clazz: Symbol): Type =
             if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) 
             //@M! see test pos/tcpoly_return_overriding.scala why mapOver is necessary
@@ -4384,7 +4387,10 @@ A type's typeSymbol should never be inspected directly.
             res1 <:< res2.substSym(tparams2, tparams1)
           } else { // normalized higher-kinded type
             //@M for an example of why we need to generate fresh symbols, see neg/tcpoly_ticket2101.scala
-            val tpsFresh = cloneSymbols(tparams1) // @M cloneSymbols(tparams2) should be equivalent -- TODO: check
+            val tpsFresh = cloneSymbols(tparams1)
+            tpsFresh foreach {_.setFlag(SYNTHETIC)} // skipped in asSeenFrom since they're skolem-like (can't use skolems because subtyping is not defined, but type constructor inference needs that)
+            // this is needed for new-style normalize/betaReduce, which first applies type arguments and then does asSeenFrom
+            // TODO: document why it must be in that order -- can't remember right now
 
             (tparams1 corresponds tparams2)((p1, p2) =>
               p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&   // @PP: corresponds
