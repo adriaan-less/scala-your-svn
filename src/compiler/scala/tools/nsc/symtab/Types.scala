@@ -1579,7 +1579,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
    *  Cannot be created directly; one should always use `typeRef'
    *  for creation. (@M: Otherwise hashing breaks)
    *
-   * @M: Higher-kinded types are represented as TypeRefs with a symbol that has type parameters, but with args==List()
+   * @M: a higher-kinded type is represented as a TypeRef with sym.info.typeParams.nonEmpty, but args.isEmpty
    *  @param pre  ...
    *  @param sym  ...
    *  @param args ...
@@ -2876,6 +2876,28 @@ A type's typeSymbol should never be inspected directly.
         case _ => false
       }
 
+    // #3731: return sym1 for which holds: pre bound sym.name to sym and pre1 now binds sym.name to sym1, conceptually exactly the same symbol as sym
+    // the selection of sym on pre must be updated to the selection of sym1 on pre1,
+    // since sym's info was probably updated by the TypeMap to yield a new symbol sym1 with transformed info
+    // @returns sym1
+    protected def coevolveSym(pre: Type, pre1: Type, sym: Symbol): Symbol =
+      if((pre ne pre1) && sym.isAliasType) // only need to rebind type aliases here, as typeRef already handles abstract types (they are allowed to be rebound more liberally)
+        (pre, pre1) match {
+          case (RefinedType(_, decls), RefinedType(_, decls1)) =>
+            // don't look at parents -- it would be an error to override alias types
+            val sym1 = decls1.lookup(sym.name)
+            assert(decls.lookupAll(sym.name).toList.length == 1)
+            assert(decls1.lookupAll(sym.name).toList.length == 1)
+            assert(sym1.isAliasType)
+            println("coevolved "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
+            sym1
+          case _ => 
+            val sym1 = pre1.nonPrivateMember(sym.name).suchThat(sym => sym.isAliasType)
+            println("??coevolve "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
+            sym // TODO: is there another way a typeref's symbol can refer to a symbol defined in its pre?
+        }
+      else sym
+
     /** Map this function over given type */
     def mapOver(tp: Type): Type = tp match {
       case TypeRef(pre, sym, args) =>
@@ -2888,7 +2910,7 @@ A type's typeSymbol should never be inspected directly.
                       else mapOverArgs(args, tparams)
                     }
         if ((pre1 eq pre) && (args1 eq args)) tp
-        else typeRef(pre1, sym, args1)
+        else typeRef(pre1, coevolveSym(pre, pre1, sym), args1) 
       case ThisType(_) => tp
       case SingleType(pre, sym) =>
         if (sym.isPackageClass) tp // short path
