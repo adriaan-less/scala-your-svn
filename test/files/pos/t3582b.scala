@@ -1,6 +1,5 @@
 object ParamScoping {
-  // how come T is properly scoped in the return type, but not in the body of the method
-  def noOverlapFOwithHO[T, G[T]]: G[T] =  null.asInstanceOf[G[T]] 
-  // def canAccessLaterFOinHO[A, B[x <: C], C]: G[T] =  null.asInstanceOf[G[T]]
-  // def canAccessEarlierFOinHO[A, B[x <: A], C]: G[T] =  null.asInstanceOf[G[T]]  
+  // scoping worked fine in the result type, but was wrong in body
+  // reason: typedTypeDef needs new context, which was set up by typed1 but not by typedDefDef and typedClassDef
+  def noOverlapFOwithHO[T, G[T]]: G[T] =  null.asInstanceOf[G[T]]
 }
