@@ -61,6 +61,24 @@ $(document).ready(function(){
             filter();
         };
     });
+    $("#impl > ol > li.concrete").click(function() {
+        if ($(this).hasClass("out")) {
+            $(this).removeClass("out").addClass("in");            
+            $("li[data-isabs='false']").show();
+        } else {
+            $(this).removeClass("in").addClass("out");
+            $("li[data-isabs='false']").hide();
+        }
+    });
+    $("#impl > ol > li.abstract").click(function() {
+        if ($(this).hasClass("out")) {
+            $(this).removeClass("out").addClass("in");                        
+            $("li[data-isabs='true']").show();
+        } else {
+            $(this).removeClass("in").addClass("out");
+            $("li[data-isabs='true']").hide();
+        }
+    });
     $("#order > ol > li.alpha").click(function() {
         if ($(this).hasClass("out")) {
             $(this).removeClass("out").addClass("in");
@@ -75,6 +93,7 @@ $(document).ready(function(){
             orderInherit();
         };
     });
+    initInherit();
     //http://flowplayer.org/tools/tooltip.html
     $(".extype").tooltip({
         tip: "#tooltip",
@@ -83,7 +102,13 @@ $(document).ready(function(){
             $(this.getTip()).text(this.getTrigger().attr("name"));
         }        
     });
-    $("#template div.fullcomment").hide();
+    $(".defval").tooltip({
+        tip: "#tooltip",
+        position:"top center",        
+        onBeforeShow: function(ev) {
+            $(this.getTip()).html(this.getTrigger().attr("name"))
+        }        
+    });   
     var docAllSigs = $("#template .signature");
     function commentShowFct(fullComment){
         var vis = $(":visible", fullComment);
@@ -97,7 +122,7 @@ $(document).ready(function(){
     var docShowSigs = docAllSigs.filter(function(){
         return $("+ div.fullcomment", $(this)).length > 0;
     });
-    docShowSigs.css("cursor", "help");
+    docShowSigs.css("cursor", "pointer");
     docShowSigs.click(function(){
         commentShowFct($("+ div.fullcomment", $(this)));
     });
@@ -116,14 +141,13 @@ $(document).ready(function(){
     var docToggleSigs = docAllSigs.filter(function(){
         return $("+ p.shortcomment", $(this)).length > 0;
     });
-    docToggleSigs.css("cursor", "help");
+    docToggleSigs.css("cursor", "pointer");
     docToggleSigs.click(function(){
         commentToggleFct($("+ p.shortcomment", $(this)));
     });
     $("p.shortcomment").click(function(){
         commentToggleFct($(this));
     });
-    initInherit();
 });
 
 function orderAlpha() {
@@ -238,4 +262,9 @@ function filter() {
         if ($(" > ol > li:visible", this).length == 0) { $(this).hide(); }
     });
     return false
+};
+
+function windowTitle()
+{
+    parent.document.title=document.title;
 };

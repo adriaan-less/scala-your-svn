@@ -16,21 +16,20 @@
 
 package com.example.android.contactmanager
 
+import scala.android.app.Activity
+import scala.android.provider.ContactsContract
+import scala.android.provider.ContactsContract.CommonDataKinds.{Email, Phone, StructuredName}
+
 import android.accounts.{Account, AccountManager, AuthenticatorDescription,
                          OnAccountsUpdateListener}
-import android.app.Activity
 import android.content.{ContentProviderOperation, Context}
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.provider.Contacts.{OrganizationColumns, PeopleColumns}
-import android.provider.ContactsContract
-import android.provider.ContactsContract.CommonDataKinds.{Email, Phone}
 import android.util.Log
 import android.view.{LayoutInflater, View, ViewGroup}
-import android.widget.{AdapterView, ArrayAdapter, Button, EditText, ImageView,
+import android.widget.{ArrayAdapter, Button, EditText, ImageView,
                        Spinner, TextView, Toast}
-import android.widget.AdapterView.OnItemSelectedListener
 
 import java.util.{ArrayList, Iterator}
 
@@ -47,10 +46,10 @@ object ContactAdder {
   //       Also, be aware that type IDs differ between Phone and Email, and
   //       MUST be computed separately.
   private final val mContactEmailTypes = Array(
-    Email.TYPE_HOME,
-    Email.TYPE_WORK,
-    Email.TYPE_MOBILE,
-    Email.TYPE_OTHER)
+    Phone.TYPE_HOME,
+    Phone.TYPE_WORK,
+    Phone.TYPE_MOBILE,
+    Phone.TYPE_OTHER)
   private final val mContactPhoneTypes = Array(
     Phone.TYPE_HOME,
     Phone.TYPE_WORK,
@@ -135,40 +134,25 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
     mContactEmailTypeSpinner setAdapter adapter
     mContactEmailTypeSpinner setPrompt getString(R.string.selectLabel)
 
-    // Prepare the system account manager. On registering the listener below, we also ask for
-    // an initial callback to pre-populate the account list.
+    // Prepare the system account manager. On registering the listener below,
+    // we also ask for an initial callback to pre-populate the account list.
     AccountManager.get(this).addOnAccountsUpdatedListener(this, null, true)
 
     // Register handlers for UI elements
-    mAccountSpinner setOnItemSelectedListener new OnItemSelectedListener() {
-      def onItemSelected(parent: AdapterView[_], view: View, position: Int, i: Long) {
-        updateAccountSelection()
-      }
-
-      def onNothingSelected(parent: AdapterView[_]) {
-        // We don't need to worry about nothing being selected, since Spinners don't allow
-        // this.
-      }
+    mAccountSpinner setOnItemSelectedListener {
+      updateAccountSelection()
     }
-    mContactSaveButton setOnClickListener new View.OnClickListener() {
-      def onClick(v: View) {
-        onSaveButtonClicked()
-      }
+
+    mContactSaveButton setOnClickListener {
+      Log.v(TAG, "Save button clicked")
+      createContactEntry()
+      finish()
     }
   }
 
   /**
-   * Actions for when the Save button is clicked. Creates a contact entry and terminates the
-   * activity.
-   */
-  private def onSaveButtonClicked() {
-    Log.v(TAG, "Save button clicked")
-    createContactEntry()
-    finish()
-  }
-
-  /**
-   * Creates a contact entry from the current UI values in the account named by mSelectedAccount.
+   * Creates a contact entry from the current UI values in the account named
+   * by mSelectedAccount.
    */
   protected def createContactEntry() {
     // Get values from UI
@@ -180,33 +164,34 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
 
     // Prepare contact creation request
     //
-    // Note: We use RawContacts because this data must be associated with a particular account.
-    //       The system will aggregate this with any other data for this contact and create a
-    //       coresponding entry in the ContactsContract.Contacts provider for us.
+    // Note: We use RawContacts because this data must be associated with a
+    //       particular account. The system will aggregate this with any other
+    //       data for this contact and create a coresponding entry in the 
+    //       ContactsContract.Contacts provider for us.
     val ops = new ArrayList[ContentProviderOperation]()
     ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-                .withValue(ContactsContract2.RawContacts.ACCOUNT_TYPE, mSelectedAccount.getType)
-                .withValue(ContactsContract2.RawContacts.ACCOUNT_NAME, mSelectedAccount.getName)
-                .build());
-    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract2.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract2.Data.MIMETYPE,
-                           ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-                .withValue(PeopleColumns.DISPLAY_NAME, name)
-                .build());
-    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract2.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract2.Data.MIMETYPE,
-                           Phone.CONTENT_ITEM_TYPE)
-                .withValue(Phone.NUMBER, phone)
-                .withValue(OrganizationColumns.TYPE, phoneType)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, mSelectedAccount.getType)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, mSelectedAccount.getName)
                 .build())
     ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract2.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract2.Data.MIMETYPE,
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                           StructuredName.CONTENT_ITEM_TYPE)
+                .withValue(StructuredName.DISPLAY_NAME, name)
+                .build())
+    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE,
+                           Phone.CONTENT_ITEM_TYPE)
+                .withValue(Phone.NUMBER, phone)
+                .withValue(Phone.TYPE, phoneType)
+                .build())
+    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE,
                            Email.CONTENT_ITEM_TYPE)
-                .withValue(ContactsContract2.CommonDataKinds.Email.DATA, email)
-                .withValue(OrganizationColumns.TYPE, emailType)
+                .withValue(Email.DATA, email)
+                .withValue(Email.TYPE, emailType)
                 .build())
 
     // Ask the Contact provider to create a new contact
@@ -239,8 +224,8 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
   }
 
   /**
-   * Updates account list spinner when the list of Accounts on the system changes. Satisfies
-   * OnAccountsUpdateListener implementation.
+   * Updates account list spinner when the list of Accounts on the system
+   * changes. Satisfies OnAccountsUpdateListener implementation.
    */
   def onAccountsUpdated(a: Array[Account]) {
     Log.i(TAG, "Account list update detected")
@@ -252,8 +237,8 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
 
     // Populate tables
     for (i <- 0 until a.length) {
-      // The user may have multiple accounts with the same name, so we need to construct a
-      // meaningful display name for each.
+      // The user may have multiple accounts with the same name, so we need to
+      // construct a meaningful display name for each.
       val systemAccountType = a(i).`type`
       val ad = getAuthenticatorDescription(systemAccountType, accountTypes)
       val data = new AccountData(a(i).name, ad)
@@ -265,7 +250,8 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
   }
 
   /**
-   * Update account selection. If NO_ACCOUNT is selected, then we prohibit inserting new contacts.
+   * Update account selection. If NO_ACCOUNT is selected, then we prohibit
+   * inserting new contacts.
    */
   private def updateAccountSelection() {
     // Read current account selection
@@ -275,10 +261,11 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
   /**
    * A container class used to repreresent all known information about an account.
    *
-   * @param name The name of the account. This is usually the user's email address or
-   *        username.
-   * @param description The description for this account. This will be dictated by the
-   *        type of account returned, and can be obtained from the system AccountManager.
+   * @param name The name of the account. This is usually the user's email
+   *        address or username.
+   * @param description The description for this account. This will be dictated
+   *        by the type of account returned, and can be obtained from the
+   *        system AccountManager.
    */
   private class AccountData(name: String, description: AuthenticatorDescription) {
     private val mName = name
@@ -297,7 +284,8 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
       if (description.labelId != 0) {
         mTypeLabel = pm.getText(packageName, description.labelId, null)
         if (mTypeLabel == null)
-           throw new IllegalArgumentException("LabelID provided, but label not found")
+          throw new IllegalArgumentException(
+            "LabelID provided, but label not found")
       } else {
         mTypeLabel = ""
       }
@@ -305,10 +293,10 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
       if (description.iconId != 0) {
         mIcon = pm.getDrawable(packageName, description.iconId, null)
         if (mIcon == null)
-          throw new IllegalArgumentException("IconID provided, but drawable not " +
-                      "found")
+          throw new IllegalArgumentException(
+            "IconID provided, but drawable not found")
       } else {
-        mIcon = getResources.getDrawable(android.R.drawable.sym_def_app_icon)
+        mIcon = getResources getDrawable android.R.drawable.sym_def_app_icon
       }
     }
 
@@ -324,7 +312,8 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
   }
 
   /**
-   * Custom adapter used to display account icons and descriptions in the account spinner.
+   * Custom adapter used to display account icons and descriptions in the
+   * account spinner.
    */
   private class AccountAdapter(context: Context, accountData: ArrayList[AccountData])
   extends ArrayAdapter(context, android.R.layout.simple_spinner_item, accountData) {
@@ -347,13 +336,10 @@ final class ContactAdder extends Activity with OnAccountsUpdateListener {
       secondAccountLine setText data.getTypeLabel
       var icon = data.getIcon
       if (icon == null)
-        icon = getResources.getDrawable(android.R.drawable.ic_menu_search)
+        icon = getResources getDrawable android.R.drawable.ic_menu_search
       accountIcon setImageDrawable icon
       convertView1
     }
   }
 
-  @inline
-  private final def findView[V <: View](id: Int) =
-    findViewById(id).asInstanceOf[V]
 }

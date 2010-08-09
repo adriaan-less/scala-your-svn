@@ -17,8 +17,7 @@ import scala.collection.mutable.ArrayBuffer
  * @author Philippe Altherr
  * @version 1.0, 23/03/2004
  */
-object AbstractFile
-{
+object AbstractFile {
   /** Returns "getFile(new File(path))". */
   def getFile(path: String): AbstractFile = getFile(Path(path))
   def getFile(path: Path): AbstractFile = getFile(path.toFile)
@@ -132,7 +131,7 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
   /** Returns an output stream for writing the file */
   def output: OutputStream
   
-  /** Returns an unbuffered output stream for writing the file - defaults to out */
+  /** Returns a buffered output stream for writing the file - defaults to out */
   def bufferedOutput: BufferedOutputStream = new BufferedOutputStream(output)
 
   /** size of this file if it is a concrete file. */

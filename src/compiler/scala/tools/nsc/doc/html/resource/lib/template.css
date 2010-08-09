@@ -15,7 +15,6 @@ body {
 }
 
 a {
-  cursor: pointer;
   text-decoration: underline;
   color: #69481D; /* brown */
 }
@@ -112,12 +111,13 @@ a:hover {
 #template > div.parent > h3 {
   color: white;
   padding: 4px;
-  background-color: #385E1A;
+  margin-top: 10px;
+  background-color: #47166D;
   font-size: 12pt;
   font-weight: bold;
 }
 
-#template > div.parent > h3 > a {
+#template > div.parent > h3 * {
   color: white;
 }
 
@@ -311,15 +311,15 @@ p.comment {
 p.shortcomment {
   display: block;
   margin-left: 8.7em;
-  cursor: help;
+  cursor: pointer;
 }
 
 div.fullcomment {
-  display: block;
   margin: 10px 0 10px 0;
 }
 
 #template div.fullcomment {
+  display:none;
   margin: 6px 0 6px 8.7em;
 }
 
@@ -444,7 +444,7 @@ div.fullcomment dl.paramcmts > dd + dt + dd {
   padding: 4px 8px 4px 8px;
   background-color: white;
   display: inline-block;
-  cursor: crosshair;
+  cursor: pointer;
 }
 
 #mbrsel > div > ol > li.in {
