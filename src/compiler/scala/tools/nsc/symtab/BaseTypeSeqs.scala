@@ -6,8 +6,7 @@ package scala.tools.nsc
 package symtab
 
 // todo implement in terms of BitSet
-import scala.collection.mutable.ListBuffer
-import scala.collection.immutable.Map
+import scala.collection.mutable.{ListBuffer, BitSet}
 import math.max
 import util.Statistics._
 
@@ -42,38 +41,38 @@ trait BaseTypeSeqs {
     // (while NoType is in there to indicate a cycle in this BTS, during the execution of
     //  the mergePrefixAndArgs below, the elems get copied without the pending map,
     //  so that NoType's are seen instead of the original type --> spurious compile error)
-    val pending = new Array[Boolean](elems.length)
+    val pending = new BitSet(length)
 
     /** The type at i'th position in this sequence; lazy types are returned evaluated. */
-    def apply(i: Int): Type = {
-      if(pending(i)) {
-        for(i <- 0 until pending.length) pending(i) = false
+    def apply(i: Int): Type =
+      if(pending contains i) {
+        pending clear
         throw CyclicInheritance
-      } else elems(i) match {
-        case rtp @ RefinedType(variants, decls) =>
-          // can't assert decls.isEmpty; see t0764
-          //if (!decls.isEmpty) assert(false, "computing closure of "+this+":"+this.isInstanceOf[RefinedType]+"/"+closureCache(j))
-          //Console.println("compute closure of "+this+" => glb("+variants+")")
-          pending(i) = true
-          try {
-            mergePrefixAndArgs(variants, -1, lubDepth(variants)) match {
-              case Some(tp0) =>
-                pending(i) = false
-                elems(i) = tp0
-                tp0
-              case None => 
+      } else 
+        elems(i) match {
+          case rtp @ RefinedType(variants, decls) =>
+            // can't assert decls.isEmpty; see t0764
+            //if (!decls.isEmpty) assert(false, "computing closure of "+this+":"+this.isInstanceOf[RefinedType]+"/"+closureCache(j))
+            //Console.println("compute closure of "+this+" => glb("+variants+")")
+            pending += i
+            try {
+              mergePrefixAndArgs(variants, -1, lubDepth(variants)) match {
+                case Some(tp0) =>
+                  pending(i) = false
+                  elems(i) = tp0
+                  tp0
+                case None =>
+                  typeError(
+                    "no common type instance of base types "+(variants mkString ", and ")+" exists.")
+              }
+            } catch {
+              case CyclicInheritance =>
                 typeError(
-                  "no common type instance of base types "+(variants mkString ", and ")+" exists.")
+                  "computing the common type instance of base types "+(variants mkString ", and ")+" leads to a cycle.")
             }
-          } catch {
-            case CyclicInheritance =>
-              typeError(
-                "computing the common type instance of base types "+(variants mkString ", and ")+" leads to a cycle.")
-          }
-        case tp =>
-          tp
-      }
-    }
+          case tp =>
+            tp
+        }
 
     def rawElem(i: Int) = elems(i)
 
@@ -126,7 +125,7 @@ trait BaseTypeSeqs {
       override def map(g: Type => Type) = lateMap(g)
       override def lateMap(g: Type => Type) = self.lateMap(x => g(f(x)))
       override def exists(p: Type => Boolean) = elems exists (x => p(f(x)))
-      override protected def maxDepthOfElems: Int = elems map (x => maxDpth(f(x))) max 
+      override protected def maxDepthOfElems: Int = elems map (x => maxDpth(f(x))) max
       override def toString = elems.mkString("MBTS(", ",", ")")
     }
 
