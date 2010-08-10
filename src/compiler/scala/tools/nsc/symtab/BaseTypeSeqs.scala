@@ -32,6 +32,8 @@ trait BaseTypeSeqs {
 
   class BaseTypeSeq(parents: List[Type], elems: Array[Type]) {
   self =>
+    if(elems contains NoType)
+       Thread.dumpStack()
 
     incCounter(baseTypeSeqCount)                       
     incCounter(baseTypeSeqLenTotal, elems.length)
@@ -43,10 +45,13 @@ trait BaseTypeSeqs {
 
     /** The type at i'th position in this sequence; lazy types are returned evaluated. */
     def apply(i: Int): Type = elems(i) match {
-      case NoType if pending.keySet contains i => // the NoType was put there by us since it's in pending's keys -- #3676 says it might come from outer space as well
-        pending = Map()
-        elems(i) = AnyClass.tpe
-        throw CyclicInheritance 
+      case NoType =>
+        // #3676: did the NoType arise from cycle detection in this BTS?
+        if(pending.keySet contains i) {
+          pending = Map()
+          elems(i) = AnyClass.tpe
+          throw CyclicInheritance
+        } else NoType // or was it copied over from another BTS (during the mergePrefixAndArgs below)
       case rtp @ RefinedType(variants, decls) =>
         // can't assert decls.isEmpty; see t0764
         //if (!decls.isEmpty) assert(false, "computing closure of "+this+":"+this.isInstanceOf[RefinedType]+"/"+closureCache(j))
@@ -57,6 +62,8 @@ trait BaseTypeSeqs {
           mergePrefixAndArgs(variants, -1, lubDepth(variants)) match {
             case Some(tp0) =>
               pending -= i
+              if(tp0 eq NoType)
+                Thread.dumpStack()
               elems(i) = tp0
               tp0
             case None => 
