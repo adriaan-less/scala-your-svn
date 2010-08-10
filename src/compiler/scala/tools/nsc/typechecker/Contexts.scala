@@ -350,6 +350,11 @@ trait Contexts { self: Analyzer =>
      *  @return            ...
      */
     def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
+      def accessWithinLinked(ab: Symbol) = {
+        val linked = ab.linkedClassOfClass
+        // don't have access if there is no linked class
+        (linked ne NoSymbol) && accessWithin(linked)
+      }
 
       /** Are we inside definition of `sym'? */
       def accessWithin(sym: Symbol) = {
@@ -390,7 +395,7 @@ trait Contexts { self: Analyzer =>
       (pre == NoPrefix) || {
         val ab = sym.accessBoundary(sym.owner)
         (  (ab.isTerm || ab == definitions.RootClass)
-        || (accessWithin(ab) || (!ab.isPackageClass && accessWithin(ab.linkedClassOfClass))) && // `!ab.isPackageClass` is needed (see e.g., #3663): a package does not have a linked class (NoSymbol is returned), and accessWithin(NoSymbol) is more liberal than accessWithin(somePkg)
+        || (accessWithin(ab) || accessWithinLinked(ab)) &&
              (  !sym.hasFlag(LOCAL)
              || sym.owner.isImplClass // allow private local accesses to impl classes
              || (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner)
