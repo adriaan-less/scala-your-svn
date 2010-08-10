@@ -8,6 +8,7 @@ package typechecker
 
 import symtab.Flags._
 import scala.collection.mutable.ListBuffer
+import annotation.tailrec
 
 /** This trait ...
  *
@@ -351,7 +352,22 @@ trait Contexts { self: Analyzer =>
     def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
 
       /** Are we inside definition of `sym'? */
-      def accessWithin(sym: Symbol): Boolean = this.owner.ownersIterator contains sym
+      def accessWithin(sym: Symbol) = {
+        // #3663: we must disregard package nesting if sym isJavaDefined
+        if(sym.isJavaDefined) {
+          // is `o` or one of its transitive owners equal to `sym`?
+          // skips nested packages
+          @tailrec def symEnclosesNoPkg(o: Symbol): Boolean =
+            (!o.isPackageClass && (o eq sym)) ||
+            ((o ne NoSymbol) && symEnclosesNoPkg(o.owner))
+          @tailrec def symEnclosesCheckNesting(o: Symbol): Boolean =
+            (o eq sym) || (
+              if(o.isPackageClass) symEnclosesNoPkg(o.owner)
+              else (o ne NoSymbol) && symEnclosesCheckNesting(o.owner))
+          symEnclosesCheckNesting(owner)
+        } else (owner hasTransOwner sym)
+      }
+
 /*
         var c = this
         while (c != NoContext && c.owner != owner) {
@@ -373,18 +389,20 @@ trait Contexts { self: Analyzer =>
 
       (pre == NoPrefix) || {
         val ab = sym.accessBoundary(sym.owner)
-        ((ab.isTerm || ab == definitions.RootClass)
-         ||
-         (accessWithin(ab) || accessWithin(ab.linkedClassOfClass)) &&
-         (!sym.hasFlag(LOCAL) || 
-          sym.owner.isImplClass || // allow private local accesses to impl classes
-          (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner) ||
-          pre =:= sym.owner.thisType)
-         ||
-         (sym hasFlag PROTECTED) &&
-         (superAccess || sym.isConstructor ||
-          (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) && 
-           (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))))
+        (  (ab.isTerm || ab == definitions.RootClass)
+        || (accessWithin(ab) || (!ab.isPackageClass && accessWithin(ab.linkedClassOfClass))) && // `!ab.isPackageClass` is needed (see e.g., #3663): a package does not have a linked class (NoSymbol is returned), and accessWithin(NoSymbol) is more liberal than accessWithin(somePkg)
+             (  !sym.hasFlag(LOCAL)
+             || sym.owner.isImplClass // allow private local accesses to impl classes
+             || (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner)
+             || pre =:= sym.owner.thisType
+             )
+        || (sym hasFlag PROTECTED) &&
+             (  superAccess
+             || sym.isConstructor
+             || (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) &&
+                  (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))
+             )
+        )
         // note: phase.erasedTypes disables last test, because after addinterfaces
         // implementation classes are not in the superclass chain. If we enable the
         // test, bug780 fails.
