@@ -46,9 +46,9 @@ trait BaseTypeSeqs {
     /** The type at i'th position in this sequence; lazy types are returned evaluated. */
     def apply(i: Int): Type =
       if(pending contains i) {
-        pending clear
+        pending.clear()
         throw CyclicInheritance
-      } else 
+      } else
         elems(i) match {
           case rtp @ RefinedType(variants, decls) =>
             // can't assert decls.isEmpty; see t0764
