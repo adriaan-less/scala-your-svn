@@ -32,51 +32,47 @@ trait BaseTypeSeqs {
 
   class BaseTypeSeq(parents: List[Type], elems: Array[Type]) {
   self =>
-    if(elems contains NoType)
-       Thread.dumpStack()
-
-    incCounter(baseTypeSeqCount)                       
+    incCounter(baseTypeSeqCount)
     incCounter(baseTypeSeqLenTotal, elems.length)
 
     /** The number of types in the sequence */
     def length: Int = elems.length
 
-    var pending: Map[Int, Type] = Map()
+    // #3676 shows why we can't store NoType in elems to mark cycles
+    // (while NoType is in there to indicate a cycle in this BTS, during the execution of
+    //  the mergePrefixAndArgs below, the elems get copied without the pending map,
+    //  so that NoType's are seen instead of the original type --> spurious compile error)
+    val pending = new Array[Boolean](elems.length)
 
     /** The type at i'th position in this sequence; lazy types are returned evaluated. */
-    def apply(i: Int): Type = elems(i) match {
-      case NoType =>
-        // #3676: did the NoType arise from cycle detection in this BTS?
-        if(pending.keySet contains i) {
-          pending = Map()
-          elems(i) = AnyClass.tpe
-          throw CyclicInheritance
-        } else NoType // or was it copied over from another BTS (during the mergePrefixAndArgs below)
-      case rtp @ RefinedType(variants, decls) =>
-        // can't assert decls.isEmpty; see t0764
-        //if (!decls.isEmpty) assert(false, "computing closure of "+this+":"+this.isInstanceOf[RefinedType]+"/"+closureCache(j))
-        //Console.println("compute closure of "+this+" => glb("+variants+")")
-        pending += (i -> rtp)
-        elems(i) = NoType
-        try {
-          mergePrefixAndArgs(variants, -1, lubDepth(variants)) match {
-            case Some(tp0) =>
-              pending -= i
-              if(tp0 eq NoType)
-                Thread.dumpStack()
-              elems(i) = tp0
-              tp0
-            case None => 
+    def apply(i: Int): Type = {
+      if(pending(i)) {
+        for(i <- 0 until pending.length) pending(i) = false
+        throw CyclicInheritance
+      } else elems(i) match {
+        case rtp @ RefinedType(variants, decls) =>
+          // can't assert decls.isEmpty; see t0764
+          //if (!decls.isEmpty) assert(false, "computing closure of "+this+":"+this.isInstanceOf[RefinedType]+"/"+closureCache(j))
+          //Console.println("compute closure of "+this+" => glb("+variants+")")
+          pending(i) = true
+          try {
+            mergePrefixAndArgs(variants, -1, lubDepth(variants)) match {
+              case Some(tp0) =>
+                pending(i) = false
+                elems(i) = tp0
+                tp0
+              case None => 
+                typeError(
+                  "no common type instance of base types "+(variants mkString ", and ")+" exists.")
+            }
+          } catch {
+            case CyclicInheritance =>
               typeError(
-                "no common type instance of base types "+(variants mkString ", and ")+" exists.")
+                "computing the common type instance of base types "+(variants mkString ", and ")+" leads to a cycle.")
           }
-        } catch {
-          case CyclicInheritance =>
-            typeError(
-              "computing the common type instance of base types "+(variants mkString ", and ")+" leads to a cycle.")
-        }
-      case tp =>
-        tp
+        case tp =>
+          tp
+      }
     }
 
     def rawElem(i: Int) = elems(i)
@@ -85,17 +81,9 @@ trait BaseTypeSeqs {
      *  no evaluation needed.
      */
     def typeSymbol(i: Int): Symbol = {
-      def tsym(tp: Type) = tp match {
-        case RefinedType(v :: vs, _) => v.typeSymbol
-        case _ => tp.typeSymbol
-      }
       elems(i) match {
-        case NoType => 
-          pending get i match {
-            case Some(tp) => tsym(tp)
-            case _ => NoType.typeSymbol
-          }
-        case tp => tsym(tp)
+        case RefinedType(v :: vs, _) => v.typeSymbol
+        case tp => tp.typeSymbol
       }
     }
 
