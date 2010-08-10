@@ -350,27 +350,27 @@ trait Contexts { self: Analyzer =>
      *  @return            ...
      */
     def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
-      def accessWithinLinked(ab: Symbol) = {
+      @inline def accessWithinLinked(ab: Symbol) = {
         val linked = ab.linkedClassOfClass
         // don't have access if there is no linked class
         (linked ne NoSymbol) && accessWithin(linked)
       }
 
-      /** Are we inside definition of `sym'? */
-      def accessWithin(sym: Symbol) = {
+      /** Are we inside definition of `ab'? */
+      def accessWithin(ab: Symbol) = {
         // #3663: we must disregard package nesting if sym isJavaDefined
         if(sym.isJavaDefined) {
-          // is `o` or one of its transitive owners equal to `sym`?
+          // is `o` or one of its transitive owners equal to `ab`?
           // skips nested packages
-          @tailrec def symEnclosesNoPkg(o: Symbol): Boolean =
-            (!o.isPackageClass && (o eq sym)) ||
-            ((o ne NoSymbol) && symEnclosesNoPkg(o.owner))
-          @tailrec def symEnclosesCheckNesting(o: Symbol): Boolean =
-            (o eq sym) || (
-              if(o.isPackageClass) symEnclosesNoPkg(o.owner)
-              else (o ne NoSymbol) && symEnclosesCheckNesting(o.owner))
-          symEnclosesCheckNesting(owner)
-        } else (owner hasTransOwner sym)
+          @tailrec def abEnclosesNoPkg(o: Symbol): Boolean =
+            (!o.isPackageClass && (o eq ab)) ||
+            ((o ne NoSymbol) && abEnclosesNoPkg(o.owner))
+          @tailrec def abEnclosesCheckNesting(o: Symbol): Boolean =
+            (o eq ab) || (
+              if(o.isPackageClass) abEnclosesNoPkg(o.owner)
+              else (o ne NoSymbol) && abEnclosesCheckNesting(o.owner))
+          abEnclosesCheckNesting(owner)
+        } else (owner hasTransOwner ab)
       }
 
 /*
