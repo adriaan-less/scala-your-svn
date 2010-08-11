@@ -374,8 +374,9 @@ trait Namers { self: Analyzer =>
                  name.endsWith(nme.OUTER, nme.OUTER.length) ||
                  context.unit.isJava) && 
                  !mods.isLazy) {
-              tree.symbol = enterInScope(owner.newValue(tree.pos, name)
-                .setFlag(mods.flags))
+              val vsym = owner.newValue(tree.pos, name).setFlag(mods.flags);
+              setPrivateWithin(tree, vsym, mods)
+              tree.symbol = enterInScope(vsym)
               finish
             } else {
               val mods1 =
@@ -408,6 +409,7 @@ trait Namers { self: Analyzer =>
                       val newflags = mods1.flags & FieldFlags | PRIVATE | lFlag | mFlag          
                       owner.newValue(tree.pos, nme.getterToLocal(name)) setFlag newflags
                     }
+                  setPrivateWithin(tree, vsym, mods1)
                   enterInScope(vsym)
                   setInfo(vsym)(namerOf(vsym).typeCompleter(tree))
                   if (mods1.isLazy)
@@ -418,7 +420,7 @@ trait Namers { self: Analyzer =>
               addBeanGetterSetter(vd, getter)
             }
           case DefDef(mods, nme.CONSTRUCTOR, tparams, _, _, _) =>
-            var sym = owner.newConstructor(tree.pos).setFlag(mods.flags | owner.getFlag(ConstrFlags))
+            val sym = owner.newConstructor(tree.pos).setFlag(mods.flags | owner.getFlag(ConstrFlags))
             setPrivateWithin(tree, sym, mods)
             tree.symbol = enterInScope(sym)
             finishWith(tparams)
@@ -428,7 +430,7 @@ trait Namers { self: Analyzer =>
           case TypeDef(mods, name, tparams, _) =>
             var flags: Long = mods.flags
             if ((flags & PARAM) != 0L) flags |= DEFERRED
-            var sym = new TypeSymbol(owner, tree.pos, name).setFlag(flags)
+            val sym = new TypeSymbol(owner, tree.pos, name).setFlag(flags)
             setPrivateWithin(tree, sym, mods)
             tree.symbol = enterInScope(sym)
             finishWith(tparams) 
