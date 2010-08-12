@@ -14,7 +14,7 @@ class safe extends StaticAnnotation
 
 class assignable extends Annotation
 
-object Unique {
+object UniqueOps {
   def swap[A, B <: A](to: A, from: B): A = to
   def capture[A, B](from: A, to: B): A = from
   def share[A](x: A): A = x

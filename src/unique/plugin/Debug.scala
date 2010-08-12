@@ -25,4 +25,9 @@ trait Debug { self: SubComponent =>
     //unit.warning(tree.pos, s)
     unit.error(tree.pos, s)
   }
+  def vwarn(unit: CompilationUnit, tree: Tree, s: String) = {
+    vinfo("WARNING: "+s)
+    //unit.warning(tree.pos, s)
+    unit.warning(tree.pos, s)
+  }
 }

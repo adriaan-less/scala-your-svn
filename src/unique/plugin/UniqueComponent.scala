@@ -1106,7 +1106,7 @@ abstract class UniqueComponent extends PluginComponent with Debug {
                     vinfo("args immut? "+argsImmut)
                     //TODO: consume caps if needed
                     if (!argsImmut)
-                      verror(unit, tree, "arguments are not immutable")
+                      vwarn(unit, tree, "arguments are not immutable")
                   case _ =>
                     // do nothing
                 }
