@@ -716,8 +716,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       var cnt = 0 
       while (validTo == NoPeriod) {
         //if (settings.debug.value) System.out.println("completing " + this);//DEBUG
-        assert(infos ne null, this.name)
-        assert(infos.prev eq null, this.name)
+        assert(infos ne null, this.name+".infos eq null")
+        assert(infos.prev eq null, this.name+"infos.prev ne null")
         val tp = infos.info
         //if (settings.debug.value) System.out.println("completing " + this.rawname + tp.getClass());//debug
         if ((rawflags & LOCKED) != 0L) { // rolled out once for performance

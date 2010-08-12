@@ -342,6 +342,8 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val _assign = newTermName("__assign")
     val _return = newTermName("__return")
     val _whileDo = newTermName("__whileDo")
+    val _forward = newTermName("__forward")
+    val TransparentProxy = newTypeName("TransparentProxy")
 
     val ZAND = encode("&&")
     val ZOR  = encode("||")

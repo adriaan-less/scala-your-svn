@@ -52,3 +52,11 @@ trait EmbeddedControls {
 
 }
 
+trait ProxyControlsBase extends EmbeddedControls {
+  type TransparentProxy[+T]
+
+  def __forward[A,B,C](self: TransparentProxy[A], method: String, x: TransparentProxy[B]*): TransparentProxy[C] =
+    throw new UnsupportedOperationException("__forward")
+}
+
+trait ProxyControls extends ProxyControlsBase

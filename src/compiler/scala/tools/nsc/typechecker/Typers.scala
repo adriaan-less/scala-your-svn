@@ -3335,22 +3335,34 @@ trait Typers { self: Analyzer =>
     
       def typedApply(fun: Tree, args: List[Tree]): Tree = fun match {
         case Select(qual, name) if ((mode & EXPRmode) != 0) && 
-              !treeInfo.isSelfOrSuperConstrCall(fun) && fun.symbol == NoSymbol && !phase.erasedTypes =>
+              !treeInfo.isSelfOrSuperConstrCall(fun) && fun.symbol == NoSymbol && phase.id <= currentRun.typerPhase.id =>//!phase.erasedTypes =>
 
           val extname = "__ext__" + name
-          //println("trying " + mode.toHexString + "/" + fun.symbol + ": " + Apply(fun, args) + " ---> " + Apply(Ident(extname), qual::args))
+          //println("contemplating " + mode.toHexString + "/" + fun.symbol + ": " + Apply(fun, args) + " ---> " + Apply(Ident(extname), qual::args))
+
+          //println("fun.tpe: "+fun.tpe)
+          //println("qual.tpe: "+qual.tpe)
+
+          // TODO: traverse enclClass chain: context.enclClass.owner.hasTransOwner(ProxyControlsClass) ?
+          val enclClassTp = ThisType(context.enclClass.owner)
+          val withinProxyTrait = enclClassTp.baseClasses.contains(ProxyControlsClass)
+          //println("withinProxyTrait: "+withinProxyTrait)
+
 
           val ealts = silent(_.typed(Ident(extname).setPos(fun.pos), funMode(mode), WildcardType), false, tree) match {
             case ext: Tree =>
               //println("found ident: " + ext)
               // do not make an external method accessible through the operator within its own body (HACK ?)
-              ext.symbol.alternatives.filter(s => s.isMethod && s != context.enclMethod.tree.symbol)
+              ext.symbol.alternatives.filter(s => s.isMethod && s != context.enclMethod.tree.symbol
+                && s.owner != EmbeddedControlsClass) // meths in embeddings trait are sentinels added
+                                                     // by a typedApply further up the stack
             case _ =>
               Nil
           }
           //println("found external alternatives: " + ealts)
+          
 
-          if (!ealts.isEmpty) {
+          if (withinProxyTrait || !ealts.isEmpty) {
             val qual1 = silent(t => checkDead(t.typedQualifier(qual, funMode(mode))), false, tree) match {
               case qual1: Tree => qual1
               case ex: TypeError => 
@@ -3359,73 +3371,156 @@ trait Typers { self: Analyzer =>
             }    // <--- t0218.scala
             val fun1 = treeCopy.Select(fun, qual1, name)
 
-            val ms = member(qual1, name)
-            //println("found member: " + ms)
-            val dalts = ms.alternatives.filter(_.isMethod)
-            //println("found declared alternatives: " + dalts)
+            //if (!ealts.isEmpty) 
+            
+            //println("fun1.tpe: "+fun1.tpe)
+            //println("qual1.tpe: "+qual1.tpe)
+            //
+            //println("normalize: "+qual1.tpe.normalize)
+            //println("widen: "+qual1.tpe.widen)
+            //
+            //println("typeSymbol: "+qual1.tpe.widen.typeSymbol)
+            
+            val proxytc = if (withinProxyTrait) enclClassTp.memberType(enclClassTp.member(nme.TransparentProxy)) else NoType
+            //println("proxy: " + proxytc) // careful, must not access enclClassTp if it's *not* our marker
+            
+            val qual1tp = qual1.tpe.widen
+            
+            val isReceiverActuallyLifted = withinProxyTrait && (qual1tp.typeArgs.length == 1) && 
+                (qual1tp <:< TypeRef(proxytc.prefix, proxytc.typeSymbol, List(AnyClass.tpe)))
+            //println("isReceiverActuallyLifted: " + isReceiverActuallyLifted)
+            
+            val generateLiftedAlts = withinProxyTrait && !qual1.isInstanceOf[This]
+            //println("generateLiftedAlts: " + generateLiftedAlts)
+            
+            def mymember(qual: Tree, name: Name) = if (isReceiverActuallyLifted)
+              qual1tp.typeArgs(0).nonLocalMember(name)
+            else
+              member(qual1, name)
+            
+            if (generateLiftedAlts || !ealts.isEmpty)
+            {
+              val ms = mymember(qual1, name)
+              //println("found member: " + ms)
+              val dalts = ms.alternatives.filter(_.isMethod)
+              //println("found declared alternatives: " + dalts)
 
-            if (!dalts.isEmpty) {
-              // both declared and external methods: temporarily add declared methods
-              // to EmbeddedControls, if lookup selects any of those => do default
-              val sentinels = for (msym <- dalts) yield {
-                val sentinel = EmbeddedControlsClass.newMethod("__ext__" + name).setPos(msym.pos)
-
-                val params1 = msym.tpe.params
-                val resultType = msym.tpe.resultType
-                //var receiverType = qual1.tpe // this should really be the owner of msym
-                val receiverTypePoly = msym.owner.tpe
-                val receiverTypeParams = receiverTypePoly.typeParams.map(p => sentinel.newTypeParameter(p.pos, p.name))
-                val methodTypeParams = msym.tpe.typeParams.map(p => sentinel.newTypeParameter(p.pos, p.name))
-                val typeParams = methodTypeParams ::: receiverTypeParams
-                val receiverType = if (receiverTypeParams.isEmpty) receiverTypePoly
-                  else typeRef(receiverTypePoly.prefix, msym.owner, receiverTypeParams.map(_.tpe))
+              if (!dalts.isEmpty) {
+                // both declared and external methods: temporarily add declared methods
+                // to EmbeddedControls, if lookup selects any of those => do default
               
-                val params2 = sentinel.newSyntheticValueParam(receiverType) :: sentinel.newSyntheticValueParams(params1.map(_.tpe))
-                if (typeParams.isEmpty)
-                  sentinel.setInfo(MethodType(params2, resultType))
-                else
-                  sentinel.setInfo(PolyType(typeParams, MethodType(params2, resultType)))
-                EmbeddedControlsClass.info.decls.enter(sentinel)
-              }
+                val installed = EmbeddedControlsClass.tpe.member(extname).alternatives
+              
+                def createExternalMethod(msym: Symbol, ttrans: Type => Type) = {
+                  val sentinel = EmbeddedControlsClass.newMethod(extname).setPos(msym.pos)
+
+                  val params1 = msym.tpe.params
+                  val resultType = msym.tpe.resultType
+                  //var receiverType = qual1.tpe // this should really be the owner of msym
+                  val receiverTypePoly = msym.owner.tpe
+                  val receiverTypeParams = receiverTypePoly.typeParams.map(p => sentinel.newTypeParameter(p.pos, p.name))
+                  val methodTypeParams = msym.tpe.typeParams.map(p => sentinel.newTypeParameter(p.pos, p.name))
+                  val typeParams = methodTypeParams ::: receiverTypeParams
+                  val receiverType = if (receiverTypeParams.isEmpty) receiverTypePoly
+                    else typeRef(receiverTypePoly.prefix, msym.owner, receiverTypeParams.map(_.tpe))
+              
+                  val params2 = sentinel.newSyntheticValueParam(ttrans(receiverType)) :: 
+                          sentinel.newSyntheticValueParams(params1.map(s=>ttrans(s.tpe)))
+                  if (typeParams.isEmpty)
+                    sentinel.setInfo(MethodType(params2, ttrans(resultType)))
+                  else
+                    sentinel.setInfo(PolyType(typeParams, MethodType(params2, ttrans(resultType))))
+
+                  installed.find { x => 
+                    val z = x.tpe == sentinel.tpe
+                    val z1 = x.tpe.toString == sentinel.tpe.toString
+                    //println(x.tpe + "==" + sentinel.tpe +"? " + z + ", " + z1)
+                    z1 // TODO: don't base comparison on strings
+                  } match {
+                    case Some(s) => 
+                      //println("re-using sentinel from outside")
+                      s
+                    case None => 
+                      EmbeddedControlsClass.info.decls.enter(sentinel)
+                  }
+                }
+              
+                val sentinelsPlain = for (msym <- dalts) yield createExternalMethod(msym, tp => tp)
+                val sentinelsLifted = if (!generateLiftedAlts) Nil else for (msym <- dalts) yield 
+                  createExternalMethod(msym, tp => typeRef(proxytc.prefix, proxytc.typeSymbol, List(tp))) // TODO: use typeRef() instead?
           
-              //println("created sentinel methods: " + sentinels)
+                // PROBLEM: nesting. if arguments add the same sentinels, we have duplicates -> ambiguous error!
+                // check for existence first ...
+                
+                //println("found external methods: " + ealts)
 
-              val r = silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args).setPos(tree.pos), mode, pt), true, tree) // ambiguity is an error
-              for (s <- sentinels) {
-                EmbeddedControlsClass.info.decls.unlink(s)
-                s.setInfo(NoType)
-                s.updateInfo(NoType)
-              }
-              r match {
-                case res: Tree if sentinels.contains(res.symbol) =>
-                  // picked declared one --> do default (could short-circuit, but better be safe for now)
-                  //println("picked sentinel method: " + res)
-                  typedApply1(fun1, args)
-                case res: Tree =>
-                  // picked external one
-                  //println("picked external method: " + res)
-                  res
-                case ex: TypeError =>
-                  // neither declared nor external methods match --> do default, look for implicits
-                  //println("exception typing fun/xxx " + ": " + ex)
-                  typedApply1(fun1, args)
-              }
+                //println("found existing sentinels: " + installed + "/" + installed.map(_.tpe))
+          
+                //println("created plain sentinel methods: " + sentinelsPlain + "/" + sentinelsPlain.map(_.tpe))
+                //println("created lifted sentinel methods: " + sentinelsLifted + "/" + sentinelsLifted.map(_.tpe))
 
+                val r = silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args).setPos(tree.pos), mode, /*pt*/WildcardType), true, tree) // ambiguity is an error
+                for (s <- sentinelsPlain ::: sentinelsLifted if !installed.contains(s)) {
+                  EmbeddedControlsClass.info.decls.unlink(s)
+                  s.setInfo(NoType)
+                  s.updateInfo(NoType)
+                }
+                r match { // TODO: tree might have been transformed!
+                  case res: Tree if sentinelsPlain.contains(res.symbol) =>
+                    // picked declared one --> do default (could short-circuit, but better be safe for now)
+                    //println("picked sentinel method: " + res + " (tpe: "+res.tpe+" pt: "+pt+")")
+                    typedApply1(fun1, args) // do default
+                  case res: Tree if sentinelsLifted.contains(res.symbol) =>
+                    // picked lifted one --> forward
+                    //println("picked lifted method: " + res + " (tpe: "+res.tpe+" pt: "+pt+")")
+                    // PROBLEM: result type can be Proxy[Nothing]
+                    // use result.tpe as expected type 
+                    assert(res.tpe <:< pt)
+                    typed(Apply(Ident("__forward").setPos(fun.pos), qual1::Literal(name.toString)::args).setPos(tree.pos),
+                      mode, res.tpe).setType(res.tpe)
+                  case res: Tree if ealts.contains(res.symbol) =>
+                    // picked external one
+                    //println("picked external method: " + res)
+                    res
+                  case res: Tree =>
+                    // FIXME
+                    // can't determine whether sentinel or external: probably the tree was transformed (e.g. {res; ()})
+                    unit.warning(res.pos, "EMBEDDING: cannot resolve target method (sym="+res.symbol+"): " + res)
+                    typedApply1(fun1, args)
+                  case ex: TypeError =>
+                    //println("te checking " + Apply(Ident(extname), qual1::args) + " ("+mode+","+pt+")")
+                    if (generateLiftedAlts) {
+                      // prevent default for now. output the error we got.
+                      // otherwise we'd report 'method not found' instead of 'type doesn't match'
+                      reportTypeError(fun.pos, ex)
+                      return setError(tree)
+                    } else {
+                      // neither declared nor external methods match --> do default, look for implicits
+                      //println("exception typing fun/xxx " + ": " + ex)
+                      typedApply1(fun1, args)
+                    }
+                }
+
+              } else {
+                // no declared methods but have external ones
+                silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args), mode, pt), false, tree) match { // ambiguity is an error
+                  case res: Tree =>
+                    // picked external method
+                    //println("picked external method: " + res)
+                    res
+                  case ex: TypeError =>
+                    // no external method matches --> do default, look for implicits
+                    //println("exception typing xxx " + ": " + ex)
+                    typedApply1(fun1, args)
+                }
+              }
             } else {
-              // no declared methods but has external ones
-              silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args), mode, pt), false, tree) match { // ambiguity is an error
-                case res: Tree =>
-                  // picked external method
-                  //println("picked external method: " + res)
-                  res
-                case ex: TypeError =>
-                  // no external method matches --> do default, look for implicits
-                  //println("exception typing xxx " + ": " + ex)
-                  typedApply1(fun1, args)
-              }
+              // !isReceiverLifted && ealts.isEmpty
+              // might have declared methods but no external methods --> do default
+              typedApply1(fun, args)
             }
-
           } else {
+            // !withinProxyTrait && ealts.isEmpty
             // might have declared methods but no external methods --> do default
             typedApply1(fun, args)
           }
