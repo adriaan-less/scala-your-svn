@@ -547,7 +547,7 @@ abstract class RefChecks extends InfoTransform {
         inclazz != clazz && {
           val isVarargs = hasRepeatedParam(member.tpe)
           inclazz.info.nonPrivateDecl(member.name).filter { sym =>
-            typer.context.isAccessible(sym, clazz.thisType, false) && ( // #3757: it's not enough to only look at the non-private members: might also be package-protected in another package, for example
+            localTyper.context.isAccessible(sym, clazz.thisType, false) && ( // #3757: it's not enough to only look at the non-private members: might also be package-protected in another package, for example
             !sym.isTerm || {
               val symtpe = clazz.thisType.memberType(sym)
               (member.tpe matches symtpe) || isVarargs && (toJavaRepeatedParam(member.tpe) matches symtpe)
