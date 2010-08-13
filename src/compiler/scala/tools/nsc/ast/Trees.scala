@@ -291,6 +291,14 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
   def Ident(sym: Symbol): Ident =
     Ident(sym.name) setSymbol sym
 
+  /** Block factory that flattens directly nested blocks. 
+   */
+  def Block(stats: Tree*): Block = stats match {
+    case Seq(b @ Block(_, _)) => b
+    case Seq(stat) => Block(stats.toList, Literal(Constant(())))
+    case Seq(_, rest @ _*) => Block(stats.init.toList, stats.last)
+  }
+
   /** A synthetic term holding an arbitrary type.  Not to be confused with
     * with TypTree, the trait for trees that are only used for type trees.
     * TypeTree's are inserted in several places, but most notably in
@@ -329,6 +337,9 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
        extends TermTree
 
   case class Parens(args: List[Tree]) extends Tree // only used during parsing
+
+  /** emitted by typer, eliminated by refchecks **/
+  case class TypeTreeWithDeferredRefCheck()(val check: () => TypeTree) extends AbsTypeTree
 
 // ----- subconstructors --------------------------------------------
 
@@ -375,6 +386,7 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     def Ident(tree: Tree, name: Name): Ident
     def Literal(tree: Tree, value: Constant): Literal
     def TypeTree(tree: Tree): TypeTree
+    def TypeTreeWithDeferredRefCheck(tree: Tree): TypeTreeWithDeferredRefCheck
     def Annotated(tree: Tree, annot: Tree, arg: Tree): Annotated
     def SingletonTypeTree(tree: Tree, ref: Tree): SingletonTypeTree
     def SelectFromTypeTree(tree: Tree, qualifier: Tree, selector: Name): SelectFromTypeTree
@@ -462,6 +474,9 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       new Literal(value).copyAttrs(tree)
     def TypeTree(tree: Tree) =
       new TypeTree().copyAttrs(tree)
+    def TypeTreeWithDeferredRefCheck(tree: Tree) = tree match {
+      case dc@TypeTreeWithDeferredRefCheck() => new TypeTreeWithDeferredRefCheck()(dc.check).copyAttrs(tree)
+    }
     def Annotated(tree: Tree, annot: Tree, arg: Tree) =
       new Annotated(annot, arg).copyAttrs(tree)
     def SingletonTypeTree(tree: Tree, ref: Tree) =
@@ -662,6 +677,10 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       case t @ TypeTree() => t
       case _ => treeCopy.TypeTree(tree)
     }
+    def TypeTreeWithDeferredRefCheck(tree: Tree) = tree match {
+      case t @ TypeTreeWithDeferredRefCheck() => t
+      case _ => treeCopy.TypeTreeWithDeferredRefCheck(tree)
+    }
     def Annotated(tree: Tree, annot: Tree, arg: Tree) = tree match {
       case t @ Annotated(annot0, arg0)
       if (annot0==annot) => t
@@ -808,6 +827,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
         treeCopy.Literal(tree, value)
       case TypeTree() =>
         treeCopy.TypeTree(tree)
+      case TypeTreeWithDeferredRefCheck() =>
+        treeCopy.TypeTreeWithDeferredRefCheck(tree)
       case Annotated(annot, arg) =>
         treeCopy.Annotated(tree, transform(annot), transform(arg))
       case SingletonTypeTree(ref) =>
@@ -870,6 +891,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
         traverse(definition) 
       case Parens(ts) =>
         traverseTrees(ts)
+      case TypeTreeWithDeferredRefCheck() => // TODO: should we traverse the wrapped tree?
+      // (and rewrap the result? how to update the deferred check? would need to store wrapped tree instead of returning it from check)
       case _ => super.traverse(tree)
     }
     

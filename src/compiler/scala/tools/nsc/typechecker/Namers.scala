@@ -287,19 +287,17 @@ trait Namers { self: Analyzer =>
      *  class definition tree.
      *  @return the companion object symbol.
      */
-    def ensureCompanionObject(tree: ClassDef, creator: => Tree): Symbol = {
-      val m: Symbol = context.scope.lookup(tree.name.toTermName).filter(! _.isSourceMethod)
-      if (m.isModule && inCurrentScope(m) && currentRun.compiles(m)) m
-      else
-        /*util.trace("enter synthetic companion object for "+currentRun.compiles(m)+":")*/(
-        enterSyntheticSym(creator))
-    }
+     def ensureCompanionObject(tree: ClassDef, creator: => Tree): Symbol = {
+       val m: Symbol = context.scope.lookup(tree.name.toTermName).filter(! _.isSourceMethod)
+       if (m.isModule && inCurrentScope(m) && currentRun.compiles(m)) m
+       else enterSyntheticSym(creator)
+     }
 
     private def enterSymFinishWith(tree: Tree, tparams: List[TypeDef]) {
       val sym = tree.symbol
       if (settings.debug.value) log("entered " + sym + " in " + context.owner + ", scope-id = " + context.scope.## )
       var ltype = namerOf(sym).typeCompleter(tree)
-      if (!tparams.isEmpty) {
+      if (tparams nonEmpty) {
         //@M! TypeDef's type params are handled differently
         //@M e.g., in [A[x <: B], B], A and B are entered first as both are in scope in the definition of x 
         //@M x is only in scope in `A[x <: B]'
@@ -350,6 +348,9 @@ trait Namers { self: Analyzer =>
             tree.symbol = enterClassSymbol(tree)
             finishWith(tparams)
             if (mods.isCase) {
+              if (treeInfo.firstConstructorArgs(impl.body).size > MaxFunctionArity)
+                context.error(tree.pos, "Implementation restriction: case classes cannot have more than " + MaxFunctionArity + " parameters.")
+              
               val m = ensureCompanionObject(tree, caseModuleDef(tree))
               caseClassOfModuleClass(m.moduleClass) = tree
             }
@@ -359,7 +360,7 @@ trait Namers { self: Analyzer =>
             } exists (_.mods hasFlag DEFAULTPARAM)
 
             if (hasDefault) {
-              val m = ensureCompanionObject(tree, companionModuleDef(tree, List(gen.scalaScalaObjectConstr)))
+              val m = ensureCompanionObject(tree, companionModuleDef(tree))
               classAndNamerOfModule(m) = (tree, null)
             }
           case tree @ ModuleDef(mods, name, _) => 
@@ -989,6 +990,8 @@ trait Namers { self: Analyzer =>
                 val module = companionModuleOf(meth.owner, context)
                 module.initialize // call type completer (typedTemplate), adds the
                                   // module's templateNamer to classAndNamerOfModule
+                if (!classAndNamerOfModule.contains(module))
+                  return // fix #3649 (prevent crash in erroneous source code)
                 val (cdef, nmr) = classAndNamerOfModule(module)
                 moduleNamer = Some(cdef, nmr)
                 (cdef, nmr)

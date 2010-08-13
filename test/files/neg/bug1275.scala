@@ -1,4 +1,4 @@
-object Bug1275 {
+object Test {
   trait Seq[+t] {
     type MyType[+t] <: Seq[t]
 

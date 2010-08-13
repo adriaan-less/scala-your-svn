@@ -25,7 +25,10 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
   // inherits abstract value `global' and class `Phase' from Transform
 
   import global._
-  import definitions.{ IntClass, UnitClass, ByNameParamClass, Any_asInstanceOf, Object_## }
+  import definitions.{
+    IntClass, UnitClass, ByNameParamClass, Any_asInstanceOf, 
+    Any_isInstanceOf, Object_isInstanceOf, Object_##, Object_==, Object_!=
+  }
 
   /** the following two members override abstract members in Transform */
   val phaseName: String = "superaccessors"
@@ -80,11 +83,6 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
       }
 
     private def transformSuperSelect(tree: Tree): Tree = tree match {
-      // Intercept super.## and translate it to this.##
-      // which is fine since it's final.
-      case Select(sup @ Super(_, _), nme.HASHHASH)  =>
-        Select(gen.mkAttributedThis(sup.symbol), Object_##) setType IntClass.tpe
-        
       case Select(sup @ Super(_, mix), name)  =>
         val sym = tree.symbol
         val clazz = sup.symbol
@@ -126,6 +124,16 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         assert(tree.tpe.isError, tree)
         tree
     }
+
+    // Disallow some super.XX calls targeting Any methods which would
+    // otherwise lead to either a compiler crash or runtime failure.
+    private def isDisallowed(sym: Symbol) = (
+      (sym == Any_isInstanceOf) ||
+      (sym == Object_isInstanceOf) ||
+      (sym == Object_==) ||
+      (sym == Object_!=) ||
+      (sym == Object_##)
+    )
 
     override def transform(tree: Tree): Tree = {
       val sym = tree.symbol
@@ -203,6 +211,9 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
             unit.error(tree.pos, "super may be not be used on "+
                        (if (sym.hasFlag(ACCESSOR)) sym.accessed else sym))
           }
+          else if (isDisallowed(sym)) {
+            unit.error(tree.pos, "super not allowed here: use this." + name.decode + " instead")
+          }
           transformSuperSelect(tree)
       
         case TypeApply(sel @ Select(qual, name), args) =>
@@ -271,13 +282,14 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         case MethodType(params, res) => params.map(_.tpe) :: allParamTypes(res)
         case _ => Nil
       }
-      
+
+
       assert(clazz != NoSymbol, sym)
       if (settings.debug.value)  log("Decided for host class: " + clazz)
-      
+
       val accName = nme.protName(sym.originalName)
       val hasArgs = sym.tpe.paramTypes != Nil
-      val memberType = sym.tpe // transform(sym.tpe)
+      val memberType = refchecks.toScalaRepeatedParam(sym.tpe) // fix for #2413
       
       // if the result type depends on the this type of an enclosing class, the accessor
       // has to take an object of exactly this type, otherwise it's more general
@@ -411,10 +423,16 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         unit.error(pos, "Implementation restriction: " + msg)
       }
 
+      def accessibleThroughSubclassing: Boolean =
+        (validCurrentOwner
+            && currentOwner.enclClass.thisSym.isSubClass(sym.owner)
+            && !currentOwner.enclClass.isTrait)
+      
       val res = /* settings.debug.value && */
-      ((sym hasFlag PROTECTED) 
+      ((sym hasFlag PROTECTED)
+       && sym.hasFlag(JAVA)
        && !sym.owner.isPackageClass
-       && (!validCurrentOwner || !(currentOwner.enclClass.thisSym isSubClass sym.owner))
+       && !accessibleThroughSubclassing
        && (enclPackage(sym.owner) != enclPackage(currentOwner))
        && (enclPackage(sym.owner) == enclPackage(sym.accessBoundary(sym.owner))))
 
@@ -424,9 +442,12 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         if (host.isPackageClass) false
         else if (host.thisSym != host) {
           if (host.thisSym.tpe.typeSymbol.hasFlag(JAVA))
-            errorRestriction(currentOwner.enclClass + " accesses protected " + sym 
-                             + " from self type " + host.thisSym.tpe)
+            errorRestriction("%s accesses protected %s from self type %s.".format(currentOwner.enclClass, sym, host.thisSym.tpe))
           false
+        } else if (host.isTrait && sym.hasFlag(JAVA)) {
+            errorRestriction(("%s accesses protected %s inside a concrete trait method. " +
+                    "Add an accessor in a class extending %s to work around this bug.").format(currentOwner.enclClass, sym, sym.enclClass))
+            false
         } else res
       } else res
     }
