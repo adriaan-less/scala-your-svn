@@ -1045,7 +1045,7 @@ trait Infer {
       errors foreach {case (targ, tparam, arityMismatches, varianceMismatches, stricterBounds) => errorMessages +=
         (targ+"'s type parameters do not match "+tparam+"'s expected parameters: "+ 
         (for ((a, p) <- arityMismatches)
-          yield a+qualify(a,p)+ " as "+reporter.countElementsAsString(a.typeParams.length, "type parameter")+", but "+
+          yield a+qualify(a,p)+ " has "+reporter.countElementsAsString(a.typeParams.length, "type parameter")+", but "+
             p+qualify(p,a)+" has "+reporter.countAsString(p.typeParams.length)).toList.mkString(", ") +
         (for ((a, p) <- varianceMismatches)
           yield a+qualify(a,p)+ " is "+varStr(a)+", but "+
