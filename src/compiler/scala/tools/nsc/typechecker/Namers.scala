@@ -375,7 +375,7 @@ trait Namers { self: Analyzer =>
                  context.unit.isJava) && 
                  !mods.isLazy) {
               val vsym = owner.newValue(tree.pos, name).setFlag(mods.flags);
-              setPrivateWithin(tree, vsym, mods)
+              setPrivateWithin(tree, vsym, mods) // #3663
               tree.symbol = enterInScope(vsym)
               finish
             } else {
@@ -409,7 +409,6 @@ trait Namers { self: Analyzer =>
                       val newflags = mods1.flags & FieldFlags | PRIVATE | lFlag | mFlag          
                       owner.newValue(tree.pos, nme.getterToLocal(name)) setFlag newflags
                     }
-                  setPrivateWithin(tree, vsym, mods1)
                   enterInScope(vsym)
                   setInfo(vsym)(namerOf(vsym).typeCompleter(tree))
                   if (mods1.isLazy)

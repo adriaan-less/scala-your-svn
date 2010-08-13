@@ -353,6 +353,8 @@ trait Contexts { self: Analyzer =>
       @inline def accessWithinLinked(ab: Symbol) = {
         val linked = ab.linkedClassOfClass
         // don't have access if there is no linked class
+        // (before adding the `ne NoSymbol` check, this was a no-op when linked eq NoSymbol,
+        //  since `accessWithin(NoSymbol) == true` whatever the symbol)
         (linked ne NoSymbol) && accessWithin(linked)
       }
 
@@ -361,15 +363,10 @@ trait Contexts { self: Analyzer =>
         // #3663: we must disregard package nesting if sym isJavaDefined
         if(sym.isJavaDefined) {
           // is `o` or one of its transitive owners equal to `ab`?
-          // skips nested packages
-          @tailrec def abEnclosesNoPkg(o: Symbol): Boolean =
-            (!o.isPackageClass && (o eq ab)) ||
-            ((o ne NoSymbol) && abEnclosesNoPkg(o.owner))
-          @tailrec def abEnclosesCheckNesting(o: Symbol): Boolean =
-            (o eq ab) || (
-              if(o.isPackageClass) abEnclosesNoPkg(o.owner)
-              else (o ne NoSymbol) && abEnclosesCheckNesting(o.owner))
-          abEnclosesCheckNesting(owner)
+          // stops at first package, since further owners can only be surrounding packages
+          @tailrec def abEnclosesStopAtPkg(o: Symbol): Boolean =
+            (o eq ab) || (!o.isPackageClass && (o ne NoSymbol) && abEnclosesStopAtPkg(o.owner))
+          abEnclosesStopAtPkg(owner)
         } else (owner hasTransOwner ab)
       }
 
