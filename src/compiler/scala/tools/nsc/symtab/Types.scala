@@ -5270,7 +5270,7 @@ A type's typeSymbol should never be inspected directly.
             varianceMismatches(vm)
             stricterBounds(sb)
           }
-          if(error) return (Nil, Nil, Nil) // stop as soon as we encountered an error
+          if(!explainErrors && error) return (Nil, Nil, Nil) // stop as soon as we encountered an error
         }
         if(!explainErrors) (Nil, Nil, Nil)
         else (_arityMismatches.toList, _varianceMismatches.toList, _stricterBounds.toList)
