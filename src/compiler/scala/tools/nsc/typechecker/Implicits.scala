@@ -20,7 +20,7 @@ import util.Statistics._
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Implicits { 
+trait Implicits {
 self: Analyzer =>
 
   import global._
@@ -214,6 +214,7 @@ self: Analyzer =>
    */
   class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: Context) 
     extends Typer(context0) {
+    // printTyping("begin implicit search: "+(tree, pt, isView, context.outer.undetparams))
 //    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
@@ -467,7 +468,6 @@ self: Analyzer =>
             }
 
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
-
 
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
@@ -897,6 +897,8 @@ self: Analyzer =>
             } else if (sym.isExistentiallyBound && full) {
               manifestFactoryCall("wildcardType", tp,
                                   findManifest(tp.bounds.lo), findManifest(tp.bounds.hi))
+            } else if(undetParams contains sym) { // looking for a manifest of a type parameter that hasn't been inferred by now, can't do much, but let's not fail
+              mot(NothingClass.tpe)               // TODO: should we include the mapping from sym -> NothingClass.tpe in the SearchResult? (it'll get instantiated to nothing anyway, I think)
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
             }
