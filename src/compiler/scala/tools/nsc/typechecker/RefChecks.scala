@@ -266,16 +266,16 @@ abstract class RefChecks extends InfoTransform {
           }
         }
 
+        def accessFlagsToString(sym: Symbol) 
+          = flagsToString(sym getFlag (PRIVATE | PROTECTED), if (sym.privateWithin eq NoSymbol) "" else sym.privateWithin.name.toString)
+
         def overrideAccessError() {
-          val pwString = if (other.privateWithin == NoSymbol) "" 
-                         else other.privateWithin.name.toString
-          val otherAccess = flagsToString(other getFlag (PRIVATE | PROTECTED), pwString)
-          overrideError("has weaker access privileges; it should be "+
-                        (if (otherAccess == "") "public" else "at least "+otherAccess))
+          val otherAccess = accessFlagsToString(other)
+          overrideError("has weaker access privileges; it should be "+ (if (otherAccess == "") "public" else "at least "+otherAccess))
         }
 
         //Console.println(infoString(member) + " overrides " + infoString(other) + " in " + clazz);//DEBUG
-        
+
         // return if we already checked this combination elsewhere
         if (member.owner != clazz) {
           if ((member.owner isSubClass other.owner) && (member.isDeferred || !other.isDeferred)) {
@@ -302,25 +302,24 @@ abstract class RefChecks extends InfoTransform {
 
         if (typesOnly) checkOverrideTypes()
         else {
-          // todo: align accessibility implication checking with isAccessible in Contexts
-          if (member hasFlag PRIVATE) { // (1.1)
-            overrideError("has weaker access privileges; it should not be private")
-          }
-          // o: public | protected        | package-protected 
+          // o: public | protected        | package-protected  (aka java's default access)
           // ^-may be overridden by member with access privileges-v
           // m: public | public/protected | public/protected/package-protected-in-same-package-as-o
-          val mb = member.accessBoundary(member.owner)
+
+          if (member hasFlag PRIVATE) // (1.1)
+            overrideError("has weaker access privileges; it should not be private")
+
+          @inline def definedIn(sym: Symbol, in: Symbol) = sym != RootClass && sym != NoSymbol && sym.hasTransOwner(in)
+
           val ob = other.accessBoundary(member.owner)
-          // println("checking override in class "+ clazz +"\n  other: "+ infoString(other) +" ab: "+ ob.ownerChain)
-          // println("  overriding member: "+ infoString(member) +" ab: "+ mb.ownerChain)
-          // todo: change
-          if (mb != RootClass && // if mb is public, all is well (or is it? what if we're overriding something we can't access? -- see #3757 marker below)
-              mb != NoSymbol &&  // if mb's access is unqualified, all is well
-                (  ob == RootClass // if m is not public, but o is --> error
-                || ob == NoSymbol  // if m has qualified access, but o didn't --> error
-                || !ob.hasTransOwner(mb)  // if m has qualified access, but o's qualifier is not enclosed in m's --> error
-                || (other hasFlag PROTECTED) && !(member hasFlag PROTECTED) // m must not be package-protected unless o is
-                )) {
+          val mb = member.accessBoundary(member.owner)
+          // println("checking override in "+ clazz +"\n  other: "+ infoString(other) +" ab: "+ ob.ownerChain +" flags: "+ accessFlagsToString(other))
+          // println("  overriding member: "+ infoString(member) +" ab: "+ mb.ownerChain +" flags: "+ accessFlagsToString(member))
+          // todo: align accessibility implication checking with isAccessible in Contexts
+          if (!(  mb == RootClass // m is public, definitely relaxes o's access restrictions (unless o.isJavaDefined, see below)
+               || mb == NoSymbol  // AM: what does this check?? accessBoundary does not ever seem to return NoSymbol (unless member.owner were NoSymbol)
+               || ((!(other hasFlag PROTECTED) || (member hasFlag PROTECTED)) && definedIn(ob, mb)) // (if o isProtected, so is m) and m relaxes o's access boundary
+               )) {
             overrideAccessError()
           } 
           else if (other.isClass || other.isModule) {
