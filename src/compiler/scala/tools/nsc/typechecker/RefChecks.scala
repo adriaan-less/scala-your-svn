@@ -547,11 +547,17 @@ abstract class RefChecks extends InfoTransform {
         inclazz != clazz && {
           val isVarargs = hasRepeatedParam(member.tpe)
           inclazz.info.nonPrivateDecl(member.name).filter { sym =>
-            localTyper.context.isAccessible(sym, clazz.thisType, false) && ( // #3757: it's not enough to only look at the non-private members: might also be package-protected in another package, for example
-            !sym.isTerm || {
+            (!sym.isTerm || {
               val symtpe = clazz.thisType.memberType(sym)
               (member.tpe matches symtpe) || isVarargs && (toJavaRepeatedParam(member.tpe) matches symtpe)
-            })
+            }) && { 
+              // copied from ClosureElimination
+              def enclPackage(sym: Symbol): Symbol = if ((sym == NoSymbol) || sym.isPackageClass) sym else enclPackage(sym.owner)
+              // http://java.sun.com/docs/books/jls/third_edition/html/names.html#6.6.5:
+              // If a public class has a [member] with default access, then this [member] is not accessible to,
+              // or inherited by a subclass declared outside this package.
+              !(inclazz.isJavaDefined && sym.privateWithin == enclPackage(sym)) || enclPackage(sym) == enclPackage(member)
+            }
           } != NoSymbol
         }
 
