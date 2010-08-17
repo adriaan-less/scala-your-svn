@@ -20,13 +20,14 @@ import util.Statistics._
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Implicits { 
+trait Implicits {
 self: Analyzer =>
 
   import global._
   import definitions._
 
   def traceImplicits = printTypings
+  import global.typer.{printTyping, deindentTyping, indentTyping}
 
   /** Search for an implicit value. See the comment on `result` at the end of class `ImplicitSearch`
    *  for more info how the search is conducted. 
@@ -42,6 +43,8 @@ self: Analyzer =>
    *  @return                 A search result
    */
   def inferImplicit(tree: Tree, pt: Type, reportAmbiguous: Boolean, isView: Boolean, context: Context): SearchResult = {
+    printTyping("Beginning implicit search for "+ tree +" expecting "+ pt + (if(isView) " looking for a view" else ""))
+    indentTyping()
     val rawTypeStart = startCounter(rawTypeImpl)
     val findMemberStart = startCounter(findMemberImpl)
     val subtypeStart = startCounter(subtypeImpl)
@@ -54,6 +57,8 @@ self: Analyzer =>
     stopCounter(rawTypeImpl, rawTypeStart)
     stopCounter(findMemberImpl, findMemberStart)
     stopCounter(subtypeImpl, subtypeStart)
+    deindentTyping()
+    printTyping("Implicit search yielded: "+ result)
     result
   }
 
@@ -126,8 +131,7 @@ self: Analyzer =>
       case _ => false
     }
 
-    override def hashCode = 
-      name.hashCode + pre.hashCode + sym.hashCode
+    override def hashCode = name.## + pre.## + sym.##
 
     override def toString = "ImplicitInfo(" + name + "," + pre + "," + sym + ")"
   }
@@ -210,11 +214,10 @@ self: Analyzer =>
    */
   class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: Context) 
     extends Typer(context0) {
-
+    printTyping("begin implicit search: "+(tree, pt, isView, context.outer.undetparams))
 //    assert(tree.isEmpty || tree.pos.isDefined, tree)
 
     import infer._
-
     /** Is implicit info `info1` better than implicit info `info2`?
      */
     def improves(info1: ImplicitInfo, info2: ImplicitInfo) = {
@@ -425,7 +428,7 @@ self: Analyzer =>
 
       incCounter(plausiblyCompatibleImplicits)
 
-      //if (traceImplicits) println("typed impl for "+wildPt+"? "+info.name+":"+depoly(info.tpe)+"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
+      printTyping("typed impl for "+wildPt+"? "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
 
         incCounter(matchingImplicits)
@@ -434,7 +437,7 @@ self: Analyzer =>
           if (info.pre == NoPrefix) Ident(info.name) 
           else Select(gen.mkAttributedQualifier(info.pre), info.name)
         } 
-        if (traceImplicits) println("typed impl?? "+info.name+":"+info.tpe+" ==> "+itree+" with pt = "+pt+", wildpt = "+wildPt)
+        printTyping("typedImplicit0 typing"+ itree +" with wildpt = "+ wildPt +" from implicit "+ info.name+":"+info.tpe)
         def fail(reason: String): SearchResult = {
           if (settings.XlogImplicits.value)
             inform(itree+" is not a valid implicit value for "+pt+" because:\n"+reason)
@@ -453,10 +456,10 @@ self: Analyzer =>
 
           incCounter(typedImplicits)
 
-          if (traceImplicits) println("typed implicit "+itree1+":"+itree1.tpe+", pt = "+wildPt)
+          printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+wildPt)
           val itree2 = if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
                        else adapt(itree1, EXPRmode, wildPt)
-          if (traceImplicits) println("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
+          printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
               case Apply(fun, _) => hasMatchingSymbol(fun)
@@ -470,7 +473,7 @@ self: Analyzer =>
           else if (hasMatchingSymbol(itree1)) {
             val tvars = undetParams map freshVar
             if (matchesPt(itree2.tpe, pt.instantiateTypeParams(undetParams, tvars), undetParams)) {
-              if (traceImplicits) println("tvars = "+tvars+"/"+(tvars map (_.constr)))
+              printTyping("tvars = "+tvars+"/"+(tvars map (_.constr)))
               val targs = solvedTypes(tvars, undetParams, undetParams map varianceInType(pt),
                                       false, lubDepth(List(itree2.tpe, pt)))
 
@@ -479,7 +482,7 @@ self: Analyzer =>
 
               // filter out failures from type inference, don't want to remove them from undetParams!
               // we must be conservative in leaving type params in undetparams
-              val (okParams, okArgs, _) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
+              val AdjustedTypeArgs(okParams, okArgs) = adjustTypeArgs(undetParams, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
               val subst = new TreeTypeSubstituter(okParams, okArgs)
               subst traverse itree2 
 
@@ -499,7 +502,8 @@ self: Analyzer =>
               // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
               result
             } else {
-              if (traceImplicits) println("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undetParams, tvars))
+              printTyping("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undetParams, tvars))
+
               SearchFailure
             }
           } else if (settings.XlogImplicits.value) 
@@ -572,6 +576,19 @@ self: Analyzer =>
       /** A set containing names that are shadowed by implicit infos */
       lazy val shadowed = new HashSet[Name]("shadowed", 512)
 
+      // #3453
+      // in addition to the implicit symbols that may shadow the implicit with name `name`,
+      // this method tests whether there's a non-implicit symbol with name `name` in scope
+      // inspired by logic in typedIdent
+      def nonImplicitSynonymInScope(name: Name) = {
+        val defEntry = context.scope.lookupEntry(name)
+        (defEntry ne null) &&
+        reallyExists(defEntry.sym) &&
+        !defEntry.sym.isImplicit // the implicit ones are handled by the `shadowed` set above
+        // also, subsumes the test that defEntry.sym ne info.sym
+        // (the `info` that's in scope at the call to nonImplicitSynonymInScope in tryImplicit)
+      }
+
       /** Is `sym' the standard conforms method in Predef?
        *  Note: DON't replace this by sym == Predef_conforms, as Predef_conforms is a `def'
        *  which does a member lookup (it can't be a lazy val because we might reload Predef
@@ -593,7 +610,7 @@ self: Analyzer =>
       def tryImplicit(info: ImplicitInfo): SearchResult = {
         incCounter(triedImplicits)
         if (info.isCyclicOrErroneous ||
-            (isLocal && shadowed.contains(info.name)) || 
+            (isLocal && (shadowed.contains(info.name) || nonImplicitSynonymInScope(info.name))) ||
             (isView && isConformsMethod(info.sym)) ||
             //@M this condition prevents no-op conversions, which are a problem (besides efficiency),
             // one example is removeNames in NamesDefaults, which relies on the type checker failing in case of ambiguity between an assignment/named arg
@@ -615,6 +632,11 @@ self: Analyzer =>
           for (i <- is) shadowed addEntry i.name
         applicable
       }
+
+      // #3453 -- alternative fix, seems not to be faster than encoding the set as the boolean predicate nonImplicitSynonymInScope
+      // in addition to the *implicit* symbols that may shadow the implicit with name `name` (added to shadowed by addAppInfos)
+      // add names of non-implicit symbols that are in scope (accessible without prefix)
+      // for(sym <- context.scope; if !sym.isImplicit) shadowed addEntry sym.name
 
       var applicable = Map[ImplicitInfo, SearchResult]()
       for (is <- iss) applicable = addAppInfos(is, applicable)
@@ -793,7 +815,7 @@ self: Analyzer =>
       def mot(tp0: Type): Tree = {
         val tp1 = tp0.normalize
         tp1 match {
-          case ThisType(_) | SingleType(_, _) =>
+          case ThisType(_) | SingleType(_, _) if !(tp1 exists {tp => tp.typeSymbol.isExistentiallyBound}) => // can't generate a reference to a value that's abstracted over by an existential
             manifestFactoryCall("singleType", tp, gen.mkAttributedQualifier(tp1)) 
           case ConstantType(value) =>
             manifestOfType(tp1.deconst, full)
@@ -823,6 +845,8 @@ self: Analyzer =>
             } else if (sym.isExistentiallyBound && full) {
               manifestFactoryCall("wildcardType", tp,
                                   findManifest(tp.bounds.lo), findManifest(tp.bounds.hi))
+            } else if(undetParams contains sym) { // looking for a manifest of a type parameter that hasn't been inferred by now, can't do much, but let's not fail
+              mot(NothingClass.tpe)               // TODO: should we include the mapping from sym -> NothingClass.tpe in the SearchResult? (it'll get instantiated to nothing anyway, I think)
             } else {
               EmptyTree  // a manifest should have been found by normal searchImplicit
             }

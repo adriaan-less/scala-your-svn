@@ -780,6 +780,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       assert(phaseId(infos.validFrom) <= phase.id)
       if (phaseId(infos.validFrom) == phase.id) infos = infos.prev
       infos = TypeHistory(currentPeriod, info, infos)
+      validTo = if (info.isComplete) currentPeriod else NoPeriod
       this
     }
 
@@ -931,7 +932,20 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  type parameters later.
      */
     def typeParams: List[Symbol] =
-      if (isMonomorphicType) List() else { rawInfo.load(this); rawInfo.typeParams }
+      if (isMonomorphicType) 
+        List() 
+      else { 
+        if (validTo == NoPeriod) {
+          val current = phase
+          try {
+            phase = phaseOf(infos.validFrom)
+            rawInfo.load(this)
+          } finally {
+            phase = current
+          }
+        }
+        rawInfo.typeParams 
+      }
     
     /** The value parameter sections of this symbol.
      */
@@ -1064,6 +1078,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** A clone of this symbol, but with given owner */
     final def cloneSymbol(owner: Symbol): Symbol = {
       val newSym = cloneSymbolImpl(owner)
+      // newSym.privateWithin = privateWithin // ?
       newSym.setInfo(info.cloneInfo(newSym))
         .setFlag(this.rawflags).setAnnotations(this.annotations)
     }
@@ -1496,7 +1511,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       else if (isVariable) "var"
       else if (isPackage) "package"
       else if (isModule) "object"
-      else if (isMethod) "def"
+      else if (isSourceMethod) "def"
       else if (isTerm && (!hasFlag(PARAM) || hasFlag(PARAMACCESSOR))) "val"
       else ""
 
@@ -1952,7 +1967,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         newTypeName(rawname+"$trait") // (part of DEVIRTUALIZE)
       } else if (phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass) {
         if (flatname == nme.EMPTY) {
-          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname, rawowner))
+          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname+idString, rawowner))
           flatname = newTypeName(compactify(rawowner.name.toString() + "$" + rawname))
         }
         flatname

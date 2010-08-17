@@ -11,7 +11,7 @@ import compat.Platform.currentTime
 
 import io.{ SourceReader, AbstractFile, Path }
 import reporters.{ Reporter, ConsoleReporter }
-import util.{ ClassPath, SourceFile, Statistics, BatchSourceFile }
+import util.{ ClassPath, SourceFile, Statistics, BatchSourceFile, ScriptSourceFile, returning }
 import collection.mutable.{ HashSet, HashMap, ListBuffer }
 import reflect.generic.{ PickleBuffer }
 
@@ -216,11 +216,18 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
         }
     }
 
-  if (settings.verbose.value || settings.Ylogcp.value)
-    inform("[Classpath = " + classPath.asClasspathString + "]")
+  if (settings.verbose.value || settings.Ylogcp.value) {
+    inform("[search path for source files: " + classPath.sourcepaths.mkString(",") + "]")
+    inform("[search path for class files: " + classPath.asClasspathString + "]")
+  }
+  
+  /** True if -Xscript has been set, indicating a script run.
+   */
+  def isScriptRun = settings.script.value != ""
 
   def getSourceFile(f: AbstractFile): BatchSourceFile =
-    new BatchSourceFile(f, reader.read(f))
+    if (isScriptRun) ScriptSourceFile(f, reader read f)
+    else new BatchSourceFile(f, reader read f)
 
   def getSourceFile(name: String): SourceFile = {
     val f = AbstractFile.getFile(name)
@@ -258,9 +265,11 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     override def specialized: Boolean = isSpecialized
 
     /** Is current phase cancelled on this unit? */
-    def cancelled(unit: CompilationUnit) = 
-      reporter.cancelled ||
-      unit.isJava && this.id > currentRun.namerPhase.id
+    def cancelled(unit: CompilationUnit) = {
+      // run the typer only if in `createJavadoc` mode
+      val maxJavaPhase = if (createJavadoc) currentRun.typerPhase.id else currentRun.namerPhase.id
+      reporter.cancelled || unit.isJava && this.id > maxJavaPhase
+    }
 
     final def applyPhase(unit: CompilationUnit) {
       if (settings.debug.value) inform("[running phase " + name + " on " + unit + "]")
@@ -795,23 +804,19 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
     /** Compile list of abstract files */
     def compileFiles(files: List[AbstractFile]) {
-      try {
-        compileSources(files map getSourceFile)
-      } catch {
-        case ex: IOException => error(ex.getMessage())
-      }
+      try compileSources(files map getSourceFile)
+      catch { case ex: IOException => error(ex.getMessage()) }
     }
 
     /** Compile list of files given by their names */
     def compile(filenames: List[String]) {
-      val scriptMain = settings.script.value    
-      def sources: List[SourceFile] = scriptMain match {
-        case ""                             => filenames map getSourceFile
-        case main if filenames.length == 1  => List(ScriptRunner.wrappedScript(main, filenames.head, getSourceFile))
-        case _                              => error("can only compile one script at a time") ; Nil
-      }
+      try {
+        val sources: List[SourceFile] =
+          if (isScriptRun && filenames.size > 1) returning(Nil)(_ => error("can only compile one script at a time"))
+          else filenames map getSourceFile
       
-      try compileSources(sources)
+        compileSources(sources)
+      }
       catch { case ex: IOException => error(ex.getMessage()) }
     }
 
@@ -974,4 +979,5 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def forJVM : Boolean = settings.target.value startsWith "jvm"
   def forMSIL: Boolean = settings.target.value == "msil"
   def onlyPresentation = false
+  def createJavadoc = false
 }

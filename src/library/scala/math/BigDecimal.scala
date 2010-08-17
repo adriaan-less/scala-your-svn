@@ -173,14 +173,15 @@ extends ScalaNumber with ScalaNumericConversions
    */
   override def hashCode(): Int =
     if (isWhole) unifiedPrimitiveHashcode
-    else doubleValue.hashCode()
+    else doubleValue.##
 
   /** Compares this BigDecimal with the specified value for equality.
    */
   override def equals (that: Any): Boolean = that match {
-    case that: BigDecimal => this equals that 
-    case that: BigInt     => this.toBigIntExact exists (that equals _)
-    case x                => (this <= BigDecimal.MaxLong && this >= BigDecimal.MinLong) && unifiedPrimitiveEquals(x)
+    case that: BigDecimal     => this equals that 
+    case that: BigInt         => this.toBigIntExact exists (that equals _)
+    case _: Float | _: Double => unifiedPrimitiveEquals(that)
+    case x                    => isWhole && this <= BigDecimal.MaxLong && this >= BigDecimal.MinLong && unifiedPrimitiveEquals(x)
   }
   
   protected[math] def isWhole = (this remainder 1) == BigDecimal(0)

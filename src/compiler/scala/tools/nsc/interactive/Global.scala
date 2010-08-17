@@ -7,7 +7,7 @@ import scala.collection.mutable.{LinkedHashMap, SynchronizedMap}
 import scala.concurrent.SyncVar
 import scala.util.control.ControlThrowable
 import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.util.{SourceFile, Position, RangePosition, OffsetPosition, NoPosition, WorkScheduler}
+import scala.tools.nsc.util.{SourceFile, Position, RangePosition, NoPosition, WorkScheduler}
 import scala.tools.nsc.reporters._
 import scala.tools.nsc.symtab._
 import scala.tools.nsc.ast._
@@ -24,7 +24,7 @@ self =>
 
   import definitions._
 
-  final val debugIDE = false
+  val debugIDE = false
 
   override def onlyPresentation = true
 
@@ -110,10 +110,16 @@ self =>
   // ----------------- Polling ---------------------------------------
 
   /** Called from runner thread and signalDone:
-   *  Poll for exceptions. 
-   *  Poll for work reload/typedTreeAt/doFirst commands during background checking.
+   *  Poll for interrupts and execute them immediately.
+   *  Then, poll for exceptions and execute them. 
+   *  Then, poll for work reload/typedTreeAt/doFirst commands during background checking.
    */
   def pollForWork() {
+    scheduler.pollInterrupt() match {
+      case Some(ir) =>
+        ir.execute(); pollForWork()
+      case _ =>
+    }
     scheduler.pollThrowable() match {
       case Some(ex @ CancelActionReq) => if (acting) throw ex
       case Some(ex @ FreshRunReq) => 

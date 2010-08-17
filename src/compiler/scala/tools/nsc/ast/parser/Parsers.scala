@@ -9,7 +9,7 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.util.{OffsetPosition, BatchSourceFile}
+import util.{ OffsetPosition, BatchSourceFile }
 import symtab.Flags
 import Tokens._
 
@@ -62,6 +62,13 @@ self =>
   class UnitParser(val unit: global.CompilationUnit, patches: List[BracePatch]) extends Parser {
 
     def this(unit: global.CompilationUnit) = this(unit, List())
+    
+    /** The parse starting point depends on whether the source file is self-contained:
+     *  if not, the AST will be supplemented.
+     */
+    def parseStartRule =
+      if (unit.source.isSelfContained) () => compilationUnit()
+      else () => scriptBody()
 
     val in = new UnitScanner(unit, patches)
     in.init()
@@ -168,13 +175,65 @@ self =>
     /** The types of the context bounds of type parameters of the surrounding class
      */
     var classContextBounds: List[Tree] = Nil
+    
+    def parseStartRule: () => Tree
 
-    /** this is the general parse method
+    /** This is the general parse entry point.
      */
     def parse(): Tree = {
-      val t = compilationUnit()
+      val t = parseStartRule()
       accept(EOF)
       t
+    }
+    
+    /** This is the parse entry point for code which is not self-contained, e.g.
+     *  a script which is a series of template statements.  They will be
+     *  swaddled in Trees until the AST is equivalent to the one returned
+     *  by compilationUnit().
+     */
+    def scriptBody(): Tree = {
+      val stmts = templateStatSeq(false)._2
+      accept(EOF)
+      
+      /** Here we are building an AST representing the following source fiction,
+       *  where <moduleName> is from -Xscript (defaults to "Main") and <stmts> are
+       *  the result of parsing the script file.
+       *
+       *  object <moduleName> {
+       *    def main(argv: Array[String]): Unit = {
+       *      val args = argv
+       *      new AnyRef {
+       *        <stmts>
+       *      }
+       *    }
+       *  }
+       */
+      import definitions._
+
+      def emptyPkg    = atPos(0, 0, 0) { Ident(nme.EMPTY_PACKAGE_NAME) }
+      def emptyInit   = DefDef(
+        NoMods,
+        nme.CONSTRUCTOR,
+        Nil,
+        List(Nil),
+        TypeTree(),
+        Block(List(Apply(Select(Super("", ""), nme.CONSTRUCTOR), Nil)), Literal(Constant(())))
+      )
+
+      // def main
+      def mainParamType = AppliedTypeTree(Ident("Array".toTypeName), List(Ident("String".toTypeName)))
+      def mainParameter = List(ValDef(Modifiers(Flags.PARAM), "argv", mainParamType, EmptyTree))
+      def mainSetArgv   = List(ValDef(NoMods, "args", TypeTree(), Ident("argv")))
+      def mainNew       = makeNew(Nil, emptyValDef, stmts, List(Nil), NoPosition, NoPosition)
+      def mainDef       = DefDef(NoMods, "main", Nil, List(mainParameter), scalaDot(nme.Unit.toTypeName), Block(mainSetArgv, mainNew))
+
+      // object Main
+      def moduleName  = ScriptRunner scriptMain settings
+      def moduleBody  = Template(List(scalaScalaObjectConstr), emptyValDef, List(emptyInit, mainDef))
+      def moduleDef   = ModuleDef(NoMods, moduleName, moduleBody)
+      
+      // package <empty> { ... }
+      makePackaging(0, emptyPkg, List(moduleDef))
     }
 
 /* --------------- PLACEHOLDERS ------------------------------------------- */
@@ -1253,6 +1312,9 @@ self =>
     }
 
     def simpleExprRest(t: Tree, canApply: Boolean): Tree = {
+      // Various errors in XML literals can cause xmlLiteral to propagate
+      // EmptyTree's. Watch out for them here (see also postfixExpr).
+      if (EmptyTree == t) return EmptyTree   // #3604 (mics)
       if (canApply) newLineOptWhenFollowedBy(LBRACE)
       in.token match {
         case DOT =>
@@ -1304,25 +1366,10 @@ self =>
         }
       }
 
-      // if arg has the form "x$1 => a = x$1" it's treated as "a = x$1" with x$1
-      // in placeholderParams. This allows e.g. "val f: Int => Int = foo(a = 1, b = _)"
-      def convertArg(arg: Tree): Tree = arg match {
-        case Function(
-          List(vd @ ValDef(mods, pname1, ptype1, EmptyTree)),
-          Assign(Ident(aname), rhs)) if (mods hasFlag Flags.SYNTHETIC) =>
-          rhs match {
-            case Ident(`pname1`) | Typed(Ident(`pname1`), _) =>
-              placeholderParams = vd :: placeholderParams
-              atPos(arg.pos) { AssignOrNamedArg(Ident(aname), Ident(pname1)) }
-            case _ => arg
-          }
-        case _ => arg
-      }
-
-      if (in.token == LBRACE) 
+      if (in.token == LBRACE)
         List(blockExpr())
       else
-        surround(LPAREN, RPAREN)(if (in.token == RPAREN) List() else (args() map convertArg), List())
+        surround(LPAREN, RPAREN)(if (in.token == RPAREN) List() else args(), List())
     }
         
     /** BlockExpr ::= `{' (CaseClauses | Block) `}'
@@ -1406,7 +1453,7 @@ self =>
       else accept(LARROW)
       val rhs = expr()
       enums += makeGenerator(r2p(start, point, in.lastOffset), pat, tok == EQUALS, rhs)
-      if (in.token == IF) enums += makeFilter(in.offset, guard())
+      while (in.token == IF) enums += makeFilter(in.offset, guard())
     }
 
     def makeFilter(start: Int, tree: Tree) = Filter(r2p(start, tree.pos.point, tree.pos.endOrPoint), tree)
@@ -1488,7 +1535,8 @@ self =>
       var top = simplePattern(seqOK)
       // See ticket #3189 for the motivation for the null check.
       // TODO: dredge out the remnants of regexp patterns.
-      if (seqOK && isIdent && in.name == STAR && in.prev.name != null)
+      // ... and now this is back the way it was because it caused #3480.
+      if (seqOK && isIdent && in.name == STAR)
         return atPos(top.pos.startOrPoint, in.skipToken())(Star(stripParens(top)))
           
       while (isIdent && in.name != BAR) {
@@ -1728,8 +1776,11 @@ self =>
             mods = mods withPosition (in.token, tokenRange(in))
             mods |= Flags.MUTABLE
             in.nextToken() 
-          } else if (!caseParam) {
-            mods |= Flags.PRIVATE | Flags.LOCAL
+          } else {
+            if (mods.flags != Flags.PARAMACCESSOR) accept(VAL)
+            if (!caseParam) {
+              mods |= Flags.PRIVATE | Flags.LOCAL
+            }
           }
           if (caseParam) {
             mods |= Flags.CASEACCESSOR
@@ -1772,7 +1823,7 @@ self =>
         if (in.token != RPAREN) {
           if (in.token == IMPLICIT) {
             if (!contextBounds.isEmpty)
-              syntaxError("cannot have both implicit parameters and context bounds `: ...' on type parameters", false)
+              syntaxError("cannot have both implicit parameters and context bounds `: ...' or view bounds `<% ...' on type parameters", false)
             in.nextToken()
             implicitmod = Flags.IMPLICIT 
           }
@@ -2280,7 +2331,7 @@ self =>
         classContextBounds = contextBoundBuf.toList
         val tstart = (in.offset::classContextBounds.map(_.pos.startOrPoint)).min 
         if (!classContextBounds.isEmpty && mods.hasFlag(Flags.TRAIT)) {
-          syntaxError("traits cannot have type parameters with context bounds `: ...'", false)
+          syntaxError("traits cannot have type parameters with context bounds `: ...' nor view bounds `<% ...'", false)
           classContextBounds = List()
         }
         val constrAnnots = annotations(false, true)
@@ -2425,7 +2476,7 @@ self =>
         (emptyValDef, List())
       }
     }
-
+    
     /** Refinement ::= [nl] `{' RefineStat {semi RefineStat} `}'
      */
     def refinement(): List[Tree] = {
@@ -2683,10 +2734,10 @@ self =>
       topstats() match {        
         case List(stat @ PackageDef(_, _)) => stat
         case stats =>
-          val start = stats match {
-            case Nil => 0
-            case _ => wrappingPos(stats).startOrPoint
-          }
+          val start =
+            if (stats forall (_ == EmptyTree)) 0
+            else wrappingPos(stats).startOrPoint
+
           makePackaging(start, atPos(start, start, start) { Ident(nme.EMPTY_PACKAGE_NAME) }, stats)
       }
     }

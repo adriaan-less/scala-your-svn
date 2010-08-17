@@ -20,16 +20,20 @@ object Test extends Application {
 
 
   // anonymous functions
+  {
+    def doMod(f: Int => Unit) { f(20) }
+    var var1 = 0
+    doMod(var1 = _)
+    println(var1)
+
+    synchronized(var1 = 30)
+    println(var1)
+
+    var var2 = 0
+    def delay(var2: => Int) = { var2 }
+    println(delay(var2 = 40))
+  }
   val f1: (Int, String) => Unit = test1(_, _); f1(6, "~")
-  val f2: Int => Unit = test1(a = _, b = get("+")); f2(get(7))
-  val f3 = test1(b = _: String, a = get(8)); f3(get("+"))
-  val f4: (Int, String) => Unit = test1(_, b = _); f4(9, "?")
-
-  val f5: Int => (String, Int) => Unit = test2(v = get(38), u = _)_
-  f5(get(39))(get("|"), 10)
-
-  val f6: (Double, String) => Unit = test3(get(13), _)(d = _, c = get("x"))
-  f6(get(2.233), get("<"))
 
 
   test4(14)
@@ -151,10 +155,6 @@ object Test extends Application {
   println(c1.print)
   val c2 = C("dflkj", c = Some(209): Option[Int])(None, "!!")
   println(c2.print)
-  val a_f: String => A[String, Nothing] = new A[String, Nothing](b = _)(d = 100)
-  println(a_f("20").print)
-  val c_f: Int => C[Int] = C("dlfkj", c = 10, b = _)(35, e = "dlkf")
-  println(c_f(11).print)
 
 
   // "super" qualifier
@@ -344,6 +344,44 @@ object Test extends Application {
   }
   (new t3338.Test).a
 
+
+  // subclassing and defaults in both class constructors
+  class CBLAH(val x: Int = 1)
+  class DBLAH(val y: String = "2") extends CBLAH()
+  (new DBLAH())
+
+  // deprecated names
+  def deprNam1(@deprecatedName('x) a: Int, @deprecatedName('y) b: Int) = a + b
+  deprNam1(y = 10, a = 1)
+  deprNam1(b = 2, x = 10)
+
+  object deprNam2 {
+    def f(@deprecatedName('s) x: String) = 1
+    def f(s: Object) = 2
+
+    def g(@deprecatedName('x) s: Object) = 3
+    def g(s: String) = 4
+  }
+  println(deprNam2.f(s = "dlf"))
+  println(deprNam2.f(s = new Object))
+  println(deprNam2.g(x = "sljkfd"))
+
+
+  // #3697
+  object t3697 {
+    def a(x: Int*)(s: Int = 3) = s
+    def b(a: Int, b: Int, c: Int*) = a + b
+  }
+  println(t3697.a(Seq(3): _*)())
+  println(t3697.a(3)())
+  println(t3697.a()())
+  println(t3697.a(2,3,1)())
+  println(t3697.b(a = 1, b = 2))
+  println(t3697.b(a = 1, b = 2, 3))
+  println(t3697.b(b = 1, a = 2, c = 3))
+  println(t3697.b(a = 1, b = 2, 3, 4))
+  println(t3697.b(a = 1, b = 2, Seq(3, 4): _*))
+  println(t3697.b(b = 1, a = 2, c = Seq(3, 4): _*))
 
 
   // DEFINITIONS

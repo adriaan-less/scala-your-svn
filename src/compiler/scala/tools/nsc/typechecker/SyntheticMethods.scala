@@ -87,7 +87,7 @@ trait SyntheticMethods extends ast.TreeDSL {
       typer typed { DEF(method) === LIT(nargs) }
     }
 
-    /** Common code for productElement and productElementName
+    /** Common code for productElement and (currently disabled) productElementName
      */
     def perElementMethod(accs: List[Symbol], methodName: Name, resType: Type, caseFn: Symbol => Tree): Tree = {
       val symToTpe  = makeTypeConstructor(List(IntClass.tpe), resType)
@@ -107,8 +107,8 @@ trait SyntheticMethods extends ast.TreeDSL {
     def productElementMethod(accs: List[Symbol]): Tree =
       perElementMethod(accs, nme.productElement, AnyClass.tpe, x => Ident(x))
   
-    def productElementNameMethod(accs: List[Symbol]): Tree =
-      perElementMethod(accs, nme.productElementName, StringClass.tpe, x => Literal(x.name.toString))
+    // def productElementNameMethod(accs: List[Symbol]): Tree =
+    //   perElementMethod(accs, nme.productElementName, StringClass.tpe, x => Literal(x.name.toString))
 
     def moduleToStringMethod: Tree = {
       val method = syntheticMethod(nme.toString_, FINAL, makeNoArgConstructor(StringClass.tpe))
@@ -129,8 +129,8 @@ trait SyntheticMethods extends ast.TreeDSL {
       }
     }
     
-    def hashCodeTarget: Name =
-      if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
+    def hashCodeTarget: Name = nme.hashCode_
+      // if (settings.Yjenkins.value) "hashCodeJenkins" else nme.hashCode_
 
     def equalsSym = syntheticMethod(
       nme.equals_, 0, makeTypeConstructor(List(AnyClass.tpe), BooleanClass.tpe)
@@ -289,14 +289,17 @@ trait SyntheticMethods extends ast.TreeDSL {
           ts += impl()
       }
 
-      if (clazz.isModuleClass && hasSerializableAnnotation(clazz)) {
-        // If you serialize a singleton and then deserialize it twice,
-        // you will have two instances of your singleton, unless you implement
-        // the readResolve() method (see http://www.javaworld.com/javaworld/
-        // jw-04-2003/jw-0425-designpatterns_p.html)
-        // question: should we do this for all serializable singletons, or (as currently done)
-        // only for those that carry a @serializable annotation?
-        if (!hasImplementation(nme.readResolve)) ts += readResolveMethod
+      if (clazz.isModuleClass) {
+        if (!hasSerializableAnnotation(clazz))
+          clazz addAnnotation AnnotationInfo(SerializableAttr.tpe, Nil, Nil)
+
+        /** If you serialize a singleton and then deserialize it twice,
+         *  you will have two instances of your singleton, unless you implement
+         *  the readResolve() method (see http://www.javaworld.com/javaworld/
+         *  jw-04-2003/jw-0425-designpatterns_p.html)
+         */
+        if (!hasImplementation(nme.readResolve))
+          ts += readResolveMethod
       }
     } catch {
       case ex: TypeError =>
