@@ -45,13 +45,12 @@ abstract class GenJVM extends SubComponent {
 
     override def run {
       if (settings.debug.value) inform("[running phase " + name + " on icode]")
-      setupFileWriters()
       if (settings.Xdce.value)
         for ((sym, cls) <- icodes.classes if inliner.isClosureClass(sym) && !deadCode.liveClosures(sym))
           icodes.classes -= sym
 
       classes.values foreach apply
-      shutdownFileWriters()
+      waitForFileWriters()
     }
 
     override def apply(cls: IClass) {
@@ -59,58 +58,16 @@ abstract class GenJVM extends SubComponent {
     }
   }
 
-/*
- IO work on a single (but separate) thread.
-  jclass.writeTo into a ByteArrayOutputStream (that can happen on the main thread or using a thread pool like you do now) 
-  and then submit that ByteArrayOutputStream as a work item to the io thread.
-   The io thread can retrieve the byte buffers one by one and call writeTo() on them with the actual FileOutputStream.
-
-*/
-  import java.util.concurrent.{Executors, BlockingQueue, LinkedBlockingQueue}
-  import annotation.tailrec
-  private abstract class Consumer[T](val queue: BlockingQueue[Option[T]]) extends Runnable {
-    def run() = try {
-      @tailrec def spin(item: T): Unit = {
-        consume(item)
-        queue.take() match {
-          case Some(i) => spin(i)
-          case _ =>
-        }
-      } 
-      queue.take() map spin
-    } catch { case e: InterruptedException => }
-
-    def consume(item: T): Unit
-  }
-  type WorkItem = (AbstractFile, Array[Byte])
-  private val ioQueue = new LinkedBlockingQueue[Option[WorkItem]]()
-  private val ioThread = new Thread(new Consumer[WorkItem](ioQueue) {
-    def consume(item: WorkItem): Unit = {
-      val (file, bytes) = item
-      val dStream = new DataOutputStream(file.bufferedOutput)
-      dStream.write(bytes, 0, bytes.length)
-      dStream.close()
-    }
-  })
-  private val fileWriterPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
+  private val fileWriterPool = java.util.concurrent.Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
   private class ClassWriter(val file: AbstractFile, val cls: JClass) extends Runnable {
     def run(): Unit = {
-      val bytestream = new ByteArrayOutputStream()
-      val outstream = new DataOutputStream(bytestream)
+      val outstream = new DataOutputStream(file.bufferedOutput)
       cls.writeTo(outstream)
       outstream.close()
-      ioQueue put Some((file, bytestream.toByteArray))
     }
   }
   private def writeClass(file: AbstractFile, cls: JClass) = fileWriterPool.execute(new ClassWriter(file, cls))
-  private def setupFileWriters() = {
-    ioThread.start()
-  }
-  private def shutdownFileWriters() = {
-    fileWriterPool.shutdown()
-    ioQueue put None
-    ioThread.join()
-  }
+  private def waitForFileWriters() = fileWriterPool.shutdown()
 
   /** Return the suffix of a class name */
   def moduleSuffix(sym: Symbol) =
