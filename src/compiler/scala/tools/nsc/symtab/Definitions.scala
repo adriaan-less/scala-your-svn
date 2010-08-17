@@ -36,6 +36,9 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val JavaLangPackage    = getModule(sn.JavaLang)
     lazy val ScalaPackage       = getModule("scala")
     lazy val ScalaPackageClass  = ScalaPackage.tpe.typeSymbol
+    
+    lazy val RuntimePackage       = getModule("scala.runtime")
+    lazy val RuntimePackageClass  = RuntimePackage.tpe.typeSymbol
 
     lazy val ScalaCollectionImmutablePackage: Symbol = getModule("scala.collection.immutable")
     lazy val ScalaCollectionImmutablePackageClass: Symbol = ScalaCollectionImmutablePackage.tpe.typeSymbol
@@ -105,8 +108,9 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val IndexOutOfBoundsExceptionClass = getClass(sn.IOOBException)
     lazy val UninitializedErrorClass        = getClass("scala.UninitializedFieldError")
     lazy val MatchErrorClass                = getClass("scala.MatchError")
+    lazy val InvocationTargetExceptionClass = getClass(if   (forMSIL) "System.Reflection.TargetInvocationException"
+                                                       else           "java.lang.reflect.InvocationTargetException")
     // java is hard coded because only used by structural values
-    lazy val InvocationTargetExceptionClass = getClass("java.lang.reflect.InvocationTargetException")
     lazy val NoSuchMethodExceptionClass     = getClass("java.lang.NoSuchMethodException")
     
     // annotations
@@ -126,11 +130,14 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val BeanGetterTargetClass      = getClass("scala.annotation.target.beanGetter")
     lazy val BeanSetterTargetClass      = getClass("scala.annotation.target.beanSetter")
     lazy val ParamTargetClass           = getClass("scala.annotation.target.param")
+    lazy val ScalaInlineClass           = getClass("scala.inline")
+    lazy val ScalaNoInlineClass         = getClass("scala.noinline")
 
     // fundamental reference classes
     lazy val ScalaObjectClass     = getClass("scala.ScalaObject")
     lazy val PartialFunctionClass = getClass("scala.PartialFunction")
     lazy val SymbolClass          = getClass("scala.Symbol")
+      lazy val Symbol_apply = getMember(SymbolClass.companionModule, nme.apply)
     lazy val StringClass          = getClass(sn.String)
     lazy val ClassClass           = getClass(sn.Class)
       def Class_getMethod = getMember(ClassClass, nme.getMethod_)
@@ -214,12 +221,12 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def Array_length  = getMember(ArrayClass, nme.length)
       lazy val Array_clone   = getMember(ArrayClass, nme.clone_)
     lazy val ArrayModule  = getModule("scala.Array")
-      def ArrayModule_apply = getMember(ArrayModule, nme.apply)
     
     // reflection / structural types
     lazy val SoftReferenceClass     = getClass("java.lang.ref.SoftReference")
     lazy val WeakReferenceClass     = getClass("java.lang.ref.WeakReference")
     lazy val MethodClass            = getClass(sn.MethodAsObject)
+      def methodClass_setAccessible = getMember(MethodClass, nme.setAccessible)
     lazy val EmptyMethodCacheClass  = getClass("scala.runtime.EmptyMethodCache")
     lazy val MethodCacheClass       = getClass("scala.runtime.MethodCache")
       def methodCache_find  = getMember(MethodCacheClass, nme.find_)
@@ -420,6 +427,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
 
     // boxed classes
     lazy val ObjectRefClass         = getClass("scala.runtime.ObjectRef")
+    lazy val VolatileObjectRefClass = getClass("scala.runtime.VolatileObjectRef")
     lazy val BoxesRunTimeClass      = getModule("scala.runtime.BoxesRunTime")
     lazy val BoxedNumberClass       = getClass(sn.BoxedNumber)
     lazy val BoxedCharacterClass    = getClass(sn.BoxedCharacter)
@@ -439,12 +447,13 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     // special attributes
     lazy val SerializableAttr: Symbol = getClass("scala.serializable")
     lazy val DeprecatedAttr: Symbol = getClass("scala.deprecated")
+    lazy val DeprecatedNameAttr: Symbol = getClass("scala.deprecatedName")
     lazy val MigrationAnnotationClass: Symbol = getClass("scala.annotation.migration")
+    lazy val TraitSetterAnnotationClass: Symbol = getClass("scala.runtime.TraitSetter")
     lazy val BeanPropertyAttr: Symbol = getClass(sn.BeanProperty)
     lazy val BooleanBeanPropertyAttr: Symbol = getClass(sn.BooleanBeanProperty)
     
     lazy val AnnotationDefaultAttr: Symbol = {
-      val RuntimePackageClass = getModule("scala.runtime").tpe.typeSymbol
       val attr = newClass(RuntimePackageClass, nme.AnnotationDefaultATTR, List(AnnotationClass.typeConstructor))
       // This attribute needs a constructor so that modifiers in parsed Java code make sense
       attr.info.decls enter (attr newConstructor NoPosition setInfo MethodType(Nil, attr.tpe))
@@ -584,6 +593,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     def isBox(m: Symbol) = boxMethod.valuesIterator contains m
 
     val refClass = new HashMap[Symbol, Symbol]
+    val volatileRefClass = new HashMap[Symbol, Symbol]
     val abbrvTag = new HashMap[Symbol, Char]
     private val numericWeight = new HashMap[Symbol, Int]
     
@@ -615,6 +625,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       boxedClass(clazz) = getClass(boxedName)
       boxedModule(clazz) = getModule(boxedName)
       refClass(clazz) = getClass("scala.runtime." + name + "Ref")
+      volatileRefClass(clazz) = getClass("scala.runtime.Volatile" + name + "Ref")
       abbrvTag(clazz) = tag
       if (weight > 0) numericWeight(clazz) = weight
 

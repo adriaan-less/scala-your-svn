@@ -216,7 +216,7 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
   }
 
   /** Produces a $coll containing repeated applications of a function to a start value.
-   *
+   *  
    *  @param start the start value of the $coll
    *  @param len   the number of elements contained inthe $coll
    *  @param f     the function that's repeatedly applied
@@ -224,13 +224,17 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    */
   def iterate[A](start: A, len: Int)(f: A => A): CC[A] = {
     val b = newBuilder[A]
-    b.sizeHint(len)
-    var acc = start
-    var i = 0
-    while (i < len) {
+    if (len > 0) {
+      b.sizeHint(len)
+      var acc = start
+      var i = 1
       b += acc
-      acc = f(acc)
-      i += 1
+      
+      while (i < len) {
+        acc = f(acc)
+        i += 1
+        b += acc
+      }
     }
     b.result
   }

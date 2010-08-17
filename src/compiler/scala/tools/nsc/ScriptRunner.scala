@@ -17,6 +17,7 @@ import java.lang.reflect.InvocationTargetException
 import java.net.URL
 import java.util.jar.{ JarEntry, JarOutputStream }
 
+import util.waitingForThreads
 import scala.tools.util.PathResolver
 import scala.tools.nsc.reporters.{Reporter,ConsoleReporter}
 
@@ -56,8 +57,13 @@ object ScriptRunner {
   /** Default name to use for the wrapped script */
   val defaultScriptMain = "Main"
   
+  /** Must be a daemon thread else scripts won't shut down: ticket #3678 */
   private def addShutdownHook(body: => Unit) =
-    Runtime.getRuntime addShutdownHook new Thread { override def run { body } }
+    Runtime.getRuntime addShutdownHook {
+      val t = new Thread { override def run { body } }
+      t setDaemon true
+      t
+    }
 
   /** Pick a main object name from the specified settings */
   def scriptMain(settings: Settings) = settings.script.value match {
@@ -147,12 +153,14 @@ object ScriptRunner {
       out println (CompileSocket getPassword socket.getPort)
       out println (compArgs mkString "\0")
       
-      for (fromServer <- (Iterator continually in.readLine()) takeWhile (_ != null)) {
-        Console.err println fromServer
-        if (CompileSocket.errorPattern matcher fromServer matches)
-          compok = false
+      try {
+        for (fromServer <- (Iterator continually in.readLine()) takeWhile (_ != null)) {
+          Console.err println fromServer
+          if (CompileSocket.errorPattern matcher fromServer matches)
+            compok = false
+        }
       }
-      socket.close()
+      finally socket.close()
     }
     
     compok
@@ -198,31 +206,36 @@ object ScriptRunner {
       else None  	      
     }
 
-    if (settings.savecompiled.value) {
-      val jarFile = jarFileFor(scriptFile)
-      def jarOK   = jarFile.canRead && (jarFile isFresher File(scriptFile))
+    /** The script runner calls System.exit to communicate a return value, but this must
+     *  not take place until there are no non-daemon threads running.  Tickets #1955, #2006.
+     */
+    waitingForThreads {
+      if (settings.savecompiled.value) {
+        val jarFile = jarFileFor(scriptFile)
+        def jarOK   = jarFile.canRead && (jarFile isFresher File(scriptFile))
       
-      def recompile() = {
-        jarFile.delete()
+        def recompile() = {
+          jarFile.delete()
         
-        compile match {
-          case Some(compiledPath) =>
-            tryMakeJar(jarFile, compiledPath)
-            if (jarOK) {
-              compiledPath.deleteRecursively()
-              handler(jarFile.toAbsolute.path)
-            }            
-            // jar failed; run directly from the class files
-            else handler(compiledPath.path)
-          case _  => false
+          compile match {
+            case Some(compiledPath) =>
+              tryMakeJar(jarFile, compiledPath)
+              if (jarOK) {
+                compiledPath.deleteRecursively()
+                handler(jarFile.toAbsolute.path)
+              }            
+              // jar failed; run directly from the class files
+              else handler(compiledPath.path)
+            case _  => false
+          }
         }
-      }
 
-      if (jarOK) handler(jarFile.toAbsolute.path) // pre-compiled jar is current
-      else recompile()                            // jar old - recompile the script.
+        if (jarOK) handler(jarFile.toAbsolute.path) // pre-compiled jar is current
+        else recompile()                            // jar old - recompile the script.
+      }
+      // don't use a cache jar at all--just use the class files
+      else compile map (cp => handler(cp.path)) getOrElse false
     }
-    // don't use a cache jar at all--just use the class files
-    else compile map (cp => handler(cp.path)) getOrElse false
   }
 
   /** Run a script after it has been compiled 
@@ -235,7 +248,7 @@ object ScriptRunner {
 		scriptArgs: List[String]): Boolean =
 	{	  
 	  val pr = new PathResolver(settings)
-	  val classpath = pr.asURLs :+ File(compiledLocation).toURL
+	  val classpath = File(compiledLocation).toURL +: pr.asURLs
 
     try { 
       ObjectRunner.run(classpath, scriptMain(settings), scriptArgs)
