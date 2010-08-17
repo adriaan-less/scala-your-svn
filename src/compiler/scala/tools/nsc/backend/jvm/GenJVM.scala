@@ -50,12 +50,26 @@ abstract class GenJVM extends SubComponent {
           icodes.classes -= sym
 
       classes.values foreach apply
+      waitForFileWriters()
     }
 
     override def apply(cls: IClass) {
       codeGenerator.genClass(cls)
     }
   }
+
+  import java.util.concurrent.{Executors,TimeUnit}
+  private val fileWriterPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
+  private def waitForFileWriters(): Unit = {
+    fileWriterPool.shutdown()
+  }
+
+  private def writeFile(file: AbstractFile)(block: DataOutputStream => Unit): Unit =
+    fileWriterPool.execute(new Runnable(){def run(): Unit = {
+      val outstream = new DataOutputStream(file.bufferedOutput)
+      block(outstream)
+      outstream.close()
+    }})
 
   /** Return the suffix of a class name */
   def moduleSuffix(sym: Symbol) =
@@ -142,9 +156,9 @@ abstract class GenJVM extends SubComponent {
     def emitClass(jclass: JClass, sym: Symbol) {
       addInnerClasses(jclass)
       val outfile = getFile(sym, jclass, ".class")
-      val outstream = new DataOutputStream(outfile.bufferedOutput)
-      jclass.writeTo(outstream)
-      outstream.close()
+      writeFile(outfile){ outstream =>
+        jclass.writeTo(outstream)
+      }
       informProgress("wrote " + outfile)
     }
 
@@ -354,9 +368,9 @@ abstract class GenJVM extends SubComponent {
       
       // write the bean information class file.
       val outfile = getFile(c.symbol, beanInfoClass, ".class")
-      val outstream = new DataOutputStream(outfile.bufferedOutput)
-      beanInfoClass.writeTo(outstream)
-      outstream.close()
+      writeFile(outfile){ outstream =>
+        beanInfoClass.writeTo(outstream)
+      }
       informProgress("wrote BeanInfo " + outfile)
     }
     
