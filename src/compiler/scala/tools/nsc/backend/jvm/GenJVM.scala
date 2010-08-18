@@ -58,23 +58,64 @@ abstract class GenJVM extends SubComponent {
     }
   }
 
-  private val fileWriterPool = java.util.concurrent.Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
-  private class ClassWriter(val file: AbstractFile, val cls: JClass) extends Runnable {
-    def run(): Unit = {
-      val outstream = new DataOutputStream(file.bufferedOutput)
-      cls.writeTo(outstream)
-      outstream.close()
-    }
+// (concurrent) class file writing
+  import java.util.concurrent.{Executors, ExecutorService, LinkedBlockingQueue}
+  @inline implicit def pimpExecService(es: ExecutorService) = new { def exec(b: => Unit) = es.execute(new Runnable{def run() = b}) }
+  private val writerThreadNb = Runtime.getRuntime().availableProcessors()
+  private val ioThreadNb = writerThreadNb // should actually scale with number of IO channels
+  private val classWriterPool = Executors.newFixedThreadPool(writerThreadNb)
+  private val fileWriterPool = Executors.newFixedThreadPool(ioThreadNb)
+  private val msgQ = new LinkedBlockingQueue[String]()
+  private def drainMsgQ() = {
+    import scala.collection.JavaConversions._
+    val msgs = new java.util.LinkedList[String]()
+    msgQ drainTo msgs
+    for(m <- msgs) informProgress(m) // must not be called from a thread
   }
-  private def writeClass(file: AbstractFile, cls: JClass) = fileWriterPool.execute(new ClassWriter(file, cls))
-  private def waitForFileWriters() = fileWriterPool.shutdown()
+
+  /** Generates the bytecode for the given `jclass` and writes the data to the file that corresponds to the class symbol `sym`.
+   *
+   * May perform both steps (bytecode generation, file writing) concurrently, depending on the environment.
+   */
+  private def writeClass(outfile: AbstractFile, jclass: JClass, msg: String = "wrote ") = 
+    if(writerThreadNb == 1) { // non-concurrent
+      val outstream = new DataOutputStream(outfile.bufferedOutput)
+      jclass.writeTo(outstream)
+      outstream.close()
+      informProgress(msg + outfile)
+    } else {
+      classWriterPool exec {
+        val bytestream = new ByteArrayOutputStream()
+        val outstream = new DataOutputStream(bytestream)
+        jclass.writeTo(outstream)
+        outstream.close()
+        fileWriterPool exec {
+          val filestream = outfile.bufferedOutput
+          bytestream.writeTo(filestream)
+          filestream.close()
+          msgQ put (msg + outfile)
+        }
+      }
+      drainMsgQ()
+    }
+
+  
+  /** Blocks until all class files have been written.
+   *
+   * writeClass must not be called subsequently.
+   **/
+  private def waitForFileWriters() = {
+    classWriterPool.shutdown()
+    fileWriterPool.shutdown()
+    drainMsgQ()
+  }
+
 
   /** Return the suffix of a class name */
   def moduleSuffix(sym: Symbol) =
     if (sym.hasFlag(Flags.MODULE) && !sym.isMethod &&
        !sym.isImplClass && !sym.hasFlag(Flags.JAVA)) "$"
     else "";
-
 
   var pickledBytes = 0 // statistics
 
@@ -153,9 +194,7 @@ abstract class GenJVM extends SubComponent {
      */
     def emitClass(jclass: JClass, sym: Symbol) {
       addInnerClasses(jclass)
-      val outfile = getFile(sym, jclass, ".class")
-      writeClass(outfile, jclass)
-      informProgress("wrote " + outfile)
+      writeClass(getFile(sym, jclass, ".class"), jclass)
     }
 
     /** Returns the ScalaSignature annotation if it must be added to this class,
@@ -363,9 +402,7 @@ abstract class GenJVM extends SubComponent {
       jcode.emitRETURN()
       
       // write the bean information class file.
-      val outfile = getFile(c.symbol, beanInfoClass, ".class")
-      writeClass(outfile, beanInfoClass)
-      informProgress("wrote BeanInfo " + outfile)
+      writeClass(getFile(c.symbol, beanInfoClass, ".class"), beanInfoClass, "wrote BeanInfo ")
     }
     
     
@@ -1892,7 +1929,6 @@ abstract class GenJVM extends SubComponent {
        sym.isNonBottomSubClass(definitions.ClassfileAnnotationClass))
     }
 
-
     def javaType(t: TypeKind): JType = (t: @unchecked) match {
       case UNIT            => JType.VOID
       case BOOL            => JType.BOOLEAN
@@ -1924,19 +1960,6 @@ abstract class GenJVM extends SubComponent {
       res
     }
 
-    /** Return an abstract file for the given class symbol, with the desired suffix.
-     *  Create all necessary subdirectories on the way.
-     */
-    def getFile(sym: Symbol, cls: JClass, suffix: String): AbstractFile = {
-      val sourceFile = atPhase(currentRun.flattenPhase.prev)(sym.sourceFile)
-      var dir: AbstractFile = settings.outputDirs.outputDirFor(sourceFile)
-      val pathParts = cls.getName().split("[./]").toList
-      for (part <- pathParts.init) {
-        dir = dir.subdirectoryNamed(part)
-      }
-      dir.fileNamed(pathParts.last + suffix)
-    }
-    
     /** Merge adjacent ranges. */
     private def mergeEntries(ranges: List[(Int, Int)]): List[(Int, Int)] = 
       (ranges.foldLeft(Nil: List[(Int, Int)]) { (collapsed: List[(Int, Int)], p: (Int, Int)) => (collapsed, p) match {
@@ -1951,5 +1974,20 @@ abstract class GenJVM extends SubComponent {
     }
 
     def assert(cond: Boolean) { assert(cond, "Assertion failed.") }
+
+    /** Return an abstract file for the given class symbol, with the desired suffix.
+     * Create all necessary subdirectories on the way.
+     *
+     *  Must not be called from a thread (due to the atPhase + directory creation)
+     */
+    def getFile(sym: Symbol, jclass: JClass, suffix: String): AbstractFile = {
+      val sourceFile = atPhase(currentRun.flattenPhase.prev)(sym.sourceFile)
+      var dir: AbstractFile = settings.outputDirs.outputDirFor(sourceFile)
+      val pathParts = jclass.getName().split("[./]").toList
+      for (part <- pathParts.init) {
+        dir = dir.subdirectoryNamed(part)
+      }
+      dir.fileNamed(pathParts.last + suffix)
+    }
   }
 }
