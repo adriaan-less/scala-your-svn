@@ -1,8 +1,8 @@
 package scala.tools.nsc
 package io
 
-import java.io.DataOutputStream
-import java.util.concurrent.{Executors, LinkedBlockingQueue}
+import java.io.{DataOutputStream, ByteArrayOutputStream}
+import java.util.concurrent.{Executors, ExecutorService, LinkedBlockingQueue}
 
 trait ConcurrentFileWriting {
   val global: Global
@@ -16,24 +16,18 @@ trait ConcurrentFileWriting {
     for(cmd <- cmds) cmd()
   }
 
-  private val nThreads = Runtime.getRuntime().availableProcessors()
-  private val writerPool = Executors.newFixedThreadPool(nThreads)
-
-  private class Writer(val file: AbstractFile, val writer: DataOutputStream => Unit, val msg: String) extends Runnable {
-    def run(): Unit = {
-      try {
-        val outstream = new DataOutputStream(file.bufferedOutput)
-        writer(outstream)
-        outstream.close()
-        val progMsg: String = msg + file
-        cmdQ put {() => informProgress(progMsg)}
-      } catch {
-        case t: Exception => 
-          if(settings.debug.value) t.printStackTrace()
-          cmdQ put {() => throw t}
-      }
-    }
+  @inline implicit def pimpExecService(es: ExecutorService) = new { def exec(b: => Unit) = es.execute(new Runnable{
+    def run() = try{
+      b
+    } catch {
+      case t: Exception => if(settings.debug.value) t.printStackTrace() 
+      cmdQ put {() => throw t}
+    }})
   }
+  private val writerThreadNb = Runtime.getRuntime().availableProcessors()
+  private val ioThreadNb = writerThreadNb // should actually scale with number of IO channels
+  private val classWriterPool = Executors.newFixedThreadPool(writerThreadNb)
+  private val fileWriterPool = Executors.newFixedThreadPool(ioThreadNb)
 
   /** Performs `writer` on the output stream of `file`, and calls `informProgress` when that's done.
    *
@@ -42,11 +36,22 @@ trait ConcurrentFileWriting {
    * Similarly, any exceptions caused while writing will be propagated to the calling thread.
    */
   def scheduleWrite(file: AbstractFile, msg: String = "wrote ")(writer: DataOutputStream => Unit) = 
-    if(nThreads > 1) {
-      writerPool.execute(new Writer(file, writer, msg))
+    if(writerThreadNb > 1) {
+      classWriterPool exec {
+        val bytestream = new ByteArrayOutputStream()
+        val outstream = new DataOutputStream(bytestream)
+        writer(outstream)
+        outstream.close()
+        fileWriterPool exec {
+          val filestream = file.output
+          bytestream.writeTo(filestream)
+          filestream.close()
+          val progMsg: String = msg + file
+          cmdQ put {() => informProgress(progMsg)}
+        }
+      }        
       drainCmdQ()
-    }
-    else { // non-concurrent
+    } else { // non-concurrent
       val outstream = new DataOutputStream(file.output)
       writer(outstream)
       outstream.close()
@@ -54,13 +59,18 @@ trait ConcurrentFileWriting {
     }
 
   /** Blocks until all writers are done.
-   * 
+   * writeClass must not be called subsequently.
+   *
    * May perform pending informProgress's and throw exceptions that occurred concurrently.
    */
   def waitForWriters() = {
-    writerPool.shutdown()
-    if(!writerPool.awaitTermination(300, java.util.concurrent.TimeUnit.SECONDS))
-      error("Writers did not finish in under 5 minutes after bytecode was generated!")
+    def stop(pool: ExecutorService) = {
+      pool.shutdown()
+      if(!pool.awaitTermination(300, java.util.concurrent.TimeUnit.SECONDS))
+        error("Writers did not finish in under 5 minutes after bytecode was generated!")
+    } 
+    stop(classWriterPool)
+    stop(fileWriterPool)
     drainCmdQ()
   }
 }
