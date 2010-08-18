@@ -11,7 +11,7 @@ import java.nio.ByteBuffer
 
 import scala.collection.immutable.{Set, ListSet}
 import scala.collection.mutable.{Map, HashMap, HashSet}
-import scala.tools.nsc.io.AbstractFile
+import scala.tools.nsc.io.{AbstractFile, ConcurrentFileWriting}
 import scala.tools.nsc.symtab._
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 
