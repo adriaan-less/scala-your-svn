@@ -6,7 +6,7 @@ import java.util.concurrent.{Executors, LinkedBlockingQueue}
 
 trait ConcurrentFileWriting {
   val global: Global
-  import global.{settings, informProgress}
+  import global.{settings, informProgress, error}
 
   private val cmdQ = new LinkedBlockingQueue[() => Unit]()
   private def drainCmdQ() = {
@@ -47,7 +47,7 @@ trait ConcurrentFileWriting {
       drainCmdQ()
     }
     else { // non-concurrent
-      val outstream = new DataOutputStream(file.bufferedOutput)
+      val outstream = new DataOutputStream(file.output)
       writer(outstream)
       outstream.close()
       informProgress(msg + file)
@@ -59,6 +59,8 @@ trait ConcurrentFileWriting {
    */
   def waitForWriters() = {
     writerPool.shutdown()
+    if(!writerPool.awaitTermination(300, java.util.concurrent.TimeUnit.SECONDS))
+      error("Writers did not finish in under 5 minutes after bytecode was generated!")
     drainCmdQ()
   }
 }
