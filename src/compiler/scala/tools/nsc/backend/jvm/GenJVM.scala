@@ -16,7 +16,6 @@ import scala.tools.nsc.symtab._
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 
 import ch.epfl.lamp.fjbg._
-import java.io.{ByteArrayOutputStream, DataOutputStream, File, OutputStream}
 import reflect.generic.{PickleFormat, PickleBuffer}
 
 /** This class ...

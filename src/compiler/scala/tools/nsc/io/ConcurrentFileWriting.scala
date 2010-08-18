@@ -1,5 +1,6 @@
 package scala.tools.nsc.io
 
+import java.io.DataOutputStream
 import java.util.concurrent.{Executors, LinkedBlockingQueue}
 
 trait ConcurrentFileWriting {
