@@ -25,7 +25,7 @@ import reflect.generic.{PickleFormat, PickleBuffer}
  *  @version 1.0
  * 
  */
-abstract class GenJVM extends SubComponent {
+abstract class GenJVM extends SubComponent with ConcurrentFileWriting {
   import global._
   import icodes._
   import icodes.opcodes._
@@ -38,7 +38,6 @@ abstract class GenJVM extends SubComponent {
   /** JVM code generation phase
    */
   class JvmPhase(prev: Phase) extends ICodePhase(prev) {
-
     def name = phaseName
     override def erasedTypes = true
     object codeGenerator extends BytecodeGenerator
@@ -50,7 +49,7 @@ abstract class GenJVM extends SubComponent {
           icodes.classes -= sym
 
       classes.values foreach apply
-      waitForFileWriters()
+      waitForWriters()
     }
 
     override def apply(cls: IClass) {
@@ -58,16 +57,6 @@ abstract class GenJVM extends SubComponent {
     }
   }
 
-  private val fileWriterPool = java.util.concurrent.Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
-  private class ClassWriter(val file: AbstractFile, val cls: JClass) extends Runnable {
-    def run(): Unit = {
-      val outstream = new DataOutputStream(file.bufferedOutput)
-      cls.writeTo(outstream)
-      outstream.close()
-    }
-  }
-  private def writeClass(file: AbstractFile, cls: JClass) = fileWriterPool.execute(new ClassWriter(file, cls))
-  private def waitForFileWriters() = fileWriterPool.shutdown()
 
   /** Return the suffix of a class name */
   def moduleSuffix(sym: Symbol) =
@@ -153,9 +142,7 @@ abstract class GenJVM extends SubComponent {
      */
     def emitClass(jclass: JClass, sym: Symbol) {
       addInnerClasses(jclass)
-      val outfile = getFile(sym, jclass, ".class")
-      writeClass(outfile, jclass)
-      informProgress("wrote " + outfile)
+      scheduleWrite(getFile(sym, jclass, ".class")){jclass.writeTo}
     }
 
     /** Returns the ScalaSignature annotation if it must be added to this class,
@@ -363,9 +350,7 @@ abstract class GenJVM extends SubComponent {
       jcode.emitRETURN()
       
       // write the bean information class file.
-      val outfile = getFile(c.symbol, beanInfoClass, ".class")
-      writeClass(outfile, beanInfoClass)
-      informProgress("wrote BeanInfo " + outfile)
+      scheduleWrite(getFile(c.symbol, beanInfoClass, ".class"), beanInfoClass, "wrote BeanInfo "){beanInfoClass.writeTo}
     }
     
     
