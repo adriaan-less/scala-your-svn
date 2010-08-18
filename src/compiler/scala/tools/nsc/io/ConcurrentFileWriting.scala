@@ -1,13 +1,17 @@
-package scala.tools.nsc.io
+package scala.tools.nsc
+package io
 
 import java.io.DataOutputStream
 import java.util.concurrent.{Executors, LinkedBlockingQueue}
 
 trait ConcurrentFileWriting {
+  val global: Global
+  import global.{settings, informProgress}
+
   private val cmdQ = new LinkedBlockingQueue[Unit => Unit]()
   private def drainCmdQ() = {
     import scala.collection.JavaConversions._
-    val cmds = new java.util.LinkedList[Unit => Unit]()
+    val cmds = new java.util.LinkedList[() => Unit]()
     cmdQ drainTo cmds
     for(cmd <- cmds) cmd()
   }
@@ -43,10 +47,10 @@ trait ConcurrentFileWriting {
       drainCmdQ()
     }
     else { // non-concurrent
-      val outstream = new DataOutputStream(outfile.bufferedOutput)
+      val outstream = new DataOutputStream(file.bufferedOutput)
       writer(outstream)
       outstream.close()
-      informProgress(msg + outfile)
+      informProgress(msg + file)
     }
 
   /** Blocks until all writers are done.

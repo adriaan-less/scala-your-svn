@@ -349,7 +349,7 @@ abstract class GenJVM extends SubComponent with ConcurrentFileWriting {
       jcode.emitRETURN()
       
       // write the bean information class file.
-      scheduleWrite(getFile(c.symbol, beanInfoClass, ".class"), beanInfoClass, "wrote BeanInfo "){beanInfoClass.writeTo}
+      scheduleWrite(getFile(c.symbol, beanInfoClass, ".class"), "wrote BeanInfo "){beanInfoClass.writeTo}
     }
     
     
