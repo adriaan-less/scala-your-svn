@@ -8,7 +8,7 @@ trait ConcurrentFileWriting {
   val global: Global
   import global.{settings, informProgress}
 
-  private val cmdQ = new LinkedBlockingQueue[Unit => Unit]()
+  private val cmdQ = new LinkedBlockingQueue[() => Unit]()
   private def drainCmdQ() = {
     import scala.collection.JavaConversions._
     val cmds = new java.util.LinkedList[() => Unit]()
