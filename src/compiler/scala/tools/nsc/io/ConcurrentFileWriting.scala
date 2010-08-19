@@ -8,27 +8,6 @@ trait ConcurrentFileWriting {
   val global: Global
   import global.{settings, informProgress, error}
 
-  private val cmdQ = new LinkedBlockingQueue[() => Unit]()
-  private def drainCmdQ() = {
-    import scala.collection.JavaConversions._
-    val cmds = new java.util.LinkedList[() => Unit]()
-    cmdQ drainTo cmds
-    for(cmd <- cmds) cmd()
-  }
-
-  @inline implicit def pimpExecService(es: ExecutorService) = new { def exec(b: => Unit) = es.execute(new Runnable{
-    def run() = try{
-      b
-    } catch {
-      case t: Exception => if(settings.debug.value) t.printStackTrace() 
-      cmdQ put {() => throw t}
-    }})
-  }
-  private val writerThreadNb = Runtime.getRuntime().availableProcessors()
-  private val ioThreadNb = writerThreadNb // should actually scale with number of IO channels
-  private val classWriterPool = Executors.newFixedThreadPool(writerThreadNb)
-  private val fileWriterPool = Executors.newFixedThreadPool(ioThreadNb)
-
   /** Performs `writer` on the output stream of `file`, and calls `informProgress` when that's done.
    *
    * Depending on the number of available processors, `writer` may be executed concurrently.
@@ -72,5 +51,28 @@ trait ConcurrentFileWriting {
     stop(classWriterPool)
     stop(fileWriterPool)
     drainCmdQ()
+  }
+
+  private val writerThreadNb = Runtime.getRuntime().availableProcessors()
+  private val ioThreadNb = writerThreadNb // should actually scale with number of IO channels
+  private val classWriterPool = Executors.newFixedThreadPool(writerThreadNb)
+  private val fileWriterPool = Executors.newFixedThreadPool(ioThreadNb)
+
+  private val cmdQ = new LinkedBlockingQueue[() => Unit]()
+  private def drainCmdQ() = {
+    import scala.collection.JavaConversions._
+    val cmds = new java.util.LinkedList[() => Unit]()
+    cmdQ drainTo cmds
+    for(cmd <- cmds) cmd()
+  }
+
+  @inline implicit def pimpExecService(es: ExecutorService) = new { def exec(b: => Unit) = es.execute(new Runnable{
+    def run() = try{
+      b
+    } catch {
+      case t: Exception => if(settings.debug.value) t.printStackTrace() 
+      cmdQ put {() => throw t}
+      throw t
+    }})
   }
 }
