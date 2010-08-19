@@ -47,7 +47,7 @@ trait ConcurrentFileWriting {
   // must only be set by setupWriters and shutdownWriters:
   private var nThreads = 0
   private var writerPool: ExecutorService = null
-  private var cmdQ: LinkedBlockingQueue = null
+  private var cmdQ: LinkedBlockingQueue[() => Unit] = null
 
   private class Writer(val file: AbstractFile, val writer: DataOutputStream => Unit, val msg: String) extends Runnable {
     def run(): Unit = {
