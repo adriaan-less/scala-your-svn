@@ -43,12 +43,15 @@ abstract class GenJVM extends SubComponent with ConcurrentFileWriting {
 
     override def run {
       if (settings.debug.value) inform("[running phase " + name + " on icode]")
+      setupWriters()
+
       if (settings.Xdce.value)
         for ((sym, cls) <- icodes.classes if inliner.isClosureClass(sym) && !deadCode.liveClosures(sym))
           icodes.classes -= sym
 
       classes.values foreach apply
-      waitForWriters()
+
+      shutdownWriters()
     }
 
     override def apply(cls: IClass) {

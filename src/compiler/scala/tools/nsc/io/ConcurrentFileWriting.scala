@@ -2,11 +2,18 @@ package scala.tools.nsc
 package io
 
 import java.io.DataOutputStream
-import java.util.concurrent.{Executors, LinkedBlockingQueue}
+import java.util.concurrent.{Executors, ExecutorService, LinkedBlockingQueue}
 
 trait ConcurrentFileWriting {
   val global: Global
   import global.{settings, informProgress, error}
+
+  /** must be called before scheduleWrite and waitForWriters in order to allow concurrent writes*/
+  def setupWriters() = {
+    nThreads = Runtime.getRuntime().availableProcessors()
+    writerPool = Executors.newFixedThreadPool(nThreads)
+    cmdQ = new LinkedBlockingQueue[() => Unit]()
+  }
 
   /** Performs `writer` on the output stream of `file`, and calls `informProgress` when that's done.
    *
@@ -29,16 +36,18 @@ trait ConcurrentFileWriting {
    * 
    * May perform pending informProgress's and throw the first of the exceptions that occurred concurrently.
    */
-  def waitForWriters() = {
+  def shutdownWriters() = if(writerPool ne null) {
     writerPool.shutdown()
     if(!writerPool.awaitTermination(300, java.util.concurrent.TimeUnit.SECONDS))
       error("Writers did not finish in under 5 minutes after bytecode was generated!")
     drainCmdQ()
+    nThreads = 0; writerPool = null; cmdQ = null
   }
 
-  private val nThreads = Runtime.getRuntime().availableProcessors()
-  private val writerPool = Executors.newFixedThreadPool(nThreads)
-  private val cmdQ = new LinkedBlockingQueue[() => Unit]()
+  // must only be set by setupWriters and shutdownWriters:
+  private var nThreads = 0
+  private var writerPool: ExecutorService = null
+  private var cmdQ: LinkedBlockingQueue = null
 
   private class Writer(val file: AbstractFile, val writer: DataOutputStream => Unit, val msg: String) extends Runnable {
     def run(): Unit = {
