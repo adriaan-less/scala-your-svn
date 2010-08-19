@@ -1194,18 +1194,24 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      */
     def ancestors: List[Symbol] = info.baseClasses drop 1
 
-    /** The package containing this symbol, or NoSymbol if there
+    /** The package class containing this symbol, or NoSymbol if there
      *  is not one. */
-    def enclosingPackage: Symbol =
+    def enclosingPackageClass: Symbol =
       if (this == NoSymbol) this else {
         var packSym = this.owner
         while ((packSym != NoSymbol)
                && !packSym.isPackageClass) 
           packSym = packSym.owner
-        if (packSym != NoSymbol)
-          packSym = packSym.companionModule
         packSym
       }
+
+    /** The package containing this symbol, or NoSymbol if there
+     *  is not one. */
+    def enclosingPackage: Symbol = {
+      val packSym = enclosingPackageClass
+      if (packSym != NoSymbol) packSym.companionModule
+      else packSym
+    }
 
     /** The top-level class containing this symbol */
     def toplevelClass: Symbol =
