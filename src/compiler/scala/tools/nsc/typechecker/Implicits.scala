@@ -933,6 +933,15 @@ self: Analyzer =>
 
   object ImplicitNotFoundMsg {
     def unapply(sym: Symbol): Option[(Message)] = sym.implicitNotFoundMsg map (m => (new Message(sym, m)))
+    // check the message's syntax: should be a string literal that may contain occurences of the string "${X}",
+    // where `X` refers to a type parameter of `sym`
+    def check(sym: Symbol): Option[String] =
+      sym.getAnnotation(ImplicitNotFoundClass).flatMap(_.stringArg(0) match {
+        case Some(m) => new Message(sym, m) validate
+        case None => Some("Missing argument `msg` on implicitNotFound annotation.")
+      })
+    
+
     class Message(sym: Symbol, msg: String) {
       // http://dcsobral.blogspot.com/2010/01/string-interpolation-in-scala-with.html
       private def interpolate(text: String, vars: Map[String, String]) = { import scala.util.matching.Regex
@@ -946,22 +955,20 @@ self: Analyzer =>
       def format(typeArgs: List[String]): String = 
         interpolate(msg, Map((typeParamNames zip typeArgs): _*)) // TODO: give access to the name and type of the implicit argument, etc?
 
-      // TODO: broken
-      // check the message's syntax: should be a string literal that may contain occurences of the string "${X}",
-      // where `X` refers to a type parameter of `sym`
-      lazy val validate: Option[String] = { import scala.util.matching.Regex; import collection.breakOut
+      def validate: Option[String] = {
+        import scala.util.matching.Regex; import collection.breakOut
         // is there a shorter way to avoid the intermediate toList?
-        // val builder = Set.newBuilder[String]
-        // """\$\{([^}]+)\}""".r.findAllIn(msg).matchData foreach (builder += _.group(1))
-        // val refs = builder.result()
         val refs = Set("""\$\{([^}]+)\}""".r.findAllIn(msg).matchData.map(_.group(1)).toList : _*)
         val decls = Set(typeParamNames : _*)
         (refs &~ decls) match {
           case s if s isEmpty => None
-          case unboundNames => Some("The references to type parameters "+ unboundNames.mkString(", ") +" in the message of the @implicitNotFound annotation are not defined by "+ sym +".")
+          case unboundNames =>
+            val singular = unboundNames.size == 1
+            Some("The type parameter"+( if(singular) " " else "s " )+ unboundNames.mkString(", ")  +
+                  " referenced in the message of the @implicitNotFound annotation "+( if(singular) "is" else "are" )+
+                  " not defined by "+ sym +".")
         }
       }
-
     }
   }
 

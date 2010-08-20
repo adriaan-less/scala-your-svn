@@ -1085,10 +1085,9 @@ abstract class RefChecks extends InfoTransform {
           val sym = m.symbol
           applyChecks(sym.annotations)
           // validate implicitNotFoundMessage
-          for(annot <- sym.annotations;
-              analyzer.ImplicitNotFoundMsg(msg) <- Some(annot.atp.typeSymbol);
-              warn <- msg.validate)
-                unit.warning(tree.pos, "Invalid implicitNotFound message for %s%s:\n%s".format(sym, sym.locationString, warn))
+          analyzer.ImplicitNotFoundMsg.check(sym) foreach { warn =>
+            unit.warning(tree.pos, "Invalid implicitNotFound message for %s%s:\n%s".format(sym, sym.locationString, warn))
+          }
         case tpt@TypeTree() =>
           if(tpt.original != null) {
             tpt.original foreach {
