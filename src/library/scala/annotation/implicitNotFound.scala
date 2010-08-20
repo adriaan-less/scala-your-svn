@@ -12,7 +12,7 @@ package scala.annotation
  * An annotation that specifies the error message that is emitted when the compiler
  * cannot find an implicit value of the annotated type.
  *
+ * @author Adriaan Moors
  * @since 2.8.1
  */
-private[scala] final class implicitNotFound(msg: String)
-extends StaticAnnotation {}
+final class implicitNotFound(msg: String) extends StaticAnnotation {}

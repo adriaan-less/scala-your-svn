@@ -1,4 +1,4 @@
-package scala
+package test
 
 import scala.annotation.implicitNotFound
 
