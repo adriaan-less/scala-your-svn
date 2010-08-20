@@ -942,7 +942,8 @@ self: Analyzer =>
 
       private lazy val typeParamNames: List[String] = sym.typeParams.map(_.decodedName)
 
-      def format(typeArgs: List[String]) = 
+      def format(paramName: Name, paramTp: Type): String = format(paramTp.typeArgs map (_.toString))
+      def format(typeArgs: List[String]): String = 
         interpolate(msg, Map((typeParamNames zip typeArgs): _*)) // TODO: give access to the name and type of the implicit argument, etc?
 
       // TODO: broken

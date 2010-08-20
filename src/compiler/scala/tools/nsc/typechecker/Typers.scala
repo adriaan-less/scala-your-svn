@@ -193,8 +193,7 @@ trait Typers { self: Analyzer =>
 
         def errorMessage(paramName: Name, paramTp: Type) =
           paramTp.typeSymbol match {
-            case ImplicitNotFoundMsg(msg) =>
-              msg.format(paramTp.typeArgs map (_.toString))
+            case ImplicitNotFoundMsg(msg) => msg.format(paramName, paramTp)
             case _ =>
               "could not find implicit value for "+
                  (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
