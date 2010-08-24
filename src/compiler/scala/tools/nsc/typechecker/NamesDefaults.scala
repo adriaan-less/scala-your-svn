@@ -251,18 +251,32 @@ trait NamesDefaults { self: Analyzer =>
       val context = blockTyper.context
       val symPs = (args, paramTypes).zipped map ((arg, tpe) => {
         val byName = tpe.typeSymbol == ByNameParamClass
+        val (argTpe, repeated) =
+          if (tpe.typeSymbol == RepeatedParamClass) arg match {
+            case Typed(expr, tpt @ Ident(name)) if name == nme.WILDCARD_STAR.toTypeName =>
+              (expr.tpe, true)
+            case _ =>
+              (seqType(arg.tpe), true)
+          } else (arg.tpe, false)
         val s = context.owner.newValue(arg.pos, unit.fresh.newName(arg.pos, "x$"))
-        val valType = if (byName) functionType(List(), arg.tpe)
-                      else arg.tpe
+        val valType = if (byName) functionType(List(), argTpe)
+                      else if (repeated) argTpe
+                      else argTpe
         s.setInfo(valType)
-        (context.scope.enter(s), byName)
+        (context.scope.enter(s), byName, repeated)
       })
       (symPs, args).zipped map ((symP, arg) => {
-        val (sym, byName) = symP
+        val (sym, byName, repeated) = symP
         // resetAttrs required for #2290. given a block { val x = 1; x }, when wrapping into a function
         // () => { val x = 1; x }, the owner of symbol x must change (to the apply method of the function).
         val body = if (byName) blockTyper.typed(Function(List(), resetLocalAttrs(arg)))
-                   else arg
+                   else if (repeated) arg match {
+                     case Typed(expr, tpt @ Ident(name)) if name == nme.WILDCARD_STAR.toTypeName =>
+                       expr
+                     case _ =>
+                       val factory = Select(gen.mkAttributedRef(SeqModule), nme.apply)
+                       blockTyper.typed(Apply(factory, List(resetLocalAttrs(arg))))
+                   } else arg
         atPos(body.pos)(ValDef(sym, body).setType(NoType))
       })
     }
@@ -290,7 +304,7 @@ trait NamesDefaults { self: Analyzer =>
             // ValDef's in the block), change the arguments to these local values.
             case Apply(expr, typedArgs) =>
               // typedArgs: definition-site order
-              val formals = formalTypes(expr.tpe.paramTypes, typedArgs.length, false)
+              val formals = formalTypes(expr.tpe.paramTypes, typedArgs.length, false, false)
               // valDefs: call-site order
               val valDefs = argValDefs(reorderArgsInv(typedArgs, argPos),
                                        reorderArgsInv(formals, argPos),
@@ -301,6 +315,7 @@ trait NamesDefaults { self: Analyzer =>
                 atPos(vDef.pos.focus) {
                   // for by-name parameters, the local value is a nullary function returning the argument
                   if (tpe.typeSymbol == ByNameParamClass) Apply(ref, List())
+                  else if (tpe.typeSymbol == RepeatedParamClass) Typed(ref, Ident(nme.WILDCARD_STAR.toTypeName))
                   else ref
                 }
               })
@@ -497,7 +512,15 @@ trait NamesDefaults { self: Analyzer =>
   def companionModuleOf(clazz: Symbol, context: Context) = {
     var res = clazz.companionModule
     if (res == NoSymbol)
-      res = context.lookup(clazz.name.toTermName, clazz.owner)
+      res = context.lookup(clazz.name.toTermName, clazz.owner).suchThat(sym =>
+        sym.hasFlag(MODULE) && sym.isCoDefinedWith(clazz))
+    res
+  }
+
+  def companionClassOf(module: Symbol, context: Context) = {
+    var res = module.companionClass
+    if (res == NoSymbol)
+      res = context.lookup(module.name.toTypeName, module.owner).suchThat(_.isCoDefinedWith(module))
     res
   }
 
