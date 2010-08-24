@@ -8,3 +8,6 @@ object Test{
 
   meh[Int]: Stream[Int]
 }
+// debugging output in coevolveSym should say:
+// coevolved type T#11029 : Stream#3234[A#9228] to type T#11277 : Stream#3234[A#9227]
+// with Test.ZW#9219[A#9228]{type T#11029 = Stream#3234[A#9228]} -> Test.ZW#9219[A#9227]{type T#11277 = Stream#3234[A#9227]}
