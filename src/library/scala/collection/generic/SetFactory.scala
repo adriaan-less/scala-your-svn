@@ -6,13 +6,12 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package generic
 
-import mutable.{Builder, AddingBuilder}
+import mutable.Builder
 
 /** A template for companion objects of `Set` and subclasses thereof.
  *
@@ -33,8 +32,8 @@ import mutable.{Builder, AddingBuilder}
  */
 abstract class SetFactory[CC[X] <: Set[X] with SetLike[X, CC[X]]]
   extends GenericCompanion[CC] {
-
-  def newBuilder[A]: Builder[A, CC[A]] = new AddingBuilder[A, CC[A]](empty[A])
+    
+  def newBuilder[A]: Builder[A, CC[A]]
 
   /** $setCanBuildFromInfo
    */

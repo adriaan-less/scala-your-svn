@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package interactive
@@ -111,11 +110,8 @@ class RefinedBuildManager(val settings: Settings) extends Changes with BuildMana
       (from.hasFlag(Flags.MODULE) == to.hasFlag(Flags.MODULE))
       
     // For testing purposes only, order irrelevant for compilation
-    def toStringSet(set: Set[AbstractFile]): String = {
-      val s = set.toList sortBy (_.name) map
-        (_.toString.replaceAll(java.util.regex.Matcher.quoteReplacement("\\"), "/"))
-      s.mkString("Set(", ", ", ")")
-    }
+    def toStringSet(set: Set[AbstractFile]): String =
+      set.toList sortBy (_.name) mkString("Set(", ", ", ")")
 
     def update0(files: Set[AbstractFile]): Unit = if (!files.isEmpty) {
       deleteClassfiles(files)

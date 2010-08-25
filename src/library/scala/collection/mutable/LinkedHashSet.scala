@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package mutable
@@ -69,7 +68,7 @@ class LinkedHashSet[A] extends Set[A]
     clearTable()
   }
 
-  override def iterator = ordered.iterator
+  override def iterator: Iterator[A] = ordered.iterator
 
   override def foreach[U](f: A => U) = ordered foreach f
   
@@ -87,7 +86,7 @@ class LinkedHashSet[A] extends Set[A]
  *  @define Coll LinkedHashSet
  *  @define coll linked hash set
  */
-object LinkedHashSet extends SetFactory[LinkedHashSet] {
+object LinkedHashSet extends MutableSetFactory[LinkedHashSet] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, LinkedHashSet[A]] = setCanBuildFrom[A]
   override def empty[A]: LinkedHashSet[A] = new LinkedHashSet[A]
 }

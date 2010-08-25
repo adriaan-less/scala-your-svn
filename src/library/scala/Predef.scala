@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -33,7 +32,6 @@ object Predef extends LowPriorityImplicits {
   // miscelleaneous -----------------------------------------------------
   scala.`package`                         // to force scala package object to be seen.
   scala.collection.immutable.List         // to force Nil, :: to be seen.
-  scala.collection.mutable.StringBuilder  // to force StringBuilder to be seen.
 
   type Function[-A, +B] = Function1[A, B]
     

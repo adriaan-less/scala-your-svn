@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
@@ -12,7 +11,7 @@ import scala.collection.mutable.{Map, HashMap, Set, HashSet, LinkedHashSet}
 
 /** A generic framework for data flow analysis.
  */
-trait DataFlowAnalysis[L <: CompleteLattice] {
+trait DataFlowAnalysis[L <: SemiLattice] {
   /** A type for program points. */
   type P <: ProgramPoint[P]
   val  lattice: L

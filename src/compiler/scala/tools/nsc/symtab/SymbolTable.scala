@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -30,7 +29,7 @@ abstract class SymbolTable extends reflect.generic.Universe
 {
   def settings: Settings
   def rootLoader: LazyType
-  def log(msg: AnyRef)
+  def log(msg: => AnyRef)
   def abort(msg: String) = throw new Error(msg)
   def abort() = throw new Error()
 

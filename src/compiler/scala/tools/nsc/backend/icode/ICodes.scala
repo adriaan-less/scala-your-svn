@@ -7,7 +7,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -70,6 +69,14 @@ abstract class ICodes extends AnyRef
                                   new DumpLinearizer)
 
     classes.values foreach printer.printClass
+  }
+
+  def checkValid(m: IMethod) {
+    for (b <- m.code.blocks)
+      if (!b.closed) {
+        m.dump
+        global.abort("Open block: " + b.flagsString)
+      }
   }
 
   object liveness extends Liveness {

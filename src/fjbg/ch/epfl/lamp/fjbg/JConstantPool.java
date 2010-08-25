@@ -1,4 +1,3 @@
-// $Id$
 
 package ch.epfl.lamp.fjbg;
 
@@ -383,6 +382,9 @@ public class JConstantPool {
         public int getSize() { return 1; }
         public void writeContentsTo(DataOutputStream stream) throws IOException {
             if (bytes != null) {
+                if (bytes.length > 65535) {
+                    throw new IOException("String literal of length " + bytes.length + " does not fit in Classfile");
+                }
                 stream.writeShort(bytes.length);
                 stream.write(bytes);
             }

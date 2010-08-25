@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -18,10 +17,10 @@ import annotation.tailrec
 
 /** A class for immutable linked lists representing ordered collections
  *  of elements of type. 
- *
- * This class comes with two implementing case classes `scala.Nil` 
- * and `scala.::` that implement the abstract members `isEmpty`, 
- * `head` and `tail`.
+ *  
+ *  This class comes with two implementing case classes `scala.Nil` 
+ *  and `scala.::` that implement the abstract members `isEmpty`, 
+ *  `head` and `tail`.
  *
  *  @author  Martin Odersky and others
  *  @version 2.8
@@ -244,7 +243,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
   override def toStream : Stream[A] = 
     if (isEmpty) Stream.Empty
     else new Stream.Cons(head, tail.toStream)
-    
     
   /** Like <code>span</code> but with the predicate inverted.
    */

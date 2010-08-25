@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -54,6 +53,10 @@ import annotation.migration
  *  @define Add  Append
  *  @define willNotTerminateInf
  *  @define mayNotTerminateInf
+ *  @define compatMutate
+ *  Note that for backward compatibility reasons, this method
+ *  mutates the collection in place, unlike similar but
+ *  undeprecated methods throughout the collections hierarchy.
  */
 @cloneable
 trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]] 
@@ -61,16 +64,13 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
                    with Shrinkable[A]
                    with Scriptable[A]
                    with Subtractable[A, This]
-                   with Cloneable[This]
                    with SeqLike[A, This]
 { self : This =>
   
   // Note this does not extend Addable because `+` is being phased out of
   // all Seq-derived classes.
 
-  import scala.collection.{Iterable, Traversable}
-
-  // Abstract methods from IndexedSeq:
+  // Abstract methods from Seq:
 
   def apply(n: Int): A
   def update(n: Int, newelem: A)
@@ -96,7 +96,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *  @throws   IndexOutofBoundsException if the index `n` is not in the valid range
    *            `0 <= n <= length`.
    */
-  def insertAll(n: Int, elems: Traversable[A])
+  def insertAll(n: Int, elems: collection.Traversable[A])
 
    /** Removes the element at a given index from this buffer.
     *
@@ -233,17 +233,36 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
     }
   }
 
+
+  /** This method prepends elements to the buffer and
+   *  returns the same buffer.
+   *
+   *  $compatMutate
+   *  You are strongly recommended to use `++=:` instead.
+   *
+   *  @param xs   elements to prepend
+   *  @return     this buffer
+   */
   @deprecated("use ++=: instead")
-  final def ++:(iter: Traversable[A]): This = ++=:(iter)
-  
+  final def ++:(xs: Traversable[A]): This = ++=:(xs)
+ 
+  /** This method prepends elements to the buffer and
+   *  returns the same buffer.
+   *
+   *  $compatMutate
+   *  You are strongly recommended to use `+=:` instead.
+   *
+   *  @param xs   elements to prepend
+   *  @return     this buffer
+   */ 
   @deprecated("use `+=:' instead") 
   final def +:(elem: A): This = +=:(elem)
 
   /** Adds a single element to this collection and returns 
-   *  the collection itself.  Note that for backward compatibility
-   *  reasons, this method mutates the collection in place, unlike
-   *  similar but undeprecated methods throughout the collections
-   *  hierarchy.  You are strongly recommended to use '+=' instead.
+   *  the collection itself.
+   *
+   *  $compatMutate
+   *  You are strongly recommended to use '+=' instead.
    *
    *  @param elem  the element to add.
    */
@@ -252,11 +271,10 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
   def + (elem: A): This = { +=(elem); repr }
 
   /** Adds two or more elements to this collection and returns
-   *  the collection itself.  Note that for backward compatibility
-   *  reasons, this method mutates the collection in place, unlike
-   *  all similar methods throughout the collections hierarchy.
-   *  similar but undeprecated methods throughout the collections
-   *  hierarchy.  You are strongly recommended to use '++=' instead.
+   *  the collection itself.
+   *  
+   *  $compatMutate
+   *  You are strongly recommended to use '++=' instead.
    *
    *  @param elem1 the first element to add.
    *  @param elem2 the second element to add.
@@ -269,10 +287,11 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
     repr
   } 
 
-  /** Adds a number of elements provided by a traversable object and returns
-   *  either the collection itself.
+  /** Creates a new collection containing both the elements of this collection and the provided
+   *  traversable object.
    *
    *  @param xs     the traversable object.
+   *  @return       a new collection consisting of all the elements of this collection and `xs`.
    */
   @migration(2, 8,
     "As of 2.8, ++ always creates a new collection, even on Buffers.\n"+
@@ -280,10 +299,10 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
   )
   def ++(xs: TraversableOnce[A]): This = clone() ++= xs
 
-  /** Removes a single element from this collection and returns 
-   *  the collection itself.
+  /** Creates a new collection with all the elements of this collection except `elem`.
    *
    *  @param elem  the element to remove.
+   *  @return      a new collection consisting of all the elements of this collection except `elem`.
    */
   @migration(2, 8,
     "As of 2.8, - always creates a new collection, even on Buffers.\n"+
@@ -291,12 +310,14 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
   )
   override def -(elem: A): This = clone() -= elem
 
-  /** Removes two or more elements from this collection and returns
-   *  the collection itself.
+  /** Creates a new collection with all the elements of this collection except the two
+   *  or more specified elements.
    *
    *  @param elem1 the first element to remove.
    *  @param elem2 the second element to remove.
    *  @param elems the remaining elements to remove.
+   *  @return      a new collection consisting of all the elements of this collection except
+   *               `elem1`, `elem2` and those in `elems`.
    */
   @migration(2, 8,
     "As of 2.8, - always creates a new collection, even on Buffers.\n"+
@@ -304,10 +325,12 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
   )
   override def -(elem1: A, elem2: A, elems: A*): This = clone() -= elem1 -= elem2 --= elems
 
-  /** Removes a number of elements provided by a Traversable object and returns
-   *  the collection itself.
+  /** Creates a new collection with all the elements of this collection except those
+   *  provided by the specified traversable object.
    *
-   *  @param iter     the Traversable object.
+   *  @param xs       the traversable object.
+   *  @return         a new collection with all the elements of this collection except
+   *                  those in `xs`
    */
   @migration(2, 8,
     "As of 2.8, -- always creates a new collection, even on Buffers.\n"+

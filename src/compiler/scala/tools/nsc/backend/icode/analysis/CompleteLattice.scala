@@ -3,14 +3,13 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
 
 /** A complete lattice.
  */
-trait CompleteLattice {
+trait SemiLattice {
   type Elem <: AnyRef
   
   /** Hold together local variable and stack state. The

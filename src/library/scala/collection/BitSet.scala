@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -26,7 +25,9 @@ trait BitSet extends Set[Int]
  *  @define Coll BitSet
  */
 object BitSet extends BitSetFactory[BitSet] {
-  val empty: BitSet = immutable.BitSet.empty
+  val empty: BitSet = immutable.BitSet.empty  
+  def newBuilder = immutable.BitSet.newBuilder
+  
   /** $canBuildFromInfo */
   implicit def canBuildFrom: CanBuildFrom[BitSet, Int, BitSet] = bitsetCanBuildFrom
 }

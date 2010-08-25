@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 
@@ -37,6 +36,7 @@ trait Set[A] extends (A => Boolean)
  *  @define Coll Set
  */
 object Set extends SetFactory[Set] {
+  def newBuilder[A] = immutable.Set.newBuilder[A]
   override def empty[A]: Set[A] = immutable.Set.empty[A]
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
 }

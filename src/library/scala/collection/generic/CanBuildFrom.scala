@@ -6,13 +6,12 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package generic
 
 import mutable.Builder
-
+import scala.annotation.implicitNotFound
 
 /** A base trait for builder factories.      
  *
@@ -26,6 +25,7 @@ import mutable.Builder
  *  @author Adriaan Moors
  *  @since 2.8
  */
+@implicitNotFound(msg = "Cannot construct a collection of type ${To} with elements of type ${Elem} based on a collection of type ${To}.")
 trait CanBuildFrom[-From, -Elem, +To] {
 
   /** Creates a new builder on request of a collection.
@@ -37,8 +37,10 @@ trait CanBuildFrom[-From, -Elem, +To] {
    */
   def apply(from: From): Builder[Elem, To]
 
-  /** Creates a new builder from scratch
+  /** Creates a new builder from scratch.
+   *
    *  @return a builder for collections of type `To` with element type `Elem`.
+   *  @see scala.collection.breakOut
    */
   def apply(): Builder[Elem, To]
 }

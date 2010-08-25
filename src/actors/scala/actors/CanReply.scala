@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -18,6 +17,8 @@ package scala.actors
  * @define actor `CanReply`
  */
 trait CanReply[-T, +R] {
+
+  type Future[+P] <: () => P
 
   /**
    * Sends <code>msg</code> to this $actor and
@@ -47,8 +48,7 @@ trait CanReply[-T, +R] {
    * @param  msg the message to be sent
    * @return     the future
    */
-  def !!(msg: T): () => R =
-    () => this !? msg
+  def !!(msg: T): Future[R]
 
   /**
    * Sends <code>msg</code> to this $actor and
@@ -61,7 +61,6 @@ trait CanReply[-T, +R] {
    * @param  handler the function to be applied to the response
    * @return         the future
    */
-  def !![P](msg: T, handler: PartialFunction[R, P]): () => P =
-    () => handler(this !? msg)
+  def !![P](msg: T, handler: PartialFunction[R, P]): Future[P]
 
 }

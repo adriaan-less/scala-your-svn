@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Iulian Dragos
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -52,7 +51,7 @@ abstract class ICodeReader extends ClassfileParser {
     
     classPath.findSourceFile(name) match {
       case Some(classFile)  => parse(classFile, sym)
-      case _                => log("Could not find: " + cls)
+      case _                => throw new MissingRequirementError("Could not find bytecode for " + cls)
     }
 
     (staticCode, instanceCode)
@@ -111,7 +110,7 @@ abstract class ICodeReader extends ClassfileParser {
         if (sym == NoSymbol)
           sym = owner.info.member(newTermName(name.toString + nme.LOCAL_SUFFIX)).suchThat(old => old.tpe =:= tpe);
         if (sym == NoSymbol) {
-          log("Could not find symbol for " + name + ": " + tpe + " in " + owner.info.decls)
+          log("Could not find symbol for " + name + ": " + tpe)
           log(owner.info.member(name).tpe + " : " + tpe)
           if (name.toString() == "toMap")
             tpe = pool.getType(dummySym, ch)
@@ -160,7 +159,6 @@ abstract class ICodeReader extends ClassfileParser {
     var beginning = in.bp
     try {
       if (sym != NoSymbol) {
-        log("Parsing method " + sym.fullName + ": " + sym.tpe);
         this.method = new IMethod(sym);
         this.method.returnType = toTypeKind(sym.tpe.resultType)
         getCode(jflags).addMethod(this.method)
@@ -614,9 +612,9 @@ abstract class ICodeReader extends ClassfileParser {
 
     // add parameters
     var idx = if (method.isStatic) 0 else 1
-    for (t <- method.symbol.tpe.paramTypes) {
-      this.method.addParam(code.enterParam(idx, toTypeKind(t)))
-      idx += 1
+    for (t <- method.symbol.tpe.paramTypes; val kind = toTypeKind(t)) {
+      this.method.addParam(code.enterParam(idx, kind))
+      idx += (if (kind.isWideType) 2 else 1)
     }
     
     pc = 0

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -22,6 +21,7 @@ trait Analyzer extends AnyRef
             with SyntheticMethods 
             with Unapplies
             with NamesDefaults
+            with TypeDiagnostics
 {
   val global : Global
   import global._
@@ -74,7 +74,7 @@ trait Analyzer extends AnyRef
     val runsRightAfter = Some("packageobjects")
     def newPhase(_prev: Phase): StdPhase = new StdPhase(_prev) {
       override def keepsTypeParams = false
-      resetTyper()
+      resetTyper() // this does not in fact to the reset for each compilation run!
       override def run { 
         val start = startTimer(typerNanos)
         currentRun.units foreach applyPhase

@@ -2,7 +2,6 @@
  * Copyright 2007-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -45,11 +44,17 @@ trait AnnotationInfos extends reflect.generic.AnnotationInfos { self: SymbolTabl
   /** A specific annotation argument that encodes an array of bytes as an array of `Long`. The type of the argument
     * declared in the annotation must be `String`. This specialised class is used to encode scala signatures for
     * reasons of efficiency, both in term of class-file size and in term of compiler performance. */
-  case class ScalaSigBytes(bytes: Array[Byte])
-  extends ClassfileAnnotArg {
+  case class ScalaSigBytes(bytes: Array[Byte]) extends ClassfileAnnotArg {
     override def toString = (bytes map { byte => (byte & 0xff).toHexString }).mkString("[ ", " ", " ]")
+    lazy val encodedBytes =
+      reflect.generic.ByteCodecs.encode(bytes)
+    def isLong: Boolean = (encodedBytes.length > 65535)
+    def sigAnnot: Type =
+      if (this.isLong)
+        definitions.ScalaLongSignatureAnnotation.tpe
+      else
+        definitions.ScalaSignatureAnnotation.tpe
   }
-  object ScalaSigBytes extends ScalaSigBytesExtractor
 
   /** Represents a nested classfile annotation */
   case class NestedAnnotArg(annInfo: AnnotationInfo)
@@ -118,6 +123,18 @@ trait AnnotationInfos extends reflect.generic.AnnotationInfos { self: SymbolTabl
       val subs = new TreeSymSubstituter(List(from), List(to))
       AnnotationInfo(atp, args.map(subs(_)), assocs).setPos(pos)
     }
+
+    // !!! when annotation arguments are not literal strings, but any sort of
+    // assembly of strings, there is a fair chance they will turn up here not as
+    // Literal(const) but some arbitrary AST.
+    def stringArg(index: Int): Option[String] = if(args.size > index) Some(args(index) match {
+      case Literal(const) => const.stringValue
+      case x              => x.toString // should not be necessary, but better than silently ignoring an issue
+    }) else None
+
+    def intArg(index: Int): Option[Int] = if(args.size > index) Some(args(index)) collect {
+      case Literal(Constant(x: Int)) => x
+    } else None
   }
 
   object AnnotationInfo extends AnnotationInfoExtractor

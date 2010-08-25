@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -12,7 +11,7 @@ import compat.Platform.currentTime
 
 import io.{ SourceReader, AbstractFile, Path }
 import reporters.{ Reporter, ConsoleReporter }
-import util.{ ClassPath, SourceFile, Statistics, BatchSourceFile }
+import util.{ ClassPath, SourceFile, Statistics, BatchSourceFile, ScriptSourceFile, returning }
 import collection.mutable.{ HashSet, HashMap, ListBuffer }
 import reflect.generic.{ PickleBuffer }
 
@@ -150,7 +149,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def informTime(msg: String, start: Long) =
     informProgress(msg + " in " + (currentTime - start) + "ms")
 
-  def log(msg: AnyRef) {
+  /*@inline final*/ def log(msg: => AnyRef) {
     if (settings.log contains phase.name) inform("[log " + phase + "] " + msg)
   }
 
@@ -217,11 +216,18 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
         }
     }
 
-  if (settings.verbose.value || settings.Ylogcp.value)
-    inform("[Classpath = " + classPath.asClasspathString + "]")
+  if (settings.verbose.value || settings.Ylogcp.value) {
+    inform("[search path for source files: " + classPath.sourcepaths.mkString(",") + "]")
+    inform("[search path for class files: " + classPath.asClasspathString + "]")
+  }
+  
+  /** True if -Xscript has been set, indicating a script run.
+   */
+  def isScriptRun = settings.script.value != ""
 
   def getSourceFile(f: AbstractFile): BatchSourceFile =
-    new BatchSourceFile(f, reader.read(f))
+    if (isScriptRun) ScriptSourceFile(f, reader read f)
+    else new BatchSourceFile(f, reader read f)
 
   def getSourceFile(name: String): SourceFile = {
     val f = AbstractFile.getFile(name)
@@ -259,9 +265,11 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     override def specialized: Boolean = isSpecialized
 
     /** Is current phase cancelled on this unit? */
-    def cancelled(unit: CompilationUnit) = 
-      reporter.cancelled ||
-      unit.isJava && this.id > currentRun.namerPhase.id
+    def cancelled(unit: CompilationUnit) = {
+      // run the typer only if in `createJavadoc` mode
+      val maxJavaPhase = if (createJavadoc) currentRun.typerPhase.id else currentRun.namerPhase.id
+      reporter.cancelled || unit.isJava && this.id > maxJavaPhase
+    }
 
     final def applyPhase(unit: CompilationUnit) {
       if (settings.debug.value) inform("[running phase " + name + " on " + unit + "]")
@@ -714,7 +722,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     /** Compile list of source files */
     def compileSources(_sources: List[SourceFile]) {
       val depSources = dependencyAnalysis.filter(_sources.distinct) // bug #1268, scalac confused by duplicated filenames
-      val sources = scalaObjectFirst(depSources)
+      val sources = coreClassesFirst(depSources)
       if (reporter.hasErrors)
         return  // there is a problem already, e.g. a
                 // plugin was passed a bad option
@@ -796,23 +804,19 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
     /** Compile list of abstract files */
     def compileFiles(files: List[AbstractFile]) {
-      try {
-        compileSources(files map getSourceFile)
-      } catch {
-        case ex: IOException => error(ex.getMessage())
-      }
+      try compileSources(files map getSourceFile)
+      catch { case ex: IOException => error(ex.getMessage()) }
     }
 
     /** Compile list of files given by their names */
     def compile(filenames: List[String]) {
-      val scriptMain = settings.script.value    
-      def sources: List[SourceFile] = scriptMain match {
-        case ""                             => filenames map getSourceFile
-        case main if filenames.length == 1  => List(ScriptRunner.wrappedScript(main, filenames.head, getSourceFile))
-        case _                              => error("can only compile one script at a time") ; Nil
-      }
+      try {
+        val sources: List[SourceFile] =
+          if (isScriptRun && filenames.size > 1) returning(Nil)(_ => error("can only compile one script at a time"))
+          else filenames map getSourceFile
       
-      try compileSources(sources)
+        compileSources(sources)
+      }
       catch { case ex: IOException => error(ex.getMessage()) }
     }
 
@@ -871,14 +875,43 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       if (!pclazz.isRoot) resetPackageClass(pclazz.owner)
     }
 
-    private def scalaObjectFirst(files: List[SourceFile]) = {
+    /**
+     * Re-orders the source files to
+     *  1. ScalaObject
+     *  2. LowPriorityImplicits / StandardEmbeddings (i.e. parents of Predef)
+     *  3. the rest
+     *
+     * 1 is to avoid cyclic reference errors.
+     * 2 is due to the following. When completing "Predef" (*), typedIdent is called
+     * for its parents (e.g. "LowPriorityImplicits"). typedIdent checks wethter
+     * the symbol reallyExists, which tests if the type of the symbol after running
+     * its completer is != NoType.
+     * If the "namer" phase has not yet run for "LowPriorityImplicits", the symbol
+     * has a SourcefileLoader as type. Calling "doComplete" on it does nothing at
+     * all, because the source file is part of the files to be compiled anyway.
+     * So the "reallyExists" test will return "false".
+     * Only after the namer, the symbol has a lazy type which actually computes
+     * the info, and "reallyExists" behaves as expected.
+     * So we need to make sure that the "namer" phase is run on predef's parents
+     * before running it on predef. 
+     *
+     * (*) Predef is completed early when calling "mkAttributedRef" during the
+     *   addition of "import Predef._" to sourcefiles. So this situation can't
+     *   happen for user classes.
+     *
+     */
+    private def coreClassesFirst(files: List[SourceFile]) = {
       def inScalaFolder(f: SourceFile) =
         f.file.container.name == "scala"
+      var scalaObject: Option[SourceFile] = None
       val res = new ListBuffer[SourceFile]
       for (file <- files) file.file.name match {
-        case "ScalaObject.scala" if inScalaFolder(file) => file +=: res
+        case "ScalaObject.scala" if inScalaFolder(file) => scalaObject = Some(file)
+        case "LowPriorityImplicits.scala" if inScalaFolder(file) => file +=: res
+        case "StandardEmbeddings.scala" if inScalaFolder(file) => file +=: res
         case _ => res += file
       }
+      for (so <- scalaObject) so +=: res
       res.toList
     }
   } // class Run
@@ -946,4 +979,5 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def forJVM : Boolean = settings.target.value startsWith "jvm"
   def forMSIL: Boolean = settings.target.value == "msil"
   def onlyPresentation = false
+  def createJavadoc = false
 }

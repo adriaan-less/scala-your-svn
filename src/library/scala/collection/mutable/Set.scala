@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -32,7 +31,7 @@ trait Set[A] extends Iterable[A]
  *  @define coll mutable set
  *  @define Coll mutable.Set
  */
-object Set extends SetFactory[Set] {
+object Set extends MutableSetFactory[Set] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
   override def empty[A]: Set[A] = HashSet.empty[A]
 }

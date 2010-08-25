@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -95,6 +94,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val SELECTOR_DUMMY = newTermName("<unapply-selector>")
 
     val MODULE_INSTANCE_FIELD = newTermName("MODULE$")
+    val SPECIALIZED_INSTANCE  = newTermName("specInstance$")
 
     def isLocalName(name: Name) = name.endsWith(LOCAL_SUFFIX)
     def isSetterName(name: Name) = name.endsWith(SETTER_SUFFIX)
@@ -121,6 +121,26 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
         name.subName(i, name.length)
       } else name
     }
+
+    /** Return the original name and the types on which this name
+     *  is specialized. For example,
+     *  {{{
+     *     splitSpecializedName("foo$mIcD$sp") == ('foo', "I", "D")
+     *  }}}
+     *  `foo$mIcD$sp` is the name of a method specialized on two type
+     *  parameters, the first one belonging to the method itself, on Int,
+     *  and another one belonging to the enclosing class, on Double.
+     */
+    def splitSpecializedName(name: Name): (Name, String, String) =
+      if (name.endsWith("$sp")) {
+        val name1 = name.subName(0, name.length - 3)
+        val idxC = name1.lastPos('c')
+        val idxM = name1.lastPos('m', idxC)
+        (name1.subName(0, idxM - 1).toString,
+         name1.subName(idxC + 1, name1.length).toString,
+         name1.subName(idxM + 1, idxC).toString)
+      } else
+        (name, "", "")
 
     def localToGetter(name: Name): Name = {
       assert(isLocalName(name))//debug
@@ -165,7 +185,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
       
     /** The name of an accessor for protected symbols. */
     def protName(name: Name): Name = newTermName(PROTECTED_PREFIX + name)
-      
+
     /** The name of a setter for protected symbols. Used for inherited Java fields. */
     def protSetterName(name: Name): Name = newTermName(PROTECTED_PREFIX + "set" + name)
     
@@ -279,14 +299,15 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val forName = newTermName(if (forMSIL) "GetType" else "forName")
     val foreach = newTermName("foreach")
     val get = newTermName("get")
-    val getCause = newTermName("getCause")
-    val getClass_ = newTermName("getClass")
-    val getMethod_ = newTermName("getMethod")
+    val getCause = newTermName(if (forMSIL) "InnerException" /* System.Reflection.TargetInvocationException.InnerException */
+                               else "getCause")
+    val getClass_ = newTermName(if (forMSIL) "GetType" else "getClass")
+    val getMethod_ = newTermName(if (forMSIL) "GetMethod" else "getMethod")
     val hash_ = newTermName("hash")
     val hashCode_ = newTermName("hashCode")
     val hasNext = newTermName("hasNext")
     val head = newTermName("head")
-    val invoke_ = newTermName("invoke")
+    val invoke_ = newTermName(if (forMSIL) "Invoke" else "invoke")
     val isArray = newTermName("isArray")
     val isInstanceOf_ = newTermName("isInstanceOf")
     val isDefinedAt = newTermName("isDefinedAt")
@@ -309,12 +330,13 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val print = newTermName("print")
     val productArity = newTermName("productArity")
     val productElement = newTermName("productElement")
-    val productElementName = newTermName("productElementName")
+    // val productElementName = newTermName("productElementName")
     val productPrefix = newTermName("productPrefix")
     val readResolve = newTermName("readResolve")
     val sameElements = newTermName("sameElements")
     val scala_ = newTermName("scala")
     val self = newTermName("self")
+    val setAccessible = newTermName("setAccessible")
     val synchronized_ = newTermName("synchronized")
     val tail = newTermName("tail")
     val toArray = newTermName("toArray")
@@ -475,7 +497,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     final val BoxedNumber   = newTermName("System.IConvertible")
     final val BoxedCharacter = newTermName("System.IConvertible")
     final val BoxedBoolean = newTermName("System.IConvertible")
-    final val MethodAsObject = nme.NOSYMBOL // TODO: is there something like Method in MSIL?
+    final val MethodAsObject = newTermName("System.Reflection.MethodInfo")
 
     Boxed += (nme.Boolean -> newTermName("System.Boolean"))
     Boxed += (nme.Byte    -> newTermName("System.Byte"))

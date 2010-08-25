@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id: UnPickler.scala 20716 2010-01-28 14:14:20Z rytz $
 
 package scala.reflect
 package generic
@@ -43,7 +42,7 @@ abstract class UnPickler {
     }
   }
 
-  /** To ne implemented in subclasses. Like `unpickle` but without the catch-all error handling.
+  /** To be implemented in subclasses. Like `unpickle` but without the catch-all error handling.
    */
   def scan(bytes: Array[Byte], offset: Int, classRoot: Symbol, moduleRoot: Symbol, filename: String)
 

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
@@ -18,13 +17,16 @@ trait TypingTransformers {
   import global._
 
   abstract class TypingTransformer(unit: CompilationUnit) extends Transformer {
-    var localTyper: analyzer.Typer = analyzer.newTyper(
-      analyzer.rootContext(unit, EmptyTree, true))
+    var localTyper: analyzer.Typer =
+      if (phase.erasedTypes)
+        erasure.newTyper(erasure.rootContext(unit, EmptyTree, true)).asInstanceOf[analyzer.Typer]
+      else
+        analyzer.newTyper(analyzer.rootContext(unit, EmptyTree, true))
     protected var curTree: Tree = _
     protected def typedPos(pos: Position)(tree: Tree) = localTyper typed { atPos(pos)(tree) }
 
     /** a typer for each enclosing class */
-    var typers: Map[Symbol, analyzer.Typer] = new HashMap
+    val typers: Map[Symbol, analyzer.Typer] = new HashMap
     
     override def atOwner[A](owner: Symbol)(trans: => A): A = atOwner(curTree, owner)(trans)
 

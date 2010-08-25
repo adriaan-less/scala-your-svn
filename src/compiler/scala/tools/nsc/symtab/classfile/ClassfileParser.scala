@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -83,6 +82,7 @@ abstract class ClassfileParser {
         println("Skipping class: " + root + ": " + root.getClass)
     }
 */
+    log("parsing " + file.name)
     this.in = new AbstractFileReader(file)
     if (root.isModule) {
       this.clazz = root.companionClass
@@ -377,6 +377,26 @@ abstract class ClassfileParser {
       value
     }
 
+    def getBytes(indices: List[Int]): Array[Byte] = {
+      assert(!indices.isEmpty)
+      var value = values(indices.head).asInstanceOf[Array[Byte]]
+      if (value eq null) {
+        val bytesBuffer = ArrayBuffer.empty[Byte]
+        for (index <- indices) {
+          if (index <= 0 || ConstantPool.this.len <= index) errorBadIndex(index)
+          val start = starts(index)
+          if (in.buf(start).toInt != CONSTANT_UTF8) errorBadTag(start)
+          val len = in.getChar(start + 1)
+          bytesBuffer ++= in.buf.view(start + 3, len)
+        }
+        val bytes = bytesBuffer.toArray
+        val decodedLength = reflect.generic.ByteCodecs.decode(bytes)
+        value = bytes.take(decodedLength)
+        values(indices.head) = value
+      }
+      value
+    }
+
     /** Throws an exception signaling a bad constant index. */
     private def errorBadIndex(index: Int) =
       throw new RuntimeException("bad constant pool index: " + index + " at pos: " + in.bp)
@@ -408,14 +428,50 @@ abstract class ClassfileParser {
     sym
   }
 
-
   /** Return the class symbol of the given name. */
   def classNameToSymbol(name: Name): Symbol = {
-    def lookupClass(name: Name) = 
+    def loadClassSymbol(name: Name) = {
+      val s = name.toString
+      val file = global.classPath findSourceFile s getOrElse {
+        throw new MissingRequirementError("class " + s)
+      }
+      val completer = new global.loaders.ClassfileLoader(file)
+      var owner: Symbol = definitions.RootClass
+      var sym: Symbol = NoSymbol
+      var ss: String = null
+      var start = 0
+      var end = s indexOf '.'
+      while (end > 0) {
+        ss = s.substring(start, end)
+        sym = owner.info.decls lookup ss
+        if (sym == NoSymbol) {
+          sym = owner.newPackage(NoPosition, ss) setInfo completer
+          sym.moduleClass setInfo completer
+          owner.info.decls enter sym
+        }
+        owner = sym.moduleClass
+        start = end + 1
+        end = s.indexOf('.', start)
+      }
+      ss = s substring start
+      sym = owner.info.decls lookup ss
+      if (sym == NoSymbol) {
+        sym = owner.newClass(NoPosition, ss) setInfo completer
+        owner.info.decls enter sym
+        if (settings.debug.value && settings.verbose.value)
+          println("loaded "+sym+" from file "+file)
+      }
+      sym
+    }
+
+    def lookupClass(name: Name) = try {
       if (name.pos('.') == name.length)
         definitions.getMember(definitions.EmptyPackageClass, name.toTypeName)
       else
-        definitions.getClass(name)
+        definitions.getClass(name) // see tickets #2464, #3756
+    } catch { 
+      case _: FatalError => loadClassSymbol(name) 
+    }
     
     innerClasses.get(name) match {
       case Some(entry) =>
@@ -690,7 +746,8 @@ abstract class ClassfileParser {
                 val eparams = typeParamsToExistentials(classSym, classSym.unsafeTypeParams)            
                 val t = TypeRef(pre, classSym, eparams.map(_.tpe))
                 val res = existentialType(eparams, t)
-                if (settings.debug.value && settings.verbose.value) println("raw type " + classSym + " -> " + res)
+                if (settings.debug.value && settings.verbose.value)
+                  println("raw type " + classSym + " -> " + res)
                 res
               }
             case tp => 
@@ -923,6 +980,24 @@ abstract class ClassfileParser {
       Some(ScalaSigBytes(pool.getBytes(in.nextChar)))
     }
 
+    def parseScalaLongSigBytes: Option[ScalaSigBytes] = try {
+      val tag = in.nextByte.toChar
+      assert(tag == ARRAY_TAG)
+      val stringCount = in.nextChar
+      val entries =
+        for (i <- 0 until stringCount) yield {
+          val stag = in.nextByte.toChar
+          assert(stag == STRING_TAG)
+          in.nextChar.toInt
+        }
+      Some(ScalaSigBytes(pool.getBytes(entries.toList)))
+    }
+    catch {
+      case e: Throwable =>
+        e.printStackTrace
+        throw e
+    }
+
     /** Parse and return a single annotation.  If it is malformed,
      *  return None.
      */
@@ -938,6 +1013,11 @@ abstract class ClassfileParser {
         // is encoded as a string because of limitations in the Java class file format.
         if ((attrType == definitions.ScalaSignatureAnnotation.tpe) && (name == nme.bytes))
           parseScalaSigBytes match {
+            case Some(c) => nvpairs += ((name, c))
+            case None => hasError = true
+          }
+        else if ((attrType == definitions.ScalaLongSignatureAnnotation.tpe) && (name == nme.bytes))
+          parseScalaLongSigBytes match {
             case Some(c) => nvpairs += ((name, c))
             case None => hasError = true
           }
@@ -980,6 +1060,8 @@ abstract class ClassfileParser {
       for (n <- 0 until nAttr)
         parseAnnotation(in.nextChar) match {
           case Some(scalaSig) if (scalaSig.atp == definitions.ScalaSignatureAnnotation.tpe) =>
+            scalaSigAnnot = Some(scalaSig)
+          case Some(scalaSig) if (scalaSig.atp == definitions.ScalaLongSignatureAnnotation.tpe) =>
             scalaSigAnnot = Some(scalaSig)
           case Some(annot) =>
             sym.addAnnotation(annot)

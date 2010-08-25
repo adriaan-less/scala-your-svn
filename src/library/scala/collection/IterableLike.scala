@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 import generic._
@@ -104,6 +103,7 @@ self =>
 
   override /*TraversableLike*/ def take(n: Int): Repr = {
     val b = newBuilder
+    b.sizeHintBounded(n, this)
     var i = 0
     val it = iterator
     while (i < n && it.hasNext) {
@@ -115,6 +115,7 @@ self =>
   
   override /*TraversableLike*/ def slice(from: Int, until: Int): Repr = {
     val b = newBuilder
+    b.sizeHintBounded(until - from, this)
     var i = from
     val it = iterator drop from
     while (i < until && it.hasNext) {
@@ -157,7 +158,8 @@ self =>
    *  @param step the distance between the first elements of successive
    *         groups (defaults to 1)
    *  @return An iterator producing ${coll}s of size `size`, except the
-   *          last will be truncated if the elements don't divide evenly.
+   *          last and the only element will be truncated if there are
+   *          fewer elements than size.
    */
   def sliding[B >: A](size: Int): Iterator[Repr] = sliding(size, 1)
   def sliding[B >: A](size: Int, step: Int): Iterator[Repr] =
@@ -176,6 +178,7 @@ self =>
    */
   def takeRight(n: Int): Repr = {
     val b = newBuilder
+    b.sizeHintBounded(n, this)
     val lead = this.iterator drop n
     var go = false
     for (x <- this) {
@@ -195,6 +198,7 @@ self =>
    */
   def dropRight(n: Int): Repr = {
     val b = newBuilder
+    if (n >= 0) b.sizeHint(this, -n)
     val lead = iterator drop n
     val it = iterator
     while (lead.hasNext) {
@@ -348,7 +352,14 @@ self =>
   }                                                                                         
 
   override /*TraversableLike*/ def toStream: Stream[A] = iterator.toStream
-
+  
+  /** Converts this $coll to a sequence.
+   *
+   *  $willNotTerminateInf
+   *  @return a sequence containing all the elements of this $coll.
+   */
+  override /*TraversableOnce*/ def toSeq: Seq[A] = toList
+  
   /** Method called from equality methods, so that user-defined subclasses can 
    *  refuse to be equal to other collections of the same kind.
    *  @param   that   The object with which this $coll should be compared

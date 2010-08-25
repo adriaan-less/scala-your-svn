@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -25,7 +24,7 @@ abstract class Phase(val prev: Phase) {
   def flagMask: Long = fmask
 
   private var nx: Phase = this
-  if (prev ne null) prev.nx = this
+  if ((prev ne null) && (prev ne NoPhase)) prev.nx = this
 
   def next: Phase = nx
 

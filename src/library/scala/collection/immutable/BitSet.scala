@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,6 +13,7 @@ package immutable
 
 import generic._
 import BitSetLike.{LogWL, updateArray}
+import mutable.{ Builder, AddingBuilder }
 
 /** A class for immutable bitsets.
  *  $bitsetinfo
@@ -60,9 +60,11 @@ abstract class BitSet extends Set[Int]
  *  @define coll immutable bitset
  */
 object BitSet extends BitSetFactory[BitSet] {
-
   /** The empty bitset */
   val empty: BitSet = new BitSet1(0L)
+  
+  /** An adding builder for immutable Sets. */
+  def newBuilder: Builder[Int, BitSet] = new AddingBuilder[Int, BitSet](empty)
 
   /** $bitsetCanBuildFrom */
   implicit def canBuildFrom: CanBuildFrom[BitSet, Int, BitSet] = bitsetCanBuildFrom

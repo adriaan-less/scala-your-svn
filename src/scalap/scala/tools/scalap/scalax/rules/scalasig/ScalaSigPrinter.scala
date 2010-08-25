@@ -5,7 +5,6 @@
 **
 */
 
-// $Id$
 
 package scala.tools.scalap
 package scalax
@@ -17,6 +16,7 @@ import java.util.regex.Pattern
 
 import scala.tools.scalap.scalax.util.StringUtil
 import reflect.NameTransformer
+import java.lang.String
 
 class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
   import stream._
@@ -130,6 +130,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
       val it = c.infoType
       val classType = it match {
         case PolyType(typeRef, symbols) => PolyTypeWithCons(typeRef, symbols, defaultConstructor)
+        case ClassInfoType(a, b) if c.isCase => ClassInfoTypeWithCons(a, b, defaultConstructor)
         case _ => it
       }
       printType(classType)
@@ -368,6 +369,8 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
       }
       case RefinedType(classSym, typeRefs) => sep + typeRefs.map(toString).mkString("", " with ", "")
       case ClassInfoType(symbol, typeRefs) => sep + typeRefs.map(toString).mkString(" extends ", " with ", "")
+      case ClassInfoTypeWithCons(symbol, typeRefs, cons) => sep + typeRefs.map(toString).
+              mkString(cons + " extends ", " with ", "")
 
       case ImplicitMethodType(resultType, _) => toString(resultType, sep)
       case MethodType(resultType, _) => toString(resultType, sep)

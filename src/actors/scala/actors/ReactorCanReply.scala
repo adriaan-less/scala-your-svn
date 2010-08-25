@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -18,6 +17,8 @@ package scala.actors
  */
 private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
   _: ReplyReactor =>
+
+  override type Future[+P] = scala.actors.Future[P]
 
   def !?(msg: Any): Any =
     (this !! msg)()
@@ -39,10 +40,10 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
     res.get(msec)
   }
 
-  override def !!(msg: Any): Future[Any] =
+  def !!(msg: Any): Future[Any] =
     this !! (msg, { case x => x })
 
-  override def !![A](msg: Any, handler: PartialFunction[Any, A]): Future[A] = {
+  def !![A](msg: Any, handler: PartialFunction[Any, A]): Future[A] = {
     val myself = Actor.rawSelf(this.scheduler)
     val ftch = new ReactChannel[A](myself)
     val res = new scala.concurrent.SyncVar[A]
@@ -69,7 +70,7 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
 
     this.send(msg, out)
 
-    new Future[A](ftch) {
+    new Future[A] {
       def apply() = {
         if (!isSet)
           fvalue = Some(res.get)
@@ -83,6 +84,7 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
         }
       def isSet =
         !fvalue.isEmpty
+      def inputChannel = ftch
     }
   }
 }

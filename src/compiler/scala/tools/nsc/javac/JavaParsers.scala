@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 //todo: allow infix type patterns
 
 
@@ -381,7 +380,7 @@ trait JavaParsers extends JavaScanners {
       // assumed true unless we see public/private/protected - see bug #1240
       var privateWithin: Name =
         if (inInterface) nme.EMPTY.toTypeName else thisPackageName
-          
+
       while (true) {
         in.token match {
           case AT if (in.lookaheadToken != INTERFACE) => 
@@ -541,7 +540,7 @@ trait JavaParsers extends JavaScanners {
               if (parentToken == AT && in.token == DEFAULT) {
                 val annot = 
                   atPos(pos) {
-                    New(rootId(nme.AnnotationDefaultATTR.toTypeName), List(List()))
+                    New(Select(scalaDot(newTermName("runtime")), nme.AnnotationDefaultATTR.toTypeName), List(List()))
                   }
                 mods1 = Modifiers(mods1.flags, mods1.privateWithin, annot :: mods1.annotations, mods1.positions)
                 skipTo(SEMI)

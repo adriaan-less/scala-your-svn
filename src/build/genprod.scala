@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 /** <p>
  *   This program generates the <code>ProductN</code>, <code>TupleN</code> <code>FunctionN</code> classes, where
@@ -74,7 +73,6 @@ object genprod {
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 %s
 
@@ -133,8 +131,8 @@ object FunctionZero extends Function(0) {
 }
 
 object FunctionOne extends Function(1) {
-  override def contravariantSpecs = "@specialized(Int, Long, Double) "
-  override def covariantSpecs = "@specialized(Unit, Boolean, Int, Long, Double) "
+  override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Float, scala.Double) "
+  override def covariantSpecs = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double) "
 
   override def descriptiveComment = functionNTemplate.format("succ", "anonfun1",
 """ *
@@ -159,8 +157,8 @@ object FunctionOne extends Function(1) {
 }
 
 object FunctionTwo extends Function(2) {
-  override def contravariantSpecs = "@specialized(Int, Long, Double) "
-  override def covariantSpecs = "@specialized(Unit, Boolean, Int, Long, Double) "
+  override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Double) "
+  override def covariantSpecs = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double) "
 
   override def descriptiveComment = functionNTemplate.format("max", "anonfun2",
 """ *

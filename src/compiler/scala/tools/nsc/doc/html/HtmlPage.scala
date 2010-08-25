@@ -10,7 +10,7 @@ package html
 import model._
 import comment._
 
-import xml.{Unparsed, XML, NodeSeq}
+import xml.{XML, NodeSeq}
 import xml.dtd.{DocType, PublicID}
 import scala.collection._
 import scala.reflect.NameTransformer
@@ -47,7 +47,6 @@ abstract class HtmlPage { thisPage =>
         <head>
           <title>{ title }</title>
           <meta http-equiv="content-type" content={ "text/html; charset=" + site.encoding }/>
-		      <script type="text/javascript" src={ relativeLinkTo{List("jquery.js", "lib")} }></script>
           { headers }
         </head>
         { body }
@@ -128,12 +127,12 @@ abstract class HtmlPage { thisPage =>
     body.blocks flatMap (blockToHtml(_))
 
   def blockToHtml(block: Block): NodeSeq = block match {
-    case Title(in, 1) => <h1>{ inlineToHtml(in) }</h1>
-    case Title(in, 2) => <h2>{ inlineToHtml(in) }</h2>
-    case Title(in, 3) => <h3>{ inlineToHtml(in) }</h3>
-    case Title(in, _) => <h4>{ inlineToHtml(in) }</h4>
+    case Title(in, 1) => <h3>{ inlineToHtml(in) }</h3>
+    case Title(in, 2) => <h4>{ inlineToHtml(in) }</h4>
+    case Title(in, 3) => <h5>{ inlineToHtml(in) }</h5>
+    case Title(in, _) => <h6>{ inlineToHtml(in) }</h6>
     case Paragraph(in) => <p>{ inlineToHtml(in) }</p>
-    case Code(data) => <pre>{ Unparsed(data) }</pre>
+    case Code(data) => <pre>{ xml.Text(data) }</pre>
     case UnorderedList(items) =>
       <ul>{ listItemsToHtml(items) }</ul>
     case OrderedList(items, listStyle) =>
@@ -165,9 +164,10 @@ abstract class HtmlPage { thisPage =>
     case Subscript(in) => <sub>{ inlineToHtml(in) }</sub>
     case Link(raw, title) => <a href={ raw }>{ inlineToHtml(title) }</a>
     case EntityLink(entity) => templateToHtml(entity)
-    case Monospace(text) => <code>{ Unparsed(text) }</code>
-    case Text(text) => Unparsed(text)
+    case Monospace(text) => <code>{ xml.Text(text) }</code>
+    case Text(text) => xml.Text(text)
     case Summary(in) => inlineToHtml(in)
+    case HtmlTag(tag) => xml.Unparsed(tag)
   }
 
   def typeToHtml(tpe: model.TypeEntity, hasLinks: Boolean): NodeSeq = {
@@ -200,6 +200,12 @@ abstract class HtmlPage { thisPage =>
       xml.Text(string)
   }
 
+  def typesToHtml(tpess: List[model.TypeEntity], hasLinks: Boolean, sep: NodeSeq): NodeSeq = tpess match {
+    case Nil         => NodeSeq.Empty
+    case tpe :: Nil  => typeToHtml(tpe, hasLinks)
+    case tpe :: tpes => typeToHtml(tpe, hasLinks) ++ sep ++ typesToHtml(tpes, hasLinks, sep)
+  }
+
   /** Returns the HTML code that represents the template in `tpl` as a hyperlinked name. */
   def templateToHtml(tpl: TemplateEntity) = tpl match {
     case dTpl: DocTemplateEntity =>
@@ -215,4 +221,19 @@ abstract class HtmlPage { thisPage =>
     case tpl :: tpls => templateToHtml(tpl) ++ sep ++ templatesToHtml(tpls, sep)
   }
   
+  def docEntityKindToString(ety: DocTemplateEntity) = 
+  	if (ety.isTrait) "trait" 
+  	else if (ety.isCaseClass) "case class"
+  	else if (ety.isClass) "class" 
+  	else if (ety.isObject) "object" 
+  	else if (ety.isPackage) "package"
+  	else "class"	// FIXME: an entity *should* fall into one of the above categories, but AnyRef is somehow not
+
+  /** Returns the _big image name corresponding to the DocTemplate Entity (upper left icon) */
+  def docEntityKindToBigImage(ety: DocTemplateEntity) = 
+    	if (ety.isTrait) "trait_big.png" 
+    	else if (ety.isClass) "class_big.png" 
+    	else if (ety.isObject) "object_big.png" 
+    	else if (ety.isPackage) "package_big.png"
+    	else "class_big.png"	// FIXME: an entity *should* fall into one of the above categories, but AnyRef is somehow not
 }

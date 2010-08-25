@@ -6,9 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala
 
 import collection.mutable._
@@ -49,6 +46,7 @@ class LowPriorityImplicits {
     }
 
   /** Can go away after next newstarr */
+  /** Caution - not yet.  pos/t1459, pos/t2569, jvm/t1342 all fail without the next line. */
   def wrapArray[T <: AnyRef](xs: Array[T]): WrappedArray[T] = new WrappedArray.ofRef[T](xs)
   def wrapArray(xs: Array[Int]): WrappedArray[Int] = new WrappedArray.ofInt(xs)
   def wrapArray(xs: Array[Double]): WrappedArray[Double] = new WrappedArray.ofDouble(xs)
@@ -59,6 +57,4 @@ class LowPriorityImplicits {
   def wrapArray(xs: Array[Short]): WrappedArray[Short] = new WrappedArray.ofShort(xs)
   def wrapArray(xs: Array[Boolean]): WrappedArray[Boolean] = new WrappedArray.ofBoolean(xs)
   def wrapArray(xs: Array[Unit]): WrappedArray[Unit] = new WrappedArray.ofUnit(xs)
-
-
 }

@@ -6,13 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 
-import mutable.{Buffer, ArrayBuffer, ListBuffer, StringBuilder}
-import immutable.{List, Stream}
+import mutable.ArrayBuffer
 import annotation.{ tailrec, migration }
 
 /** The `Iterator` object provides various functions for
@@ -110,9 +108,15 @@ object Iterator {
    *  @return      the iterator producing the infinite sequence of values `start, f(start), f(f(start)), ...`
    */
   def iterate[T](start: T)(f: T => T): Iterator[T] = new Iterator[T] {
+    private[this] var first = true
     private[this] var acc = start
     def hasNext: Boolean = true
-    def next(): T = { val res = acc ; acc = f(acc) ; res }
+    def next(): T = {
+      if (first) first = false
+      else acc = f(acc)
+      
+      acc
+    }
   }
 
   /** Creates an infinite-length iterator which returns successive values from some start value.
@@ -823,7 +827,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
       // if 0 elements are requested, or if the number of newly obtained
       // elements is less than the gap between sequences, we are done.
       def deliver(howMany: Int) = {
-        (howMany > 0 && len > gap) && {          
+        (howMany > 0 && (isFirst || len > gap)) && {
           if (!isFirst)
             buffer trimStart (step min prevSize)
           
@@ -1003,6 +1007,9 @@ trait Iterator[+A] extends TraversableOnce[A] {
 
   def toTraversable: Traversable[A] = toStream  
   def toIterator: Iterator[A] = self
+  def toStream: Stream[A] =
+    if (self.hasNext) Stream.cons(self.next, self.toStream)
+    else Stream.empty[A]
 
   /** Converts this iterator to a string.  
    *  @return `"empty iterator"` or `"non-empty iterator"`, depending on whether or not the iterator is empty.
