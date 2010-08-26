@@ -814,10 +814,26 @@ trait Typers { self: Analyzer =>
         context.undetparams = context.undetparams ::: tparams1
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
       case mt: MethodType if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
-        if (context.undetparams nonEmpty) // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
-                                          // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
-                                          // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
-          context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, false) // false: retract Nothing's that indicate failure, ambiguities in manifests are dealt with in manifestOfType
+        // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
+        // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
+        // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
+        if (context.undetparams nonEmpty) {
+          // implicit def B[TN, UN]: B[TN, UN]
+          // implicit def A[TO, UO](implicit w: B[TO, UO]): C[TO, UO]
+            // type of the outer implicit: C[TO, UO] --> propagated the typevars to B:
+              // type of nested implicit: B[?TO, ?UO]  <-- suppose we're here now, looking for an implicit of this type
+              // first, we'll try to determine TN, UN, while leaving ?TO and ?UO untouched (though they appear in the types)
+          // set all type vars in tree.tpe and pt, which we inherited from outer implicits, to `deferred` 
+          // (and remember we did that so we can undo it when we're done at this nesting level)
+          // we don't need to solve them before looking for the current implicit
+          // we do register bounds when they're involved in subtype checks
+          // HOWEVER a deferred type var should not be registered as a bound on a non-deferred type var --> swap the constraint around
+          // comparing two deferred type vars is an illegal cycle, just like two non-deferred once, but mixed comparisons are okay
+          context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, keepNothings = false)
+          // retract Nothing's that indicate failure (even if they occur in the context of a Manifest[..]
+          //   -- ambiguities are dealt with in manifestOfType)
+        }
+
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
@@ -830,6 +846,8 @@ trait Typers { self: Analyzer =>
           }
         else
           typer1.typed(typer1.applyImplicitArgs(tree), mode, pt)
+
+        // reset deferred flag on typevars before this nesting level (remembered from above)
       case mt: MethodType
       if (((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) && 
           (context.undetparams.isEmpty || (mode & POLYmode) != 0)) =>

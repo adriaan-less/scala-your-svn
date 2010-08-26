@@ -2169,6 +2169,14 @@ A type's typeSymbol should never be inspected directly.
     /** The variable's skolemization level */
     val level = skolemizationLevel
 
+    /** Should this type variable be solved?
+     *
+     * This is used in implicit search where we only want to solve type variables that
+     * correspond to current undetermined type parameters. The other ones are simply carried along 
+     * during nested implicit searches, and will be solved after the nested implicits have been found.
+     */
+    var deferred = false
+
     /**
      *  two occurrences of a higher-kinded typevar, e.g. ?CC[Int] and ?CC[String], correspond to 
      *  *two instances* of TypeVar that share the *same* TypeConstraint
@@ -2191,6 +2199,7 @@ A type's typeSymbol should never be inspected directly.
 
     def setInst(tp: Type) {
 //      assert(!(tp containsTp this), this)
+      println("setInst: "+(safeToString, debugString(tp)))
       constr.inst = tp
     }
 
