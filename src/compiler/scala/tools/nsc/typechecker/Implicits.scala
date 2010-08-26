@@ -50,8 +50,10 @@ self: Analyzer =>
     val subtypeStart = startCounter(subtypeImpl)
     val start = startTimer(implicitNanos)
     if (traceImplicits && !tree.isEmpty && !context.undetparams.isEmpty)
-      println("typing implicit with undetermined type params: "+context.undetparams+"\n"+tree)
-    val result = new ImplicitSearch(tree, pt, isView, context.makeImplicit(reportAmbiguous)).bestImplicit
+      printTyping("typing implicit with undetermined type params: "+context.undetparams+"\n"+tree)
+    val implicitTyper = new ImplicitSearch(tree, pt, isView, context.makeImplicit(reportAmbiguous))
+    implicitTyper.typingIndent = typer.typingIndent
+    val result = implicitTyper.bestImplicit
     context.undetparams = context.undetparams filterNot (result.subst.from contains _)
     stopTimer(implicitNanos, start)
     stopCounter(rawTypeImpl, rawTypeStart)
@@ -228,20 +230,6 @@ self: Analyzer =>
       isStrictlyMoreSpecific(info1.tpe, info2.tpe, info1.sym, info2.sym)
     }
 
-    /** Map all type params in given list to WildcardType
-     *  @param   tp  The type in which to do the mapping
-     *  @param   tparams  The list of type parameters to map
-     */
-    private def tparamsToWildcards(tp: Type, tparams: List[Symbol]) =
-      tp.instantiateTypeParams(tparams, tparams map (t => WildcardType))
-
-    /* Map a polytype to one in which all type parameters are replaced by wildcards.
-     */
-    private def depoly(tp: Type): Type = tp match {
-      case PolyType(tparams, restpe) => tparamsToWildcards(restpe, tparams)
-      case _ => tp
-    }
-
     /** Does type `dtor` dominate type `dted`?
      *  This is the case if the stripped cores `dtor1` and `dted1` of both types are
      *  the same wrt `=:=`, or if they overlap and the complexity of `dtor1` is higher
@@ -328,12 +316,25 @@ self: Analyzer =>
           })
         }
 
+    /** Map all type params in given list to WildcardType
+     *  @param   tp  The type in which to do the mapping
+     *  @param   tparams  The list of type parameters to map
+     */
+    private def tparamsToWildcards(tp: Type, tparams: List[Symbol]) =
+      tp.instantiateTypeParams(tparams, tparams map (t => WildcardType))
+
+    /* Map a polytype to one in which all type parameters are replaced by wildcards.
+     */
+    private def depoly(tp: Type): Type = tp match {
+      case PolyType(tparams, restpe) => tparamsToWildcards(restpe, tparams)
+      case _ => tp
+    }
+
     /** The type parameters to instantiate */
-    val undetParams = if (isView) List() else context.outer.undetparams // TODO: why the empty list for a view? why is this a val?
+    val undetParams = context.outer.undetparams // a val because the outer context won't change
 
     /** Replace undetParams in type `tp` by Any/Nothing, according to variance */
-    def approximate(tp: Type) = 
-      tp.instantiateTypeParams(undetParams, undetParams map (_ => WildcardType))
+    def approximate(tp: Type) = tparamsToWildcards(tp, undetParams)
 
     val wildPt = approximate(pt)
 
@@ -445,23 +446,24 @@ self: Analyzer =>
           SearchFailure
         }
         try {
+          assert(context.undetparams isEmpty)
+          val tvars = undetParams map freshVar
+          val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
+
           val itree1 = 
             if (isView)
-              typed1 (
-                atPos(itree.pos) (
-                  Apply(itree, List(Ident("<argument>").setType(approximate(pt.typeArgs.head))))), 
-                EXPRmode, approximate(pt.typeArgs.tail.head)
-              )
+              typed1(atPos(itree.pos)(Apply(itree, List(Ident("<argument>").setType(tvarPt.typeArgs.head)))),
+                     EXPRmode, tvarPt.typeArgs.tail.head)
             else
-              typed1(itree, EXPRmode, wildPt)
+              typed1(itree, EXPRmode, tvarPt)
 
           // after typed1, type parameters may appear in context.undetparams that weren't (and thus aren't) in undetParams
           incCounter(typedImplicits)
 
-          printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+wildPt)
+          printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+ tvarPt)
           val itree2 = if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
-                       else adapt(itree1, EXPRmode, wildPt)
-          printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+wildPt)
+                       else adapt(itree1, EXPRmode, tvarPt)
+          printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+ tvarPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
               case Apply(fun, _) => hasMatchingSymbol(fun)
@@ -473,24 +475,25 @@ self: Analyzer =>
 
           if (itree2.tpe.isError) SearchFailure
           else if (hasMatchingSymbol(itree1)) {
-            val undetParams2 = 
-              if(context.undetparams nonEmpty) (context.undetparams ++ undetParams).distinct
-              else undetParams
-            val tvars = undetParams2 map freshVar
+            val newUndets =
+              if(context.undetparams nonEmpty) context.undetparams -- undetParams
+              else List()
+            val tvars2 = tvars ++ (newUndets map freshVar)
+            val undets2 = undetParams ++ newUndets
             if(matchesPt(
-                    itree2.tpe.instantiateTypeParams(undetParams2, tvars), // allow tparams that appeared when typed1 produced itree1 to be instantiated later
-                    pt.instantiateTypeParams(undetParams2, tvars), 
-                    undetParams2)) {
-              printTyping("tvars = "+tvars+"/"+(tvars map (_.constr)))
-              val targs = solvedTypes(tvars, undetParams2, undetParams2 map varianceInType(pt),
+                    itree2.tpe.instantiateTypeParams(undets2, tvars2), // allow tparams that appeared when typed1 produced itree1 to be instantiated later
+                    pt.instantiateTypeParams(undets2, tvars2),
+                    undets2)) {
+              printTyping("tvars = "+ tvars2 +"/"+(tvars2 map (_.constr)))
+              val targs = solvedTypes(tvars, undets2, undets2 map varianceInType(pt),
                                       false, lubDepth(List(itree2.tpe, pt)))
 
               // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
-              checkBounds(itree2.pos, NoPrefix, NoSymbol, undetParams2, targs, "inferred ")
+              checkBounds(itree2.pos, NoPrefix, NoSymbol, undets2, targs, "inferred ")
 
-              // filter out failures from type inference, don't want to remove them from undetParams2!
+              // filter out failures from type inference, don't want to remove them from undets2!
               // we must be conservative in leaving type params in undetparams
-              val AdjustedTypeArgs(okParams, okArgs) = adjustTypeArgs(undetParams2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
+              val AdjustedTypeArgs(okParams, okArgs) = adjustTypeArgs(undets2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
               val subst = new TreeTypeSubstituter(okParams, okArgs)
               subst traverse itree2 
 
@@ -504,51 +507,51 @@ self: Analyzer =>
                 case _ =>
               }
 
-              // #3340
-              object MethodTypeWithImplicits {
-                def unapply(tp: Type): Option[(List[Symbol])] = tp match {
-                  case mt@MethodType(params, res) => if(mt.isImplicit) Some(params) else unapply(res)
-                  case _ => None
-                }
-              }
-
-              // println("2ndorder: "+(itree2, itree2.tpe match {case MethodTypeWithImplicits(ps) => ps.toString case t => t.toString}))
-              val secondOrderImplicitsSatisfiable = try { itree2.tpe match { // TODO: the inferImplicit below will be performed again later -- should be avoided
-                case MethodTypeWithImplicits(params) =>
-                  // TODO lift out <this part> of applyImplicitArgs and reuse instead of copy/pasting...
-                  val argResultsBuff = new ListBuffer[SearchResult]()
-                  val c2 = context0.makeSilent(true)
-                  c2.implicitsEnabled = true
-                  c2.undetparams = undetParams2
-                  // apply the substitutions (undet type param -> type) that were determined
-                  // by implicit resolution of implicit arguments on the left of this argument
-                  params forall { param =>
-                    var paramTp = param.tpe
-                    for(ar <- argResultsBuff) paramTp = paramTp.subst(ar.subst.from, ar.subst.to)
-
-                    // TODO: this might loop -- probably okay since openImplicits are tracked in the context
-                    val res = inferImplicit(itree2, paramTp, true, false, c2)
-                    if(res != SearchFailure || param.hasFlag(DEFAULTPARAM)){
-                      argResultsBuff += res
-                      if(res.undetParams nonEmpty)
-                        c2.undetparams = (c2.undetparams ++ res.undetParams).distinct
-                      true
-                    } else false
-                  }
-                  // </this part>
-                case _ => true // there are no second-order implicits
-              } } catch { case e => true } // be conservative, we didn't generate exceptions before, we didn't fail to find an implicit
-
-              // println("sois: "+secondOrderImplicitsSatisfiable)
-              if(secondOrderImplicitsSatisfiable){
-                val result = new SearchResult(itree2, subst, undetParams2)
+              // // #3340
+              // object MethodTypeWithImplicits {
+              //   def unapply(tp: Type): Option[(List[Symbol])] = tp match {
+              //     case mt@MethodType(params, res) => if(mt.isImplicit) Some(params) else unapply(res)
+              //     case _ => None
+              //   }
+              // }
+              // 
+              // // println("2ndorder: "+(itree2, itree2.tpe match {case MethodTypeWithImplicits(ps) => ps.toString case t => t.toString}))
+              // val secondOrderImplicitsSatisfiable = try { itree2.tpe match { // TODO: the inferImplicit below will be performed again later -- should be avoided
+              //   case MethodTypeWithImplicits(params) =>
+              //     // TODO lift out <this part> of applyImplicitArgs and reuse instead of copy/pasting...
+              //     val argResultsBuff = new ListBuffer[SearchResult]()
+              //     val c2 = context0.makeSilent(true)
+              //     c2.implicitsEnabled = true
+              //     c2.undetparams = undets2
+              //     // apply the substitutions (undet type param -> type) that were determined
+              //     // by implicit resolution of implicit arguments on the left of this argument
+              //     params forall { param =>
+              //       var paramTp = param.tpe
+              //       for(ar <- argResultsBuff) paramTp = paramTp.subst(ar.subst.from, ar.subst.to)
+              // 
+              //       // TODO: this might loop -- probably okay since openImplicits are tracked in the context
+              //       val res = inferImplicit(itree2, paramTp, true, false, c2)
+              //       if(res != SearchFailure || param.hasFlag(DEFAULTPARAM)){
+              //         argResultsBuff += res
+              //         if(res.undetParams nonEmpty)
+              //           c2.undetparams = (c2.undetparams ++ res.undetParams).distinct
+              //         true
+              //       } else false
+              //     }
+              //     // </this part>
+              //   case _ => true // there are no second-order implicits
+              // } } catch { case e => true } // be conservative, we didn't generate exceptions before, we didn't fail to find an implicit
+              // 
+              // printTyping("sois: "+secondOrderImplicitsSatisfiable)
+              // if(secondOrderImplicitsSatisfiable){
+                val result = new SearchResult(itree2, subst, undets2)
                 incCounter(foundImplicits)
                 printTyping("RESULT = "+result)
                 // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
                 result
-              } else SearchFailure
+              // } else SearchFailure
             } else {
-              printTyping("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undetParams2, tvars))
+              printTyping("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undets2, tvars))
               SearchFailure
             }
           } else if (settings.XlogImplicits.value) 
