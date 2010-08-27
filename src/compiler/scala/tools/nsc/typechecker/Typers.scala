@@ -2500,7 +2500,17 @@ trait Typers { self: Analyzer =>
                 // returns those undetparams which have not been instantiated.
                 val undetparams = inferMethodInstance(fun, tparams, args1, pt)
                 val result = doTypedApply(tree, fun, args1, mode, pt)
-                context.undetparams = undetparams
+                val okparams = new ListBuffer[Symbol]
+                val okargs= new ListBuffer[Type]
+                context.undetparams = undetparams filter {tparam =>
+                  val i = tparams indexOf tparam
+                  if(i >= 0 && i < lenientTargs.length && lenientTargs(i) != WildcardType && lenientTargs(i).typeSymbol != NothingClass) {
+                    okparams += tparam
+                    okargs += lenientTargs(i)
+                    false
+                  } else true
+                }
+                (new TreeTypeSubstituter(okparams.toList, okargs.toList)) traverse result
                 result
               }
             }
