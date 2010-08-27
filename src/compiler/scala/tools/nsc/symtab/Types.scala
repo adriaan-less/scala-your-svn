@@ -2209,7 +2209,7 @@ A type's typeSymbol should never be inspected directly.
 
     def setInst(tp: Type) = {
 //      assert(!(tp containsTp this), this)
-      println("setInst: "+(safeToString, debugString(tp)))
+//      println("setInst: "+(safeToString, debugString(tp)))
       constr.inst = tp
     }
 
