@@ -430,7 +430,7 @@ self: Analyzer =>
 
       incCounter(plausiblyCompatibleImplicits)
 
-      printTyping("typed impl for "+wildPt+"? "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
+      printTyping("begin typedImplicit0 "+wildPt+"? "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
 
         incCounter(matchingImplicits)
@@ -439,14 +439,16 @@ self: Analyzer =>
           if (info.pre == NoPrefix) Ident(info.name) 
           else Select(gen.mkAttributedQualifier(info.pre), info.name)
         } 
-        printTyping("typedImplicit0 typing"+ itree +" with wildpt = "+ wildPt +" from implicit "+ info.name+":"+info.tpe)
+        printTyping("wild match --> typing"+ itree +" with wildpt = "+ wildPt +" from implicit "+ info.name+":"+info.tpe)
         def fail(reason: String): SearchResult = {
           if (settings.XlogImplicits.value)
             inform(itree+" is not a valid implicit value for "+pt+" because:\n"+reason)
           SearchFailure
         }
         try {
-          assert(context.undetparams isEmpty)
+          // context.undetparams may contain type params from polymorphic outer implicits
+          // (typed1 below introduces them, then we adapt to find nested implicits, so that we arrive here with the undetparams from the typed1 of the outer implicit)
+          // for the call to typed1, we can ignore type params that are not in undetParams, since that's what we did before (wildPt == approximate(pt))
           val tvars = undetParams map freshVar
           val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
 
