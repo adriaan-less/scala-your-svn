@@ -836,7 +836,7 @@ trait Typers { self: Analyzer =>
           // HOWEVER a deferred type var should not be registered as a bound on a non-deferred type var --> swap the constraint around
           // comparing two deferred type vars is an illegal cycle, just like two non-deferred once, but mixed comparisons are okay
           val olderTypeVars: List[TypeVar] = tree.tpe.partialMap{case tv: TypeVar => tv} ++ pt.partialMap{case tv: TypeVar => tv}
-          println("older tvs: "+ olderTypeVars)
+          // println("older tvs: "+ olderTypeVars)
           for(tv <- olderTypeVars) tv.defer()
 
           context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, keepNothings = false)
