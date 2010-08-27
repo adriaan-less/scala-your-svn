@@ -2178,14 +2178,12 @@ A type's typeSymbol should never be inspected directly.
      * correspond to current undetermined type parameters. The other ones are simply carried along 
      * during nested implicit searches, and will be solved after the nested implicits have been found.
      */
-    private var deferred = false
-
-    def active = !deferred
+    def active = !constr.deferred
     def defer() =
-      deferred = true
+      constr.deferred = true
 
     def reactivate() =
-      deferred = false
+      constr.deferred = false
 
     /**
      *  two occurrences of a higher-kinded typevar, e.g. ?CC[Int] and ?CC[String], correspond to 
@@ -2235,7 +2233,7 @@ A type's typeSymbol should never be inspected directly.
      *     if so, tracks tp as a upper bound of this type variable
      */
     def registerBound(tp: Type, isLowerBound: Boolean, numBound: Boolean = false): Boolean = tp match { 
-      case tp: TypeVar if tp.deferred && !deferred => tp.registerBound0(this, !isLowerBound, numBound) // swap so that deferred typevar never constraints active typevar (active ones are solved before deferred ones)
+      case tp: TypeVar if !tp.active && active => tp.registerBound0(this, !isLowerBound, numBound) // swap so that deferred typevar never constraints active typevar (active ones are solved before deferred ones)
       case _ => registerBound0(tp, isLowerBound, numBound)
     }
      
@@ -2277,13 +2275,13 @@ A type's typeSymbol should never be inspected directly.
               // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
               checkArgs(tp.typeArgs, typeArgs, params)
             }
-          unifyHK(tp) || unifyHK(tp.dealias)
+          tp.isInstanceOf[TypeVar] /* pretend it's okay -- TODO */ || unifyHK(tp) || unifyHK(tp.dealias)
         }
       }
     }
 
     def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = tp match {
-      case tp: TypeVar if tp.deferred && !deferred => tp.registerTypeEquality0(this, typeVarLHS) // swap so that deferred typevar never constraints active typevar (active ones are solved before deferred ones)
+      case tp: TypeVar if !tp.active && active => tp.registerTypeEquality0(this, typeVarLHS) // swap so that deferred typevar never constraints active typevar (active ones are solved before deferred ones)
       case _ => registerTypeEquality0(tp, typeVarLHS)
     }
 
@@ -2768,6 +2766,7 @@ A type's typeSymbol should never be inspected directly.
     def loBounds: List[Type] = if (numlo == NoType) lobounds else numlo :: lobounds
     def hiBounds: List[Type] = if (numhi == NoType) hibounds else numhi :: hibounds
 
+    var deferred: Boolean = false
 /* not needed 
     def numLoBound: Type = numlo
     def numHiBound: Type = numhi
@@ -2804,6 +2803,9 @@ A type's typeSymbol should never be inspected directly.
     def instValid = (inst ne null) && (inst ne NoType)
 
     def cloneInternal = {
+      // shouldn't clone deferred constraints since they will never be reactivated
+      // can't do an assert as this method is validly called in undoLog
+      //assert(!deferred)
       val tc = new TypeConstraint(lobounds, hibounds, numlo, numhi)
       tc.inst = inst
       tc

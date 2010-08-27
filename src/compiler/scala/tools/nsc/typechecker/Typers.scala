@@ -571,7 +571,7 @@ trait Typers { self: Analyzer =>
      */
     private def makeAccessible(tree: Tree, sym: Symbol, pre: Type, site: Tree): (Tree, Type) =
       if (isInPackageObject(sym, pre.typeSymbol)) {
-        if (pre.typeSymbol == ScalaPackageClass && sym.isTerm) {
+        if (pre.typeSymbol == ScalaPackageClass && sym.isTerm) {  // TODO: [AM] this hack seems to be causing trouble in pos/t3152, but I don't see exactly what's wrong
           // short cut some aliases. It seems that without that pattern matching
           // fails to notice exhaustiveness and to generate good code when
           // List extractors are mixed with :: patterns. See Test5 in lists.scala.

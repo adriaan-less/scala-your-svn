@@ -463,9 +463,15 @@ self: Analyzer =>
           incCounter(typedImplicits)
 
           printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+ tvarPt)
+          // for(tv <- tvars) tv.defer() // these typevars don't influence type inference during the following adapt
+          // (adapt itself will defer tvars that have been introduced by polymorphic implicits, here we defer the typevars we introduced ourselves)
+
           val itree2 =
             if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
             else adapt(itree1, EXPRmode, tvarPt)
+
+          // for(tv <- tvars) tv.reactivate()
+
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+ tvarPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
