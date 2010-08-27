@@ -2209,7 +2209,7 @@ A type's typeSymbol should never be inspected directly.
 
     def setInst(tp: Type) = {
 //      assert(!(tp containsTp this), this)
-//      println("setInst: "+(safeToString, debugString(tp)))
+      println("setInst: "+(safeToString, debugString(tp)))
       constr.inst = tp
     }
 
@@ -2239,7 +2239,7 @@ A type's typeSymbol should never be inspected directly.
       case _ => registerBound0(tp, isLowerBound, numBound)
     }
      
-    private def registerBound0(tp: Type, isLowerBound: Boolean, numBound: Boolean): Boolean = { //println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
+    private def registerBound0(tp: Type, isLowerBound: Boolean, numBound: Boolean): Boolean = { println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
       if(isLowerBound) assert(tp != this)
 
       undoLog record this
