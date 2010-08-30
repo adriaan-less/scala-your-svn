@@ -513,7 +513,7 @@ self: Analyzer =>
 
                 // filter out failures from type inference, don't want to remove them from undets2!
                 // we must be conservative in leaving type params in undetparams
-                val AdjustedTypeArgs(okParams, okArgs) = adjustTypeArgs(undets2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
+                val AdjustedTypeArgs.Undets(okParams, okArgs, undets3) = adjustTypeArgs(undets2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
                 val subst = new TreeTypeSubstituter(okParams, okArgs)
                 subst traverse itree2
 
@@ -564,7 +564,7 @@ self: Analyzer =>
                 //
                 // printTyping("sois: "+secondOrderImplicitsSatisfiable)
                 // if(secondOrderImplicitsSatisfiable){
-                  val result = new SearchResult(itree2, subst, undets2)
+                  val result = new SearchResult(itree2, subst, undets3)
                   incCounter(foundImplicits)
                   printTyping("RESULT = "+result)
                   // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG

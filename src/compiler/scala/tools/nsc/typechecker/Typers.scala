@@ -839,9 +839,15 @@ trait Typers { self: Analyzer =>
           // println("older tvs: "+ olderTypeVars)
           for(tv <- olderTypeVars) tv.defer()
 
-          context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, keepNothings = false)
+          val tparams = context.extractUndetparams()
+          val targs = exprTypeArgs(tparams, tree.tpe, pt)
+          if(targs eq null) // inference may fail, that's ok
+            context.undetparams = tparams
+          else
+            context.undetparams = adjustedSubst(tree, tparams, targs, pt, keepNothings = false)
                                 // retract Nothing's that indicate failure (even if they occur in the context of a Manifest[..]
                                 //   -- ambiguities are dealt with in manifestOfType)
+
           olderTypeVars
         } else List() // if we didn't introduce newer typevars (didn't call inferExprInstance), no need to defer to older ones
 

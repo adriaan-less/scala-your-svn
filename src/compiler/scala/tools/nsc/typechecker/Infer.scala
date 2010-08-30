@@ -445,7 +445,7 @@ trait Infer {
      *  @param pt      ...
      *  @return        ...
      */
-    private def exprTypeArgs(tparams: List[Symbol], restpe: Type, pt: Type, checkCompat: (Type, Type) => Boolean = isCompatible): List[Type] = {
+    def exprTypeArgs(tparams: List[Symbol], restpe: Type, pt: Type, checkCompat: (Type, Type) => Boolean = isCompatible): List[Type] = {
       val tvars = tparams map freshVar
       if (checkCompat(restpe.instantiateTypeParams(tparams, tvars), pt)) {
         try {
@@ -1091,17 +1091,19 @@ trait Infer {
                 "  tparams = "+tparams+"\n"+
                 "  pt = "+pt)
       val targs = exprTypeArgs(tparams, tree.tpe, pt)
+      adjustedSubst(tree, tparams, targs, pt, keepNothings)
+    }
 
+    def adjustedSubst(tree: Tree, tparams: List[Symbol], targs: List[Type], pt: Type, keepNothings: Boolean): List[Symbol] =
       if (keepNothings || (targs eq null)) { //@M: adjustTypeArgs fails if targs==null, neg/t0226
         substExpr(tree, tparams, targs, pt)
-        List()
+        if(targs eq null) tparams else List() // all tparams are left undetermined when targs eq null (but we only get here if tree.tpe.isErroneous || pt.isErroneous)
       } else {
         val AdjustedTypeArgs.Undets(okParams, okArgs, leftUndet) = adjustTypeArgs(tparams, targs)
         if (inferInfo) println("inferred expr instance for "+ tree +" --> (okParams, okArgs, leftUndet)= "+(okParams, okArgs, leftUndet))
         substExpr(tree, okParams, okArgs, pt)
         leftUndet
       }
-    }
 
     /** Substitite free type variables `undetparams' of polymorphic argument
      *  expression <code>tree</code> to `targs', Error if `targs' is null
