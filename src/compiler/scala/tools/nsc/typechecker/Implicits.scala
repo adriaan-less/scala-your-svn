@@ -86,7 +86,7 @@ self: Analyzer =>
    *                  that were instantiated by the winning implicit.
    */
   class SearchResult(val tree: Tree, val subst: TreeTypeSubstituter, val undetParams: List[Symbol] = List()) {
-    override def toString = "SearchResult("+tree+", "+subst+")"
+    override def toString = "SearchResult("+ tree +", "+ subst +", "+ undetParams +")"
   }
 
   lazy val SearchFailure = new SearchResult(EmptyTree, EmptyTreeTypeSubstituter)
@@ -461,8 +461,6 @@ self: Analyzer =>
             else
               typed1(itree, EXPRmode, tvarPt)
 
-          // for(tv <- tvars) tv.defer() // these typevars don't influence type inference -- will be solved later
-
           // after typed1, type parameters may appear in context.undetparams that weren't (and thus aren't) in undetParams
           incCounter(typedImplicits)
 
@@ -471,16 +469,19 @@ self: Analyzer =>
 
           val itree2 =
             if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
-            else adapt(itree1, EXPRmode, tvarPt)
-
-          // for(tv <- tvars) tv.reactivate()
+            else {
+              for(tv <- tvars) tv.defer() // these typevars don't influence type inference in nested implicits -- will be solved below
+              val res = adapt(itree1, EXPRmode, tvarPt)
+              for(tv <- tvars) tv.reactivate()
+              res
+            }
 
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+ tvarPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
               case Apply(fun, _) => hasMatchingSymbol(fun)
               case TypeApply(fun, _) => hasMatchingSymbol(fun)
-              case Select(pre, name) => name == nme.apply && pre.symbol == info.sym
+              case Select(pre, name) => name == nme.apply && pre.symbol == info.sym     // XXX could pre be an Apply/TypeApply
               case _ => false
             }
           }
@@ -489,26 +490,28 @@ self: Analyzer =>
           else if (hasMatchingSymbol(itree1)) {
             // for views, nested implicits are handled differently, so no point in being clever about propagating undetermined type parameters
             if(isView) {
-              if (matchesPt(itree2.tpe, pt, List())) { // type inference for views is done after the coercion is applied
+              if (matchesPt(itree2.tpe, pt, List())) { // no need to instantiate the undetparams to typevars/wilcards
+                // pt is full of wildcardtypes so it won't determine type vars (nor will it choke on the undetermined params)
                 incCounter(foundImplicits)
-                new SearchResult(itree2, EmptyTreeTypeSubstituter, context.undetparams) // allow views to introduce new undetermined type parameters
+                val result = new SearchResult(itree2, EmptyTreeTypeSubstituter, context.undetparams) // allow views to introduce new undetermined type parameters
+                printTyping("found view "+ result)
+                result
               } else {
-                printTyping("incompatible: "+itree2.tpe+" does not match "+pt)
+                printTyping("incompatible: "+ itree2.tpe +" does not match "+ pt)
                 SearchFailure
               }
             } else {
-              val newUndets =
-                if(context.undetparams nonEmpty) context.undetparams -- undetParams
-                else List()
+              val newUndets = context.undetparams -- undetParams
               val tvars2 = tvars ++ (newUndets map freshVar)
               val undets2 = undetParams ++ newUndets
               if(matchesPt( // TODO: remove instantiateTypeParams and rely on the undets2 passed to matchesPt?
                       itree2.tpe.instantiateTypeParams(undets2, tvars2), // allow tparams that appeared when typed1 produced itree1 to be instantiated later
                       pt.instantiateTypeParams(undets2, tvars2),
                       undets2)) {
-                printTyping("tvars = "+ tvars2 +"/"+(tvars2 map (_.constr)))
+                printTyping("solving: "+ tvars2 +"/"+(tvars2 map (_.constr)))
                 val targs = solvedTypes(tvars2, undets2, undets2 map varianceInType(pt),
                                         false, lubDepth(List(itree2.tpe, pt)))
+                printTyping("solved: "+ targs)
 
                 // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
                 checkBounds(itree2.pos, NoPrefix, NoSymbol, undets2, targs, "inferred ")
@@ -529,55 +532,16 @@ self: Analyzer =>
                   case _ =>
                 }
 
-                // // #3340
-                // object MethodTypeWithImplicits {
-                //   def unapply(tp: Type): Option[(List[Symbol])] = tp match {
-                //     case mt@MethodType(params, res) => if(mt.isImplicit) Some(params) else unapply(res)
-                //     case _ => None
-                //   }
-                // }
-                //
-                // // println("2ndorder: "+(itree2, itree2.tpe match {case MethodTypeWithImplicits(ps) => ps.toString case t => t.toString}))
-                // val secondOrderImplicitsSatisfiable = try { itree2.tpe match { // TODO: the inferImplicit below will be performed again later -- should be avoided
-                //   case MethodTypeWithImplicits(params) =>
-                //     // TODO lift out <this part> of applyImplicitArgs and reuse instead of copy/pasting...
-                //     val argResultsBuff = new ListBuffer[SearchResult]()
-                //     val c2 = context0.makeSilent(true)
-                //     c2.implicitsEnabled = true
-                //     c2.undetparams = undets2
-                //     // apply the substitutions (undet type param -> type) that were determined
-                //     // by implicit resolution of implicit arguments on the left of this argument
-                //     params forall { param =>
-                //       var paramTp = param.tpe
-                //       for(ar <- argResultsBuff) paramTp = paramTp.subst(ar.subst.from, ar.subst.to)
-                //
-                //       // TODO: this might loop -- probably okay since openImplicits are tracked in the context
-                //       val res = inferImplicit(itree2, paramTp, true, false, c2)
-                //       if(res != SearchFailure || param.hasFlag(DEFAULTPARAM)){
-                //         argResultsBuff += res
-                //         if(res.undetParams nonEmpty)
-                //           c2.undetparams = (c2.undetparams ++ res.undetParams).distinct
-                //         true
-                //       } else false
-                //     }
-                //     // </this part>
-                //   case _ => true // there are no second-order implicits
-                // } } catch { case e => true } // be conservative, we didn't generate exceptions before, we didn't fail to find an implicit
-                //
-                // printTyping("sois: "+secondOrderImplicitsSatisfiable)
-                // if(secondOrderImplicitsSatisfiable){
-                  val result = new SearchResult(itree2, subst, undets3)
-                  incCounter(foundImplicits)
-                  printTyping("RESULT = "+result)
-                  // println("RESULT = "+itree+"///"+itree1+"///"+itree2)//DEBUG
-                  result
-                // } else SearchFailure
+                val result = new SearchResult(itree2, subst, undets3)
+                incCounter(foundImplicits)
+                printTyping("found implicit "+ result)
+                result
               } else {
                 printTyping("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undets2, tvars2))
                 SearchFailure
               }
             }
-          } else if (settings.XlogImplicits.value)
+          } else if (settings.XlogImplicits.value) // same name, other symbol
             fail("candidate implicit "+info.sym+info.sym.locationString+
                  " is shadowed by other implicit: "+itree1.symbol+itree1.symbol.locationString)
           else SearchFailure

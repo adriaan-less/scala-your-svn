@@ -839,12 +839,16 @@ trait Typers { self: Analyzer =>
           // println("older tvs: "+ olderTypeVars)
           for(tv <- olderTypeVars) tv.defer()
 
-          val tparams = context.extractUndetparams()
-          val targs = exprTypeArgs(tparams, tree.tpe, pt)
-          if(targs eq null) // inference may fail, that's ok
-            context.undetparams = tparams
-          else
-            context.undetparams = adjustedSubst(tree, tparams, targs, pt, keepNothings = false)
+          context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, keepNothings = false)
+//          val tparams = context.extractUndetparams()
+//          printTyping("inferring before implicit search: "+ tparams)
+//          val targs = exprTypeArgs(tparams, tree.tpe, pt)
+//          printTyping("inferred before implicit search: "+ targs)
+//          if(targs eq null) {// inference may fail, that's ok
+//            println("INFERENCE FAILED RUN FOR THE HILLLLLLLS")
+//            = tparams
+//          } else
+//            context.undetparams = adjustedSubst(tree, tparams, targs, pt, keepNothings = false)
                                 // retract Nothing's that indicate failure (even if they occur in the context of a Manifest[..]
                                 //   -- ambiguities are dealt with in manifestOfType)
 
@@ -1027,7 +1031,7 @@ trait Typers { self: Analyzer =>
                   return typed(Select(tree, meth), mode, pt)
                 }
                 if (coercion != EmptyTree) {
-                  if (settings.debug.value) log("inferred view from "+tree.tpe+" to "+pt+" = "+coercion+":"+coercion.tpe)
+                  printTyping("inferred view from "+tree.tpe+" to "+pt+" = "+coercion+":"+coercion.tpe)
                   return newTyper(context.makeImplicit(context.reportAmbiguousErrors)).typed(
                     new ApplyImplicitView(coercion, List(tree)) setPos tree.pos, mode, pt)
                 }
