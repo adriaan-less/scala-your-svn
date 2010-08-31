@@ -453,14 +453,15 @@ self: Analyzer =>
           val tvars = undetParams map freshVar
           val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
 
-          for(tv <- tvars) tv.defer() // these typevars don't influence type inference -- will be solved later
 
           val itree1 = 
             if (isView)
-              typed1(atPos(itree.pos)(Apply(itree, List(Ident("<argument>").setType(tvarPt.typeArgs.head)))),
-                     EXPRmode, tvarPt.typeArgs.tail.head)
+              typed1(atPos(itree.pos)(Apply(itree, List(Ident("<argument>").setType(pt.typeArgs.head)))),
+                     EXPRmode, pt.typeArgs.tail.head)
             else
               typed1(itree, EXPRmode, tvarPt)
+
+          // for(tv <- tvars) tv.defer() // these typevars don't influence type inference -- will be solved later
 
           // after typed1, type parameters may appear in context.undetparams that weren't (and thus aren't) in undetParams
           incCounter(typedImplicits)
@@ -472,7 +473,7 @@ self: Analyzer =>
             if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
             else adapt(itree1, EXPRmode, tvarPt)
 
-          for(tv <- tvars) tv.reactivate()
+          // for(tv <- tvars) tv.reactivate()
 
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+ tvarPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
@@ -488,10 +489,10 @@ self: Analyzer =>
           else if (hasMatchingSymbol(itree1)) {
             // for views, nested implicits are handled differently, so no point in being clever about propagating undetermined type parameters
             if(isView) {
-              val undets = context.undetparams ++ undetParams // undetParams is not necessarily empty, see e.g. pos/t2234
-              if (matchesPt(itree2.tpe, pt, undets)) {
+              // undetParams is not necessarily empty, see e.g. pos/t2234
+              if (matchesPt(itree2.tpe, pt, List())) { // type inference for views is done after the coercion is applied
                 incCounter(foundImplicits)
-                new SearchResult(itree2, EmptyTreeTypeSubstituter, undets)
+                new SearchResult(itree2, EmptyTreeTypeSubstituter, (undetParams ++ context.undetparams) distinct) // allow views to introduce new undetermined type parameters
               } else {
                 printTyping("incompatible: "+itree2.tpe+" does not match "+pt)
                 SearchFailure
@@ -502,7 +503,7 @@ self: Analyzer =>
                 else List()
               val tvars2 = tvars ++ (newUndets map freshVar)
               val undets2 = undetParams ++ newUndets
-              if(matchesPt(
+              if(matchesPt( // TODO: remove instantiateTypeParams and rely on the undets2 passed to matchesPt?
                       itree2.tpe.instantiateTypeParams(undets2, tvars2), // allow tparams that appeared when typed1 produced itree1 to be instantiated later
                       pt.instantiateTypeParams(undets2, tvars2),
                       undets2)) {
