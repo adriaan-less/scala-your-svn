@@ -448,9 +448,12 @@ self: Analyzer =>
         try {
           // context.undetparams may contain type params from polymorphic outer implicits
           // (typed1 below introduces them, then we adapt to find nested implicits, so that we arrive here with the undetparams from the typed1 of the outer implicit)
-          // for the call to typed1, we can ignore type params that are not in undetParams, since that's what we did before (wildPt == approximate(pt))
+          // undetParams stem from the context in which the implicit is required (e.g., the type params of the expression that must be coerced by the implicit we're looking for)
+          // for the call to typed1, we can ignore type params that are not in undetParams, since that's what we did before (when tvarPt == approximate(pt))
           val tvars = undetParams map freshVar
           val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
+
+          for(tv <- tvars) tv.defer() // these typevars don't influence type inference -- will be solved later
 
           val itree1 = 
             if (isView)
@@ -463,14 +466,13 @@ self: Analyzer =>
           incCounter(typedImplicits)
 
           printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+ tvarPt)
-          // for(tv <- tvars) tv.defer() // these typevars don't influence type inference during the following adapt
           // (adapt itself will defer tvars that have been introduced by polymorphic implicits, here we defer the typevars we introduced ourselves)
 
           val itree2 =
             if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
             else adapt(itree1, EXPRmode, tvarPt)
 
-          // for(tv <- tvars) tv.reactivate()
+          for(tv <- tvars) tv.reactivate()
 
           printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+ tvarPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
@@ -486,7 +488,7 @@ self: Analyzer =>
           else if (hasMatchingSymbol(itree1)) {
             // for views, nested implicits are handled differently, so no point in being clever about propagating undetermined type parameters
             if(isView) {
-              val undets = context.undetparams ++ undetParams // TODO: is undetParams always empty?
+              val undets = context.undetparams ++ undetParams // undetParams is not necessarily empty, see e.g. pos/t2234
               if (matchesPt(itree2.tpe, pt, undets)) {
                 incCounter(foundImplicits)
                 new SearchResult(itree2, EmptyTreeTypeSubstituter, undets)
