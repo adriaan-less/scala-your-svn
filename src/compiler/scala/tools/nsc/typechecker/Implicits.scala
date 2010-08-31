@@ -489,10 +489,9 @@ self: Analyzer =>
           else if (hasMatchingSymbol(itree1)) {
             // for views, nested implicits are handled differently, so no point in being clever about propagating undetermined type parameters
             if(isView) {
-              // undetParams is not necessarily empty, see e.g. pos/t2234
               if (matchesPt(itree2.tpe, pt, List())) { // type inference for views is done after the coercion is applied
                 incCounter(foundImplicits)
-                new SearchResult(itree2, EmptyTreeTypeSubstituter, (undetParams ++ context.undetparams) distinct) // allow views to introduce new undetermined type parameters
+                new SearchResult(itree2, EmptyTreeTypeSubstituter, context.undetparams) // allow views to introduce new undetermined type parameters
               } else {
                 printTyping("incompatible: "+itree2.tpe+" does not match "+pt)
                 SearchFailure
