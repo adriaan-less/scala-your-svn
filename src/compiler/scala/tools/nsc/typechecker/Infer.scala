@@ -1091,10 +1091,7 @@ trait Infer {
                 "  tparams = "+tparams+"\n"+
                 "  pt = "+pt)
       val targs = exprTypeArgs(tparams, tree.tpe, pt)
-      adjustedSubst(tree, tparams, targs, pt, keepNothings)
-    }
 
-    def adjustedSubst(tree: Tree, tparams: List[Symbol], targs: List[Type], pt: Type, keepNothings: Boolean): List[Symbol] =
       if (keepNothings || (targs eq null)) { //@M: adjustTypeArgs fails if targs==null, neg/t0226
         substExpr(tree, tparams, targs, pt)
         if(targs eq null) tparams else List() // all tparams are left undetermined when targs eq null (but we only get here if tree.tpe.isErroneous || pt.isErroneous)
@@ -1104,6 +1101,7 @@ trait Infer {
         substExpr(tree, okParams, okArgs, pt)
         leftUndet
       }
+    }
 
     /** Substitite free type variables `undetparams' of polymorphic argument
      *  expression <code>tree</code> to `targs', Error if `targs' is null
