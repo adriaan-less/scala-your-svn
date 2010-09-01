@@ -434,7 +434,7 @@ self: Analyzer =>
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
         incCounter(matchingImplicits)
 
-        var itree0 = atPos(tree.pos.focus) {
+        var itree0: Tree = atPos(tree.pos.focus) {
           if (info.pre == NoPrefix) Ident(info.name) 
           else Select(gen.mkAttributedQualifier(info.pre), info.name)
         } 
