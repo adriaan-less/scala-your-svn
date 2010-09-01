@@ -2275,7 +2275,7 @@ A type's typeSymbol should never be inspected directly.
               // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
               checkArgs(tp.typeArgs, typeArgs, params)
             }
-          tp.isInstanceOf[TypeVar] /* pretend it's okay -- TODO */ || unifyHK(tp) || unifyHK(tp.dealias)
+          unifyHK(tp) || unifyHK(tp.dealias) || !active
         }
       }
     }
@@ -2298,7 +2298,7 @@ A type's typeSymbol should never be inspected directly.
         if (constr.isWithinBounds(newInst)) {
           setInst(tp)
           true
-        } else false
+        } else !active
       }
     }
 

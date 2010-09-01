@@ -817,6 +817,7 @@ trait Typers { self: Analyzer =>
         // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
         // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
         // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
+        var olderTypeVars = List[TypeVar]()
         if (context.undetparams nonEmpty) {
           // println("implicit undets: "+ context.undetparams)
           // consider:
@@ -836,30 +837,32 @@ trait Typers { self: Analyzer =>
           // we do register bounds when they're involved in subtype checks
           // HOWEVER a deferred type var should not be registered as a bound on a non-deferred type var --> swap the constraint around
           // comparing two deferred type vars is an illegal cycle, just like two non-deferred once, but mixed comparisons are okay
-          val olderTypeVars: List[TypeVar] = tree.tpe.partialMap{case tv: TypeVar => tv} ++ pt.partialMap{case tv: TypeVar => tv}
+          olderTypeVars = tree.tpe.partialMap{case tv: TypeVar => tv} ++ pt.partialMap{case tv: TypeVar => tv}
           // println("older tvs: "+ olderTypeVars)
           for(tv <- olderTypeVars) tv.defer()
 
           context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, keepNothings = false)
+        }
 
-          val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
+        val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
+        val res =
           if (original != EmptyTree && pt != WildcardType)
-          typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
-            case result: Tree => result
-            case ex: TypeError =>
-              if (settings.debug.value) log("fallback on implicits: "+tree+"/"+resetAllAttrs(original))
-              val tree1 = typed(resetAllAttrs(original), mode, WildcardType)
-              tree1.tpe = addAnnotations(tree1, tree1.tpe)
-              if (tree1.isEmpty) tree1 else adapt(tree1, mode, pt, EmptyTree)
-          }
-          else typer1.typed(typer1.applyImplicitArgs(tree), mode, pt)
+            typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
+              case result: Tree => result
+              case ex: TypeError =>
+                if (settings.debug.value) log("fallback on implicits: "+tree+"/"+resetAllAttrs(original))
+                val tree1 = typed(resetAllAttrs(original), mode, WildcardType)
+                tree1.tpe = addAnnotations(tree1, tree1.tpe)
+                if (tree1.isEmpty) tree1 else adapt(tree1, mode, pt, EmptyTree)
+            }
+          else
+            typer1.typed(typer1.applyImplicitArgs(tree), mode, pt)
 
-          printTyping("undets after typing apply implicit args: "+ context.undetparams)
-          // reset deferred flag on typevars before this nesting level (remembered from above)
-          for(tv <- olderTypeVars) tv.reactivate()
+        printTyping("undets after typing apply implicit args: "+ context.undetparams)
+        // reset deferred flag on typevars before this nesting level (remembered from above)
+        for(tv <- olderTypeVars) tv.reactivate()
 
-          res
-        } else typedAppliedImplicitArgs(this)
+        res
 
       case mt: MethodType
       if (((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) && 

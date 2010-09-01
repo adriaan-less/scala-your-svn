@@ -454,14 +454,14 @@ self: Analyzer =>
           val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
 
 
-          val itree1 = 
+          val itree1 =
             if (isView)
               typed1(atPos(itree.pos)(Apply(itree, List(Ident("<argument>").setType(pt.typeArgs.head)))),
-                     EXPRmode, pt.typeArgs.tail.head)
+                     EXPRmode, pt.typeArgs.tail.head) // approximate was the identity before since isView implies undetParams.isEmpty
             else
               typed1(itree, EXPRmode, tvarPt)
 
-          // after typed1, type parameters may appear in context.undetparams that weren't (and thus aren't) in undetParams
+          // after typed1, type parameters may appear in context.undetparams
           incCounter(typedImplicits)
 
           printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+ tvarPt)
