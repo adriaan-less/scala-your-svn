@@ -78,20 +78,20 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
     def tos(sym: Symbol) = sym.name.decode.toString
     def memberNamed(s: String) = members find (x => tos(x) == s)
     def hasMethod(s: String) = methods exists (x => tos(x) == s)
-
+    
     // XXX we'd like to say "filterNot (_.isDeprecated)" but this causes the
     // compiler to crash for reasons not yet known.
     def members     = (effectiveTp.nonPrivateMembers ++ anyMembers) filter (_.isPublic)
     def methods     = members filter (_.isMethod)
     def packages    = members filter (_.isPackage)
     def aliases     = members filter (_.isAliasType)
-
+    
     def memberNames   = members map tos
     def methodNames   = methods map tos
     def packageNames  = packages map tos
     def aliasNames    = aliases map tos
   }
-
+  
   object TypeMemberCompletion {
     def apply(tp: Type): TypeMemberCompletion = {
       if (tp.typeSymbol.isPackageClass) new PackageCompletion(tp)
@@ -99,13 +99,11 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
     }
     def imported(tp: Type) = new ImportCompletion(tp)
   }
-
-  class TypeMemberCompletion(val tp: Type) extends CompletionAware
-                                              with CompilerCompletion {
+  
+  class TypeMemberCompletion(val tp: Type) extends CompletionAware with CompilerCompletion {
     def excludeEndsWith: List[String] = Nil
     def excludeStartsWith: List[String] = List("<") // <byname>, <repeated>, etc.
-    def excludeNames: List[String] =
-      anyref.methodNames.filterNot(anyRefMethodsToShow contains) ++ List("_root_")
+    def excludeNames: List[String] = anyref.methodNames -- anyRefMethodsToShow ++ List("_root_")
     
     def methodSignatureString(sym: Symbol) = {
       def asString = new MethodSymbolOutput(sym).methodString()
@@ -266,7 +264,7 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
     val xs = lastResult completionsFor parsed
     if (parsed.isEmpty) xs map ("." + _) else xs
   }
-
+  
   // chasing down results which won't parse
   def execute(line: String): Option[Any] = {
     val parsed = Parsed(line)
@@ -300,9 +298,8 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
     private var lastCursor: Int = -1
 
     // Does this represent two consecutive tabs?
-    def isConsecutiveTabs(buf: String, cursor: Int) =
-      cursor == lastCursor && buf == lastBuf
-
+    def isConsecutiveTabs(buf: String, cursor: Int) = cursor == lastCursor && buf == lastBuf
+    
     // Longest common prefix
     def commonPrefix(xs: List[String]) =
       if (xs.isEmpty) ""
@@ -312,7 +309,7 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
     override def complete(_buf: String, cursor: Int, candidates: JList[String]): Int = {
       val buf = onull(_buf)
       verbosity = if (isConsecutiveTabs(buf, cursor)) verbosity + 1 else 0
-      DBG("\ncomplete(%s, %d) last = (%s, %d), verbosity: %s".format(buf, cursor, lastBuf, lastCursor, verbosity))
+      DBG("complete(%s, %d) last = (%s, %d), verbosity: %s".format(buf, cursor, lastBuf, lastCursor, verbosity))
 
       // we don't try lower priority completions unless higher ones return no results.
       def tryCompletion(p: Parsed, completionFunction: Parsed => List[String]): Option[Int] = {
@@ -346,21 +343,7 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
       def regularCompletion = tryCompletion(mkDotted, topLevelFor)
       def fileCompletion    = tryCompletion(mkUndelimited, FileCompletion completionsFor _.buffer)
       
-      /** This is the kickoff point for all manner of theoretically possible compiler
-       *  unhappiness - fault may be here or elsewhere, but we don't want to crash the
-       *  repl regardless.  Hopefully catching Exception is enough, but because the
-       *  compiler still throws some Errors it may not be.
-       */
-      try {
-        (lastResultCompletion orElse regularCompletion orElse fileCompletion) getOrElse cursor
-      }
-      catch {
-        case ex: Exception =>
-          DBG("Error: complete(%s, %s, _) provoked %s".format(_buf, cursor, ex))
-          candidates add " "
-          candidates add "<completion error>"
-          cursor
-      }
+      (lastResultCompletion orElse regularCompletion orElse fileCompletion) getOrElse cursor
     }
   }
 }
