@@ -453,19 +453,28 @@ self: Analyzer =>
           val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
 
           // after typed1, type parameters may appear in context.undetparams
-          val itree = 
+          val itreeTyped = // need un-adapted tree for hasMatchingSymbol check
             if (isView) {
-              val Apply(itree1, _) = typed1(atPos(itree0.pos)(
+              val itree = typed1(atPos(itree0.pos)(
                   Apply(itree0, List(Ident("<argument>").setType(pt.typeArgs.head)))), EXPRmode, pt.typeArgs.tail.head) // approximate was the identity before since isView implies undetParams.isEmpty
               incCounter(typedImplicits)
-              printTyping("typed view "+ itree1 +":"+ itree1.tpe +", pt = "+ pt.typeArgs.tail.head +" new undets: "+ context.undetparams)
-              itree1
+              printTyping("typed view "+ itree +":"+ itree.tpe +", pt = "+ pt.typeArgs.tail.head +" new undets: "+ context.undetparams)
+              itree
             } else {
-              val itree1 = typed1(itree0, EXPRmode, tvarPt)            
+              val itree = typed1(itree0, EXPRmode, tvarPt)            
               incCounter(typedImplicits)
-              printTyping("typed implicit "+ itree1 +":"+ itree1.tpe +", pt = "+ tvarPt +" new undets: "+ context.undetparams)
-
-              val itree2 = adapt(itree1, EXPRmode, tvarPt)
+              printTyping("typed implicit "+ itree +":"+ itree.tpe +", pt = "+ tvarPt +" new undets: "+ context.undetparams)
+              itree
+            }
+ 
+          val itree = // the adapted tree (nested implicits are resolved if !isView)
+            if (isView) {
+              val Apply(itree2, _) = itreeTyped
+              itree2
+            } else {
+              for(tv <- tvars) tv.defer() // these typevars don't influence type inference in nested implicits -- will be solved below
+              val itree2 = adapt(itreeTyped, EXPRmode, tvarPt)
+              for(tv <- tvars) tv.reactivate()
               printTyping("adapted implicit "+ itree2.symbol +":"+ itree2.tpe +" to "+ tvarPt)
               itree2
             }
@@ -480,7 +489,7 @@ self: Analyzer =>
           }
 
           if (itree.tpe.isError) SearchFailure
-          else if (hasMatchingSymbol(itree)) {
+          else if (hasMatchingSymbol(itreeTyped)) { // this has to be itreeTyped
             // for views, nested implicits are handled differently, so no point in being clever about propagating undetermined type parameters
             if(isView) {
               if (matchesPt(itree.tpe, pt, List())) { // no need to instantiate the undetparams to typevars/wilcards
