@@ -432,17 +432,16 @@ self: Analyzer =>
 
       printTyping("begin typedImplicit0 "+wildPt+"? "+info.name +":"+ depoly(info.tpe)+ " orig info= "+ info.tpe +"/"+undetParams+"/"+isPlausiblyCompatible(info.tpe, wildPt)+"/"+matchesPt(depoly(info.tpe), wildPt, List())+"/"+info.pre+"/"+isStable(info.pre))
       if (matchesPt(depoly(info.tpe), wildPt, List()) && isStable(info.pre)) {
-
         incCounter(matchingImplicits)
 
-        val itree = atPos(tree.pos.focus) {
+        var itree0 = atPos(tree.pos.focus) {
           if (info.pre == NoPrefix) Ident(info.name) 
           else Select(gen.mkAttributedQualifier(info.pre), info.name)
         } 
-        printTyping("wild match --> typing"+ itree +" with wildpt = "+ wildPt +" from implicit "+ info.name+":"+info.tpe)
+        printTyping("wild match --> typing"+ itree0 +" with wildpt = "+ wildPt +" from implicit "+ info.name+":"+info.tpe)
         def fail(reason: String): SearchResult = {
           if (settings.XlogImplicits.value)
-            inform(itree+" is not a valid implicit value for "+pt+" because:\n"+reason)
+            inform(itree0+" is not a valid implicit value for "+pt+" because:\n"+reason)
           SearchFailure
         }
         try {
@@ -453,30 +452,22 @@ self: Analyzer =>
           val tvars = undetParams map freshVar
           val tvarPt = pt.instantiateTypeParams(undetParams, tvars)
 
-
-          val itree1 =
-            if (isView)
-              typed1(atPos(itree.pos)(Apply(itree, List(Ident("<argument>").setType(pt.typeArgs.head)))),
-                     EXPRmode, pt.typeArgs.tail.head) // approximate was the identity before since isView implies undetParams.isEmpty
-            else
-              typed1(itree, EXPRmode, tvarPt)
-
           // after typed1, type parameters may appear in context.undetparams
-          incCounter(typedImplicits)
+          if (isView) {
+            val Apply(fun, _) = typed1(atPos(itree0.pos)(
+                Apply(itree0, List(Ident("<argument>").setType(pt.typeArgs.head)))), EXPRmode, pt.typeArgs.tail.head) // approximate was the identity before since isView implies undetParams.isEmpty
+            itree0 = fun
+            incCounter(typedImplicits)
+            printTyping("typed implicit "+ itree0 +":"+ itree0.tpe +", pt = "+ pt.typeArgs.tail.head +" new undets: "+ context.undetparams)
+          } else {
+            itree0 = typed1(itree0, EXPRmode, tvarPt)            
+            incCounter(typedImplicits)
+            printTyping("typed implicit "+ itree0 +":"+ itree0.tpe +", pt = "+ tvarPt +" new undets: "+ context.undetparams)
 
-          printTyping("typed implicit "+itree1+":"+itree1.tpe+", pt = "+ tvarPt)
-          // (adapt itself will defer tvars that have been introduced by polymorphic implicits, here we defer the typevars we introduced ourselves)
+            itree0 = adapt(itree0, EXPRmode, tvarPt)
+            printTyping("adapted implicit "+ itree0.symbol +":"+ itree0.tpe +" to "+ tvarPt)
+          }
 
-          val itree2 =
-            if (isView) (itree1: @unchecked) match { case Apply(fun, _) => fun }
-            else {
-              for(tv <- tvars) tv.defer() // these typevars don't influence type inference in nested implicits -- will be solved below
-              val res = adapt(itree1, EXPRmode, tvarPt)
-              for(tv <- tvars) tv.reactivate()
-              res
-            }
-
-          printTyping("adapted implicit "+itree1.symbol+":"+itree2.tpe+" to "+ tvarPt)
           def hasMatchingSymbol(tree: Tree): Boolean = (tree.symbol == info.sym) || {
             tree match {
               case Apply(fun, _) => hasMatchingSymbol(fun)
@@ -486,18 +477,19 @@ self: Analyzer =>
             }
           }
 
-          if (itree2.tpe.isError) SearchFailure
-          else if (hasMatchingSymbol(itree1)) {
+          val itree = itree0 // just for clarity: it won't change anymore
+          if (itree.tpe.isError) SearchFailure
+          else if (hasMatchingSymbol(itree)) {
             // for views, nested implicits are handled differently, so no point in being clever about propagating undetermined type parameters
             if(isView) {
-              if (matchesPt(itree2.tpe, pt, List())) { // no need to instantiate the undetparams to typevars/wilcards
+              if (matchesPt(itree.tpe, pt, List())) { // no need to instantiate the undetparams to typevars/wilcards
                 // pt is full of wildcardtypes so it won't determine type vars (nor will it choke on the undetermined params)
                 incCounter(foundImplicits)
-                val result = new SearchResult(itree2, EmptyTreeTypeSubstituter, context.undetparams) // allow views to introduce new undetermined type parameters
+                val result = new SearchResult(itree, EmptyTreeTypeSubstituter, context.undetparams) // allow views to introduce new undetermined type parameters
                 printTyping("found view "+ result)
                 result
               } else {
-                printTyping("incompatible: "+ itree2.tpe +" does not match "+ pt)
+                printTyping("incompatible: "+ itree.tpe +" does not match "+ pt)
                 SearchFailure
               }
             } else {
@@ -505,45 +497,45 @@ self: Analyzer =>
               val tvars2 = tvars ++ (newUndets map freshVar)
               val undets2 = undetParams ++ newUndets
               if(matchesPt( // TODO: remove instantiateTypeParams and rely on the undets2 passed to matchesPt?
-                      itree2.tpe.instantiateTypeParams(undets2, tvars2), // allow tparams that appeared when typed1 produced itree1 to be instantiated later
+                      itree.tpe.instantiateTypeParams(undets2, tvars2), // allow tparams that appeared when typed1 produced itree to be instantiated later
                       pt.instantiateTypeParams(undets2, tvars2),
                       undets2)) {
                 printTyping("solving: "+ tvars2 +"/"+(tvars2 map (_.constr)))
                 val targs = solvedTypes(tvars2, undets2, undets2 map varianceInType(pt),
-                                        false, lubDepth(List(itree2.tpe, pt)))
+                                        false, lubDepth(List(itree.tpe, pt)))
                 printTyping("solved: "+ targs)
 
                 // #2421: check that we correctly instantiated type parameters outside of the implicit tree:
-                checkBounds(itree2.pos, NoPrefix, NoSymbol, undets2, targs, "inferred ")
+                checkBounds(itree.pos, NoPrefix, NoSymbol, undets2, targs, "inferred ")
 
                 // filter out failures from type inference, don't want to remove them from undets2!
                 // we must be conservative in leaving type params in undetparams
                 val AdjustedTypeArgs.Undets(okParams, okArgs, undets3) = adjustTypeArgs(undets2, targs)  // prototype == WildcardType: want to remove all inferred Nothing's
                 val subst = new TreeTypeSubstituter(okParams, okArgs)
-                subst traverse itree2
+                subst traverse itree
 
                 // #2421b: since type inference (which may have been performed during implicit search)
                 // does not check whether inferred arguments meet the bounds of the corresponding parameter (see note in solvedTypes),
                 // must check again here:
                 // TODO: I would prefer to just call typed instead of duplicating the code here, but this is probably a hotspot (and you can't just call typed, need to force re-typecheck)
-                itree2 match {
-                  case TypeApply(fun, args) => typedTypeApply(itree2, EXPRmode, fun, args)
-                  case Apply(TypeApply(fun, args), _) => typedTypeApply(itree2, EXPRmode, fun, args) // t2421c
+                itree match {
+                  case TypeApply(fun, args) => typedTypeApply(itree, EXPRmode, fun, args)
+                  case Apply(TypeApply(fun, args), _) => typedTypeApply(itree, EXPRmode, fun, args) // t2421c
                   case _ =>
                 }
 
-                val result = new SearchResult(itree2, subst, undets3)
+                val result = new SearchResult(itree, subst, undets3)
                 incCounter(foundImplicits)
                 printTyping("found implicit "+ result)
                 result
               } else {
-                printTyping("incompatible: "+itree2.tpe+" does not match "+pt.instantiateTypeParams(undets2, tvars2))
+                printTyping("incompatible: "+itree.tpe+" does not match "+pt.instantiateTypeParams(undets2, tvars2))
                 SearchFailure
               }
             }
           } else if (settings.XlogImplicits.value) // same name, other symbol
             fail("candidate implicit "+info.sym+info.sym.locationString+
-                 " is shadowed by other implicit: "+itree1.symbol+itree1.symbol.locationString)
+                 " is shadowed by other implicit: "+itree.symbol+itree.symbol.locationString)
           else SearchFailure
         } catch {
           case ex: TypeError => fail(ex.getMessage())
