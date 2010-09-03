@@ -1817,9 +1817,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         } else {
           if (isInitialized) tpePeriod = currentPeriod
           tpeCache = NoType
-          val targs = 
-            if (phase.erasedTypes && this != ArrayClass) List()
-            else unsafeTypeParams map (_.typeConstructor) //@M! use typeConstructor to generate dummy type arguments,
+          val targs = unsafeTypeParams map (_.typeConstructor) //@M! use typeConstructor to generate dummy type arguments,
             // sym.tpe should not be called on a symbol that's supposed to be a higher-kinded type
             // memberType should be used instead, that's why it uses tpeHK and not tpe
           tpeCache = typeRef(if (hasFlag(PARAM | EXISTENTIAL)) NoPrefix else owner.thisType, 

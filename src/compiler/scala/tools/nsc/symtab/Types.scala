@@ -501,7 +501,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      *  Proceed analogously for thistypes referring to outer classes.
      */
     def asSeenFrom(pre: Type, clazz: Symbol): Type =
-      if (!isTrivial && (!phase.erasedTypes || pre.typeSymbol == ArrayClass)) {
+      if (!isTrivial) { //  && (!phase.erasedTypes || pre.typeSymbol == ArrayClass)
         incCounter(asSeenFromCount)
         val start = startTimer(asSeenFromNanos)
         val m = new AsSeenFromMap(pre.normalize, clazz)
