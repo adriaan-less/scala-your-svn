@@ -800,6 +800,11 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
                 phase = phaseWithId(itr.pid)
                 val info1 = itr.transform(this, infos.info)
                 if (info1 ne infos.info) {
+                  (info1, infos.info) match {
+                    case (PolyType(tps1, res1), PolyType(tps2, res2)) if tps1 != tps2 => println("TH: "+(tps1, tps2, res1, "\n"+ res2)) // if res1 contains a type param in tps2, that's probably a problem
+                    itr.transform(this, infos.info)
+                    case _ =>
+                  }
                   infos = TypeHistory(currentPeriod + 1, info1, infos)
                   this.infos = infos
                 }
@@ -1817,7 +1822,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         } else {
           if (isInitialized) tpePeriod = currentPeriod
           tpeCache = NoType
-          val targs = unsafeTypeParams map (_.typeConstructor) //@M! use typeConstructor to generate dummy type arguments,
+          val targs =
+            unsafeTypeParams map (_.typeConstructor) //@M! use typeConstructor to generate dummy type arguments,
             // sym.tpe should not be called on a symbol that's supposed to be a higher-kinded type
             // memberType should be used instead, that's why it uses tpeHK and not tpe
           tpeCache = typeRef(if (hasFlag(PARAM | EXISTENTIAL)) NoPrefix else owner.thisType, 

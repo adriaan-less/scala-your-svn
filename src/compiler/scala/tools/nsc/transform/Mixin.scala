@@ -237,7 +237,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             // Console.println("mixin member "+member+":"+member.tpe+member.locationString+" "+imember+" "+imember.overridingSymbol(clazz)+" to "+clazz+" with scope "+clazz.info.decls)//DEBUG
             if (imember.overridingSymbol(clazz) == NoSymbol &&
                 clazz.info.findMember(member.name, 0, lateDEFERRED, false).alternatives.contains(imember)) {
-                  val newSym = atPhase(currentRun.erasurePhase){
+                  val newSym = atPhase(currentRun.erasurePhase){  // TODO no longer necessary now erasure leaves type params in tact
                       val res = imember.cloneSymbol(clazz)
                       // since we used the member (imember) from the interface that represents the trait that's being mixed in, 
                       // have to instantiate the interface type params (that may occur in imember's info) as they are seen from the class
