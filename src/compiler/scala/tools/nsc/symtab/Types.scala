@@ -1733,7 +1733,7 @@ A type's typeSymbol should never be inspected directly.
         // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
         typeFunAnon(sym.info.typeParams, typeRef(pre, sym, dummyArgs))
       } else if (sym.isAliasType) { // beta-reduce
-        println("alias norm: "+(pre, sym, args, sym.info.typeParams))
+        // println("alias norm: "+(pre, sym, args, sym.info.typeParams))
         if(sym.info.typeParams.length == args.length) // don't do partial application
           transform(sym.info.resultType).normalize // cycles have been checked in typeRef
         else
