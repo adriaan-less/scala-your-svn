@@ -337,9 +337,9 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         immutable.ListSet.empty[Symbol] ++ extra.flatten
       }
 
-    case PolyType(tparams, resTpe) => 
+    case PolyType(tparams, resTpe) =>
       specializedTypeVars(tparams map (_.info)) ++ specializedTypeVars(resTpe)
-                                                                    
+
     case MethodType(argSyms, resTpe) =>
       specializedTypeVars(argSyms map (_.tpe)) ++ specializedTypeVars(resTpe)
 
@@ -679,7 +679,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     val specMember = sym.cloneSymbol(owner) // this method properly duplicates the symbol's info
     specMember.name = specializedName(sym, env)
 
-    specMember.setInfo(subst(env, specMember.info))
+    specMember.setInfo(subst(env, specMember.info.asSeenFrom(owner.thisType, sym.owner)))
       .setFlag(SPECIALIZED)
       .resetFlag(DEFERRED | CASEACCESSOR | ACCESSOR | LAZY)
   }
@@ -748,8 +748,8 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     for  (overriding <- clazz.info.decls;
           val (overridden, env) = needsSpecialOverride(overriding, overriding.allOverriddenSymbols)
           if overridden != NoSymbol) {
-      log("Added specialized overload for " + overriding.fullName + " in env: " + env)
       val om = specializedOverload(clazz, overridden, env)
+      log("Added specialized overload for %s in env: %s with type: %s".format(overriding.fullName, env, om.info))
       typeEnv(om) = env
       concreteSpecMethods += overriding
       if (!overriding.isDeferred) {  // concrete method
@@ -875,7 +875,10 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
    */
   override def transformInfo(sym: Symbol, tpe: Type): Type = {
     val res = tpe match {
-      case PolyType(targs, ClassInfoType(base, decls, clazz)) if clazz != definitions.RepeatedParamClass && clazz != definitions.JavaRepeatedParamClass =>
+      case PolyType(targs, ClassInfoType(base, decls, clazz))
+              if clazz != definitions.RepeatedParamClass
+              && clazz != definitions.JavaRepeatedParamClass
+              && !clazz.hasFlag(JAVA) =>
         val parents = base map specializedType
         if (settings.debug.value) log("transformInfo (poly) " + clazz + " with parents1: " + parents + " ph: " + phase)
 //        if (clazz.name.toString == "$colon$colon")
@@ -884,7 +887,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
           new Scope(specializeClass(clazz, typeEnv(clazz)) ::: specialOverrides(clazz)),
           clazz))
 
-      case ClassInfoType(base, decls, clazz) if !clazz.isPackageClass =>
+      case ClassInfoType(base, decls, clazz) if !clazz.isPackageClass && !clazz.hasFlag(JAVA) =>
         atPhase(phase.next)(base.map(_.typeSymbol.info))
         val parents = base map specializedType
         if (settings.debug.value) log("transformInfo " + clazz + " with parents1: " + parents + " ph: " + phase)
@@ -949,8 +952,6 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     val silent = (pos: Position, str: String) => ()
     satisfiable(env, silent)
   }
-
-  /*************************** Term transformation ************************************/
 
   class Duplicator extends {
     val global: SpecializeTypes.this.global.type = SpecializeTypes.this.global
@@ -1144,7 +1145,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
           if (symbol.isConstructor) {
             val t = atOwner(symbol) {
               val superRef: Tree = Select(Super(nme.EMPTY.toTypeName, nme.EMPTY.toTypeName), nme.CONSTRUCTOR)
-              forwardCall(tree.pos, superRef, vparamss)
+              forwardCtorCall(tree.pos, superRef, vparamss)
             }
             if (symbol.isPrimaryConstructor) localTyper typed {
                 atPos(symbol.pos)(treeCopy.DefDef(tree, mods, name, tparams, vparamss, tpt, Block(List(t), Literal(()))))
@@ -1220,11 +1221,14 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
           val tree1 = treeCopy.ValDef(tree, mods, name, tpt, body(symbol.alias).duplicate)
           if (settings.debug.value) log("now typing: " + tree1 + " in " + tree.symbol.owner.fullName)
           val d = new Duplicator
-          d.retyped(localTyper.context1.asInstanceOf[d.Context],
+          val tree2 = d.retyped(localTyper.context1.asInstanceOf[d.Context],
                     tree1,
                     symbol.alias.enclClass,
                     symbol.enclClass,
                     typeEnv(symbol.alias) ++ typeEnv(tree.symbol))
+          val ValDef(mods1, name1, tpt1, rhs1) = tree2
+          treeCopy.ValDef(tree1, mods1, name1, tpt1, transform(rhs1))
+        
 //          val tree1 =
 //            treeCopy.ValDef(tree, mods, name, tpt,
 //              localTyper.typed(
@@ -1392,6 +1396,16 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
   
   private def forwardCall(pos: util.Position, receiver: Tree, paramss: List[List[ValDef]]): Tree = {
     val argss = paramss map (_ map (x => Ident(x.symbol)))
+    atPos(pos) { (receiver /: argss) (Apply) }
+  }
+
+  private def forwardCtorCall(pos: util.Position, receiver: Tree, paramss: List[List[ValDef]]): Tree = {
+    val argss = paramss map (_ map (x =>
+      if (x.name.endsWith("$sp"))
+        gen.mkAsInstanceOf(Literal(Constant(null)), x.symbol.tpe)
+      else
+        Ident(x.symbol))
+    )
     atPos(pos) { (receiver /: argss) (Apply) }
   }
 

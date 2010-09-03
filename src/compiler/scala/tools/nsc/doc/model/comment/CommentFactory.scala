@@ -6,11 +6,10 @@ package model
 package comment
 
 import reporters.Reporter
-import util.Position
-
 import scala.collection._
 import scala.util.matching.Regex
 import scala.annotation.switch
+import util.{NoPosition, Position}
 
 /** The comment parser transforms raw comment strings into `Comment` objects. Call `parse` to run the parser. Note that
   * the parser is stateless and should only be built once for a given Scaladoc run.
@@ -24,10 +23,10 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
   val global: Global
   import global.reporter
 
-  private val commentCache = mutable.HashMap.empty[(global.Symbol, TemplateImpl), Comment]
+  protected val commentCache = mutable.HashMap.empty[(global.Symbol, TemplateImpl), Comment]
 
   def addCommentBody(sym: global.Symbol, inTpl: => TemplateImpl, docStr: String, docPos: global.Position): global.Symbol = {
-    commentCache += (sym, inTpl) -> parse(docStr, docPos)
+    commentCache += (sym, inTpl) -> parse(docStr, docStr, docPos)
     sym
   }
 
@@ -36,22 +35,99 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
     if (commentCache isDefinedAt key)
       Some(commentCache(key))
     else { // not reached for use-case comments
-      val rawComment = global.expandedDocComment(sym, inTpl.sym).trim
-      if (rawComment == "") None else {
-        val c = parse(rawComment, global.docCommentPos(sym))
-        commentCache += (sym, inTpl) -> c
-        Some(c)
-      }
+      val c = defineComment(sym, inTpl)
+      if (c isDefined) commentCache += (sym, inTpl) -> c.get
+      c
     }
   }
-  
+
+  /** A comment is usualy created by the parser, however for some special cases we have to give
+    * some inTpl comments (parent class for example) to the comment of the symbol
+    * This function manages some of those cases : Param accessor and Primary constructor */
+  def defineComment(sym: global.Symbol, inTpl: => DocTemplateImpl):Option[Comment] =
+    //param accessor case
+    // We just need the @param argument, we put it into the body
+    if( sym.isParamAccessor &&
+        inTpl.comment.isDefined &&
+        inTpl.comment.get.valueParams.isDefinedAt(sym.encodedName)) {
+      val comContent = Some(inTpl.comment.get.valueParams(sym.encodedName))
+      Some(createComment(body0=comContent))
+    }
+
+    // Primary constructor case
+    // We need some content of the class definition : @constructor for the body,
+    // @param and @deprecated, we can add some more if necessary
+    else if (sym.isPrimaryConstructor && inTpl.comment.isDefined ) {
+      val tplComment = inTpl.comment.get
+      // If there is nothing to put into the comment there is no need to create it
+      if(tplComment.constructor.isDefined ||
+        tplComment.throws != Map.empty ||
+        tplComment.valueParams != Map.empty ||
+        tplComment.typeParams != Map.empty ||
+        tplComment.deprecated.isDefined
+        )
+        Some(createComment( body0 = tplComment.constructor,
+                            throws0 = tplComment.throws,
+                            valueParams0 = tplComment.valueParams,
+                            typeParams0 = tplComment.typeParams,
+                            deprecated0 = tplComment.deprecated
+                            ))
+      else None
+    }
+    //other comment cases
+    // parse function will make the comment
+    else {
+      val rawComment = global.expandedDocComment(sym, inTpl.sym).trim
+      if (rawComment != "") {
+        val c = parse(rawComment, global.rawDocComment(sym), global.docCommentPos(sym))
+        Some(c)
+      }
+      else None
+    }
+
+  /* Creates comments with necessary arguments */
+  def createComment(body0:        Option[Body]     = None,
+                    authors0:     List[Body]       = List.empty,
+                    see0:         List[Body]       = List.empty,
+                    result0:      Option[Body]     = None,
+                    throws0:      Map[String,Body] = Map.empty,
+                    valueParams0: Map[String,Body] = Map.empty,
+                    typeParams0:  Map[String,Body] = Map.empty,
+                    version0:     Option[Body]     = None,
+                    since0:       Option[Body]     = None,
+                    todo0:        List[Body]       = List.empty,
+                    deprecated0:  Option[Body]     = None,
+                    note0:        List[Body]       = List.empty,
+                    example0:     List[Body]       = List.empty,
+                    constructor0: Option[Body]     = None,
+                    source0:      Option[String]   = None
+                    ):Comment =
+    new Comment{
+      val body        = if(body0 isDefined) body0.get else Body(Seq.empty)
+      val authors     = authors0
+      val see         = see0
+      val result      = result0
+      val throws      = throws0
+      val valueParams = valueParams0
+      val typeParams  = typeParams0
+      val version     = version0
+      val since       = since0
+      val todo        = todo0
+      val deprecated  = deprecated0
+      val note        = note0
+      val example     = example0
+      val constructor = constructor0
+      val source      = source0
+
+  }
+
   protected val endOfText = '\u0003'
   protected val endOfLine = '\u000A'
-  
+
   /** Something that should not have happened, happened, and Scaladoc should exit. */
   protected def oops(msg: String): Nothing =
     throw FatalError("program logic: " + msg)
-  
+
   /** The body of a line, dropping the (optional) start star-marker, one leading whitespace and all trailing whitespace. */
   protected val CleanCommentLine =
     new Regex("""(?:\s*\*\s?)?(.*)""")
@@ -96,11 +172,11 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
     new Regex("""((<code( [^>]*)?>.*</code>)|(</?(abbr|acronym|address|area|a|bdo|big|blockquote|br|button|b|caption|cite|col|colgroup|dd|del|dfn|em|fieldset|form|hr|img|input|ins|i|kbd|label|legend|link|map|object|optgroup|option|param|pre|q|samp|select|small|span|strong|sub|sup|table|tbody|td|textarea|tfoot|th|thead|tr|tt|var)( [^>]*)?/?>))""")
 
   protected val safeTagMarker = '\u000E'
-  
+
   /** A Scaladoc tag not linked to a symbol. Returns the name of the tag, and the rest of the line. */
   protected val SimpleTag =
     new Regex("""\s*@(\S+)\s+(.*)""")
-  
+
   /** A Scaladoc tag linked to a symbol. Returns the name of the tag, the name of the symbol, and the rest of the
     * line. */
   protected val SymbolTag =
@@ -113,26 +189,27 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
   /** The end of a scaladoc code block */
   protected val CodeBlockEnd =
     new Regex("""(.*)\}\}\}(.*)""")
-  
+
   /** A key used for a tag map. The key is built from the name of the tag and from the linked symbol if the tag has one.
     * Equality on tag keys is structural. */
   protected sealed abstract class TagKey {
     def name: String
   }
-  
+
   protected final case class SimpleTagKey(name: String) extends TagKey
   protected final case class SymbolTagKey(name: String, symbol: String) extends TagKey
-  
+
   /** Parses a raw comment string into a `Comment` object.
-    * @param comment The raw comment string (including start and end markers) to be parsed.
+    * @param comment The expanded comment string (including start and end markers) to be parsed.
+    * @param src     The raw comment source string.
     * @param pos     The position of the comment in source. */
-  protected def parse(comment: String, pos: Position): Comment = {
+  protected def parse(comment: String, src: String, pos: Position): Comment = {
 
     /** The cleaned raw comment as a list of lines. Cleaning removes comment start and end markers, line start markers
       * and unnecessary whitespace. */
-    val cleaned: List[String] = {
+    def clean(comment: String): List[String] = {
       def cleanLine(line: String): String = {
-        //replaceAll removes trailing whitespaces    	
+        //replaceAll removes trailing whitespaces
         line.replaceAll("""\s+$""", "") match {
           case CleanCommentLine(ctl) => ctl
           case tl => tl
@@ -147,7 +224,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
         })
       markedTagComment.lines.toList map (cleanLine(_))
     }
-    
+
     /** Parses a comment (in the form of a list of lines) to a Comment instance, recursively on lines. To do so, it
       * splits the whole comment into main body and tag bodies, then runs the `WikiParser` on each body before creating
       * the comment instance.
@@ -235,22 +312,23 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
             Map.empty[String, Body] ++ pairs
           }
 
-          val com = new Comment {
-            val body        = parseWiki(docBody, pos)
-            val authors     = allTags(SimpleTagKey("author"))
-            val see         = allTags(SimpleTagKey("see"))
-            val result      = oneTag(SimpleTagKey("return"))
-            val throws      = allSymsOneTag(SimpleTagKey("throws"))
-            val valueParams = allSymsOneTag(SimpleTagKey("param"))
-            val typeParams  = allSymsOneTag(SimpleTagKey("tparam"))
-            val version     = oneTag(SimpleTagKey("version"))
-            val since       = oneTag(SimpleTagKey("since"))
-            val todo        = allTags(SimpleTagKey("todo"))
-            val deprecated  = oneTag(SimpleTagKey("deprecated"))
-            val note        = allTags(SimpleTagKey("note"))
-            val example     = allTags(SimpleTagKey("example"))
-            val short       = body.summary getOrElse Text("no summary matey")
-          }
+          val com = createComment (
+            body0        = Some(parseWiki(docBody, pos)),
+            authors0     = allTags(SimpleTagKey("author")),
+            see0         = allTags(SimpleTagKey("see")),
+            result0      = oneTag(SimpleTagKey("return")),
+            throws0      = allSymsOneTag(SimpleTagKey("throws")),
+            valueParams0 = allSymsOneTag(SimpleTagKey("param")),
+            typeParams0  = allSymsOneTag(SimpleTagKey("tparam")),
+            version0     = oneTag(SimpleTagKey("version")),
+            since0       = oneTag(SimpleTagKey("since")),
+            todo0        = allTags(SimpleTagKey("todo")),
+            deprecated0  = oneTag(SimpleTagKey("deprecated")),
+            note0        = allTags(SimpleTagKey("note")),
+            example0     = allTags(SimpleTagKey("example")),
+            constructor0 = oneTag(SimpleTagKey("constructor")),
+            source0      = Some(clean(src).mkString("\n"))
+          )
 
           for ((key, _) <- bodyTags)
             reporter.warning(pos, "Tag '@" + key.name + "' is not recognised")
@@ -260,10 +338,10 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
     }
 
-    parse0("", Map.empty, None, cleaned, false)
+    parse0("", Map.empty, None, clean(comment), false)
 
   }
-  
+
   /** Parses a string containing wiki syntax into a `Comment` object. Note that the string is assumed to be clean:
     *  - Removed Scaladoc start and end markers.
     *  - Removed start-of-line star and one whitespace afterwards (if present).
@@ -271,7 +349,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
     *  - Only `endOfLine` is used to mark line endings. */
   def parseWiki(string: String, pos: Position): Body =
     new WikiParser(string.toArray, pos).document()
-  
+
   /** TODO
     *
     * @author Ingo Maier
@@ -280,7 +358,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
   protected final class WikiParser(val buffer: Array[Char], pos: Position) extends CharReader(buffer) { wiki =>
 
     var summaryParsed = false
-      
+
     def document(): Body = {
       nextChar()
       val blocks = new mutable.ListBuffer[Block]
@@ -288,9 +366,9 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
         blocks += block()
       Body(blocks.toList)
     }
-    
+
     /* BLOCKS */
-    
+
     /** {{{ block ::= code | title | hrule | para }}} */
     def block(): Block = {
       if (checkSkipInitWhitespace("{{{"))
@@ -359,7 +437,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       listLevel(indent, style)
 
     }
-    
+
     def code(): Block = {
       jumpWhitespace()
       jump("{{{")
@@ -371,7 +449,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       blockEnded("code block")
       Code(getRead)
     }
-    
+
     /** {{{ title ::= ('=' inline '=' | "==" inline "==" | ...) '\n' }}} */
     def title(): Block = {
       jumpWhitespace()
@@ -383,7 +461,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       blockEnded("heading")
       Title(text, inLevel)
     }
-    
+
     /** {{{ hrule ::= "----" { '-' } '\n' }}} */
     def hrule(): Block = {
       jumpWhitespace()
@@ -391,7 +469,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       blockEnded("horizontal rule")
       HorizontalRule()
     }
-    
+
     /** {{{ para ::= inline '\n' }}} */
     def para(): Block = {
       val p =
@@ -408,9 +486,9 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
         nextChar()
       p
     }
-    
+
     /* INLINES */
-    
+
     def inline(isInlineEnd: => Boolean): Inline = {
 
       def inline0(): Inline = {
@@ -458,42 +536,42 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       var read = getRead
       HtmlTag(read)
     }
-    
+
     def bold(): Inline = {
       jump("'''")
       val i = inline(check("'''"))
       jump("'''")
       Bold(i)
     }
-    
+
     def italic(): Inline = {
       jump("''")
       val i = inline(check("''"))
       jump("''")
       Italic(i)
     }
-    
+
     def monospace(): Inline = {
       jump("`")
       readUntil { char == '`' }
       jump("`")
       Monospace(getRead())
     }
-    
+
     def underline(): Inline = {
       jump("__")
       val i = inline(check("__"))
       jump("__")
       Underline(i)
     }
-    
+
     def superscript(): Inline = {
       jump("^")
       val i = inline(check("^"))
       jump("^")
       Superscript(i)
     }
-    
+
     def subscript(): Inline = {
       jump(",,")
       val i = inline(check(",,"))
@@ -517,7 +595,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       case None =>
         Text(query)
     }
-    
+
     def link(): Inline = {
       val SchemeUri = new Regex("""([^:]+:.*)""")
       jump("[[")
@@ -543,9 +621,9 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
 
     }
-    
+
     /* UTILITY */
-    
+
     /** {{{ eol ::= { whitespace } '\n' }}} */
     def blockEnded(blockType: String): Unit = {
       if (char != endOfLine && char != endOfText) {
@@ -555,7 +633,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       while (char == endOfLine)
         nextChar()
     }
-    
+
     def checkParaEnded(): Boolean = {
       (char == endOfText) ||
       ((char == endOfLine) && {
@@ -577,14 +655,14 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
 
     def reportError(pos: Position, message: String): Unit =
       reporter.warning(pos, message)
-    
+
   }
-    
+
   protected sealed class CharReader(buffer: Array[Char]) { reader =>
-  
+
     var char: Char = _
     var offset: Int = 0
-    
+
     final def nextChar(): Unit = {
       if (offset >= buffer.length)
         char = endOfText
@@ -593,16 +671,16 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
         offset += 1
       }
     }
-    
+
     implicit def strintToChars(s: String): Array[Char] = s.toArray
-    
+
     def store(body: => Unit): String = {
       val pre = offset
       body
       val post = offset
       buffer.toArray.slice(pre, post).toString
     }
-    
+
     final def check(chars: Array[Char]): Boolean = {
       val poff = offset
       val pc = char
@@ -611,7 +689,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       char = pc
       ok
     }
-    
+
     def checkSkipInitWhitespace(chars: Array[Char]): Boolean = {
       val poff = offset
       val pc = char
@@ -626,7 +704,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       char = pc
       ok
     }
-    
+
     def countWhitespace: Int = {
       var count = 0
       val poff = offset
@@ -639,7 +717,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       char = pc
       count
     }
-    
+
     /* JUMPERS */
 
     /** jumps a character and consumes it
@@ -651,7 +729,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       else false
     }
-    
+
     /** jumps all the characters in chars, consuming them in the process.
       * @return true only if the correct characters have been jumped */
     final def jump(chars: Array[Char]): Boolean = {
@@ -673,7 +751,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       ok
     }
-    
+
     final def repeatJump(chars: Array[Char], max: Int): Int = {
       var count = 0
       var more = true
@@ -685,7 +763,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-    
+
     final def repeatJump(chars: Array[Char]): Int = {
       var count = 0
       var more = true
@@ -697,7 +775,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-  
+
     final def jumpUntil(ch: Char): Int = {
       var count = 0
       while(char != ch && char != endOfText) {
@@ -706,7 +784,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-  
+
     final def jumpUntil(chars: Array[Char]): Int = {
       assert(chars.length > 0)
       var count = 0
@@ -720,7 +798,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-  
+
     final def jumpUntil(pred: => Boolean): Int = {
       var count = 0
       while (!pred && char != endOfText) {
@@ -729,19 +807,19 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-    
+
     def jumpWhitespace() = jumpUntil(!isWhitespace(char))
-    
+
     /* READERS */
-    
+
     private val readBuilder = new mutable.StringBuilder
-  
+
     final def getRead(): String = {
       val bld = readBuilder.toString
       readBuilder.clear()
       if (bld.length < 6) bld.intern else bld
     }
-  
+
     final def readUntil(ch: Char): Int = {
       var count = 0
       while(char != ch && char != endOfText) {
@@ -750,7 +828,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-  
+
     final def readUntil(chars: Array[Char]): Int = {
       assert(chars.length > 0)
       var count = 0
@@ -765,7 +843,7 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-  
+
     final def readUntil(pred: => Boolean): Int = {
       var count = 0
       while (!pred && char != endOfText) {
@@ -774,14 +852,14 @@ trait CommentFactory { thisFactory: ModelFactory with CommentFactory =>
       }
       count
     }
-    
+
     /* CHARS CLASSES */
-    
-    def isWhitespace(c: Char) = (c: @switch) match { 
+
+    def isWhitespace(c: Char) = (c: @switch) match {
       case ' ' | '\t' => true
       case _ => false
     }
-    
+
   }
-  
+
 }

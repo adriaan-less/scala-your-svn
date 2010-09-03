@@ -17,7 +17,7 @@ trait ContextTrees { self: Global =>
    *  3. The `pos` field of a context is the same as `context.tree.pos`, unless that
    *     position is transparent. In that case, `pos` equals the position of
    *     one of the solid descendants of `context.tree`.
-   *  4. Children of a context have non-overlapping increasining positions.
+   *  4. Children of a context have non-overlapping increasing positions.
    *  5. No context in the tree has a transparent position. 
    */
   class ContextTree(val pos: Position, val context: Context, val children: ArrayBuffer[ContextTree]) {
@@ -46,7 +46,7 @@ trait ContextTrees { self: Global =>
     if (contexts.isEmpty) None
     else {
       val hi = contexts.length - 1
-      if ((contexts(hi).pos precedes pos) || (pos precedes contexts(0).pos)) None
+      if ((contexts(hi).pos properlyPrecedes pos) || (pos properlyPrecedes contexts(0).pos)) None
       else {
         def loop(lo: Int, hi: Int): Option[ContextTree] = {
           val mid = (lo + hi) / 2
