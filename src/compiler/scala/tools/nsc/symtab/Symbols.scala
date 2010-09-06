@@ -799,12 +799,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
               while (itr.pid != NoPhase.id && itr.pid < current.id) {
                 phase = phaseWithId(itr.pid)
                 val info1 = itr.transform(this, infos.info)
-                if (info1 ne infos.info) {
-                  (info1, infos.info) match {
-                    case (PolyType(tps1, res1), PolyType(tps2, res2)) if tps1 != tps2 => println("TH: "+(tps1, tps2, res1, "\n"+ res2)) // if res1 contains a type param in tps2, that's probably a problem
-                    itr.transform(this, infos.info)
-                    case _ =>
-                  }
+                if (info1 ne infos.info) { // only remember if transformed is different from current one
                   infos = TypeHistory(currentPeriod + 1, info1, infos)
                   this.infos = infos
                 }

@@ -146,6 +146,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
       tp match {
         case ConstantType(_) =>
           tp
+        case PolyType(tparams, restp) =>
+          PolyType(tparams, this(restp)) // the info's on the tparams will be updated in transformInfo
         case TypeBounds(lo, hi) =>
           TypeBounds(erasedTypeRef(NothingClass), apply(hi))
         case st: SubType =>
@@ -1067,7 +1069,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
               tree1 setType erasure(tree1.tpe)
             case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
               val result = super.transform(tree1) setType null
-              tpt.tpe = erasure(tree1.symbol.tpe).resultType
+              tpt.tpe = erasure(tree1.symbol.tpe).finalResultType
               result
             case _ =>
               super.transform(tree1) setType null
