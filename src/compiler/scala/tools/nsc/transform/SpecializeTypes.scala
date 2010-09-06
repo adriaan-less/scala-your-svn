@@ -29,7 +29,8 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
   
   type TypeEnv = immutable.Map[Symbol, Type]
   def emptyEnv: TypeEnv = immutable.ListMap.empty[Symbol, Type]
-  
+
+  import definitions.SpecializedClass
   object TypeEnv {
     /** Return a new type environment binding specialized type parameters of sym to
      *  the given args. Expects the lists to have the same length.
@@ -102,9 +103,6 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     override def toString: String =
       "specialized overload " + sym + " in " + env
   } 
-    
-  /** The annotation used to mark specialized type parameters. */
-  lazy val SpecializedClass = definitions.getClass("scala.specialized")
     
   protected def newTransformer(unit: CompilationUnit): Transformer =
     new SpecializationTransformer(unit)
@@ -807,6 +805,9 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     case (RefinedType(_, _), RefinedType(_, _)) => env
     case (AnnotatedType(_, tp1, _), tp2) => unify(tp2, tp1, env)
     case (ExistentialType(_, res1), _) => unify(tp2, res1, env)
+    case _ =>
+      log("don't know how to unify %s [%s] with %s [%s]".format(tp1, tp1.getClass, tp2, tp2.getClass))
+      env
   }
   }
   
@@ -871,10 +872,11 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     } else tpe)
   }
   
-  /** Type transformation.
+  /** Type transformation. It is applied to all symbols, compiled or loaded.
+   *  If it is a 'no-specialization' run, it is applied only to loaded symbols.  
    */
   override def transformInfo(sym: Symbol, tpe: Type): Type = {
-    val res = tpe match {
+    val res = if (!settings.nospecialization.value || !currentRun.compiles(sym)) tpe match {
       case PolyType(targs, ClassInfoType(base, decls, clazz))
               if clazz != definitions.RepeatedParamClass
               && clazz != definitions.JavaRepeatedParamClass
@@ -898,7 +900,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         
       case _ =>
         tpe
-    }
+    } else tpe
     res
 
   }
@@ -1088,7 +1090,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
 
         case Select(qual, name) =>
           if (settings.debug.value)
-            log("looking at Select: " + tree + " sym: " + symbol + ": " + symbol.info + "[tree.tpe: " + tree.tpe + "]")
+            log("[%s] looking at Select: %s sym: %s: %s [tree.tpe: %s]".format(tree.pos.line, tree, symbol, symbol.info, tree.tpe))
 
           if (!specializedTypeVars(symbol.info).isEmpty && name != nme.CONSTRUCTOR) {
             val env = unify(symbol.tpe, tree.tpe, emptyEnv)
@@ -1145,7 +1147,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
           if (symbol.isConstructor) {
             val t = atOwner(symbol) {
               val superRef: Tree = Select(Super(nme.EMPTY.toTypeName, nme.EMPTY.toTypeName), nme.CONSTRUCTOR)
-              forwardCtorCall(tree.pos, superRef, vparamss)
+              forwardCtorCall(tree.pos, superRef, vparamss, symbol.owner)
             }
             if (symbol.isPrimaryConstructor) localTyper typed {
                 atPos(symbol.pos)(treeCopy.DefDef(tree, mods, name, tparams, vparamss, tpt, Block(List(t), Literal(()))))
@@ -1399,9 +1401,9 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     atPos(pos) { (receiver /: argss) (Apply) }
   }
 
-  private def forwardCtorCall(pos: util.Position, receiver: Tree, paramss: List[List[ValDef]]): Tree = {
+  private def forwardCtorCall(pos: util.Position, receiver: Tree, paramss: List[List[ValDef]], clazz: Symbol): Tree = {
     val argss = paramss map (_ map (x =>
-      if (x.name.endsWith("$sp"))
+      if (x.name.endsWith("$sp") && clazz.info.member(nme.originalName(x.name)).isPublic)
         gen.mkAsInstanceOf(Literal(Constant(null)), x.symbol.tpe)
       else
         Ident(x.symbol))
@@ -1460,7 +1462,8 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
   class SpecializationTransformer(unit: CompilationUnit) extends Transformer {
     log("specializing " + unit)
     override def transform(tree: Tree) =
-      atPhase(phase.next) {
+      if (settings.nospecialization.value) tree
+      else atPhase(phase.next) {
         val res = specializeCalls(unit).transform(tree)
         res
       }
