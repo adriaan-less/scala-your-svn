@@ -1795,6 +1795,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     private var tpeCache: Type = _
     private var tpePeriod = NoPeriod
 
+    private var referenced: Symbol = NoSymbol
     override def isType = true
     override def isNonClassType = true
     override def isAbstractType = isDeferred
@@ -1876,6 +1877,12 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     
     def cloneSymbolImpl(owner: Symbol): Symbol =
       new TypeSymbol(owner, pos, name)
+
+    def newOuterTparam(owner: Symbol): TypeSymbol = {
+       val outer = cloneSymbol(owner)
+       outer.asInstanceOf[TypeSymbol].referenced = this
+       outer
+    }
 
     incCounter(typeSymbolCount)
   }

@@ -37,6 +37,7 @@ abstract class Phase(val prev: Phase) {
   def erasedTypes: Boolean = false
   def flatClasses: Boolean = false
   def keepsTypeParams = true
+  def substInClassInfoTypes: Boolean = false
   def run: Unit
 
   override def toString() = name

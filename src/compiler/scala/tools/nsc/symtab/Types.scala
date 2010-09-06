@@ -2901,14 +2901,14 @@ A type's typeSymbol should never be inspected directly.
         else if (annots1.isEmpty) atp1
         else AnnotatedType(annots1, atp1, selfsym)
 
-//      case ClassInfoType(parents, decls, clazz) => // since erasure now affects polytypes, which may be wrapped around classinfotypes, which thus need their symbols subst'ed
-//        if (clazz.isPackageClass) tp
-//        else {
-//          val parents1 = parents mapConserve (this)
-//          val decls1 = mapOver(decls)
-//          if ((parents1 eq parents) && (decls1 eq decls)) tp
-//          else ClassInfoType(parents1, decls1, clazz)
-//        }
+      case ClassInfoType(parents, decls, clazz) if phase.substInClassInfoTypes => // needed for ExplicitOuterTparams
+        if (clazz.isPackageClass) tp
+        else {
+          val parents1 = parents mapConserve (this)
+          val decls1 = mapOver(decls)
+          if ((parents1 eq parents) && (decls1 eq decls)) tp
+          else ClassInfoType(parents1, decls1, clazz)
+        }
 
       /*
       case ErrorType => tp

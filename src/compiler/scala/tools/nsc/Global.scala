@@ -349,13 +349,6 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     val runsRightAfter = None
   } with TailCalls
 
-  // phaseName = "explicitouter"
-  object explicitOuter extends {
-    val global: Global.this.type = Global.this
-    val runsAfter = List[String]("tailcalls")
-    val runsRightAfter = None
-  } with ExplicitOuter
-                                                             
   // phaseName = "specialize"
   object specializeTypes extends {
     val global: Global.this.type = Global.this
@@ -363,11 +356,25 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     val runsRightAfter = Some("tailcalls")
   } with SpecializeTypes 
 
+  // phaseName = "explicitouter"
+  object explicitOuter extends {
+    val global: Global.this.type = Global.this
+    val runsAfter = List[String]("tailcalls")
+    val runsRightAfter = None
+  } with ExplicitOuter
+
+  // phaseName = "explicitoutertparams"
+  object explicitOuterTparams extends {
+    val global: Global.this.type = Global.this
+    val runsAfter = List[String]("explicitouter")
+    val runsRightAfter = None
+  } with ExplicitOuterTparams
+
   // phaseName = "erasure"
   object erasure extends {
     val global: Global.this.type = Global.this
-    val runsAfter = List[String]("explicitouter")
-    val runsRightAfter = Some("explicitouter")
+    val runsAfter = List[String]("explicitoutertparams")
+    val runsRightAfter = Some("explicitoutertparams")
   } with Erasure
    
   // phaseName = "lazyvals"
