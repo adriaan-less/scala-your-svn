@@ -373,7 +373,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   // phaseName = "erasure"
   object erasure extends {
     val global: Global.this.type = Global.this
-    val runsAfter = List[String]("explicitoutertparams")
+    val runsAfter = List[String]("")
     val runsRightAfter = Some("explicitoutertparams")
   } with Erasure
    
@@ -531,6 +531,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     phasesSet += tailCalls                  // replace tail calls by jumps
     phasesSet += specializeTypes
     phasesSet += explicitOuter              // replace C.this by explicit outer pointers, eliminate pattern matching
+    phasesSet += explicitOuterTparams       // add outer tparams so that they are available after erasure and flatten
     phasesSet += erasure                    // erase types, add interfaces for traits
     phasesSet += lazyVals
     phasesSet += lambdaLift                 // move nested functions to top level
