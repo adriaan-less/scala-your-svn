@@ -109,38 +109,50 @@ abstract class ExplicitOuterTparams extends InfoTransform
     private def targTrees(tree: Tree): List[Tree] = {
       outerTparamRefs(tree.symbol).map(tparam => TypeTree(tparam.tpeHK))
     }
-    private def substToOuterClones(tree: Tree, doSkolems: Boolean = false): Tree = {
 
+    private def tdefTrees(tree: Tree): List[TypeDef] = {
+      outerTparamRefs(tree.symbol).map(tparam => TypeTree(tparam.tpeHK))
     }
-    private def substToOuterClones(trees: List[Tree], doSkolems: Boolean = false): List[Tree] = trees mapConserve (substToOuterClones(_, doSkolems))
+
     /** The main transformation method */
     override def transform(tree: Tree): Tree = tree match {
       case DefDef(mods, name, tparams, vparamss, tpt, rhs) if affectedByFlatten(tree.symbol) =>
         // TODO: (re)skolemization
+        val oldParams = outerTparamRefs(tree.symbol) drop tparams.length
         val newParams = (atPhase(phase.next) { tree.symbol.info.typeParams }) drop tparams.length
         println("new tparams for "+ name +": "+ newParams)
-        super.transform(treeCopy.DefDef(tree, mods, name, substToOuterClones(tparams, doSkolems = true) ++ tdefTrees(newParams), vparamss map (substToOuterClones(_, doSkolems = true)), substToOuterClones(tpt, doSkolems = true), substToOuterClones(rhs, doSkolems = true)))
+        transformSubst(oldParams, newParams)(treeCopy.DefDef(tree, mods, name, tparams ++ tdefTrees(newParams), vparamss, tpt,rhs))
       case ClassDef(mods, name, tparams, impl) if affectedByFlatten(tree.symbol) =>
+        val oldParams = outerTparamRefs(tree.symbol) drop tparams.length
         val newParams = (atPhase(phase.next) { tree.symbol.info.typeParams }) drop tparams.length
         println("new tparams for class "+ name +": "+ newParams)
-        super.transform(treeCopy.ClassDef(tree, mods, name, substToOuterClones(tparams) ++ tdefTrees(newParams), substToOuterClones(impl)))
+        transformSubst(oldParams, newParams)(treeCopy.ClassDef(tree, mods, name, tparams ++ tdefTrees(newParams), impl))
       case ModuleDef(mods, name, impl) if affectedByFlatten(tree.symbol) =>
-        val newParams = (atPhase(phase.next) { tree.symbol.info.typeParams }) drop tparams.length
-        println("new tparams for module "+ name +": "+ newParams)
-        super.transform(treeCopy.ModuleDef(tree, mods, name, /*tdefTrees(newParams),*/ impl))  // TODO: tparams for moduledefs?
+        val newParams = (atPhase(phase.next) { tree.symbol.info.typeParams })
+        println("new tparams for module!? "+ name +": "+ newParams)
+        transformSubst(oldParams, newParams)(treeCopy.ModuleDef(tree, mods, name, /*tdefTrees(newParams),*/ impl))  // TODO: tparams for moduledefs?
       // add further type param refs
-      case TypeApply(fun, args) if affectedByFlatten(fun.symbol) && outerTparamRefs(fun.symbol).nonEmpty =>
-        super.transform(treeCopy.TypeApply(tree, fun, args ++ targTrees(fun)))
-      // add type param refs when mono became poly
-      case Select(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
-        super.transform(TypeApply(tree, targTrees(tree)))
-      case SelectFromTypeTree(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
-        super.transform(TypeApply(tree, targTrees(tree)))
-      case _ => super.transform(tree)
+      case _ => transformSubst(List(), List())(tree)
 //        if (res.tpe ne null) res setType transformInfo(currentOwner, res.tpe)
 //        res
     }
 
+    def transformSubst(from: List[Symbol], to: List[Symbol])(tree: Tree): Tree = {
+
+    }
+    
+    def doTransform(tree: Tree): Tree =
+      tree match {
+        case TypeApply(fun, args) if affectedByFlatten(fun.symbol) && outerTparamRefs(fun.symbol).nonEmpty =>
+          super.transform(treeCopy.TypeApply(tree, fun, args ++ targTrees(fun)))
+        // add type param refs when mono became poly
+        case Select(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
+          super.transform(TypeApply(tree, targTrees(tree)))
+        case SelectFromTypeTree(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
+          super.transform(TypeApply(tree, targTrees(tree)))
+        case _ => super.transform(subst(from, to)(tree))
+  //        if (res.tpe ne null) res setType transformInfo(currentOwner, res.tpe)
+      }
     /** The transformation method for whole compilation units */
 //    override def transformUnit(unit: CompilationUnit) {
 ////       cunit = unit
