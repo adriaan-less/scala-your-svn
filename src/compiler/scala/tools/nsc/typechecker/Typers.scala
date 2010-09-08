@@ -1051,13 +1051,20 @@ trait Typers { self: Analyzer =>
       adapt(tree, mode, pt)
     }
 
+    def isViewApplication(tree: Tree): Boolean = tree match {
+      case Apply(fun, args) =>
+        tree.isInstanceOf[ApplyImplicitView] ||
+        (tree.isInstanceOf[ApplyToImplicitArgs] && isViewApplication(fun))
+      case _ => false
+    }
+    
     def adaptToMember(qual: Tree, searchTemplate: Type): Tree = {
       var qtpe = qual.tpe.widen
       if (qual.isTerm && 
           ((qual.symbol eq null) || !qual.symbol.isTerm || qual.symbol.isValue) &&
           phase.id <= currentRun.typerPhase.id && !qtpe.isError &&
           qtpe.typeSymbol != NullClass && qtpe.typeSymbol != NothingClass && qtpe != WildcardType && 
-          !qual.isInstanceOf[ApplyImplicitView] && // don't chain views
+          !isViewApplication(qual) && // don't chain views
           context.implicitsEnabled) { // don't try to adapt a top-level type that's the subject of an implicit search
                                       // this happens because, if isView, typedImplicit tries to apply the "current" implicit value to 
                                       // a value that needs to be coerced, so we check whether the implicit value has an `apply` method
