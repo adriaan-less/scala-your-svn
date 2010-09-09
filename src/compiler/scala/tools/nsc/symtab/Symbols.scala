@@ -440,14 +440,14 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
                                     isPackageObjectClass && owner.isScalaPackageClass // not printed as a prefix
     
     /** Is symbol a monomorphic type?
-     *  assumption: if a type starts out as monomorphic, it will not acquire 
+     *  old assumption: if a type starts out as monomorphic, it will not acquire -- this is no longer true due to explicitoutertparams
      *  type parameters in later phases.
      */
     final def isMonomorphicType = 
       isType && {
         var is = infos
         (is eq null) || {
-          while (is.prev ne null) { is = is.prev }
+          while (!(is.info.isComplete || (is.prev eq null))) { is = is.prev }
           is.info.isComplete && is.info.typeParams.isEmpty
         }
       }

@@ -69,11 +69,19 @@ abstract class ExplicitOuterTparams extends InfoTransform
     (if(sym.isMethod) sym.owner.ownerChain.takeWhile(!_.isClass) // methods will not be lifted out of their enclosing class, but will leave their outer methods
      else sym.owner.ownerChain) flatMap (_.typeParams)
 
-  def affectedByFlatten(sym: Symbol): Boolean =
+  def affectedByFlatten(sym: Symbol): Boolean = {
     sym.owner != NoSymbol &&
       (  sym.isNestedClass
       || (sym.isMethod && isNestedInMethod(sym))) // method nested in method -- if directly defined in class, it will not get lifted out
+  }
 
+  object transformType extends TypeMap {
+    def apply(tp: Type): Type = tp match {
+      case TypeRef(pre, sym, args) if affectedByFlatten(sym) =>
+        TypeRef(pre, sym, args ++ outerTparamRefs(sym).map(p => pre.memberType(p)))
+      case _ => mapOver(tp)
+    }
+  }
 //  def isPotentiallyPolymorphicClass(sym: Symbol): Boolean = sym.isClass && !(sym.hasFlag(MODULE) || sym.hasFlag(PACKAGE))
   def transformInfo(sym: Symbol, tp: Type): Type = if(affectedByFlatten(sym)) {
     val outerRefs = outerTparamRefs(sym)
@@ -110,8 +118,8 @@ abstract class ExplicitOuterTparams extends InfoTransform
       outerTparamRefs(tree.symbol).map(tparam => TypeTree(tparam.tpeHK))
     }
 
-    private def tdefTrees(tree: Tree): List[TypeDef] = {
-      outerTparamRefs(tree.symbol).map(tparam => TypeTree(tparam.tpeHK))
+    private def tdefTrees(tparams: List[Symbol]): List[TypeDef] = {
+      tparams.map(TypeDef(_))
     }
 
     /** The main transformation method */
@@ -130,27 +138,35 @@ abstract class ExplicitOuterTparams extends InfoTransform
       case ModuleDef(mods, name, impl) if affectedByFlatten(tree.symbol) =>
         val newParams = (atPhase(phase.next) { tree.symbol.info.typeParams })
         println("new tparams for module!? "+ name +": "+ newParams)
-        transformSubst(oldParams, newParams)(treeCopy.ModuleDef(tree, mods, name, /*tdefTrees(newParams),*/ impl))  // TODO: tparams for moduledefs?
+        postTransform(treeCopy.ModuleDef(tree, mods, name, /*tdefTrees(newParams),*/ impl))  // TODO: tparams for moduledefs?
       // add further type param refs
-      case _ => transformSubst(List(), List())(tree)
+      case _ => postTransform(tree)
 //        if (res.tpe ne null) res setType transformInfo(currentOwner, res.tpe)
 //        res
     }
 
     def transformSubst(from: List[Symbol], to: List[Symbol])(tree: Tree): Tree = {
-
+      val post = postTransform(tree) // first add
+      println("post: "+ post)
+      val substed = atPhase(phase.next) { (new TreeSymSubstituter(from, to)) transform post } // so that sym.info has the right number of type parameters
+      println("substed: "+ (from, to, substed))
+      substed
     }
     
-    def doTransform(tree: Tree): Tree =
+    def postTransform(tree: Tree): Tree =
       tree match {
         case TypeApply(fun, args) if affectedByFlatten(fun.symbol) && outerTparamRefs(fun.symbol).nonEmpty =>
+          assert(false, tree +" should be typetree by now")
           super.transform(treeCopy.TypeApply(tree, fun, args ++ targTrees(fun)))
         // add type param refs when mono became poly
         case Select(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
+          assert(false, tree +" should be typetree by now")
           super.transform(TypeApply(tree, targTrees(tree)))
         case SelectFromTypeTree(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
+          assert(false, tree +" should be typetree by now")
           super.transform(TypeApply(tree, targTrees(tree)))
-        case _ => super.transform(subst(from, to)(tree))
+        case _ =>
+          super.transform(if(tree.tpe eq null) tree else (tree setType transformType(tree.tpe)))
   //        if (res.tpe ne null) res setType transformInfo(currentOwner, res.tpe)
       }
     /** The transformation method for whole compilation units */
