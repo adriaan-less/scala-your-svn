@@ -30,7 +30,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
   def newTransformer(unit: CompilationUnit): Transformer =
     new ErasureTransformer(unit)
 
-  override def keepsTypeParams = true
+  override val keepsTypeParams = true
 
 // -------- erasure on types --------------------------------------------------------
 

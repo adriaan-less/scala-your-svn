@@ -52,7 +52,8 @@ abstract class ExplicitOuterTparams extends InfoTransform
 
   override def newPhase(prev: scala.tools.nsc.Phase): StdPhase = new Phase(prev)
   class Phase(prev: scala.tools.nsc.Phase) extends super.Phase(prev) {
-    override def substInClassInfoTypes = true      
+//    override val keepsTypeParams = false // leads to cyclic errors
+    override def substInClassInfoTypes = true
   }
 
   /** This class does not change linearization */
@@ -75,19 +76,25 @@ abstract class ExplicitOuterTparams extends InfoTransform
       || (sym.isMethod && isNestedInMethod(sym))) // method nested in method -- if directly defined in class, it will not get lifted out
   }
 
+  // add references to outer type params -- need to subst them to cloned ones in scope of the inner class
+  //  cloning is done in addOuterTparams
+  //  substing is done by the tree transformer
   object transformType extends TypeMap {
     def apply(tp: Type): Type = tp match {
       case TypeRef(pre, sym, args) if affectedByFlatten(sym) =>
-        TypeRef(pre, sym, args ++ outerTparamRefs(sym).map(p => pre.memberType(p)))
+        typeRef(this(pre), sym, mapOverArgs(args, sym.typeParams) ++ outerTparamRefs(sym).map(p => pre.memberType(p))) // TODO: p.tpeHK ?
+      case ThisType(sym) if affectedByFlatten(sym) => // must expand so we get a chance to add type arguments, erasure would do the expansion in any case 
+        this(tp.underlying)
       case _ => mapOver(tp)
     }
   }
-//  def isPotentiallyPolymorphicClass(sym: Symbol): Boolean = sym.isClass && !(sym.hasFlag(MODULE) || sym.hasFlag(PACKAGE))
+
+  //  def isPotentiallyPolymorphicClass(sym: Symbol): Boolean = sym.isClass && !(sym.hasFlag(MODULE) || sym.hasFlag(PACKAGE))
   def transformInfo(sym: Symbol, tp: Type): Type = if(affectedByFlatten(sym)) {
     val outerRefs = outerTparamRefs(sym)
     if(outerRefs nonEmpty) addOuterTParams(sym, outerRefs)(tp)
-    else tp // no need to add outer tparams if no outer is polymorphic
-  } else tp // not affected by the later flatten phase
+    else transformType(tp) // no need to add outer tparams if no outer is polymorphic, but vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  } else transformType(tp) // not affected by the later flatten phase, but its type may still refer to a symbol that is affected
 
   def addOuterTParams(sym: Symbol, outerRefs: List[Symbol])(tp: Type) = {
     val outers = outerRefs map (_.cloneSymbol(sym))
@@ -145,29 +152,71 @@ abstract class ExplicitOuterTparams extends InfoTransform
 //        res
     }
 
+    object expandThisType extends TypeMap {
+      def apply(tp: Type): Type = tp match {
+        case ThisType(sym) if !sym.isPackageClass =>
+          mapOver(tp.underlying)
+        // since ThisTypes are erased to the thisType of the symbol
+        // which only then contains references to type params of outers
+        // do erasure here so we can subst type params -- TODO: are there other cases like this?
+        case _ => mapOver(tp)
+      }
+    }
+
+    // we're now in scope of the type params to, which replace type params in from, so subst them away
+    class TreeTypeSymSubstituter(val from: List[Symbol], val to: List[Symbol]) extends Traverser {
+      val symSubst = new SubstSymMap(from, to)
+      def subst(tp: Type): Type = symSubst(expandThisType(tp))
+      override def traverse(tree: Tree) {
+        if (tree.tpe ne null) tree.tpe = subst(tree.tpe)
+        if (tree.isDef && !affectedByFlatten(tree.symbol)) { // those affected directly will have their info transformed, here we expand so that we see the type parameters that we need to rebind the the cloned outers
+          // here, we clean up and reroute references in other symbols from outer type params to their newly introduced clones in the inner class
+          val sym = tree.symbol
+          val info1 = subst(sym.info)
+          if (info1 ne sym.info) sym.setInfo(info1)
+        }
+        super.traverse(tree)
+      }
+      override def apply[T <: Tree](tree: T): T = assert(false, "no need").asInstanceOf[T]
+      override def toString() = "TreeTypeSymSubstituter("+from+","+to+")"
+    }
+
+    object treeTypePrinter extends Traverser {
+      override def traverse(tree: Tree) {
+        if ((tree.tpe ne null) && (tree.tpe ne NoType)) println(tree +" : "+ tree.tpe)
+        super.traverse(tree)
+      }
+    }
     def transformSubst(from: List[Symbol], to: List[Symbol])(tree: Tree): Tree = {
-      val post = postTransform(tree) // first add
-      println("post: "+ post)
-      val substed = atPhase(phase.next) { (new TreeSymSubstituter(from, to)) transform post } // so that sym.info has the right number of type parameters
-      println("substed: "+ (from, to, substed))
-      substed
+      val post = postTransform(tree) // first add type arguments
+      atPhase(phase.next) { // so that sym.info has the right number of type parameters
+        println("post: "+ post)
+        (new TreeTypeSymSubstituter(from, to)) traverse post
+        println("substed: "+ (from, to, post))
+        treeTypePrinter(post)
+        post
+      }
     }
     
     def postTransform(tree: Tree): Tree =
       tree match {
         case TypeApply(fun, args) if affectedByFlatten(fun.symbol) && outerTparamRefs(fun.symbol).nonEmpty =>
-          assert(false, tree +" should be typetree by now")
+          assert(!tree.isType, tree +" isType -- should be typetree by now")
           super.transform(treeCopy.TypeApply(tree, fun, args ++ targTrees(fun)))
         // add type param refs when mono became poly
         case Select(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
-          assert(false, tree +" should be typetree by now")
+          assert(!tree.isType, tree +" isType -- should be typetree by now")
           super.transform(TypeApply(tree, targTrees(tree)))
-        case SelectFromTypeTree(qual, name) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
-          assert(false, tree +" should be typetree by now")
-          super.transform(TypeApply(tree, targTrees(tree)))
-        case _ =>
-          super.transform(if(tree.tpe eq null) tree else (tree setType transformType(tree.tpe)))
-  //        if (res.tpe ne null) res setType transformInfo(currentOwner, res.tpe)
+//        case SelectFromTypeTree(qual, name) // eliminated by uncurry
+//        case This(_) if affectedByFlatten(tree.symbol) && outerTparamRefs(tree.symbol).nonEmpty =>
+//          val t = if(tree.tpe eq null) tree else (tree setType transformType(expandThisType(tree.tpe)))
+//          println("this: "+ (tree.symbol, tree.tpe, t.tpe))
+//          super.transform(t)
+        case _ => // includes TypeTree, what becomes of TypeApply/Select involving types after uncurry
+          val oldTp = tree.tpe
+          if(tree.tpe ne null) tree setType transformType(tree.tpe)
+          println("xf: "+ tree +" : "+ oldTp +" --> "+ tree.tpe)
+          super.transform(tree)
       }
     /** The transformation method for whole compilation units */
 //    override def transformUnit(unit: CompilationUnit) {
