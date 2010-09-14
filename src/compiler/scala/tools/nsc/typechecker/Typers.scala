@@ -185,6 +185,15 @@ trait Typers { self: Analyzer =>
         def mkNamedArg(argTree: Tree, paramName: Name) = atPos(argTree.pos)(new AssignOrNamedArg(Ident(paramName), (argTree)))
         var mkArg: (Tree, Name) => Tree = mkPositionalArg
 
+        def errorMessage(paramName: Name, paramTp: Type) =
+          paramTp.typeSymbol match {
+            case ImplicitNotFoundMsg(msg) => msg.format(paramName, paramTp)
+            case _ =>
+              "could not find implicit value for "+
+                 (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
+                  else "parameter "+paramName+": ")+paramTp  
+          }
+
         // DEPMETTODO: instantiate type vars that depend on earlier implicit args (see adapt (4.1))
         //
         // apply the substitutions (undet type param -> type) that were determined
@@ -201,50 +210,27 @@ trait Typers { self: Analyzer =>
 
           if (res != SearchFailure) {
             argBuff += mkArg(res.tree, param.name)
-          } else if (param.hasFlag(DEFAULTPARAM)) {
-            // don't pass the default argument here, but start emitting named arguments for the following args
-            // TODO: resolve argument, do type inference, keep emitting positional args?
-            mkArg = mkNamedArg
-            // TODO: infer type params based on default value for arg
-            // for (ar <- argResultsBuff) ar.subst traverse defaultVal
-            // val targs = exprTypeArgs(context.undetparams, defaultVal.tpe, paramTp)
-            // substExpr(tree, tparams, targs, pt)
           } else {
-            context.error(
-              fun.pos, "could not find implicit value for "+
-              (if (param.name startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
-               else "parameter "+param.name+": ")+param.tpe)            
+            mkArg = mkNamedArg // don't pass the default argument (if any) here, but start emitting named arguments for the following args
+            if (!param.hasFlag(DEFAULTPARAM))
+              context.error(fun.pos, errorMessage(param.name, param.tpe))
+            /* else {
+             TODO: alternative (to expose implicit search failure more) --> 
+             resolve argument, do type inference, keep emitting positional args, infer type params based on default value for arg
+             for (ar <- argResultsBuff) ar.subst traverse defaultVal
+             val targs = exprTypeArgs(context.undetparams, defaultVal.tpe, paramTp)
+             substExpr(tree, tparams, targs, pt)
+            }*/
           }
         }
 
-        def errorMessage(paramName: Name, paramTp: Type) =
-          paramTp.typeSymbol match {
-            case ImplicitNotFoundMsg(msg) => msg.format(paramName, paramTp)
-            case _ =>
-              "could not find implicit value for "+
-                 (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
-                  else "parameter "+paramName+": ")+paramTp  
-          }
-        
-        val argResults = argResultsBuff.toList
-        val args = argResults.zip(params) flatMap {
-          case (arg, param) =>
-            if (arg != SearchFailure) {
-              if (positional) List(arg.tree)
-              else List(atPos(arg.tree.pos)(new AssignOrNamedArg(Ident(param.name), (arg.tree))))
-            } else {
-              if (!param.hasFlag(DEFAULTPARAM))
-                context.error(fun.pos, errorMessage(param.name, param.tpe))
-              positional = false
-              Nil
-            }
-        }
-        for (s <- argResults map (_.subst)) {
-          s traverse fun
-          for (arg <- args) s traverse arg
+        val args = argBuff.toList
+        for (ar <- argResultsBuff) {
+          ar.subst traverse fun
+          for (arg <- args) ar.subst traverse arg
         }
 
-        new ApplyToImplicitArgs(fun, argBuff.toList) setPos fun.pos
+        new ApplyToImplicitArgs(fun, args) setPos fun.pos
       case ErrorType =>
         fun
     }
