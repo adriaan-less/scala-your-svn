@@ -235,15 +235,13 @@ object ScalaRunTime {
    * @return a string representation of <code>arg</code>
    *
    */  
-  def stringOf(arg: Any): String = {
-    // Purely a sanity check to prevent accidental infinity: the (default) repl
-    // maxPrintString limit will kick in way before this
-    val maxElements = 10000
+  def stringOf(arg: Any): String = stringOf(arg, scala.Int.MaxValue)
+  def stringOf(arg: Any, maxElements: Int): String = {    
+    def isScalaClass(x: AnyRef) =
+      Option(x.getClass.getPackage) exists (_.getName startsWith "scala.")
     
-    def isScalaClass(x: AnyRef) = {
-      val pkg = x.getClass.getPackage
-      (pkg != null) && (pkg.getName startsWith "scala.")
-    }
+    def isTuple(x: AnyRef) =
+      x.getClass.getName matches """^scala\.Tuple(\d+).*"""
 
     // When doing our own iteration is dangerous
     def useOwnToString(x: Any) = x match {
@@ -264,11 +262,13 @@ object ScalaRunTime {
 
     // The recursively applied attempt to prettify Array printing
     def inner(arg: Any): String = arg match {
-      case null                     => "null"
-      case x if useOwnToString(x)   => x.toString
-      case x: AnyRef if isArray(x)  => WrappedArray make x map inner mkString ("Array(", ", ", ")")
-      case x: Traversable[_]        => x take maxElements map inner mkString (x.stringPrefix + "(", ", ", ")")
-      case x                        => x toString
+      case null                         => "null"
+      case x if useOwnToString(x)       => x.toString
+      case x: AnyRef if isArray(x)      => WrappedArray make x take maxElements map inner mkString ("Array(", ", ", ")")
+      case x: Traversable[_]            => x take maxElements map inner mkString (x.stringPrefix + "(", ", ", ")")
+      case x: Product1[_] if isTuple(x) => "(" + inner(x._1) + ",)" // that special trailing comma
+      case x: Product if isTuple(x)     => x.productIterator map inner mkString ("(", ",", ")")
+      case x                            => x toString
     }
 
     // The try/catch is defense against iterables which aren't actually designed
