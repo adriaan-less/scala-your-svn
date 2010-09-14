@@ -830,10 +830,20 @@ trait Typers { self: Analyzer =>
         context.undetparams = context.undetparams ::: tparams1
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
       case mt: MethodType if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
-        if (context.undetparams nonEmpty) // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
-                                          // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
-                                          // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
-          context.undetparams = inferExprInstance(tree, context.extractUndetparams(), pt, false) // false: retract Nothing's that indicate failure, ambiguities in manifests are dealt with in manifestOfType
+        if (context.undetparams nonEmpty) {  // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
+                                             // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
+                                             // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
+          context.undetparams =
+            inferExprInstance(tree, context.extractUndetparams(), pt,
+                    // approximate types that depend on arguments since dependency on implicit argument is like dependency on type parameter
+                    if(settings.YdepMethTpes.value) mt.approximate else mt,
+                    // if we are looking for a manifest, instantiate type to Nothing anyway,
+                    // as we would get ambiguity errors otherwise. Example
+                    // Looking for a manifest of Nil: This mas many potential types,
+                    // so we need to instantiate to minimal type List[Nothing].
+                    false) // false: retract Nothing's that indicate failure, ambiguities in manifests are dealt with in manifestOfType
+        }
+
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {

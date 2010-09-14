@@ -1074,20 +1074,31 @@ trait Infer {
       substExpr(tree, undetparams, targs, lenientPt)
     }
 
-    /** Substitute free type variables `undetparams; of polymorphic expression
-     *  <code>tree</code>, given prototype <code>pt</code>.
-     *
-     *  @param tree ...
-     *  @param undetparams ...
-     *  @param pt ...
+    /** Infer type arguments for `tparams` of polymorphic expression in `tree`, given prototype `pt`.
      */
     def inferExprInstance(tree: Tree, tparams: List[Symbol], pt: Type, keepNothings: Boolean): List[Symbol] = {
       if (inferInfo)
         println("infer expr instance "+tree+":"+tree.tpe+"\n"+
                 "  tparams = "+tparams+"\n"+
                 "  pt = "+pt)
-      val targs = exprTypeArgs(tparams, tree.tpe, pt)
+      substAdjustedArgs(tree, tparams, pt, exprTypeArgs(tparams, tree.tpe, pt), keepNothings)
+    }
 
+    /** Infer type arguments for `tparams` of polymorphic expression in `tree`, given prototype `pt`.
+     * Use specified type `treeTp` instead of `tree.tp`
+     */
+    def inferExprInstance(tree: Tree, tparams: List[Symbol], pt: Type, treeTp: Type, keepNothings: Boolean): List[Symbol] = {
+      if (inferInfo)
+        println("infer expr instance "+tree+":"+tree.tpe+"\n"+
+                "  tparams = "+tparams+"\n"+
+                "  pt = "+pt)
+      substAdjustedArgs(tree, tparams, pt, exprTypeArgs(tparams, treeTp, pt), keepNothings)
+    }
+
+    /** Substitute tparams to targs, after adjustment by adjustTypeArgs,
+     * return tparams that were not determined
+     */
+    def substAdjustedArgs(tree: Tree, tparams: List[Symbol], pt: Type, targs: List[Type], keepNothings: Boolean): List[Symbol] = {
       if (keepNothings || (targs eq null)) { //@M: adjustTypeArgs fails if targs==null, neg/t0226
         substExpr(tree, tparams, targs, pt)
         List()
