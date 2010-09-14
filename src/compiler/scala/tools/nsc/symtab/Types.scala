@@ -361,7 +361,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
     /** If this is a TypeRef `clazz`[`T`], return the argument `T`
      *  otherwise return this type
      */
-    def remove(clazz: Symbol): Type = this
+    // def remove(clazz: Symbol): Type = this
 
     def resultApprox: Type = ApproximateDependentMap(resultType)
 
@@ -1791,8 +1791,8 @@ A type's typeSymbol should never be inspected directly.
       } else normalized
     }
 
-    override def remove(clazz: Symbol): Type = 
-      if (sym == clazz && !args.isEmpty) args.head else this
+    // override def remove(clazz: Symbol): Type = 
+    //   if (sym == clazz && !args.isEmpty) args.head else this
 
     override def decls: Scope = {
       sym.info match {
@@ -1935,7 +1935,7 @@ A type's typeSymbol should never be inspected directly.
     override def boundSyms = params ::: resultType.boundSyms
     
     override def resultType(actuals: List[Type]) = 
-      if(isTrivial) resultType
+      if(isTrivial || !settings.YdepMethTpes.value) resultType
       else {
         if(actuals.length == params.length)  {
           val idm = new InstantiateDependentMap(params, actuals)
