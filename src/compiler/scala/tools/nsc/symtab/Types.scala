@@ -570,6 +570,9 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
     /** Returns all parts of this type which satisfy predicate `p' */
     def filter(p: Type => Boolean): List[Type] = new FilterTypeCollector(p).collect(this).toList
 
+    /** Apply `pf` to all parts of this type at which it is defined. */
+    def partialMap[T](pf: PartialFunction[Type, T]): List[T] = new PartialMapTypeCollector(pf).collect(this).toList
+
     /** Returns optionally first type (in a preorder traversal) which satisfies predicate `p',
      *  or None if none exists. 
      */
@@ -2213,6 +2216,19 @@ A type's typeSymbol should never be inspected directly.
     /** The variable's skolemization level */
     val level = skolemizationLevel
 
+    /** Should this type variable be solved?
+     *
+     * This is used in implicit search where we only want to solve type variables that
+     * correspond to current undetermined type parameters. The other ones are simply carried along 
+     * during nested implicit searches, and will be solved after the nested implicits have been found.
+     */
+    def active = !constr.deferred
+    def defer() =
+      constr.deferred = true
+
+    def reactivate() =
+      constr.deferred = false
+
     /**
      *  two occurrences of a higher-kinded typevar, e.g. ?CC[Int] and ?CC[String], correspond to 
      *  *two instances* of TypeVar that share the *same* TypeConstraint
@@ -2233,18 +2249,19 @@ A type's typeSymbol should never be inspected directly.
       // they share the same TypeConstraint instance
 
 
-    def setInst(tp: Type) {
+    def setInst(tp: Type) = {
 //      assert(!(tp containsTp this), this)
+      // println("setInst: "+(safeToString, debugString(tp)))
       constr.inst = tp
     }
 
-    def addLoBound(tp: Type, numBound: Boolean = false) {
+    def addLoBound(tp: Type, numBound: Boolean = false) = {
       assert(tp != this) // implies there is a cycle somewhere (?)
       //println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addLoBound(tp, numBound)
     }
 
-    def addHiBound(tp: Type, numBound: Boolean = false) {
+    def addHiBound(tp: Type, numBound: Boolean = false) = {
       // assert(tp != this)
       //println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addHiBound(tp, numBound)
@@ -2262,20 +2279,25 @@ A type's typeSymbol should never be inspected directly.
      *   registerBound returns whether this TypeVar could plausibly be a subtype of tp and, 
      *     if so, tracks tp as a upper bound of this type variable
      */
-    def registerBound(tp: Type, isLowerBound: Boolean, numBound: Boolean = false): Boolean = { //println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
+    def registerBound(tp: Type, isLowerBound: Boolean, numBound: Boolean = false): Boolean = tp match { 
+      case tp: TypeVar if !tp.active && active => tp.registerBound0(this, !isLowerBound, numBound) // swap so that deferred typevar never constraints active typevar (active ones are solved before deferred ones)
+      case _ => registerBound0(tp, isLowerBound, numBound)
+    }
+     
+    private def registerBound0(tp: Type, isLowerBound: Boolean, numBound: Boolean): Boolean = { //println("regBound: "+(safeToString, debugString(tp), isLowerBound)) //@MDEBUG
       if(isLowerBound) assert(tp != this)
 
       undoLog record this
-      
-      def checkSubtype(tp1: Type, tp2: Type) = 
+
+      def checkSubtype(tp1: Type, tp2: Type) =
         if (numBound)
-          if (isLowerBound) tp1 weak_<:< tp2 
+          if (isLowerBound) tp1 weak_<:< tp2
           else              tp2 weak_<:< tp1
         else
-          if(isLowerBound) tp1 <:< tp2 
+          if(isLowerBound) tp1 <:< tp2
           else             tp2 <:< tp1
 
-      def addBound(tp: Type) = { 
+      def addBound(tp: Type) = {
         if (isLowerBound) addLoBound(tp, numBound)
         else addHiBound(tp, numBound)
         // println("addedBound: "+(this, tp)) // @MDEBUG
@@ -2301,12 +2323,17 @@ A type's typeSymbol should never be inspected directly.
               // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
               checkArgs(tp.typeArgs, typeArgs, params)
             }
-          unifyHK(tp) || unifyHK(tp.dealias)
+          unifyHK(tp) || unifyHK(tp.dealias) || !active
         }
       }
     }
 
-    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
+    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = tp match {
+      case tp: TypeVar if !tp.active && active => tp.registerTypeEquality0(this, typeVarLHS) // swap so that deferred typevar never constraints active typevar (active ones are solved before deferred ones)
+      case _ => registerTypeEquality0(tp, typeVarLHS)
+    }
+
+    private def registerTypeEquality0(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
       def checkIsSameType(tp: Type) = 
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst
@@ -2320,7 +2347,7 @@ A type's typeSymbol should never be inspected directly.
         if (constr.isWithinBounds(newInst)) {
           setInst(tp)
           true
-        } else false
+        } else !active
       }
     }
 
@@ -2817,6 +2844,7 @@ A type's typeSymbol should never be inspected directly.
     def loBounds: List[Type] = if (numlo == NoType) lobounds else numlo :: lobounds
     def hiBounds: List[Type] = if (numhi == NoType) hibounds else numhi :: hibounds
 
+    var deferred: Boolean = false
 /* not needed 
     def numLoBound: Type = numlo
     def numHiBound: Type = numhi
@@ -2853,6 +2881,9 @@ A type's typeSymbol should never be inspected directly.
     def instValid = (inst ne null) && (inst ne NoType)
 
     def cloneInternal = {
+      // shouldn't clone deferred constraints since they will never be reactivated
+      // can't do an assert as this method is validly called in undoLog
+      //assert(!deferred)
       val tc = new TypeConstraint(lobounds, hibounds, numlo, numhi)
       tc.inst = inst
       tc
@@ -3696,6 +3727,14 @@ A type's typeSymbol should never be inspected directly.
   class FilterTypeCollector(p: Type => Boolean) extends TypeCollector(new ListBuffer[Type]) {
     def traverse(tp: Type) {
       if (p(tp)) result += tp
+      mapOver(tp)
+    }
+  }
+
+  /** A map to implement the `partialMap' method */
+  class PartialMapTypeCollector[T](p: PartialFunction[Type, T]) extends TypeCollector(new ListBuffer[T]) {
+    def traverse(tp: Type) {
+      if (p.isDefinedAt(tp)) result += p(tp)
       mapOver(tp)
     }
   }
