@@ -132,6 +132,10 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
    */
   def registerContext(c: analyzer.Context) {}
 
+  /** Register top level class (called on entering the class)
+   */
+  def registerTopLevelSym(sym: Symbol) {}
+
 // ------------------ Reporting -------------------------------------
 
   def error(msg: String) = reporter.error(NoPosition, msg)
@@ -522,8 +526,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     
     phasesSet += uncurry                    // uncurry, translate function values to anonymous classes
     phasesSet += tailCalls                  // replace tail calls by jumps
-    if (!settings.nospecialization.value)
-      phasesSet += specializeTypes
+    phasesSet += specializeTypes
     phasesSet += explicitOuter              // replace C.this by explicit outer pointers, eliminate pattern matching
     phasesSet += erasure                    // erase types, add interfaces for traits
     phasesSet += lazyVals
