@@ -171,9 +171,10 @@ trait Infer {
    *  This method seems to be performance critical.
    */
   def normalize(tp: Type): Type = tp match {
-    case mt @ MethodType(params, restpe) if (!restpe.isDependent) =>
-      if (mt.isImplicit) normalize(restpe)
-      else functionType(params map (_.tpe), normalize(restpe))
+    case mt @ MethodType(params, restpe) if mt.isImplicit =>
+      normalize(restpe)
+    case mt @ MethodType(params, restpe) if !restpe.isDependent =>
+      functionType(params map (_.tpe), normalize(restpe))
     case PolyType(List(), restpe) => // nullary method type
       normalize(restpe)
     case ExistentialType(tparams, qtpe) =>

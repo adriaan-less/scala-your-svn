@@ -807,12 +807,18 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      */
     //TODO: use narrow only for modules? (correct? efficiency gain?)
     def findMember(name: Name, excludedFlags: Long, requiredFlags: Long, stableOnly: Boolean): Symbol = {
-      // if this type contains type variables, get rid of them;
+      val suspension = TypeVar.Suspension
+      // if this type contains type variables, put them to sleep for a while -- don't just wipe them out by
+      // replacing them by the corresponding type parameter, as that messes up (e.g.) type variables in type refinements
       // without this, the matchesType call would lead to type variables on both sides
       // of a subtyping/equality judgement, which can lead to recursive types being constructed.
       // See (t0851) for a situation where this happens.
-      if (!this.isGround)
-        return typeVarToOriginMap(this).findMember(name, excludedFlags, requiredFlags, stableOnly)
+      if (!this.isGround) {
+        // make each type var in this type use its original type for comparisons instead of collecting constraints
+        for(tv@TypeVar(_, _) <- this) {
+          suspension suspend tv
+        } 
+      }
 
       incCounter(findMemberCount)
       val start = startTimer(findMemberNanos)
@@ -843,6 +849,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
                    (bcs0.head.hasTransOwner(bcs.head)))) {
                 if (name.isTypeName || stableOnly && sym.isStable) {
                   stopTimer(findMemberNanos, start)
+                  suspension.resumeAll
                   return sym
                 } else if (member == NoSymbol) {
                   member = sym
@@ -884,6 +891,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
         excluded = excludedFlags
       } // while (continue)
       stopTimer(findMemberNanos, start)
+      suspension.resumeAll
       if (members eq null) {
         if (member == NoSymbol) incCounter(noMemberCount)
         member
@@ -1729,31 +1737,40 @@ A type's typeSymbol should never be inspected directly.
 
     private var normalized: Type = null
 
+    @inline private def betaReduce: Type = {
+      assert(sym.info.typeParams.length == typeArgs.length, this)
+      // isHKSubType0 introduces synthetic type params so that betaReduce can first apply sym.info to typeArgs before calling asSeenFrom
+      // asSeenFrom then skips synthetic type params, which are used to reduce HO subtyping to first-order subtyping, but which can't be instantiated from the given prefix and class
+      appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner)
+      // transform(sym.info.resultType) // TODO: why is this not enough in the context of dependent method types? find example
+    }
+
+    // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+    // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
+    @inline private def etaExpand: Type = {
+      val tpars = sym.info.typeParams // must go through sym.info for typeParams to initialise symbol
+      PolyType(tpars, typeRef(pre, sym, tpars map (_.tpeHK))) // todo: also beta-reduce?
+    }
+
     override def dealias: Type = 
       if (sym.isAliasType && sym.info.typeParams.length == args.length) {
-        val xform = transform(sym.info.resultType)
-        assert(xform ne this, this)
-        xform.dealias
+        betaReduce.dealias
       } else this
 
-    override def remove(clazz: Symbol): Type = 
-      if (sym == clazz && !args.isEmpty) args.head else this
-
     def normalize0: Type =
-      if (isHigherKinded) {
-        // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
-        // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
-        PolyType(sym.info.typeParams, typeRef(pre, sym, dummyArgs)) // must go through sym.info for typeParams
-      } else if (sym.isAliasType) { // beta-reduce
-        if(sym.info.typeParams.length == args.length) // don't do partial application
-          transform(sym.info.resultType).normalize // cycles have been checked in typeRef
-        else
-          ErrorType
-      } else if (sym.isRefinementClass) {
-        sym.info.normalize // @MO to AM: OK?
-        //@M I think this is okay, but changeset 12414 (which fixed #1241) re-introduced another bug (#2208)
-        // see typedTypeConstructor in Typers
+      if (pre eq WildcardType) WildcardType // arises when argument-dependent types are approximated (see def depoly in implicits)
+      else if (isHigherKinded) etaExpand   // eta-expand, subtyping relies on eta-expansion of higher-kinded types
+      else if (sym.isAliasType && sym.info.typeParams.length == args.length) 
+                               betaReduce.normalize // beta-reduce, but don't do partial application -- cycles have been checked in typeRef
+      else if (sym.isRefinementClass) 
+                               sym.info.normalize // I think this is okay, but see #1241 (r12414), #2208, and typedTypeConstructor in Typers
+      else if (args nonEmpty) {
+        val argsNorm = args mapConserve (_.dealias)
+        if(argsNorm ne args) TypeRef(pre, sym, argsNorm)
+        else this
       } else {
+        if(sym.isAliasType) println("!!error: "+(pre, sym, sym.info, sym.info.typeParams, args))
+
         super.normalize
       }
 
@@ -2156,6 +2173,22 @@ A type's typeSymbol should never be inspected directly.
   // then, constr became mutable (to support UndoLog, I guess), but pattern-matching returned the original constr0 (a bug)
   // now, pattern-matching returns the most recent constr
   object TypeVar {
+    // encapsulate suspension so we can automatically link the suspension of cloned typevars to their original if this turns out to be necessary
+    def Suspension = new Suspension
+    class Suspension {
+      private val suspended = collection.mutable.HashSet[TypeVar]()
+      def suspend(tv: TypeVar): Unit = {
+        tv.suspended = true
+        suspended += tv
+      }
+      def resumeAll: Unit = {
+        for(tv <- suspended) {
+          tv.suspended = false
+        }
+        suspended.clear
+      }
+    }
+
     def unapply(tv: TypeVar): Some[(Type, TypeConstraint)] = Some((tv.origin, tv.constr))
     def apply(origin: Type, constr: TypeConstraint) = new TypeVar(origin, constr, List(), List())
     def apply(tparam: Symbol) = new TypeVar(tparam.tpeHK, new TypeConstraint, List(), tparam.typeParams) // TODO why not initialise TypeConstraint with bounds of tparam?
@@ -2217,6 +2250,9 @@ A type's typeSymbol should never be inspected directly.
       constr.addHiBound(tp, numBound)
     }
 
+    // ignore subtyping&equality checks while true -- see findMember
+    private[TypeVar] var suspended = false
+
     /** Called from isSubtype0 when a TypeVar is involved in a subtyping check.
      * if isLowerBound is true,
      *   registerBound returns whether this TypeVar could plausibly be a supertype of tp and, 
@@ -2249,7 +2285,8 @@ A type's typeSymbol should never be inspected directly.
         if(isLowerBound) isSubArgs(args1, args2, params)
         else             isSubArgs(args2, args1, params)
 
-      if (constr.instValid) // type var is already set
+      if (suspended) checkSubtype(tp, origin)
+      else if (constr.instValid) // type var is already set
         checkSubtype(tp, constr.inst)
       else isRelatable(tp) && { 
         if(params.isEmpty) { // type var has kind *
@@ -2274,7 +2311,8 @@ A type's typeSymbol should never be inspected directly.
         if(typeVarLHS) constr.inst =:= tp
         else           tp          =:= constr.inst
 
-      if (constr.instValid) checkIsSameType(tp)
+      if (suspended) tp =:= origin
+      else if (constr.instValid) checkIsSameType(tp)
       else isRelatable(tp) && {
         undoLog record this
 
@@ -2284,6 +2322,20 @@ A type's typeSymbol should never be inspected directly.
           true
         } else false
       }
+    }
+
+    /**
+     * ?A.T =:= tp is rewritten as the constraint ?A <: {type T = tp}
+     *
+     * TODO: make these constraints count (incorporate them into implicit search in applyImplicitArgs)
+     * (T corresponds to @param sym)
+     */
+    def registerTypeSelection(sym: Symbol, tp: Type): Boolean = {
+      val bound = refinedType(List(WildcardType), NoSymbol)
+      val bsym = bound.typeSymbol.newAliasType(NoPosition, sym.name)
+      bsym setInfo tp
+      bound.decls enter bsym
+      registerBound(bound, false)
     }
 
     /** Can this variable be related in a constraint to type `tp'?
@@ -2323,7 +2375,10 @@ A type's typeSymbol should never be inspected directly.
     override def isVolatile = origin.isVolatile
     override def kind = "TypeVar"
 
-    def cloneInternal = TypeVar(origin, constr cloneInternal, typeArgs, params) // @M TODO: clone args/params?
+    def cloneInternal = {
+      assert(!suspended) // cloning a suspended type variable when it's suspended will cause the clone to never be resumed with the current implementation 
+      TypeVar(origin, constr cloneInternal, typeArgs, params) // @M TODO: clone args/params?
+    }
   }
 
   /** A type carrying some annotations. Created by the typechecker
@@ -3180,7 +3235,7 @@ A type's typeSymbol should never be inspected directly.
             else if (pre1.isStable) singleType(pre1, sym) 
             else pre1.memberType(sym).resultType //todo: this should be rolled into existential abstraction
           }
-        case TypeRef(prefix, sym, args) if (sym.isTypeParameter) =>
+        case TypeRef(prefix, sym, args) if (sym.isTypeParameter && !sym.hasFlag(SYNTHETIC)) => // synthetic: see higher-order subtyping in 
           def toInstance(pre: Type, clazz: Symbol): Type =
             if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) 
             //@M! see test pos/tcpoly_return_overriding.scala why mapOver is necessary
@@ -3223,6 +3278,7 @@ A type's typeSymbol should never be inspected directly.
 
   /** A base class to compute all substitutions */
   abstract class SubstMap[T](from: List[Symbol], to: List[T]) extends TypeMap {
+    assert(from.length == to.length, "Unsound substitution from "+ from +" to "+ to)
 
     /** Are `sym' and `sym1' the same.
      *  Can be tuned by subclasses.
@@ -4077,9 +4133,14 @@ A type's typeSymbol should never be inspected directly.
       case tr1: TypeRef =>
         tp2 match {
           case tr2: TypeRef =>
-            return equalSymsAndPrefixes(tr1.sym, tr1.pre, tr2.sym, tr2.pre) &&
+            return (equalSymsAndPrefixes(tr1.sym, tr1.pre, tr2.sym, tr2.pre) &&
               ((tp1.isHigherKinded && tp2.isHigherKinded && tp1.normalize =:= tp2.normalize) || 
-               isSameTypes(tr1.args, tr2.args))
+               isSameTypes(tr1.args, tr2.args))) ||
+               ((tr1.pre, tr2.pre) match {
+                 case (tv @ TypeVar(_,_), _) => tv.registerTypeSelection(tr1.sym, tr2)
+                 case (_, tv @ TypeVar(_,_)) => tv.registerTypeSelection(tr2.sym, tr1)
+                 case _ => false
+               })
           case _ =>
         }
       case tt1: ThisType =>
@@ -4303,7 +4364,10 @@ A type's typeSymbol should never be inspected directly.
             res1 <:< res2.substSym(tparams2, tparams1)
           } else { // normalized higher-kinded type
             //@M for an example of why we need to generate fresh symbols, see neg/tcpoly_ticket2101.scala
-            val tpsFresh = cloneSymbols(tparams1) // @M cloneSymbols(tparams2) should be equivalent -- TODO: check
+            val tpsFresh = cloneSymbols(tparams1)
+            tpsFresh foreach {_.setFlag(SYNTHETIC)} // skipped in asSeenFrom since they're skolem-like (can't use skolems because subtyping is not defined, but type constructor inference needs that)
+            // this is needed for new-style normalize/betaReduce, which first applies type arguments and then does asSeenFrom
+            // TODO: document why it must be in that order -- can't remember right now
 
             (tparams1 corresponds tparams2)((p1, p2) =>
               p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&   // @PP: corresponds
