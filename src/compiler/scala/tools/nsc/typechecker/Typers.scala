@@ -706,14 +706,18 @@ trait Typers { self: Analyzer =>
         else qual.tpe.nonLocalMember(name)
     }      
 
-    def silent[T](op: Typer => T): Any /* in fact, TypeError or T */ = { 
+    def silent[T](op: Typer => T,
+                  reportAmbiguousErrors: Boolean = context.reportAmbiguousErrors,
+                  newtree: Tree = context.tree): Any /* in fact, TypeError or T */ = { 
       val rawTypeStart = startCounter(rawTypeFailed)
       val findMemberStart = startCounter(findMemberFailed)
       val subtypeStart = startCounter(subtypeFailed)
       val failedSilentStart = startTimer(failedSilentNanos)
       try {
-        if (context.reportGeneralErrors) {
-          val context1 = context.makeSilent(context.reportAmbiguousErrors)
+        if (context.reportGeneralErrors ||  
+            reportAmbiguousErrors != context.reportAmbiguousErrors || 
+            newtree != context.tree) { 
+          val context1 = context.makeSilent(reportAmbiguousErrors, newtree) 
           context1.undetparams = context.undetparams
           context1.savedTypeBounds = context.savedTypeBounds
           context1.namedApplyBlockInfo = context.namedApplyBlockInfo
@@ -3238,44 +3242,44 @@ trait Typers { self: Analyzer =>
       }
 
       def typedNew(tpt: Tree) = {
-        var tpt1 = typedTypeConstructor(tpt)
-        checkClassType(tpt1, false, true)
-        if (tpt1.hasSymbol && !tpt1.symbol.typeParams.isEmpty) {
-          context.undetparams = cloneSymbols(tpt1.symbol.typeParams)
-          tpt1 = TypeTree()
-            .setOriginal(tpt1)
-            .setType(appliedType(tpt1.tpe, context.undetparams map (_.tpe)))
+        val tpt1 = {
+          val tpt0 = typedTypeConstructor(tpt)
+          checkClassType(tpt0, false, true)
+          if (tpt0.hasSymbol && !tpt0.symbol.typeParams.isEmpty) {
+            context.undetparams = cloneSymbols(tpt0.symbol.typeParams)
+            TypeTree().setOriginal(tpt0)
+                      .setType(appliedType(tpt0.tpe, context.undetparams map (_.tpe)))
+          } else tpt0
         }
 
         /** If current tree <tree> appears in <val x(: T)? = <tree>>
          *  return `tp with x.type' else return `tp'.
          */
-        def narrowRhs(tp: Type) = {
-          var sym = context.tree.symbol
-          if (sym != null && sym != NoSymbol)
-            if (sym.owner.isClass) {
-              if (sym.getter(sym.owner) != NoSymbol) sym = sym.getter(sym.owner)
-            } else if (sym hasFlag LAZY) {
-              if (sym.lazyAccessor != NoSymbol) sym = sym.lazyAccessor
-            }
+        def narrowRhs(tp: Type) = { val sym = context.tree.symbol
           context.tree match {
-            case ValDef(mods, _, _, Apply(Select(`tree`, _), _)) if !(mods hasFlag MUTABLE) =>
-              val pre = if (sym.owner.isClass) sym.owner.thisType else NoPrefix
-              intersectionType(List(tp, singleType(pre, sym)))
-            case _ =>
-              tp
-          }
-        }
-        if (tpt1.tpe.typeSymbol.isAbstractType || (tpt1.tpe.typeSymbol hasFlag ABSTRACT))
-          error(tree.pos, tpt1.tpe.typeSymbol + " is abstract; cannot be instantiated")
-        else if (tpt1.tpe.typeSymbol.initialize.thisSym != tpt1.tpe.typeSymbol &&
-                 !(narrowRhs(tpt1.tpe) <:< tpt1.tpe.typeOfThis) && 
-                 !phase.erasedTypes) {
-          error(tree.pos, tpt1.tpe.typeSymbol + 
+            case ValDef(mods, _, _, Apply(Select(`tree`, _), _)) if !(mods hasFlag MUTABLE) && sym != null && sym != NoSymbol =>
+              val sym1 = if (sym.owner.isClass && sym.getter(sym.owner) != NoSymbol) sym.getter(sym.owner)
+                else if ((sym hasFlag LAZY) && sym.lazyAccessor != NoSymbol) sym.lazyAccessor
+                else sym
+              val pre = if (sym1.owner.isClass) sym1.owner.thisType else NoPrefix
+              intersectionType(List(tp, singleType(pre, sym1)))
+            case _ => tp
+          }}
+
+        val tp = tpt1.tpe
+        val sym = tp.typeSymbol
+        if (sym.isAbstractType || (sym hasFlag ABSTRACT))
+          error(tree.pos, sym + " is abstract; cannot be instantiated")
+        else if (!(  tp == sym.initialize.thisSym.tpe // when there's no explicit self type -- with (#3612) or without self variable
+                     // sym.thisSym.tpe == tp.typeOfThis (except for objects)
+                  || narrowRhs(tp) <:< tp.typeOfThis
+                  || phase.erasedTypes
+                  )) {
+          error(tree.pos, sym + 
                 " cannot be instantiated because it does not conform to its self-type "+
-                tpt1.tpe.typeOfThis)
+                tp.typeOfThis)
         }
-        treeCopy.New(tree, tpt1).setType(tpt1.tpe)
+        treeCopy.New(tree, tpt1).setType(tp)
       }
 
       def typedEta(expr1: Tree): Tree = expr1.tpe match {
@@ -3381,7 +3385,9 @@ trait Typers { self: Analyzer =>
           val funpt = if (isPatternMode) pt else WildcardType
           val appStart = startTimer(failedApplyNanos)
           val opeqStart = startTimer(failedOpEqNanos)
-          silent(_.typed(fun, funMode(mode), funpt)) match {
+          silent(_.typed(fun, funMode(mode), funpt),  
+                 if ((mode & EXPRmode) != 0) false else context.reportAmbiguousErrors,  
+                 if ((mode & EXPRmode) != 0) tree else context.tree) match {
             case fun1: Tree =>
               val fun2 = if (stableApplication) stabilizeFun(fun1, mode, pt) else fun1
               incCounter(typedApplyCount)
@@ -3573,7 +3579,26 @@ trait Typers { self: Analyzer =>
             member(qual, name)
           }
         if (sym == NoSymbol && name != nme.CONSTRUCTOR && (mode & EXPRmode) != 0) {
-          val qual1 = adaptToName(qual, name)
+          val qual1 = try {
+            adaptToName(qual, name)
+          } catch {
+            case ex: TypeError =>
+            // this happens if implicits are ambiguous; try again with more context info.
+            // println("last ditch effort: "+qual+" . "+name) // DEBUG
+            context.tree match {
+              case Apply(tree1, args) if tree1 eq tree => // try handling the arguments
+                // println("typing args: "+args) // DEBUG
+                silent(_.typedArgs(args, mode)) match {
+                  case args: List[_] =>
+                    adaptToArguments(qual, name, args.asInstanceOf[List[Tree]], WildcardType)
+                  case _ =>
+                    throw ex
+                }
+              case _ =>
+                // println("not in an apply: "+context.tree+"/"+tree) // DEBUG
+                throw ex
+            }
+          }
           if (qual1 ne qual) return typed(treeCopy.Select(tree, qual1, name), mode, pt)
         }
         
