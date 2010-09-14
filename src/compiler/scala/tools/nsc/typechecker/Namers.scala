@@ -821,7 +821,7 @@ trait Namers { self: Analyzer =>
           for(p <- vps) checkDependencies(p.info)
           if(settings.YdepMethTpes.value) okParams ++= vps // can only refer to symbols in earlier parameter sections (if the extension is enabled)
         }
-        checkDependencies(restpe)
+        checkDependencies(restpe) // DEPMETTODO: check not needed when they become on by default
 
         polyType(
           tparamSyms, // deSkolemized symbols  -- TODO: check that their infos don't refer to method args?
