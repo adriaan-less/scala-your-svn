@@ -171,7 +171,7 @@ trait Typers { self: Analyzer =>
       override def isCoercible(tp: Type, pt: Type): Boolean =
         tp.isError || pt.isError ||
         context0.implicitsEnabled && // this condition prevents chains of views
-        inferView(EmptyTree, tp, pt, false) != EmptyTree
+        inferView(EmptyTree, tp, pt, false)._1 != EmptyTree
     }
 
     /** Find implicit arguments and pass them to given tree.
@@ -205,6 +205,8 @@ trait Typers { self: Analyzer =>
 
           val res = inferImplicit(fun, paramTp, true, false, context)
           argResultsBuff += res
+          if(res.undetParams nonEmpty)
+            context.undetparams = (context.undetparams ++ res.undetParams).distinct
 
           if (res != SearchFailure) {
             argBuff += mkArg(res.tree, param.name)
@@ -241,21 +243,22 @@ trait Typers { self: Analyzer =>
      *                          False iff we search for a view to find out
      *                          whether one type is coercible to another.
      */
-    def inferView(tree: Tree, from: Type, to: Type, reportAmbiguous: Boolean): Tree = {
+    def inferView(tree: Tree, from: Type, to: Type, reportAmbiguous: Boolean): (Tree, List[Symbol]) = {
+      @inline def fail: (Tree, List[Symbol]) = (EmptyTree, List()) // TODO: get weird forward reference error if I fold (EmptyTree, List()) back to fail
       if (settings.debug.value) log("infer view from "+from+" to "+to)//debug
-      if (phase.id > currentRun.typerPhase.id) EmptyTree
+      if (phase.id > currentRun.typerPhase.id) (EmptyTree, List())
       else from match {
-        case MethodType(_, _) => EmptyTree
-        case OverloadedType(_, _) => EmptyTree
-        case PolyType(_, _) => EmptyTree
+        case MethodType(_, _) => (EmptyTree, List())
+        case OverloadedType(_, _) => (EmptyTree, List())
+        case PolyType(_, _) => (EmptyTree, List())
         case _ =>
-          def wrapImplicit(from: Type): Tree = {
+          def wrapImplicit(from: Type): (Tree, List[Symbol]) = {
             val result = inferImplicit(tree, functionType(List(from), to), reportAmbiguous, true, context)
             if (result.subst != EmptyTreeTypeSubstituter) result.subst traverse tree
-            result.tree
+            (result.tree, result.undetParams)
           }
-          val result = wrapImplicit(from)
-          if (result != EmptyTree) result
+          val res@(t, _) = wrapImplicit(from)
+          if (t != EmptyTree) res
           else wrapImplicit(appliedType(ByNameParamClass.typeConstructor, List(from)))
       }
     }
@@ -1004,7 +1007,8 @@ trait Typers { self: Analyzer =>
               if (context.implicitsEnabled && !tree.tpe.isError && !pt.isError) { 
                 // (14); the condition prevents chains of views 
                 if (settings.debug.value) log("inferring view from "+tree.tpe+" to "+pt)
-                val coercion = inferView(tree, tree.tpe, pt, true)
+                val (coercion, undets) = inferView(tree, tree.tpe, pt, true)
+                context.undetparams = (context.undetparams ++ undets).distinct // XXX
                 // convert forward views of delegate types into closures wrapped around
                 // the delegate's apply method (the "Invoke" method, which was translated into apply)
                 if (forMSIL && coercion != null && isCorrespondingDelegate(tree.tpe, pt)) {
@@ -1036,7 +1040,9 @@ trait Typers { self: Analyzer =>
      *  @return     ...
      */
     def instantiate(tree: Tree, mode: Int, pt: Type): Tree = {
-      inferExprInstance(tree, context.extractUndetparams(), pt, true)
+      inferExprInstance(tree, context.extractUndetparams(), pt, true) 
+      // AM: what if not all of type params could be inferred?
+      // should this mimic pattern from adapt for implicit method types? context.undetparams = inferExprInstance(...)
       adapt(tree, mode, pt)
     }
 
@@ -1056,9 +1062,11 @@ trait Typers { self: Analyzer =>
           qtpe = qtpe.normalize.skolemizeExistential(context.owner, qual) // open the existential
           qual setType qtpe
         }
-        val coercion = inferView(qual, qtpe, searchTemplate, true)
-        if (coercion != EmptyTree)
+        val (coercion, undets) = inferView(qual, qtpe, searchTemplate, true)
+        if (coercion != EmptyTree){
+          context.undetparams = (context.undetparams ++ undets).distinct // XXX
           typedQualifier(atPos(qual.pos)(new ApplyImplicitView(coercion, List(qual))))
+        }
         else
           qual
       } else {
@@ -4216,6 +4224,7 @@ trait Typers { self: Analyzer =>
           tree.tpe = null
           if (tree.hasSymbol) tree.symbol = NoSymbol
         }
+
         printTyping("typing "+tree+", pt = "+pt+", undetparams = "+context.undetparams+", implicits-enabled = "+context.implicitsEnabled+", silent = "+context.reportGeneralErrors) //DEBUG
 
         var tree1 = if (tree.tpe ne null) tree else typed1(tree, mode, dropExistential(pt))

@@ -361,7 +361,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
     /** If this is a TypeRef `clazz`[`T`], return the argument `T`
      *  otherwise return this type
      */
-    def remove(clazz: Symbol): Type = this
+    // def remove(clazz: Symbol): Type = this
 
     def resultApprox: Type = ApproximateDependentMap(resultType)
 
@@ -1212,7 +1212,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
                 case _ =>
               }
             val varToParamMap: Map[Type, Symbol] = tvs map (tv => tv -> tv.origin.typeSymbol.cloneSymbol) toMap 
-            val paramToVarMap = varToParamMap map (_.swap)
+            val paramToVarMap = varToParamMap map (_.swap)             
             val varToParam = new TypeMap {
               def apply(tp: Type) = varToParamMap get tp match {
                 case Some(sym) => sym.tpe
@@ -1791,6 +1791,9 @@ A type's typeSymbol should never be inspected directly.
       } else normalized
     }
 
+    // override def remove(clazz: Symbol): Type = 
+    //   if (sym == clazz && !args.isEmpty) args.head else this
+
     override def decls: Scope = {
       sym.info match {
         case TypeRef(_, sym1, _) =>
@@ -2240,13 +2243,13 @@ A type's typeSymbol should never be inspected directly.
 
     def addLoBound(tp: Type, numBound: Boolean = false) {
       assert(tp != this) // implies there is a cycle somewhere (?)
-      //println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
+      // println("addLoBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addLoBound(tp, numBound)
     }
 
     def addHiBound(tp: Type, numBound: Boolean = false) {
       // assert(tp != this)
-      //println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
+      // println("addHiBound: "+(safeToString, debugString(tp))) //DEBUG
       constr.addHiBound(tp, numBound)
     }
 
@@ -2879,6 +2882,29 @@ A type's typeSymbol should never be inspected directly.
         case _ => false
       }
 
+    // #3731: return sym1 for which holds: pre bound sym.name to sym and pre1 now binds sym.name to sym1, conceptually exactly the same symbol as sym
+    // the selection of sym on pre must be updated to the selection of sym1 on pre1,
+    // since sym's info was probably updated by the TypeMap to yield a new symbol sym1 with transformed info
+    // @returns sym1
+    protected def coevolveSym(pre: Type, pre1: Type, sym: Symbol): Symbol =
+      if((pre ne pre1) && sym.isAliasType) // only need to rebind type aliases here, as typeRef already handles abstract types (they are allowed to be rebound more liberally)
+        (pre, pre1) match {
+          case (RefinedType(_, decls), RefinedType(_, decls1)) =>
+            // don't look at parents -- it would be an error to override alias types anyway
+            val sym1 = decls1.lookup(sym.name)
+            assert(decls.lookupAll(sym.name).toList.length == 1)
+            assert(decls1.lookupAll(sym.name).toList.length == 1)
+            assert(sym1.isAliasType)
+            // println("coevolved "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
+            sym1
+          case _ => 
+            val sym1 = pre1.nonPrivateMember(sym.name).suchThat(sym => sym.isAliasType)
+            // println("??coevolve for "+(pre.getClass, pre1.getClass))
+            // println("??coevolve "+ sym +" : "+ sym.info +" to "+ sym1 +" : "+ sym1.info +" in "+ pre +" -> "+ pre1)
+            sym // TODO: is there another way a typeref's symbol can refer to a symbol defined in its pre?
+        }
+      else sym
+
     /** Map this function over given type */
     def mapOver(tp: Type): Type = tp match {
       case TypeRef(pre, sym, args) =>
@@ -2891,7 +2917,7 @@ A type's typeSymbol should never be inspected directly.
                       else mapOverArgs(args, tparams)
                     }
         if ((pre1 eq pre) && (args1 eq args)) tp
-        else typeRef(pre1, sym, args1)
+        else typeRef(pre1, coevolveSym(pre, pre1, sym), args1) 
       case ThisType(_) => tp
       case SingleType(pre, sym) =>
         if (sym.isPackageClass) tp // short path
@@ -4401,6 +4427,8 @@ A type's typeSymbol should never be inspected directly.
    */
   private def isSubType2(tp1: Type, tp2: Type, depth: Int): Boolean = {
     if (tp1 eq tp2) return true
+    @inline def trace(msg: String)(body: => Boolean) = body //{println(tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); val res = body; println(res +" for "+ tp1 +" <:< "+ tp2 +"at depth "+ depth +" -- "+ msg); res}
+
     if (isErrorOrWildcard(tp1)) return true
     if (isErrorOrWildcard(tp2)) return true
     if (tp1 eq NoType) return false
@@ -4409,14 +4437,14 @@ A type's typeSymbol should never be inspected directly.
     if (tp2 eq NoPrefix) return (tp1 eq NoPrefix) || tp1.typeSymbol.isPackageClass
     if (isSingleType(tp1) && isSingleType(tp2) ||
         isConstantType(tp1) && isConstantType(tp2)) return tp1 =:= tp2
-    if (tp1.isHigherKinded || tp2.isHigherKinded) return isHKSubType0(tp1, tp2, depth)
+    if (tp1.isHigherKinded || tp2.isHigherKinded) return trace("HK"){isHKSubType0(tp1, tp2, depth)}
 
     /** First try, on the right:
      *   - unwrap Annotated types, BoundedWildcardTypes,
      *   - bind TypeVars  on the right, if lhs is not Annotated nor BoundedWildcard
      *   - handle common cases for first-kind TypeRefs on both sides as a fast path.
      */
-    def firstTry = { incCounter(ctr1); tp2 match {
+    def firstTry = { incCounter(ctr1); trace("first")(tp2 match {
       // fast path: two typerefs, none of them HK
       case tr2: TypeRef =>
         tp1 match {
@@ -4452,14 +4480,14 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         secondTry
-    }}
+    })}
 
     /** Second try, on the left:
      *   - unwrap AnnotatedTypes, BoundedWildcardTypes,
      *   - bind typevars,
      *   - handle existential types by skolemization.
      */
-    def secondTry = { incCounter(ctr2); tp1 match {
+    def secondTry = { incCounter(ctr2); trace("second")(tp1 match {
       case AnnotatedType(_, _, _) =>
         tp1.withoutAnnotations <:< tp2.withoutAnnotations && annotationsConform(tp1, tp2)
       case BoundedWildcardType(bounds) =>
@@ -4475,10 +4503,11 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         thirdTry
-    }}
+    })}
 
     def thirdTryRef(tp1: Type, tp2: TypeRef): Boolean = { 
       incCounter(ctr3); 
+      trace("thirdRef")({
       val sym2 = tp2.sym
       sym2 match {
         case _: ClassSymbol =>
@@ -4502,14 +4531,14 @@ A type's typeSymbol should never be inspected directly.
         case _ =>
           fourthTry
       }
-    }
+    })}
     
     /** Third try, on the right:
      *   - decompose refined types.
      *   - handle typerefs, existentials, and notnull types.
      *   - handle left+right method types, polytypes, typebounds
      */
-    def thirdTry = { incCounter(ctr3); tp2 match {
+    def thirdTry = { incCounter(ctr3); trace("third")(tp2 match {
       case tr2: TypeRef =>
         thirdTryRef(tp1, tr2)
       case rt2: RefinedType =>
@@ -4548,12 +4577,12 @@ A type's typeSymbol should never be inspected directly.
         }
       case _ =>
         fourthTry
-    }}
+    })}
 
     /** Fourth try, on the left:
      *   - handle typerefs, refined types, notnull and singleton types. 
      */
-    def fourthTry = { incCounter(ctr4); tp1 match {
+    def fourthTry = { incCounter(ctr4); trace("fourth")(tp1 match {
       case tr1 @ TypeRef(_, sym1, _) =>
         sym1 match {
           case _: ClassSymbol =>
@@ -4588,7 +4617,7 @@ A type's typeSymbol should never be inspected directly.
         tp1.underlying <:< tp2
       case _ =>
         false
-    }}
+    })}
 
     firstTry
   }
