@@ -819,9 +819,10 @@ trait Namers { self: Analyzer =>
         }
         for(vps <- vparamSymss) {
           for(p <- vps) checkDependencies(p.info)
-          okParams ++= vps // can only refer to symbols in earlier parameter sections
+          if(settings.YdepMethTpes.value) okParams ++= vps // can only refer to symbols in earlier parameter sections (if the extension is enabled)
         }
-        
+        checkDependencies(restpe)
+
         polyType(
           tparamSyms, // deSkolemized symbols  -- TODO: check that their infos don't refer to method args?
           if (vparamSymss.isEmpty) PolyType(List(), restpe) // nullary method type
