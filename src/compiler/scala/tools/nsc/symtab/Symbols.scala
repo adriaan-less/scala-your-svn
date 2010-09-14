@@ -695,7 +695,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     }
 
 // Info and Type -------------------------------------------------------------------
-
+    def refreshType(): Unit = {}
     private[Symbols] var infos: TypeHistory = null
 
     /** Get type. The type of a symbol is:
@@ -796,10 +796,12 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
             if (validTo < curPeriod) {
               var itr = infoTransformers.nextFrom(phaseId(validTo))
               infoTransformers = itr; // caching optimization
-              while (itr.pid != NoPhase.id && itr.pid < current.id) {
+              while (itr.pid != NoPhase.id && itr.pid < current.id) {                                                                        7
                 phase = phaseWithId(itr.pid)
                 val info1 = itr.transform(this, infos.info)
                 if (info1 ne infos.info) { // only remember if transformed is different from current one
+                  if(info1.typeParams.length != infos.info.typeParams.length)
+                    refreshType()
                   infos = TypeHistory(currentPeriod + 1, info1, infos)
                   this.infos = infos
                 }
@@ -902,8 +904,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       else {
         val current = phase
         try {
-          while ((phase.prev ne NoPhase) && phase.prev.keepsTypeParams) phase = phase.prev
-//          while (phase.keepsTypeParams && (phase.prev ne NoPhase))        phase = phase.prev
+//          while ((phase.prev ne NoPhase) && phase.prev.keepsTypeParams) phase = phase.prev
+          while (phase.keepsTypeParams && (phase.prev ne NoPhase))        phase = phase.prev
           if (phase ne current) phase = phase.next
           if (settings.debug.value && (phase ne current))
             log("checking unsafeTypeParams(" + this + ") at: " + current + " reading at: " + phase)
@@ -1830,7 +1832,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     }
 
     // needed for experimental code for early types as type parameters
-    // def refreshType() { tpePeriod = NoPeriod }
+    override def refreshType() { tpePeriod = NoPeriod }
 
     override def typeConstructor: Type = {
       if ((tyconCache eq null) || tyconRunId != currentRunId) {
@@ -1974,14 +1976,14 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     private var thisTypePeriod = NoPeriod
 
     /** the type this.type in this class */
-    override def thisType: Type = {
+    override def thisType: Type = ThisType(this) /*{
       val period = thisTypePeriod
       if (period != currentPeriod) {
         thisTypePeriod = currentPeriod
         if (!isValid(period)) thisTypeCache = ThisType(this)
       }
       thisTypeCache
-    }
+    }*/
 
     /** A symbol carrying the self type of the class as its type */
     override def thisSym: Symbol = thissym

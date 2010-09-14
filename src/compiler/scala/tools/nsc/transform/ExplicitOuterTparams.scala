@@ -52,7 +52,8 @@ abstract class ExplicitOuterTparams extends InfoTransform
 
   override def newPhase(prev: scala.tools.nsc.Phase): StdPhase = new Phase(prev)
   class Phase(prev: scala.tools.nsc.Phase) extends super.Phase(prev) {
-//    override val keepsTypeParams = false // leads to cyclic errors
+//    override val keepsTypeParams = false // leads to cyclic errors because this means we look at a class's type params while transforming its info
+    // keepTypeParams == false means unsafeTypeParams does not cross this type history entry when retrieving a symbol's info
     override def substInClassInfoTypes = true
   }
 
@@ -190,10 +191,10 @@ abstract class ExplicitOuterTparams extends InfoTransform
     def transformSubst(from: List[Symbol], to: List[Symbol])(tree: Tree): Tree = {
       val post = postTransform(tree) // first add type arguments
       atPhase(phase.next) { // so that sym.info has the right number of type parameters
-        println("post: "+ post)
+//        println("post: "+ post)
         (new TreeTypeSymSubstituter(from, to)) traverse post
-        println("substed: "+ (from, to, post))
-        treeTypePrinter(post)
+//        println("substed: "+ (from, to, post))
+//        treeTypePrinter(post)
         post
       }
     }
@@ -215,7 +216,7 @@ abstract class ExplicitOuterTparams extends InfoTransform
         case _ => // includes TypeTree, what becomes of TypeApply/Select involving types after uncurry
           val oldTp = tree.tpe
           if(tree.tpe ne null) tree setType transformType(tree.tpe)
-          println("xf: "+ tree +" : "+ oldTp +" --> "+ tree.tpe)
+       //   println("xf: "+ tree +" : "+ oldTp +" --> "+ tree.tpe)
           super.transform(tree)
       }
     /** The transformation method for whole compilation units */
