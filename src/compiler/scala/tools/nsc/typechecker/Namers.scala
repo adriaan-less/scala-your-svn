@@ -804,7 +804,7 @@ trait Namers { self: Analyzer =>
           def traverse(tp: Type) = {
             tp match {
               case SingleType(_, sym) =>
-                if (sym.owner == meth && !(okParams contains sym))
+                if (sym.owner == meth && sym.isValueParameter && !(okParams contains sym))
                   context.error(
                     sym.pos, 
                     "illegal dependent method type"+
