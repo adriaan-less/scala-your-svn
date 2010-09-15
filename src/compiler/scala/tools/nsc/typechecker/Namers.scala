@@ -216,6 +216,7 @@ trait Namers { self: Analyzer =>
           assert(currentRun.canRedefine(clazz) || clazz.sourceFile == currentRun.symSource(c));
           currentRun.symSource(c) = clazz.sourceFile
         }
+        registerTopLevelSym(clazz)
       }  
       assert(c.name.toString.indexOf('(') == -1)
       c
@@ -244,9 +245,10 @@ trait Namers { self: Analyzer =>
         m.moduleClass.setFlag(moduleClassFlags(moduleFlags))
         setPrivateWithin(tree, m.moduleClass, tree.mods)
       }
-      if (m.owner.isPackageClass) {
+      if (m.owner.isPackageClass && !m.isPackage) {
         m.moduleClass.sourceFile = context.unit.source.file
         currentRun.symSource(m) = m.moduleClass.sourceFile
+        registerTopLevelSym(m)          
       }
       m
     }
@@ -288,8 +290,10 @@ trait Namers { self: Analyzer =>
      *  @return the companion object symbol.
      */
      def ensureCompanionObject(tree: ClassDef, creator: => Tree): Symbol = {
-       val m: Symbol = context.scope.lookup(tree.name.toTermName).filter(! _.isSourceMethod)
-       if (m.isModule && inCurrentScope(m) && currentRun.compiles(m)) m
+       val m = companionModuleOf(tree.symbol, context)
+       // @luc: not sure why "currentRun.compiles(m)" is needed, things breaks
+       // otherwise. documentation welcome.
+       if (m != NoSymbol && currentRun.compiles(m)) m
        else enterSyntheticSym(creator)
      }
 
@@ -1363,6 +1367,25 @@ trait Namers { self: Analyzer =>
         result
       } else member.accessed 
     } else member
+
+  /**
+   * Finds the companion module of a class symbol. Calling .companionModule
+   * does not work for classes defined inside methods.
+   */
+  def companionModuleOf(clazz: Symbol, context: Context) = {
+    var res = clazz.companionModule
+    if (res == NoSymbol)
+      res = context.lookup(clazz.name.toTermName, clazz.owner).suchThat(sym =>
+        sym.hasFlag(MODULE) && sym.isCoDefinedWith(clazz))
+    res
+  }
+
+  def companionClassOf(module: Symbol, context: Context) = {
+    var res = module.companionClass
+    if (res == NoSymbol)
+      res = context.lookup(module.name.toTypeName, module.owner).suchThat(_.isCoDefinedWith(module))
+    res
+  }
 
   /** An explanatory note to be added to error messages
    *  when there's a problem with abstract var defs */

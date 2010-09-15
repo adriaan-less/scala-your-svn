@@ -344,14 +344,14 @@ self: Analyzer =>
      *  @pre           <code>info.tpe</code> does not contain an error
      */
     private def typedImplicit(info: ImplicitInfo): SearchResult = 
-       context.openImplicits find (dominates(pt, _)) match {
+      (context.openImplicits find { case (tp, sym) => sym == tree.symbol && dominates(pt, tp)}) match {
          case Some(pending) =>
            // println("Pending implicit "+pending+" dominates "+pt+"/"+undetParams) //@MDEBUG
            throw DivergentImplicit
            SearchFailure 
          case None =>
            try {
-             context.openImplicits = pt :: context.openImplicits
+             context.openImplicits = (pt, tree.symbol) :: context.openImplicits
              // println("  "*context.openImplicits.length+"typed implicit "+info+" for "+pt) //@MDEBUG
              typedImplicit0(info)
            } catch {
@@ -409,7 +409,7 @@ self: Analyzer =>
           if (mt.isImplicit) matchesPtView(restpe, ptarg, ptres, undet)
           else params.length == 1 && matchesArgRes(params.head.tpe, restpe, ptarg, ptres, undet)
         case ExistentialType(tparams, qtpe) =>
-          matchesPtView(normalize(tp), ptarg, ptres, undet)
+          matchesPtView(normalize(qtpe), ptarg, ptres, undet)
         case Function1(arg1, res1) =>
           matchesArgRes(arg1, res1, ptarg, ptres, undet)
         case _ => false
