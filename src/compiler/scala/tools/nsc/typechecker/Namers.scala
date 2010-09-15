@@ -804,7 +804,7 @@ trait Namers { self: Analyzer =>
           def traverse(tp: Type) = {
             tp match {
               case SingleType(_, sym) =>
-                if (sym.owner == meth && !(okParams contains sym))
+                if (sym.owner == meth && sym.isValueParameter && !(okParams contains sym))
                   context.error(
                     sym.pos, 
                     "illegal dependent method type"+
@@ -819,9 +819,10 @@ trait Namers { self: Analyzer =>
         }
         for(vps <- vparamSymss) {
           for(p <- vps) checkDependencies(p.info)
-          okParams ++= vps // can only refer to symbols in earlier parameter sections
+          if(settings.YdepMethTpes.value) okParams ++= vps // can only refer to symbols in earlier parameter sections (if the extension is enabled)
         }
-        
+        checkDependencies(restpe) // DEPMETTODO: check not needed when they become on by default
+
         polyType(
           tparamSyms, // deSkolemized symbols  -- TODO: check that their infos don't refer to method args?
           if (vparamSymss.isEmpty) PolyType(List(), restpe) // nullary method type

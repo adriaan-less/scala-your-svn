@@ -695,6 +695,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
     /** add unit to be compiled in this run */
     private def addUnit(unit: CompilationUnit) {
+//      unit.parseSettings()
       unitbuf += unit
       compiledFiles += unit.source.file.path
     }
