@@ -2579,13 +2579,8 @@ A type's typeSymbol should never be inspected directly.
    */
   def typeRef(pre: Type, sym: Symbol, args: List[Type]): Type = {
     def rebindTR(pre: Type, sym: Symbol): Symbol = {
-      lazy val symRebound = rebind(pre, sym)
-      if(!sym.isAbstractType && (symRebound ne sym)) {
-        println("should rebind? "+(pre, "\n"+ sym, sym.info, "\n"+ symRebound, symRebound.info))
-        Thread.dumpStack()
-      }
-      if(sym.isAbstractType) symRebound else sym // used to only rebind if(sym.isAbstractType)
-         // however, that's too strict since type alias selection needs to be rebound as well
+      if(sym.isAbstractType) rebind(pre, sym) else sym
+         // type alias selections are rebound in TypeMap ("coevolved", actually -- see #3731)
          // e.g., when type parameters that are referenced by the alias are instantiated in the prefix
          // see pos/depmet_rebind_typealias
     }
