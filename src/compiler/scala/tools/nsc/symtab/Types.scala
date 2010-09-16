@@ -363,7 +363,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
      */
     def remove(clazz: Symbol): Type = this
 
-    def resultApprox: Type = ApproximateDependentMap(resultType)
+    def resultApprox: Type = if(settings.YdepMethTpes.value) ApproximateDependentMap(resultType) else resultType
 
     /** For a curried method or poly type its non-method result type, 
      *  the type itself for all other types */
@@ -1770,9 +1770,8 @@ A type's typeSymbol should never be inspected directly.
       //   else this
       // } 
       else {
-        if(sym.isAliasType) println("!!error: "+(pre, sym, sym.info, sym.info.typeParams, args))
-
-        super.normalize
+        if(sym.isAliasType) ErrorType //println("!!error: "+(pre, sym, sym.info, sym.info.typeParams, args))
+        else super.normalize
       }
 
    // track number of type parameters that we saw when caching normalization,
