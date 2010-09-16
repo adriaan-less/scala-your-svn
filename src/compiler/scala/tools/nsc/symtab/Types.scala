@@ -1764,11 +1764,12 @@ A type's typeSymbol should never be inspected directly.
                                betaReduce.normalize // beta-reduce, but don't do partial application -- cycles have been checked in typeRef
       else if (sym.isRefinementClass) 
                                sym.info.normalize // I think this is okay, but see #1241 (r12414), #2208, and typedTypeConstructor in Typers
-      else if (args nonEmpty) {
-        val argsNorm = args mapConserve (_.dealias)
-        if(argsNorm ne args) TypeRef(pre, sym, argsNorm)
-        else this
-      } else {
+      // else if (args nonEmpty) {
+      //   val argsNorm = args mapConserve (_.dealias)
+      //   if(argsNorm ne args) TypeRef(pre, sym, argsNorm)
+      //   else this
+      // } 
+      else {
         if(sym.isAliasType) println("!!error: "+(pre, sym, sym.info, sym.info.typeParams, args))
 
         super.normalize
