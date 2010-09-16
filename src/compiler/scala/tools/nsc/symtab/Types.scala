@@ -1900,7 +1900,9 @@ A type's typeSymbol should never be inspected directly.
                         override val resultType: Type) extends Type {
     override def isTrivial: Boolean = isTrivial0
     private lazy val isTrivial0 =
-      resultType.isTrivial && params.forall{p => p.tpe.isTrivial && !(params.exists(_.tpe.contains(p)) || resultType.contains(p))}
+      resultType.isTrivial && params.forall{p => p.tpe.isTrivial &&  (
+        !settings.YdepMethTpes.value || !(params.exists(_.tpe.contains(p)) || resultType.contains(p)))
+      }
 
     def isImplicit = params.nonEmpty && params.head.isImplicit
     def isJava = false // can we do something like for implicits? I.e. do Java methods without parameters need to be recognized?
@@ -1914,8 +1916,15 @@ A type's typeSymbol should never be inspected directly.
 
     override def boundSyms = params ::: resultType.boundSyms
     
+    // this is needed for plugins to work correctly, only TypeConstraint annotations are supposed to be carried over
+    // TODO: this should probably be handled in a more structured way in adapt -- remove this map in resultType and watch the continuations tests fail
+    object dropNonContraintAnnotations extends TypeMap {
+      override val dropNonConstraintAnnotations = true
+      def apply(x: Type) = mapOver(x)
+    }
+
     override def resultType(actuals: List[Type]) = 
-      if(isTrivial || !settings.YdepMethTpes.value) resultType
+      if(isTrivial) dropNonContraintAnnotations(resultType)
       else {
         if(actuals.length == params.length)  {
           val idm = new InstantiateDependentMap(params, actuals)
