@@ -3273,7 +3273,7 @@ A type's typeSymbol should never be inspected directly.
             else if (pre1.isStable) singleType(pre1, sym) 
             else pre1.memberType(sym).resultType //todo: this should be rolled into existential abstraction
           }
-        case TypeRef(prefix, sym, args) if (sym.isTypeParameter && !sym.hasFlag(SYNTHETIC)) => // synthetic: see higher-order subtyping in 
+        case TypeRef(prefix, sym, args) if (sym.isTypeParameter) =>
           def toInstance(pre: Type, clazz: Symbol): Type =
             if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) 
             //@M! see test pos/tcpoly_return_overriding.scala why mapOver is necessary
@@ -4403,9 +4403,6 @@ A type's typeSymbol should never be inspected directly.
           } else { // normalized higher-kinded type
             //@M for an example of why we need to generate fresh symbols, see neg/tcpoly_ticket2101.scala
             val tpsFresh = cloneSymbols(tparams1)
-            tpsFresh foreach {_.setFlag(SYNTHETIC)} // skipped in asSeenFrom since they're skolem-like (can't use skolems because subtyping is not defined, but type constructor inference needs that)
-            // this is needed for new-style normalize/betaReduce, which first applies type arguments and then does asSeenFrom
-            // TODO: document why it must be in that order -- can't remember right now
 
             (tparams1 corresponds tparams2)((p1, p2) =>
               p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&   // @PP: corresponds
