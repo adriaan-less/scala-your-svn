@@ -1741,8 +1741,8 @@ A type's typeSymbol should never be inspected directly.
       assert(sym.info.typeParams.length == typeArgs.length, this)
       // isHKSubType0 introduces synthetic type params so that betaReduce can first apply sym.info to typeArgs before calling asSeenFrom
       // asSeenFrom then skips synthetic type params, which are used to reduce HO subtyping to first-order subtyping, but which can't be instantiated from the given prefix and class
-      appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner)
-      // transform(sym.info.resultType) // TODO: why is this not enough in the context of dependent method types? find example
+      // appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner) // this crashes pos/depmet_implicit_tpbetareduce.scala
+      transform(sym.info.resultType)
     }
 
     // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
