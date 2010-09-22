@@ -165,8 +165,9 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             cloneSymbols(params) map (p => p.setInfo(apply(p.tpe))),
             if (restpe.typeSymbol == UnitClass) 
               erasedTypeRef(UnitClass) 
-            else if (settings.Xexperimental.value)
-              apply(mt.resultType(params map (_.tpe))) // this gets rid of DeBruijnTypes
+            else if (settings.YdepMethTpes.value)
+              // this replaces each typeref that refers to an argument by the type `p.tpe` of the actual argument p (p in params)
+              apply(mt.resultType(params map (_.tpe)))
             else
               apply(restpe))
         case RefinedType(parents, decls) =>
@@ -259,7 +260,8 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           def classSigSuffix: String = 
             "."+sym.name
           if (sym == ArrayClass)
-            ARRAY_TAG.toString+(args map jsig).mkString
+            if (unboundedGenericArrayLevel(tp) == 1) jsig(ObjectClass.tpe)
+            else ARRAY_TAG.toString+(args map jsig).mkString
           else if (sym.isTypeParameterOrSkolem &&
                   // only refer to type params that will actually make it into the sig, this excludes:
                   !sym.owner.isTypeParameterOrSkolem && // higher-order type parameters (!sym.owner.isTypeParameterOrSkolem), and parameters of methods
@@ -468,7 +470,14 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
             else BLOCK(tree, REF(BoxedUnit_UNIT))
           case x          =>
             assert(x != ArrayClass)
-            (REF(boxMethod(x)) APPLY tree) setPos (tree.pos) setType ObjectClass.tpe
+            tree match {
+              case Apply(boxFun, List(arg)) if (isUnbox(tree.symbol)) =>
+                log("boxing an unbox: " + tree)
+                log("replying with " + arg)
+                arg
+              case _ =>
+                (REF(boxMethod(x)) APPLY tree) setPos (tree.pos) setType ObjectClass.tpe
+            }
         })
     }
 
