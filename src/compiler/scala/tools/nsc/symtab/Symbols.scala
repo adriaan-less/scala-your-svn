@@ -27,6 +27,9 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
   /** Used for deciding in the IDE whether we can interrupt the compiler */
   protected var activeLocks = 0
 
+  /** Used for debugging only */
+  protected var lockedSyms = collection.immutable.Set[Symbol]()
+
   /** Used to keep track of the recursion depth on locked symbols */
   private var recursionTable = Map.empty[Symbol, Int]
 
@@ -115,6 +118,9 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       rawannots = annots1
       annots1
     }
+    
+    def setSerializable(): Unit =
+      addAnnotation(AnnotationInfo(SerializableAttr.tpe, Nil, Nil))
 
     def setAnnotations(annots: List[AnnotationInfoBase]): this.type = {
       this.rawannots = annots
@@ -452,6 +458,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         }
       }
 
+    def isSerializable      = hasAnnotation(SerializableAttr)
     def isDeprecated        = hasAnnotation(DeprecatedAttr)
     def deprecationMessage  = getAnnotation(DeprecatedAttr) flatMap { _.stringArg(0) }
     // !!! when annotation arguments are not literal strings, but any sort of 
@@ -718,6 +725,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         assert(infos.prev eq null, this.name)
         val tp = infos.info
         //if (settings.debug.value) System.out.println("completing " + this.rawname + tp.getClass());//debug
+
         if ((rawflags & LOCKED) != 0L) { // rolled out once for performance
           lock {
             setInfo(ErrorType)
@@ -731,9 +739,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         try {
           phase = phaseOf(infos.validFrom)
           tp.complete(this)
-          // if (settings.debug.value && runId(validTo) == currentRunId) System.out.println("completed " + this/* + ":" + info*/);//DEBUG
-          unlock()
         } finally {
+          unlock()
           phase = current
         }
         cnt += 1

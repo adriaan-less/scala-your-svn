@@ -118,17 +118,20 @@ abstract class TreeGen {
     else mkAttributedIdent(sym)
 
   /** Replaces tree type with a stable type if possible */
-  def stabilize(tree: Tree): Tree = tree match {
-    case Ident(_) =>
-      if (tree.symbol.isStable) tree.setType(singleType(tree.symbol.owner.thisType, tree.symbol))
-      else tree
-    case Select(qual, _) =>
-      assert((tree.symbol ne null) && (qual.tpe ne null))
-      if (tree.symbol.isStable && qual.tpe.isStable)
-        tree.setType(singleType(qual.tpe, tree.symbol))
-      else tree
+  def stabilize(tree: Tree): Tree = {
+    for(tp <- stableTypeFor(tree)) tree.tpe = tp
+    tree
+  }
+
+  /** Computes stable type for a tree if possible */
+  def stableTypeFor(tree: Tree): Option[Type] = tree match {
+    case Ident(_) if tree.symbol.isStable =>
+      Some(singleType(tree.symbol.owner.thisType, tree.symbol))
+    case Select(qual, _) if   {assert((tree.symbol ne null) && (qual.tpe ne null)); 
+                            tree.symbol.isStable && qual.tpe.isStable} =>
+      Some(singleType(qual.tpe, tree.symbol))
     case _ =>
-      tree
+      None
   }
 
   /** Cast `tree' to type `pt' */
@@ -256,32 +259,20 @@ abstract class TreeGen {
     )
   }
 
-  // var m$: T = null; or, if class member: local var m$: T = _;
-  /*!!!
-  def mkModuleValDef(accessor: Symbol) = {
-    val mval = accessor.owner.newValue(accessor.pos.focus, nme.moduleVarName(accessor.name))
+  def mkModuleVarDef(accessor: Symbol) = {
+    val mval = accessor.owner.newVariable(accessor.pos.focus, nme.moduleVarName(accessor.name))
       .setInfo(accessor.tpe.finalResultType)
-      .setFlag(LAZY);
+      .setFlag(LAZY)
+      .setFlag(MODULEVAR)
+    mval.setLazyAccessor(accessor)
     if (mval.owner.isClass) {
       mval setFlag (PRIVATE | LOCAL | SYNTHETIC)
       mval.owner.info.decls.enter(mval)
-    } 
-    ValDef(mval, New(TypeTree(mval.tpe), List(List())))
+    }
+    ValDef(mval, EmptyTree)
+    //ValDef(mval, newModule(accessor, mval.tpe))
   }
-  */
   
-  // var m$: T = null; or, if class member: local var m$: T = _;
-  def mkModuleVarDef(accessor: Symbol) = {
-    val mvar = accessor.owner.newVariable(accessor.pos.focus, nme.moduleVarName(accessor.name))
-      .setInfo(accessor.tpe.finalResultType)
-      .setFlag(MODULEVAR);
-    if (mvar.owner.isClass) {
-      mvar setFlag (PRIVATE | LOCAL | SYNTHETIC)
-      mvar.owner.info.decls.enter(mvar)
-    } 
-    ValDef(mvar, if (mvar.owner.isClass) EmptyTree else Literal(Constant(null)))
-  }
-
   // def m: T = { if (m$ eq null) m$ = new m$class(...) m$ }
   // where (...) are eventual outer accessors
   def mkCachedModuleAccessDef(accessor: Symbol, mvar: Symbol) =
@@ -292,7 +283,7 @@ abstract class TreeGen {
   def mkModuleAccessDef(accessor: Symbol, tpe: Type) =
     DefDef(accessor, newModule(accessor, tpe))
 
-  private def newModule(accessor: Symbol, tpe: Type) =
+  def newModule(accessor: Symbol, tpe: Type) =
     New(TypeTree(tpe), 
         List(for (pt <- tpe.typeSymbol.primaryConstructor.info.paramTypes) 
              yield This(accessor.owner.enclClass)))
@@ -301,13 +292,11 @@ abstract class TreeGen {
   def mkModuleAccessDcl(accessor: Symbol) = 
     DefDef(accessor setFlag lateDEFERRED, EmptyTree)
 
-  def mkRuntimeCall(meth: Name, args: List[Tree]): Tree = {
+  def mkRuntimeCall(meth: Name, args: List[Tree]): Tree =
     Apply(Select(mkAttributedRef(ScalaRunTimeModule), meth), args)
-  }
 
-  def mkRuntimeCall(meth: Name, targs: List[Type], args: List[Tree]): Tree = {
+  def mkRuntimeCall(meth: Name, targs: List[Type], args: List[Tree]): Tree =
     Apply(TypeApply(Select(mkAttributedRef(ScalaRunTimeModule), meth), targs map TypeTree), args)
-  }
 
   /** Make a synchronized block on 'monitor'. */
   def mkSynchronized(monitor: Tree, body: Tree): Tree =     
@@ -331,19 +320,32 @@ abstract class TreeGen {
   /** Make forwarder to method `target', passing all parameters in `params' */
   def mkForwarder(target: Tree, vparamss: List[List[Symbol]]) =
     (target /: vparamss)((fn, vparams) => Apply(fn, vparams map paramToArg))
-    
-  /** Applies a wrapArray call to an array, making it a WrappedArray
+
+  /** Applies a wrapArray call to an array, making it a WrappedArray.
+   *  Don't let a reference type parameter be inferred, in case it's a singleton:
+   *  apply the element type directly.
    */
   def mkWrapArray(tree: Tree, elemtp: Type) = {
-    val predef = mkAttributedRef(PredefModule)
-    val meth = 
-      if ((elemtp <:< AnyRefClass.tpe) && !isPhantomClass(elemtp.typeSymbol) || 
-          isValueClass(elemtp.typeSymbol))
-        Select(predef, "wrapArray")
-      else
-        TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
-    Apply(meth, List(tree))
+    val sym = elemtp.typeSymbol
+    val meth: Name =
+      if (isValueClass(sym)) "wrap"+sym.name+"Array"
+      else if ((elemtp <:< AnyRefClass.tpe) && !isPhantomClass(sym)) "wrapRefArray"
+      else "genericWrapArray"
+
+    if (isValueClass(sym))
+      Apply(Select(mkAttributedRef(PredefModule), meth), List(tree))
+    else
+      Apply(TypeApply(Select(mkAttributedRef(PredefModule), meth), List(TypeTree(elemtp))), List(tree))
   }
+  
+  /** Generate a cast for tree Tree representing Array with
+   *  elem type elemtp to expected type pt.
+   */
+  def mkCastArray(tree: Tree, elemtp: Type, pt: Type) =
+    if (elemtp.typeSymbol == AnyClass && isValueClass(tree.tpe.typeArgs.head.typeSymbol))
+      mkCast(mkRuntimeCall("toObjectArray", List(tree)), pt)
+    else
+      mkCast(tree, pt)
 
   /** Try to convert Select(qual, name) to a SelectFromTypeTree.
    */

@@ -50,7 +50,7 @@ class ScalaCheckFileManager(val origmanager: FileManager) extends FileManager {
   var JAVACMD: String = origmanager.JAVACMD
   var JAVAC_CMD: String = origmanager.JAVAC_CMD
 
-  var CLASSPATH: String = origmanager.CLASSPATH + java.io.File.pathSeparator + PathSettings.scalaCheck
+  var CLASSPATH: String = join(origmanager.CLASSPATH, PathSettings.scalaCheck.path)
   var LATEST_LIB: String = origmanager.LATEST_LIB
 }
 
@@ -483,7 +483,8 @@ class Worker(val fileManager: FileManager) extends Actor {
           
           NestUI.verbose(SFile(logFile).slurp())
           // obviously this must be improved upon
-          succeeded = SFile(logFile).lines() forall (_ contains " OK")
+          succeeded =
+            SFile(logFile).lines.filter(_.trim != "") forall (_ contains "OK")
       })
 
       case "pos" =>
