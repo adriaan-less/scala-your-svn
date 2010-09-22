@@ -6,13 +6,12 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 
-import collection.mutable.{Set, HashSet, StringBuilder}
-import collection.Seq
+import collection.mutable
+import mutable.{ Set, HashSet }
 import parsing.XhtmlEntities
 
 /**
@@ -84,7 +83,7 @@ object Utility extends AnyRef with parsing.TokenTests
   
   object Escapes {
     /** For reasons unclear escape and unescape are a long ways from
-        being logical inverses. */
+      * being logical inverses. */
     val pairs = Map(
       "lt"    -> '<',
       "gt"    -> '>',
@@ -106,12 +105,30 @@ object Utility extends AnyRef with parsing.TokenTests
    * @param s    ...
    * @return     ...
    */
-  final def escape(text: String, s: StringBuilder): StringBuilder =
-    text.foldLeft(s)((s, c) => escMap.get(c) match {
-      case Some(str)  => s append str
-      case None       => s append c
-    })
-
+  final def escape(text: String, s: StringBuilder): StringBuilder = {
+    // Implemented per XML spec: 
+    // http://www.w3.org/International/questions/qa-controls
+    // imperative code 3x-4x faster than current implementation
+    // dpp (David Pollak) 2010/02/03
+    val len = text.length
+    var pos = 0
+    while (pos < len) {
+      text.charAt(pos) match {
+        case '<' => s.append("&lt;")
+        case '>' => s.append("&gt;")
+        case '&' => s.append("&amp;")
+        case '"' => s.append("&quot;")
+        case '\n' => s.append('\n')
+        case '\r' => s.append('\r')
+        case '\t' => s.append('\t')
+        case c => if (c >= ' ') s.append(c)
+      }
+      
+      pos += 1
+    }
+    s
+  }
+  
   /**
    * Appends unescaped string to <code>s</code>, amp becomes &amp;
    * lt becomes &lt; etc..
@@ -131,7 +148,7 @@ object Utility extends AnyRef with parsing.TokenTests
    * @param nodes ...
    * @return      ...
    */
-  def collectNamespaces(nodes: Seq[Node]): Set[String] = 
+  def collectNamespaces(nodes: Seq[Node]): mutable.Set[String] = 
     nodes.foldLeft(new HashSet[String]) { (set, x) => collectNamespaces(x, set) ; set }
 
   /**
@@ -140,7 +157,7 @@ object Utility extends AnyRef with parsing.TokenTests
    * @param n   ...
    * @param set ...
    */
-  def collectNamespaces(n: Node, set: Set[String]) {
+  def collectNamespaces(n: Node, set: mutable.Set[String]) {
     if (n.doCollectNamespaces) {
       set += n.namespace
       for (a <- n.attributes) a match {
@@ -176,22 +193,24 @@ object Utility extends AnyRef with parsing.TokenTests
     minimizeTags: Boolean = false): StringBuilder =
   {
     x match {
-      case c: Comment if !stripComments => c buildString sb
-      case x: SpecialNode               => x buildString sb
-      case g: Group                     => for (c <- g.nodes) toXML(c, x.scope, sb) ; sb 
+      case c: Comment => if (!stripComments) c buildString sb else sb
+      case x: SpecialNode => x buildString sb
+      case g: Group =>
+        g.nodes foreach {toXML(_, x.scope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)}
+        sb
       case _  =>
         // print tag with namespace declarations
         sb.append('<')
         x.nameToString(sb)
         if (x.attributes ne null) x.attributes.buildString(sb)
         x.scope.buildString(sb, pscope)
-        if (x.child.isEmpty && minimizeTags)
+        if (x.child.isEmpty && minimizeTags) {
           // no children, so use short form: <xyz .../>
           sb.append(" />")
-        else {
+        } else {
           // children, so use long form: <xyz ...>...</xyz>
           sb.append('>')
-          sequenceToXML(x.child, x.scope, sb, stripComments)
+          sequenceToXML(x.child, x.scope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)
           sb.append("</")
           x.nameToString(sb)
           sb.append('>')
@@ -203,20 +222,23 @@ object Utility extends AnyRef with parsing.TokenTests
     children: Seq[Node],
     pscope: NamespaceBinding = TopScope,
     sb: StringBuilder = new StringBuilder,
-    stripComments: Boolean = false): Unit =
+    stripComments: Boolean = false,
+    decodeEntities: Boolean = true,
+    preserveWhitespace: Boolean = false,
+    minimizeTags: Boolean = false): Unit =
   {
     if (children.isEmpty) return
     else if (children forall isAtomAndNotText) { // add space
       val it = children.iterator
       val f = it.next
-      toXML(f, pscope, sb)
+      toXML(f, pscope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)
       while (it.hasNext) {
         val x = it.next
         sb.append(' ')
-        toXML(x, pscope, sb)
+        toXML(x, pscope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)
       }
     }
-    else children foreach { toXML(_, pscope, sb) }
+    else children foreach { toXML(_, pscope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags) }
   }
 
   /**
@@ -239,14 +261,14 @@ object Utility extends AnyRef with parsing.TokenTests
    * @param children
    */
   def hashCode(pre: String, label: String, attribHashCode: Int, scpeHash: Int, children: Seq[Node]) = (
-    ( if(pre ne null) {41 * pre.hashCode() % 7} else {0})
-    + label.hashCode() * 53
+    ( if(pre ne null) {41 * pre.## % 7} else {0})
+    + label.## * 53
     + attribHashCode * 7
     + scpeHash * 31
     + {
       var c = 0
       val i = children.iterator
-      while(i.hasNext) c = c * 41 + i.next.hashCode
+      while(i.hasNext) c = c * 41 + i.next.##
       c
     }
   )
@@ -289,9 +311,10 @@ object Utility extends AnyRef with parsing.TokenTests
    */
   def getName(s: String, index: Int): String = {
     if (index >= s.length) null
-    else (s drop index) match {
-      case Seq(x, xs @ _*) if isNameStart(x)  => x.toString + (xs takeWhile isNameChar).mkString
-      case _                                  => ""
+    else {
+      val xs = s drop index
+      if (xs.nonEmpty && isNameStart(xs.head)) xs takeWhile isNameChar
+      else ""
     }
   }
 

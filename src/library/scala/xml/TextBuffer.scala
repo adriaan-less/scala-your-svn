@@ -6,14 +6,9 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 
 package scala.xml
 
-import collection.Seq
-import collection.mutable.StringBuilder
-import collection.immutable.{List, Nil, ::}
 import Utility.isSpace
 
 object TextBuffer {

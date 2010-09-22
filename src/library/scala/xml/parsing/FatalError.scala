@@ -6,11 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
-package parsing;
+package parsing
 
-
-case class FatalError(msg:String) extends java.lang.RuntimeException(msg);
+/** !!! This is poorly named, but I guess it's in the API.
+ */
+case class FatalError(msg: String) extends java.lang.RuntimeException(msg)

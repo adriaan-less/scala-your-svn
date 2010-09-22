@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -238,7 +237,7 @@ trait Linearizers { self: ICodes =>
         covered.size + (hs :\ 0)((h, s) => h.blocks.length + s)
       }
 
-      val tryBlocks = handlersByCovered.keysIterator.toList.sortWith(size(_) > size(_))
+      val tryBlocks = handlersByCovered.keys.toList sortBy size
 
       var result = normalLinearizer.linearize(m)
 

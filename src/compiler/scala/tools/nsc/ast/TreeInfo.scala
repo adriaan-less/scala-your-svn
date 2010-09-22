@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -87,7 +86,12 @@ abstract class TreeInfo {
     case TypeApply(fn, _) =>
       isPureExpr(fn)
     case Apply(fn, List()) =>
-      isPureExpr(fn)
+      /* Note: After uncurry, field accesses are represented as Apply(getter, Nil),
+       * so an Apply can also be pure.
+       * However, before typing, applications of nullary functional values are also
+       * Apply(function, Nil) trees. To prevent them from being treated as pure,
+       * we check that the callee is a method. */
+      fn.symbol.isMethod && isPureExpr(fn)
     case Typed(expr, _) =>
       isPureExpr(expr)
     case Block(stats, expr) =>
@@ -98,21 +102,24 @@ abstract class TreeInfo {
 
   def mayBeVarGetter(sym: Symbol) = sym.info match {
     case PolyType(List(), _) => sym.owner.isClass && !sym.isStable
-    case _: ImplicitMethodType => sym.owner.isClass && !sym.isStable
+    case mt: MethodType => mt.isImplicit && sym.owner.isClass && !sym.isStable
     case _ => false
   }
 
-  def isVariableOrGetter(tree: Tree) = tree match {
-    case Ident(_) => 
-      tree.symbol.isVariable
-    case Select(qual, _) =>
-      tree.symbol.isVariable ||
-      (mayBeVarGetter(tree.symbol) && 
-       tree.symbol.owner.info.member(nme.getterToSetter(tree.symbol.name)) != NoSymbol)
-    case Apply(Select(qual, nme.apply), _) =>
-      qual.tpe.member(nme.update) != NoSymbol
-    case _ =>
-      false
+  def isVariableOrGetter(tree: Tree) = {
+    def sym       = tree.symbol
+    def isVar     = sym.isVariable
+    def isGetter  = mayBeVarGetter(sym) && sym.owner.info.member(nme.getterToSetter(sym.name)) != NoSymbol
+    
+    tree match {
+      case Ident(_)         => isVar
+      case Select(_, _)     => isVar || isGetter
+      case _                =>
+        methPart(tree) match {
+          case Select(qual, nme.apply)  => qual.tpe.member(nme.update) != NoSymbol
+          case _                        => false
+        }
+    }
   }
 
   /** Is tree a self constructor call?
@@ -147,6 +154,12 @@ abstract class TreeInfo {
     case (constr @ DefDef(_, name, _, _, _, _)) :: _ 
     if (name == nme.CONSTRUCTOR || name == nme.MIXIN_CONSTRUCTOR) => constr
     case _ :: stats1 => firstConstructor(stats1)
+  }
+  
+  /** The arguments to the first constructor in `stats'. */
+  def firstConstructorArgs(stats: List[Tree]): List[Tree] = firstConstructor(stats) match {
+    case DefDef(_, _, _, args :: _, _, _) => args
+    case _                                => Nil
   }
 
   /** The value definitions marked PRESUPER in this statement sequence */
@@ -197,7 +210,7 @@ abstract class TreeInfo {
   /** Is name a variable name? */
   def isVariableName(name: Name): Boolean = {
     val first = name(0)
-    (('a' <= first && first <= 'z') || first == '_') && !(reserved contains name)
+    ((first.isLower && first.isLetter) || first == '_') && !(reserved contains name)
   }
 
   /** Is tree a this node which belongs to `enclClass'? */
@@ -295,10 +308,10 @@ abstract class TreeInfo {
   /** The method part of an application node
    */
   def methPart(tree: Tree): Tree = tree match {
-    case Apply(fn, _) => methPart(fn)
-    case TypeApply(fn, _) => methPart(fn)
+    case Apply(fn, _)           => methPart(fn)
+    case TypeApply(fn, _)       => methPart(fn)
     case AppliedTypeTree(fn, _) => methPart(fn)
-    case _ => tree
+    case _                      => tree
   }
 
   def firstArgument(tree: Tree): Tree = tree match {
@@ -325,18 +338,19 @@ abstract class TreeInfo {
       false
   }
 
-  /** Compilation unit is the predef object
+  /** Compilation unit is class or object 'name' in package 'scala'
    */
   def isUnitInScala(tree: Tree, name: Name) = tree match {
-    case PackageDef(Ident(nme.scala_), defs) => isObject(defs, name)
+    case PackageDef(Ident(nme.scala_), defs) => isImplDef(defs, name)
     case _ => false
   }
 
-  private def isObject(trees: List[Tree], name: Name): Boolean = trees match {
-    case Import(_, _) :: xs => isObject(xs, name)
-    case DocDef(_, tree1) :: Nil => isObject(List(tree1), name)
-    case Annotated(_, tree1) :: Nil => isObject(List(tree1), name)
+  private def isImplDef(trees: List[Tree], name: Name): Boolean = trees match {
+    case Import(_, _) :: xs => isImplDef(xs, name)
+    case DocDef(_, tree1) :: Nil => isImplDef(List(tree1), name)
+    case Annotated(_, tree1) :: Nil => isImplDef(List(tree1), name)
     case ModuleDef(_, `name`, _) :: Nil => true
+    case ClassDef(_, `name`, _, _) :: Nil => true
     case _ => false
   }
 
@@ -349,5 +363,22 @@ abstract class TreeInfo {
   def isAliasTypeDef(tree: Tree) = tree match {
     case TypeDef(_, _, _, _) => !isAbsTypeDef(tree)
     case _ => false
+  }
+  
+  /** Some handy extractors for spotting true and false expressions
+   *  through the haze of braces.
+   */
+  abstract class SeeThroughBlocks[T] {
+    protected def unapplyImpl(x: Tree): T
+    def unapply(x: Tree): T = x match {
+      case Block(Nil, expr)         => unapply(expr)
+      case _                        => unapplyImpl(x)
+    }
+  }
+  object IsTrue extends SeeThroughBlocks[Boolean] {
+    protected def unapplyImpl(x: Tree): Boolean = x equalsStructure Literal(Constant(true))
+  }
+  object IsFalse extends SeeThroughBlocks[Boolean] {
+    protected def unapplyImpl(x: Tree): Boolean = x equalsStructure Literal(Constant(false))
   }
 }

@@ -2,7 +2,6 @@
  * System.Reflection-like API for access to .NET assemblies (DLL & EXE)
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil;
 
@@ -119,7 +118,9 @@ public abstract class Assembly extends CustomAttributeProvider {
 	PEFile pefile = null;
 	try { pefile = new PEFile(f.getAbsolutePath()); }
 	catch (FileNotFoundException e) {}
-	catch (RuntimeException e) {}
+	catch (RuntimeException e) {
+            java.lang.System.out.println("swallowed RuntimeException at getPEFile");
+    }
 	return pefile;
     }
 

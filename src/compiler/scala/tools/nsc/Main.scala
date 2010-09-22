@@ -2,18 +2,17 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
 import java.io.File
-
-import scala.concurrent.SyncVar
+import File.pathSeparator
 
 import scala.tools.nsc.interactive.{ RefinedBuildManager, SimpleBuildManager }
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
 import scala.tools.nsc.util.{ BatchSourceFile, FakePos } //{Position}
+import Properties.{ versionString, copyrightString, residentPromptString, msilLibPath }
 
 /** The main class for NSC, a compiler for the programming
  *  language Scala.
@@ -21,10 +20,10 @@ import scala.tools.nsc.util.{ BatchSourceFile, FakePos } //{Position}
 object Main extends AnyRef with EvalLoop {
 
   val versionMsg = "Scala compiler " +
-    Properties.versionString + " -- " +
-    Properties.copyrightString
+    versionString + " -- " +
+    copyrightString
 
-  val prompt = Properties.residentPromptString
+  val prompt = residentPromptString
 
   var reporter: ConsoleReporter = _
 
@@ -39,7 +38,7 @@ object Main extends AnyRef with EvalLoop {
   def resident(compiler: Global) {
     loop { line =>
       val args = line.split(' ').toList
-      val command = new CompilerCommand(args, new Settings(error), error, true)
+      val command = new CompilerCommand(args, new Settings(error))
       compiler.reporter.reset
       new compiler.Run() compile command.files
     }
@@ -48,7 +47,7 @@ object Main extends AnyRef with EvalLoop {
   def process(args: Array[String]) {
     val settings = new Settings(error)
     reporter = new ConsoleReporter(settings)
-    val command = new CompilerCommand(args.toList, settings, error, false)
+    val command = new CompilerCommand(args.toList, settings)
     if (command.settings.version.value)
       reporter.info(null, versionMsg, true)
     else if (command.settings.Yidedebug.value) {
@@ -58,7 +57,7 @@ object Main extends AnyRef with EvalLoop {
       import compiler.{ reporter => _, _ }
       
       val sfs = command.files.map(getSourceFile(_))
-      val reloaded = new SyncVar[Either[Unit, Throwable]]
+      val reloaded = new interactive.Response[Unit]
       askReload(sfs, reloaded)
       reloaded.get.right.toOption match {
         case Some(ex) => reporter.cancelled = true // Causes exit code to be non-0
@@ -78,16 +77,13 @@ object Main extends AnyRef with EvalLoop {
       // enter resident mode
       loop { line =>
         val args = line.split(' ').toList
-        val command = new CompilerCommand(args.toList, settings, error, true)
+        val command = new CompilerCommand(args.toList, settings)
         buildManager.update(fileSet(command.files), Set.empty)
       }
-    } else {
-      if (command.settings.target.value == "msil") {
-        val libpath = System.getProperty("msil.libpath")
-        if (libpath != null)
-          command.settings.assemrefs.value =
-            command.settings.assemrefs.value + File.pathSeparator + libpath
-      }
+    } else {      
+      if (command.settings.target.value == "msil")
+        msilLibPath foreach (x => command.settings.assemrefs.value += (pathSeparator + x))
+
       try {
         val compiler = if (command.settings.Yrangepos.value) new interactive.Global(command.settings, reporter)
         else new Global(command.settings, reporter)

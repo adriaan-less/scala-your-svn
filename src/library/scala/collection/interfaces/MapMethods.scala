@@ -15,9 +15,10 @@ import generic._
  * @since 2.8
  */
 trait MapMethods[A, +B, +This <: MapLike[A, B, This] with Map[A, B]]
-extends IterableMethods[(A, B), This]
-with SubtractableMethods[A, This]
-{
+          extends IterableMethods[(A, B), This]
+             with SubtractableMethods[A, This] {
+  self: Map[A, B] =>
+
   // abstract
   def empty: This
   def get(key: A): Option[B]
@@ -30,15 +31,15 @@ with SubtractableMethods[A, This]
   def apply(key: A): B
   def contains(key: A): Boolean
   def isDefinedAt(key: A): Boolean
-  def keySet: Set[A]
+  def keys: Iterable[A]
   def keysIterator: Iterator[A]
-  def valuesIterable: Iterable[B]
+  def keySet: Set[A]
+  def values: Iterable[B]
   def valuesIterator: Iterator[B]
   def default(key: A): B
   def filterKeys(p: A => Boolean): DefaultMap[A, B]
   def mapValues[C](f: B => C): DefaultMap[A, C]
   def updated [B1 >: B](key: A, value: B1): Map[A, B1]
   def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *): Map[A, B1]
-  def ++[B1 >: B](elems: Traversable[(A, B1)]): Map[A, B1]
-  def ++[B1 >: B] (iter: Iterator[(A, B1)]): Map[A, B1]
+  def ++[B1 >: B](xs: TraversableOnce[(A, B1)]): Map[A, B1]
 }

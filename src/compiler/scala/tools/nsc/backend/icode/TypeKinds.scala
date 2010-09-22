@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -138,7 +137,7 @@ trait TypeKinds { self: ICodes =>
             (b.isReferenceType || b.isArrayType))
           toTypeKind(lub0(a.toType, b.toType))
         else
-          throw new CheckerError("Incompatible types: " + a + " with " + b)
+          throw new CheckerException("Incompatible types: " + a + " with " + b)
     }
   }
 
@@ -261,7 +260,7 @@ trait TypeKinds { self: ICodes =>
            "REFERENCE to NoSymbol not allowed!")
 
     override def toString(): String = 
-      "REFERENCE(" + cls.fullNameString + ")"
+      "REFERENCE(" + cls.fullName + ")"
 
     /**
      * Approximate `lub'. The common type of two references is
@@ -306,7 +305,7 @@ trait TypeKinds { self: ICodes =>
 //       abort(toString() + " maxType " + other.toString());
 
 //     override def toString(): String =
-//       "VALUE(" + cls.fullNameString + ")";
+//       "VALUE(" + cls.fullName + ")";
 //   }
 
   def ArrayN(elem: TypeKind, dims: Int): ARRAY = {
@@ -431,8 +430,12 @@ trait TypeKinds { self: ICodes =>
   ////////////////// Conversions //////////////////////////////
 
 
-  /** Return the TypeKind of the given type */
-  def toTypeKind(t: Type): TypeKind = t match {
+  /** Return the TypeKind of the given type
+   *
+   *  Call to .normalize fixes #3003 (follow type aliases). Otherwise,
+   *  arrayOrClassType below would return AnyRefReference.
+   */
+  def toTypeKind(t: Type): TypeKind = t.normalize match {
     case ThisType(sym) => 
       if (sym == ArrayClass)
         AnyRefReference
@@ -483,6 +486,12 @@ trait TypeKinds { self: ICodes =>
       assert(sym.isType, sym) // it must be compiling Array[a]
       AnyRefReference
     }
+  }
+
+  def msil_mgdptr(tk: TypeKind): TypeKind = (tk: @unchecked) match {
+    case REFERENCE(cls)  => REFERENCE(loaders.clrTypes.mdgptrcls4clssym(cls))
+    // TODO have ready class-symbols for the by-ref versions of built-in valuetypes 
+    case _ => abort("cannot obtain a managed pointer for " + tk)
   }
 
 }

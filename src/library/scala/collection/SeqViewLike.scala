@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,22 +14,35 @@ import generic._
 import Seq.fill
 import TraversableView.NoBuilder
 
-/** A template trait for a non-strict view of a sequence.
- * @author Sean McDirmid
- * @author Martin Odersky
- * @version 2.8
+/** A template trait for non-strict views of sequences.
+ *  $seqViewInfo
+ * 
+ *  @define seqViewInfo
+ *  $viewInfo
+ *  All views for sequences are defined by re-interpreting the `length` and `apply` methods.
+ * 
+ *  @author Martin Odersky
+ *  @version 2.8
+ *  @since   2.8
+ *  @tparam A    the element type of the view
+ *  @tparam Coll the type of the underlying collection containing the elements.
+ *  @tparam This the type of the view itself
  */
 trait SeqViewLike[+A, 
-                           +Coll,
-                           +This <: SeqView[A, Coll] with SeqViewLike[A, Coll, This]] 
-  extends Seq[A]
-      with SeqLike[A, This]
-      with IterableView[A, Coll]
-      with IterableViewLike[A, Coll, This] 
-      with views.SeqTransformations[A, Coll, This]
+                  +Coll,
+                  +This <: SeqView[A, Coll] with SeqViewLike[A, Coll, This]] 
+  extends Seq[A] with SeqLike[A, This] with IterableView[A, Coll] with IterableViewLike[A, Coll, This] 
 { self =>
 
-  trait Transformed[+B] extends views.SeqLike[B, Coll] with super.Transformed[B]
+  trait Transformed[+B] extends SeqView[B, Coll] with super.Transformed[B] {
+    override def length: Int
+    override def apply(idx: Int): B
+  }
+
+  trait Forced[B] extends Transformed[B] with super.Forced[B] {
+    override def length = forced.length
+    override def apply(idx: Int) = forced.apply(idx)
+  }
 
   trait Sliced extends Transformed[A] with super.Sliced {
     override def length = ((until min self.length) - from) max 0
@@ -105,7 +117,8 @@ trait SeqViewLike[+A,
 
   trait Zipped[B] extends Transformed[(A, B)] with super.Zipped[B] {
     protected[this] lazy val thatSeq = other.toSeq
-    override def length: Int = self.length min thatSeq.length
+    /* Have to be careful here - other may be an infinite sequence. */
+    override def length = if ((thatSeq lengthCompare self.length) <= 0) thatSeq.length else self.length
     override def apply(idx: Int) = (self.apply(idx), thatSeq.apply(idx))
   }
   
@@ -144,6 +157,33 @@ trait SeqViewLike[+A,
     override def stringPrefix = self.stringPrefix+"P"
   }
 
+  trait Prepended[B >: A] extends Transformed[B] {
+    protected[this] val fst: B
+    override def iterator: Iterator[B] = Iterator.single(fst) ++ self.iterator
+    override def length: Int = 1 + self.length
+    override def apply(idx: Int): B = 
+      if (idx == 0) fst
+      else self.apply(idx - 1)
+    override def stringPrefix = self.stringPrefix+"A"
+  }
+
+  /** Boilerplate method, to override in each subclass
+   *  This method could be eliminated if Scala had virtual classes
+   */
+  protected override def newForced[B](xs: => Seq[B]): Transformed[B] = new Forced[B] { val forced = xs }
+  protected override def newAppended[B >: A](that: Traversable[B]): Transformed[B] = new Appended[B] { val rest = that }
+  protected override def newMapped[B](f: A => B): Transformed[B] = new Mapped[B] { val mapping = f }
+  protected override def newFlatMapped[B](f: A => Traversable[B]): Transformed[B] = new FlatMapped[B] { val mapping = f }
+  protected override def newFiltered(p: A => Boolean): Transformed[A] = new Filtered { val pred = p }
+  protected override def newSliced(_from: Int, _until: Int): Transformed[A] = new Sliced { val from = _from; val until = _until }
+  protected override def newDroppedWhile(p: A => Boolean): Transformed[A] = new DroppedWhile { val pred = p }
+  protected override def newTakenWhile(p: A => Boolean): Transformed[A] = new TakenWhile { val pred = p }
+  protected override def newZipped[B](that: Iterable[B]): Transformed[(A, B)] = new Zipped[B] { val other = that }
+  protected override def newZippedAll[A1 >: A, B](that: Iterable[B], _thisElem: A1, _thatElem: B): Transformed[(A1, B)] = new ZippedAll[A1, B] { val other = that; val thisElem = _thisElem; val thatElem = _thatElem }
+  protected def newReversed: Transformed[A] = new Reversed { }
+  protected def newPatched[B >: A](_from: Int, _patch: Seq[B], _replaced: Int): Transformed[B] = new Patched[B] { val from = _from; val patch = _patch; val replaced = _replaced }
+  protected def newPrepended[B >: A](elem: B): Transformed[B] = new Prepended[B] { protected[this] val fst = elem }
+
   override def reverse: This = newReversed.asInstanceOf[This]
 
   override def patch[B >: A, That](from: Int, patch: Seq[B], replaced: Int)(implicit bf: CanBuildFrom[This, B, That]): That = {
@@ -153,13 +193,34 @@ trait SeqViewLike[+A,
 //    else super.patch[B, That](from, patch, replaced)(bf) 
   }
 
-  //TR TODO: updated, +: ed :+ ed
-
   override def padTo[B >: A, That](len: Int, elem: B)(implicit bf: CanBuildFrom[This, B, That]): That =
     patch(length, fill(len - length)(elem), 0)
     
   override def reverseMap[B, That](f: A => B)(implicit bf: CanBuildFrom[This, B, That]): That =
     reverse.map(f)
+
+  override def updated[B >: A, That](index: Int, elem: B)(implicit bf: CanBuildFrom[This, B, That]): That = {
+    require(0 <= index && index < length)
+    patch(index, List(elem), 1)(bf)
+  }
+
+  override def +:[B >: A, That](elem: B)(implicit bf: CanBuildFrom[This, B, That]): That = 
+    newPrepended(elem).asInstanceOf[That]
+    
+  override def :+[B >: A, That](elem: B)(implicit bf: CanBuildFrom[This, B, That]): That = 
+    ++(Iterator.single(elem))(bf)
+
+  override def union[B >: A, That](that: Seq[B])(implicit bf: CanBuildFrom[This, B, That]): That = 
+    newForced(thisSeq union that).asInstanceOf[That]
+
+  override def diff[B >: A](that: Seq[B]): This = 
+    newForced(thisSeq diff that).asInstanceOf[This]
+
+  override def intersect[B >: A](that: Seq[B]): This = 
+    newForced(thisSeq intersect that).asInstanceOf[This]
+
+  override def sorted[B >: A](implicit ord: Ordering[B]): This =
+    newForced(thisSeq sorted ord).asInstanceOf[This]
 
   override def stringPrefix = "SeqView"
 }

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
 package persistent
@@ -74,7 +73,7 @@ extends java.lang.Thread with scala.util.logging.Logged {
     import scala.io.Source
     import scala.xml.parsing.ConstructingParser
     log("[load]\nloading "+theFile)
-    val src = Source.fromFile(theFile)()
+    val src = Source.fromFile(theFile)
     log("parsing "+theFile)
     val res = ConstructingParser.fromSource(src,false).document.docElem(0)
     switch

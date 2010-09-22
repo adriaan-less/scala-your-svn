@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -94,7 +93,7 @@ trait BasicBlocks {
     override def toList: List[Instruction] = {
       if (closed)
         instrs.toList
-      else instructionList
+      else instructionList.reverse
     }
     
     /** Return an iterator over the instructions in this basic block. */
@@ -132,8 +131,8 @@ trait BasicBlocks {
     /** Apply a function to all the instructions of the block. */
     override def foreach[U](f: Instruction => U) = {
       if (!closed) {
-        dump
-        global.abort("Traversing an open block!: " + label)
+        method.dump
+        global.abort("Traversing an open block!: " + label + " in " + method)
       }
       instrs foreach f
     }
@@ -189,7 +188,7 @@ trait BasicBlocks {
       var i = 0
       var changed = false
       while (i < instrs.length && !changed) {
-        if (instrs(i) == oldInstr) {
+        if (instrs(i) eq oldInstr) {
           newInstr.setPos(oldInstr.pos)
           instrs(i) = newInstr
           changed = true
@@ -201,7 +200,7 @@ trait BasicBlocks {
     }
 
     /** Replaces <code>iold</code> with <code>is</code>. It does not update
-     *  the position field in the newly inserted instrucitons, so it behaves
+     *  the position field in the newly inserted instructions, so it behaves
      *  differently than the one-instruction versions of this function.
      *
      *  @param iold ..
@@ -335,14 +334,14 @@ trait BasicBlocks {
     }
 
     /** Emitting does not set touched to true. During code generation this is a hotspot and
-     *  setting the flag for each emit is a waste. Caching should happend only after a block
+     *  setting the flag for each emit is a waste. Caching should happen only after a block
      *  is closed, which sets the DIRTYSUCCS flag.
      */
     def emit(instr: Instruction, pos: Position) {
-      if (closed) {
+/*      if (closed) {
         print()
         Console.println("trying to emit: " + instr)
-      }
+      } */
       assert(!closed || ignore, "BasicBlock closed")
 
       if (!ignore) {
@@ -369,8 +368,24 @@ trait BasicBlocks {
       this.close
     }
 
+    /** do nothing if block is already closed */
+    def closeWith(instr: Instruction) {
+      if (closed) () else {
+        emit(instr)
+        close
+      }
+    }
+
+    def closeWith(instr: Instruction, pos: Position) {
+      if (closed) () else {
+        emit(instr, pos)
+        close
+      }
+    }
+
     /** Close the block */
     def close {
+      assert(!closed || ignore)
       assert(instructionList.length > 0, "Empty block.")
       closed = true
       setFlag(DIRTYSUCCS)
@@ -490,10 +505,10 @@ trait BasicBlocks {
         ss ++ (ss flatMap findSucc)
       }
       
-      succs.flatMap(findSucc).removeDuplicates
+      succs.flatMap(findSucc).distinct
     }
 
-    /** Returns the precessors of this block.     */
+    /** Returns the predecessors of this block.     */
     def predecessors: List[BasicBlock] = {
       if (hasFlag(DIRTYPREDS)) {
         resetFlag(DIRTYPREDS)

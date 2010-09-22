@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
@@ -20,7 +19,7 @@ abstract class TypeFlowAnalysis {
 
   /** The lattice of ICode types.
    */
-  object typeLattice extends CompleteLattice {
+  object typeLattice extends SemiLattice {
     type Elem = icodes.TypeKind
 
     val Object = icodes.REFERENCE(global.definitions.ObjectClass)
@@ -38,7 +37,7 @@ abstract class TypeFlowAnalysis {
   /** The lattice of type stacks. It is a straight forward extension of
    *  the type lattice (lub is pairwise lub of the list elements).
    */
-  object typeStackLattice extends CompleteLattice {
+  object typeStackLattice extends SemiLattice {
     import icodes._
     type Elem = TypeStack
 
@@ -52,7 +51,7 @@ abstract class TypeFlowAnalysis {
       else if ((s1 eq exceptionHandlerStack) || (s2 eq exceptionHandlerStack)) Predef.error("merging with exhan stack") 
       else {
 //        if (s1.length != s2.length)
-//          throw new CheckerError("Incompatible stacks: " + s1 + " and " + s2);
+//          throw new CheckerException("Incompatible stacks: " + s1 + " and " + s2);
         new TypeStack((s1.types, s2.types).zipped map icodes.lub)
       }
     }
@@ -74,7 +73,7 @@ abstract class TypeFlowAnalysis {
   /** The type flow lattice contains a binding from local variable
    *  names to types and a type stack.
    */
-  object typeFlowLattice extends CompleteLattice {
+  object typeFlowLattice extends SemiLattice {
     import icodes._
     type Elem = IState[VarBinding, icodes.TypeStack]
 
@@ -180,7 +179,7 @@ abstract class TypeFlowAnalysis {
           assert(visited.contains(b), 
             "Block " + b + " in " + this.method + " has input equal to bottom -- not visited? .." + visited));
       }
-//      log("" + method.symbol.fullNameString + " ["  + method.code.blocks.size + " blocks] "
+//      log("" + method.symbol.fullName + " ["  + method.code.blocks.size + " blocks] "
 //              + "\n\t" + iterations + " iterations: " + t + " ms."
 //              + "\n\tlubs: " + typeFlowLattice.lubs + " out of which " + icodes.lubs0 + " typer lubs")
     }
@@ -390,8 +389,8 @@ abstract class TypeFlowAnalysis {
       val stack = out.stack
 
       if (settings.debug.value) {
-        Console.println("[before] Stack: " + stack);
-        Console.println(i);
+//        Console.println("[before] Stack: " + stack);
+//        Console.println(i);
       }
       i match {
 

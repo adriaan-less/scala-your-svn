@@ -6,35 +6,46 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.nsc
 package io
 
 import java.io.{ 
   FileInputStream, FileOutputStream, BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter, 
-  BufferedInputStream, BufferedOutputStream, IOException, File => JFile }
-import java.nio.channels.FileChannel
-import collection.Traversable
+  BufferedInputStream, BufferedOutputStream, IOException, PrintStream, File => JFile }
+import java.nio.channels.{ Channel, FileChannel }
 import scala.io.Codec
 
-object File
-{
+object File {
   def pathSeparator = JFile.pathSeparator
+  def separator = JFile.separator
   
-  def apply(path: Path)(implicit codec: Codec = null) = 
-    if (codec != null) new File(path.jfile)(codec)
-    else path.toFile
+  def apply(path: Path)(implicit codec: Codec) = new File(path.jfile)(codec)
 
   // Create a temporary file
   def makeTemp(prefix: String = Path.randomPrefix, suffix: String = null, dir: JFile = null) =
     apply(JFile.createTempFile(prefix, suffix, dir))
     
-  import java.nio.channels.Channel
   type Closeable = { def close(): Unit }
   def closeQuietly(target: Closeable) {
     try target.close() catch { case e: IOException => }
-  }  
+  }
+  
+  // this is a workaround for http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6503430
+  // we are using a static initializer to statically initialize a java class so we don't
+  // trigger java.lang.InternalErrors later when using it concurrently.  We ignore all
+  // the exceptions so as not to cause spurious failures when no write access is available,
+  // e.g. google app engine.
+  try {
+    val tmp = JFile.createTempFile("bug6503430", null, null)
+    val in = new FileInputStream(tmp).getChannel()
+    val out = new FileOutputStream(tmp, true).getChannel()
+    out.transferFrom(in, 0, 0)
+    tmp.delete()
+  }
+  catch {
+    case _: IllegalArgumentException | _: IllegalStateException | _: IOException | _: SecurityException => ()
+  }
 }
 import File._
 import Path._
@@ -42,51 +53,65 @@ import Path._
 /** An abstraction for files.  For character data, a Codec
  *  can be supplied at either creation time or when a method
  *  involving character data is called (with the latter taking
- *  precdence if supplied.) If neither is available, the value
+ *  precedence if supplied.) If neither is available, the value
  *  of scala.io.Codec.default is used.
  *
  *  @author  Paul Phillips
  *  @since   2.8
  */
-class File(jfile: JFile)(implicit val creationCodec: Codec = null)
-extends Path(jfile)
-with Streamable.Chars
-{  
+class File(jfile: JFile)(implicit constructorCodec: Codec) extends Path(jfile) with Streamable.Chars {
+  override val creationCodec = constructorCodec
   def withCodec(codec: Codec): File = new File(jfile)(codec)
+
+  override def addExtension(ext: String): File = super.addExtension(ext).toFile
+  override def toAbsolute: File = if (isAbsolute) this else super.toAbsolute.toFile
   override def toDirectory: Directory = new Directory(jfile)
   override def toFile: File = this
-  
+  override def normalize: File = super.normalize.toFile
   override def isValid = jfile.isFile() || !jfile.exists()
   override def length = super[Path].length
+  override def walkFilter(cond: Path => Boolean): Iterator[Path] =
+    if (cond(this)) Iterator.single(this) else Iterator.empty
 
   /** Obtains an InputStream. */
   def inputStream() = new FileInputStream(jfile)
-  
+
   /** Obtains a OutputStream. */
   def outputStream(append: Boolean = false) = new FileOutputStream(jfile, append)
   def bufferedOutput(append: Boolean = false) = new BufferedOutputStream(outputStream(append))
+  def printStream(append: Boolean = false) = new PrintStream(outputStream(append), true)
 
   /** Obtains an OutputStreamWriter wrapped around a FileOutputStream.
    *  This should behave like a less broken version of java.io.FileWriter,
    *  in that unlike the java version you can specify the encoding.
    */
-  def writer(append: Boolean = false, codec: Codec = getCodec()) =
+  def writer(): OutputStreamWriter = writer(false)
+  def writer(append: Boolean): OutputStreamWriter = writer(append, creationCodec)
+  def writer(append: Boolean, codec: Codec): OutputStreamWriter =
     new OutputStreamWriter(outputStream(append), codec.charSet)
   
   /** Wraps a BufferedWriter around the result of writer().
    */
-  def bufferedWriter(append: Boolean = false, codec: Codec = getCodec()) =
+  def bufferedWriter(): BufferedWriter = bufferedWriter(false)
+  def bufferedWriter(append: Boolean): BufferedWriter = bufferedWriter(append, creationCodec)
+  def bufferedWriter(append: Boolean, codec: Codec): BufferedWriter =
     new BufferedWriter(writer(append, codec))
   
-  /** Writes all the Strings in the given iterator to the file. */
-  def writeAll(xs: Traversable[String], append: Boolean = false, codec: Codec = getCodec()): Unit = {
-    val out = bufferedWriter(append, codec)
-    try xs foreach (out write _)
+  /** Creates a new file and writes all the Strings to it. */
+  def writeAll(strings: String*): Unit = {    
+    val out = bufferedWriter()
+    try strings foreach (out write _)
     finally out close
   }
   
-  def copyFile(destPath: Path, preserveFileDate: Boolean = false) = {
-    val FIFTY_MB = 1024 * 1024 * 50
+  def appendAll(strings: String*): Unit = {
+    val out = bufferedWriter(append = true)
+    try strings foreach (out write _)
+    finally out close
+  }
+
+  def copyTo(destPath: Path, preserveFileDate: Boolean = false): Boolean = {
+    val CHUNK = 1024 * 1024 * 16  // 16 MB
     val dest = destPath.toFile
     if (!isValid) fail("Source %s is not a valid file." format name)
     if (this.normalize == dest.normalize) fail("Source and destination are the same.")
@@ -103,7 +128,7 @@ with Streamable.Chars
       val size = in.size()
       var pos, count = 0L
       while (pos < size) {
-        count = (size - pos) min FIFTY_MB
+        count = (size - pos) min CHUNK
         pos += out.transferFrom(in, pos, count)
       }
     }
@@ -115,8 +140,18 @@ with Streamable.Chars
     if (preserveFileDate)
       dest.lastModified = this.lastModified
     
-    ()
+    true
   }
   
-  override def toString() = "File(%s)".format(path)
+  /** Reflection since we're into the java 6+ API.
+   */
+  def setExecutable(executable: Boolean, ownerOnly: Boolean = true): Boolean = {
+    type JBoolean = java.lang.Boolean
+    val method =
+      try classOf[JFile].getMethod("setExecutable", classOf[Boolean], classOf[Boolean])
+      catch { case _: NoSuchMethodException => return false }
+    
+    try method.invoke(jfile, executable: JBoolean, ownerOnly: JBoolean).asInstanceOf[JBoolean].booleanValue
+    catch { case _: Exception => false }
+  }
 }

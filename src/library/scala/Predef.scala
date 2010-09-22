@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -14,6 +13,8 @@ package scala
 import collection.immutable.StringOps
 import collection.mutable.ArrayOps
 import collection.generic.CanBuildFrom
+import annotation.elidable
+import annotation.elidable.ASSERTION
 
 /** The <code>Predef</code> object provides definitions that are
  *  accessible in all Scala compilation units without explicit
@@ -31,7 +32,6 @@ object Predef extends LowPriorityImplicits {
   // miscelleaneous -----------------------------------------------------
   scala.`package`                         // to force scala package object to be seen.
   scala.collection.immutable.List         // to force Nil, :: to be seen.
-  scala.collection.mutable.StringBuilder  // to force StringBuilder to be seen.
 
   type Function[-A, +B] = Function1[A, B]
     
@@ -53,22 +53,6 @@ object Predef extends LowPriorityImplicits {
 
   @inline def locally[T](x: T): T = x
 
-  // hashcode -----------------------------------------------------------
- 
-  @inline def hash(x: Any): Int = 
-    if (x.isInstanceOf[Number]) runtime.BoxesRunTime.hashFromNumber(x.asInstanceOf[Number])
-    else x.hashCode
-
-  @inline def hash(x: Number): Int = 
-    runtime.BoxesRunTime.hashFromNumber(x)
-
-  @inline def hash(x: java.lang.Long): Int = {
-    val iv = x.intValue
-    if (iv == x.longValue) iv else x.hashCode
-  }
-
-  @inline def hash(x: Int): Int = x
-
   // errors and asserts -------------------------------------------------
 
   def error(message: String): Nothing = throw new RuntimeException(message)
@@ -79,45 +63,89 @@ object Predef extends LowPriorityImplicits {
     java.lang.System.exit(status)
     throw new Throwable()
   }
-  
-  import annotation.elidable
-  import annotation.elidable.ASSERTION
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  Calls to this method will not be generated if -Xelide-below
+   *  is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   */
   @elidable(ASSERTION)
   def assert(assertion: Boolean) {
     if (!assertion)
       throw new java.lang.AssertionError("assertion failed")
   }
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  Calls to this method will not be generated if -Xelide-below
+   *  is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   *  @param msg a String to include in the failure message
+   */
   @elidable(ASSERTION)
   def assert(assertion: Boolean, message: => Any) {
     if (!assertion)
       throw new java.lang.AssertionError("assertion failed: "+ message)
   }
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  This method differs from assert only in the intent expressed:
+   *  assert contains a predicate which needs to be proven, while
+   *  assume contains an axiom for a static checker.  Calls to this method
+   *  will not be generated if -Xelide-below is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   */
   @elidable(ASSERTION)
   def assume(assumption: Boolean) {
     if (!assumption)
       throw new java.lang.AssertionError("assumption failed")
   }
 
+  /** Tests an expression, throwing an AssertionError if false.
+   *  This method differs from assert only in the intent expressed:
+   *  assert contains a predicate which needs to be proven, while
+   *  assume contains an axiom for a static checker.  Calls to this method
+   *  will not be generated if -Xelide-below is at least ASSERTION.
+   *
+   *  @see elidable
+   *  @param p   the expression to test
+   *  @param msg a String to include in the failure message
+   */
   @elidable(ASSERTION)
   def assume(assumption: Boolean, message: => Any) {
     if (!assumption)
       throw new java.lang.AssertionError("assumption failed: "+ message)
   }
 
+  /** Tests an expression, throwing an IllegalArgumentException if false.
+   *  This method is similar to assert, but blames the caller of the method
+   *  for violating the condition.
+   *
+   *  @param p   the expression to test
+   */
   def require(requirement: Boolean) {
     if (!requirement)
       throw new IllegalArgumentException("requirement failed")
   }
 
+  /** Tests an expression, throwing an IllegalArgumentException if false.
+   *  This method is similar to assert, but blames the caller of the method
+   *  for violating the condition.
+   *
+   *  @param p   the expression to test
+   *  @param msg a String to include in the failure message
+   */
   def require(requirement: Boolean, message: => Any) {
     if (!requirement)
       throw new IllegalArgumentException("requirement failed: "+ message)
   }
   
-  class Ensuring[A](x: A) {
+  final class Ensuring[A](val x: A) {
     def ensuring(cond: Boolean): A = { assert(cond); x }
     def ensuring(cond: Boolean, msg: Any): A = { assert(cond, msg); x }
     def ensuring(cond: A => Boolean): A = { assert(cond(x)); x }
@@ -139,8 +167,8 @@ object Predef extends LowPriorityImplicits {
     def unapply[A, B, C](x: Tuple3[A, B, C]): Option[Tuple3[A, B, C]] = Some(x)
   }
 
-  class ArrowAssoc[A](x: A) {
-    def -> [B](y: B): Tuple2[A, B] = Tuple2(x, y)
+  final class ArrowAssoc[A](val x: A) {
+    @inline def -> [B](y: B): Tuple2[A, B] = Tuple2(x, y)
     def →[B](y: B): Tuple2[A, B] = ->(y)
   }
   implicit def any2ArrowAssoc[A](x: A): ArrowAssoc[A] = new ArrowAssoc(x)
@@ -150,7 +178,7 @@ object Predef extends LowPriorityImplicits {
   def print(x: Any) = Console.print(x)
   def println() = Console.println()
   def println(x: Any) = Console.println(x)
-  def printf(text: String, xs: Any*) = Console.printf(format(text, xs: _*))
+  def printf(text: String, xs: Any*) = Console.print(format(text, xs: _*))
   def format(text: String, xs: Any*) = augmentString(text).format(xs: _*)
 
   def readLine(): String = Console.readLine()
@@ -233,7 +261,7 @@ object Predef extends LowPriorityImplicits {
 
   implicit def float2double(x: Float): Double = x.toDouble
   
-  // "Autoboxing" --------------------------------------------------------------  
+  // "Autoboxing" and "Autounboxing" ---------------------------------------------------
 
   implicit def byte2Byte(x: Byte)           = java.lang.Byte.valueOf(x)
   implicit def short2Short(x: Short)        = java.lang.Short.valueOf(x)
@@ -243,6 +271,15 @@ object Predef extends LowPriorityImplicits {
   implicit def float2Float(x: Float)        = java.lang.Float.valueOf(x)
   implicit def double2Double(x: Double)     = java.lang.Double.valueOf(x)
   implicit def boolean2Boolean(x: Boolean)  = java.lang.Boolean.valueOf(x)
+  
+  implicit def Byte2byte(x: java.lang.Byte): Byte             = x.byteValue
+  implicit def Short2short(x: java.lang.Short): Short         = x.shortValue
+  implicit def Character2char(x: java.lang.Character): Char   = x.charValue
+  implicit def Integer2int(x: java.lang.Integer): Int         = x.intValue
+  implicit def Long2long(x: java.lang.Long): Long             = x.longValue
+  implicit def Float2float(x: java.lang.Float): Float         = x.floatValue
+  implicit def Double2double(x: java.lang.Double): Double     = x.doubleValue
+  implicit def Boolean2boolean(x: java.lang.Boolean): Boolean = x.booleanValue
 
   // Strings and CharSequences --------------------------------------------------------------
 
@@ -252,8 +289,8 @@ object Predef extends LowPriorityImplicits {
 
   implicit def stringCanBuildFrom: CanBuildFrom[String, Char, String] = 
     new CanBuildFrom[String, Char, String] { 
-      def apply(from: String) = new scala.collection.mutable.StringBuilder 
-      def apply() = new scala.collection.mutable.StringBuilder 
+      def apply(from: String) = apply()
+      def apply() = scala.collection.mutable.StringBuilder.newBuilder
     }
 
   implicit def seqToCharSequence(xs: collection.IndexedSeq[Char]): CharSequence = new CharSequence {
@@ -301,7 +338,7 @@ object Predef extends LowPriorityImplicits {
     implicit def conformsOrViewsAs[A <% B, B]: A <%< B = new (A <%< B) {def apply(x: A) = x}
   }
  
-  /** A type for which there is aways an implicit value.
+  /** A type for which there is always an implicit value.
    *  @see fallbackCanBuildFrom in Array.scala
    */
   class DummyImplicit

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -16,6 +15,8 @@ import generic._
 
 /** This class is used internally to implement data structures that
  *  are based on resizable arrays.
+ *  
+ *  @tparam A    type of the elements contained in this resizeable array.
  *
  *  @author  Matthias Zenger, Burak Emir
  *  @author Martin Odersky
@@ -24,12 +25,12 @@ import generic._
  */
 trait ResizableArray[A] extends IndexedSeq[A] 
                            with GenericTraversableTemplate[A, ResizableArray]
-                           with IndexedSeqLike[A, ResizableArray[A]] { 
+                           with IndexedSeqOptimized[A, ResizableArray[A]] { 
 
   override def companion: GenericCompanion[ResizableArray] = ResizableArray
 
   protected def initialSize: Int = 16
-  protected var array: Array[AnyRef] = new Array[AnyRef](initialSize max 1)
+  protected var array: Array[AnyRef] = new Array[AnyRef](math.max(initialSize, 1))
 
   protected var size0: Int = 0
 

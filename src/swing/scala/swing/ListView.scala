@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -143,7 +142,7 @@ object ListView {
  */
 class ListView[A] extends Component {
   import ListView._
-  override lazy val peer: JList = new JList
+  override lazy val peer: JList = new JList with SuperMixin
   
   def this(items: Seq[A]) = {
     this()
@@ -157,12 +156,12 @@ class ListView[A] extends Component {
   
   def listData: Seq[A] = peer.getModel match {
     case model: ModelWrapper => model.items
-    case model @ _ => new Seq[A] {
+    case model @ _ => new Seq[A] { selfSeq =>
      def length = model.getSize
      def iterator = new Iterator[A] {
        var idx = 0
        def next = { idx += 1; apply(idx-1) }
-       def hasNext = idx < length
+       def hasNext = idx < selfSeq.length
      }
      def apply(n: Int) = model.getElementAt(n).asInstanceOf[A]
     }

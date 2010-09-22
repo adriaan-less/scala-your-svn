@@ -6,16 +6,17 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.runtime
 
 import scala.reflect.ClassManifest
-import scala.collection.Seq
-import scala.collection.mutable._
-import scala.collection.immutable.{ List, Stream, Nil, :: }
-import scala.util.control.ControlException
+import scala.collection.{ Seq, IndexedSeq, TraversableView }
+import scala.collection.mutable.WrappedArray
+import scala.collection.immutable.{ NumericRange, List, Stream, Nil, :: }
+import scala.collection.generic.{ Sorted }
+import scala.xml.{ Node, MetaData }
+import scala.util.control.ControlThrowable
 
 /* The object <code>ScalaRunTime</code> provides ...
  */
@@ -74,8 +75,22 @@ object ScalaRunTime {
     case null => throw new NullPointerException
   }    
 
+  def array_clone(xs: AnyRef): AnyRef = xs match {
+    case x: Array[AnyRef]  => ArrayRuntime.cloneArray(x)
+    case x: Array[Int]     => ArrayRuntime.cloneArray(x)
+    case x: Array[Double]  => ArrayRuntime.cloneArray(x)
+    case x: Array[Long]    => ArrayRuntime.cloneArray(x)
+    case x: Array[Float]   => ArrayRuntime.cloneArray(x)
+    case x: Array[Char]    => ArrayRuntime.cloneArray(x)
+    case x: Array[Byte]    => ArrayRuntime.cloneArray(x)
+    case x: Array[Short]   => ArrayRuntime.cloneArray(x)
+    case x: Array[Boolean] => ArrayRuntime.cloneArray(x)
+    case x: Array[Unit]    => x
+    case null => throw new NullPointerException
+  }
+
   /** Convert a numeric value array to an object array.
-   *  Needed to deal with vararg arguments of primtive types that are passed
+   *  Needed to deal with vararg arguments of primitive types that are passed
    *  to a generic Java vararg parameter T ...
    */
   def toObjectArray(src: AnyRef): Array[Object] = {
@@ -100,7 +115,7 @@ object ScalaRunTime {
     if (x == null) throw new UninitializedError else x
 
   abstract class Try[+A] {
-    def Catch[B >: A](handler: Throwable =>? B): B
+    def Catch[B >: A](handler: PartialFunction[Throwable, B]): B
     def Finally(fin: => Unit): A
   }
 
@@ -109,13 +124,13 @@ object ScalaRunTime {
     private var exception: Throwable = 
       try   { run() ; null }
       catch { 
-        case e: ControlException  => throw e  // don't catch non-local returns etc
+        case e: ControlThrowable  => throw e  // don't catch non-local returns etc
         case e: Throwable         => e
       }
 
     def run() { result = block }
 
-    def Catch[B >: A](handler: Throwable =>? B): B =
+    def Catch[B >: A](handler: PartialFunction[Throwable, B]): B =
       if (exception == null) result
       else if (handler isDefinedAt exception) handler(exception)
       else throw exception
@@ -131,8 +146,8 @@ object ScalaRunTime {
   def _toString(x: Product): String =
     x.productIterator.mkString(x.productPrefix + "(", ",", ")")
 
-  def _hashCodeJenkins(x: Product): Int =
-    scala.util.JenkinsHash.hashSeq(x.productPrefix.toSeq ++ x.productIterator.toSeq)
+  // def _hashCodeJenkins(x: Product): Int =
+  //   scala.util.JenkinsHash.hashSeq(x.productPrefix.toSeq ++ x.productIterator.toSeq)
   
   def _hashCode(x: Product): Int = {
     val arr =  x.productArity
@@ -140,7 +155,7 @@ object ScalaRunTime {
     var i = 0
     while (i < arr) {
       val elem = x.productElement(i)
-      code = code * 41 + (if (elem == null) 0 else elem.hashCode())
+      code = code * 41 + (if (elem == null) 0 else elem.##)
       i += 1
     }
     code
@@ -151,13 +166,67 @@ object ScalaRunTime {
   @inline def inlinedEquals(x: Object, y: Object): Boolean = 
     if (x eq y) true
     else if (x eq null) false
-    else if (x.isInstanceOf[java.lang.Number] || x.isInstanceOf[java.lang.Character]) BoxesRunTime.equals2(x, y)
+    else if (x.isInstanceOf[java.lang.Number]) BoxesRunTime.equalsNumObject(x.asInstanceOf[java.lang.Number], y)
+    else if (x.isInstanceOf[java.lang.Character]) BoxesRunTime.equalsCharObject(x.asInstanceOf[java.lang.Character], y)
     else x.equals(y)
 
   def _equals(x: Product, y: Any): Boolean = y match {
     case y: Product if x.productArity == y.productArity => x.productIterator sameElements y.productIterator
     case _                                              => false
   }
+  
+  // hashcode -----------------------------------------------------------
+  //
+  // Note that these are the implementations called by ##, so they
+  // must not call ## themselves.
+ 
+  @inline def hash(x: Any): Int =
+    if (x.isInstanceOf[java.lang.Number]) BoxesRunTime.hashFromNumber(x.asInstanceOf[java.lang.Number])
+    else x.hashCode
+  
+  @inline def hash(dv: Double): Int = {
+    val iv = dv.toInt
+    if (iv == dv) return iv
+    
+    val lv = dv.toLong
+    if (lv == dv) return lv.hashCode
+    else dv.hashCode
+  }
+  @inline def hash(fv: Float): Int = {
+    val iv = fv.toInt
+    if (iv == fv) return iv
+    
+    val lv = fv.toLong
+    if (lv == fv) return lv.hashCode
+    else fv.hashCode
+  }
+  @inline def hash(lv: Long): Int = {
+    val iv = lv.toInt
+    if (iv == lv) iv else lv.hashCode
+  }
+  @inline def hash(x: Int): Int = x
+  @inline def hash(x: Short): Int = x.toInt
+  @inline def hash(x: Byte): Int = x.toInt
+  @inline def hash(x: Char): Int = x.toInt
+  @inline def hash(x: Boolean): Int = x.hashCode
+  @inline def hash(x: Unit): Int = 0
+  
+  @inline def hash(x: Number): Int  = runtime.BoxesRunTime.hashFromNumber(x)
+  
+  /** XXX Why is there one boxed implementation in here? It would seem
+   *  we should have all the numbers or none of them.
+   */
+  @inline def hash(x: java.lang.Long): Int = {
+    val iv = x.intValue
+    if (iv == x.longValue) iv else x.hashCode
+  }
+
+  /** A helper method for constructing case class equality methods,
+   *  because existential types get in the way of a clean outcome and
+   *  it's performing a series of Any/Any equals comparisons anyway.
+   *  See ticket #2867 for specifics.
+   */
+  def sameElements(xs1: Seq[Any], xs2: Seq[Any]) = xs1 sameElements xs2
 
   /** Given any Scala value, convert it to a String.
    *
@@ -172,12 +241,51 @@ object ScalaRunTime {
    * @return a string representation of <code>arg</code>
    *
    */  
-  def stringOf(arg : Any): String = arg match {
-    case null => "null"
-    case arg: AnyRef if isArray(arg) => 
-      val d: collection.IndexedSeq[Any] = WrappedArray.make(arg).deep
-      d.toString
-    case arg: WrappedArray[_] => arg.deep.toString
-    case arg => arg.toString
+  def stringOf(arg: Any): String = stringOf(arg, scala.Int.MaxValue)
+  def stringOf(arg: Any, maxElements: Int): String = {    
+    def isScalaClass(x: AnyRef) =
+      Option(x.getClass.getPackage) exists (_.getName startsWith "scala.")
+    
+    def isTuple(x: AnyRef) =
+      x.getClass.getName matches """^scala\.Tuple(\d+).*"""
+
+    // When doing our own iteration is dangerous
+    def useOwnToString(x: Any) = x match {
+      // Node extends NodeSeq extends Seq[Node] and MetaData extends Iterable[MetaData]
+      case _: Node | _: MetaData => true
+      // Range/NumericRange have a custom toString to avoid walking a gazillion elements
+      case _: Range | _: NumericRange[_] => true
+      // Sorted collections to the wrong thing (for us) on iteration - ticket #3493
+      case _: Sorted[_, _]  => true
+      // Don't want to evaluate any elements in a view
+      case _: TraversableView[_, _] => true
+      // Don't want to a) traverse infinity or b) be overly helpful with peoples' custom
+      // collections which may have useful toString methods - ticket #3710
+      case x: Traversable[_]  => !x.hasDefiniteSize || !isScalaClass(x)
+      // Otherwise, nothing could possibly go wrong
+      case _ => false
+    }
+
+    // The recursively applied attempt to prettify Array printing
+    def inner(arg: Any): String = arg match {
+      case null                         => "null"
+      case x if useOwnToString(x)       => x.toString
+      case x: AnyRef if isArray(x)      => WrappedArray make x take maxElements map inner mkString ("Array(", ", ", ")")
+      case x: Traversable[_]            => x take maxElements map inner mkString (x.stringPrefix + "(", ", ", ")")
+      case x: Product1[_] if isTuple(x) => "(" + inner(x._1) + ",)" // that special trailing comma
+      case x: Product if isTuple(x)     => x.productIterator map inner mkString ("(", ",", ")")
+      case x                            => x toString
+    }
+
+    // The try/catch is defense against iterables which aren't actually designed
+    // to be iterated, such as some scala.tools.nsc.io.AbstractFile derived classes.
+    val s = 
+      try inner(arg)
+      catch { 
+        case _: StackOverflowError | _: UnsupportedOperationException => arg.toString
+      }
+        
+    val nl = if (s contains "\n") "\n" else ""
+    nl + s + "\n"    
   }
 }

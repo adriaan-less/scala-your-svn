@@ -3,14 +3,12 @@
  * @author  Iulian Dragos
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.opt
 
 import scala.collection._
 import scala.collection.immutable.{Map, HashMap, Set, HashSet}
-import scala.tools.nsc.backend.icode.analysis.LubError
 import scala.tools.nsc.symtab._
 
 /**
@@ -49,6 +47,7 @@ abstract class DeadCodeElimination extends SubComponent {
       cls.methods.foreach { m =>
         this.method = m
         dieCodeDie(m)
+        global.closureElimination.peephole(m)
       }
     }
 
@@ -82,7 +81,7 @@ abstract class DeadCodeElimination extends SubComponent {
         collectRDef(m)
         mark
         sweep(m)
-        accessedLocals = accessedLocals.removeDuplicates
+        accessedLocals = accessedLocals.distinct
         if (m.locals diff accessedLocals nonEmpty) {
           log("Removed dead locals: " + (m.locals diff accessedLocals))
           m.locals = accessedLocals.reverse
@@ -131,7 +130,7 @@ abstract class DeadCodeElimination extends SubComponent {
     }
 
     /** Mark useful instructions. Instructions in the worklist are each inspected and their
-     *  dependecies are marked useful too, and added to the worklist.
+     *  dependencies are marked useful too, and added to the worklist.
      */
     def mark {
 //      log("Starting with worklist: " + worklist)
@@ -161,6 +160,15 @@ abstract class DeadCodeElimination extends SubComponent {
               if (inliner.isClosureClass(sym)) {
                 liveClosures += sym
               }
+
+            // it may be better to move static initializers from closures to
+            // the enclosing class, to allow the optimizer to remove more closures.
+            // right now, the only static fields in closures are created when caching
+            // 'symbol literals.
+            case LOAD_FIELD(sym, true) if inliner.isClosureClass(sym.owner) =>
+              log("added closure class for field " + sym)
+              liveClosures += sym.owner
+
             case LOAD_EXCEPTION() =>
               ()
               
@@ -218,7 +226,7 @@ abstract class DeadCodeElimination extends SubComponent {
     private def computeCompensations(m: IMethod): mutable.Map[(BasicBlock, Int), List[Instruction]] = {
       val compensations: mutable.Map[(BasicBlock, Int), List[Instruction]] = new mutable.HashMap
       
-      for (bb <- m.code.blocks.toList) {
+      for (bb <- m.code.blocks) {
         assert(bb.closed, "Open block in computeCompensations")
         for ((i, idx) <- bb.toList.zipWithIndex) {
           if (!useful(bb)(idx)) {
@@ -226,8 +234,20 @@ abstract class DeadCodeElimination extends SubComponent {
               log("Finding definitions of: " + i + "\n\t" + consumedType + " at depth: " + depth)
               val defs = rdef.findDefs(bb, idx, 1, depth)
               for (d <- defs) {
-                if (!compensations.isDefinedAt(d))
-                  compensations(d) = List(DROP(consumedType))
+                val (bb, idx) = d
+                bb(idx) match {
+                  case DUP(_) if idx > 0 =>
+                    bb(idx - 1) match {
+                      case nw @ NEW(_) =>
+                        val init = findInstruction(bb, nw.init)
+                        log("Moving DROP to after <init> call: " + nw.init)
+                        compensations(init) = List(DROP(consumedType))
+                      case _ =>
+                        compensations(d) = List(DROP(consumedType))
+                    }
+                  case _ =>
+                    compensations(d) = List(DROP(consumedType))
+                }
               }
             }
           }

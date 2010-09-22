@@ -2,298 +2,365 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Paul Phillips
  */
-// $Id$
 
-//
-// TODO, if practical:
-//
-// 1) Types: val s: String = x.<tab> should only show members which result in a String.
-//      Possible approach: evaluate buffer as if current identifier is 
-// 2) Implicits: x.<tab> should show not only x's members but those of anything for which
-//      there is an implicit conversion from x.
-// 3) Chaining: x.foo(bar).<tab> should complete on foo's result type.
-// 4) Imports: after import scala.collection.mutable._, HashMap should be among
-//      my top level identifiers.
-// 5) Caching: it's silly to parse all the jars on every startup, we should have
-//      a peristent store somewhere we can write and only check last-mod dates.
-// 6) Security: Are we using the filesystem unnecessarily?
-//
 
 package scala.tools.nsc
 package interpreter
 
 import jline._
-import java.net.URL
-import java.util.concurrent.ConcurrentHashMap
-import scala.concurrent.DelayedLazyVal
-import scala.collection.mutable.HashSet
-import scala.util.NameTransformer.{ decode, encode }
+import java.util.{ List => JList }
+import util.returning
 
-// REPL completor - queries supplied interpreter for valid completions
-// based on current contents of buffer.
-class Completion(val interpreter: Interpreter) extends Completor {
-  import Completion._
-  import java.util.{ List => JList }
-  import interpreter.compilerClasspath
+object Completion {  
+  def looksLikeInvocation(code: String) = (
+        (code != null)
+    &&  (code startsWith ".")
+    && !(code == ".")
+    && !(code startsWith "./")
+    && !(code startsWith "..")
+  )
   
-  // it takes a little while to look through the jars so we use a future and a concurrent map
-  class CompletionAgent {
-    val dottedPaths = new ConcurrentHashMap[String, List[CompletionInfo]]
-    val topLevelPackages = new DelayedLazyVal(
-      () => enumToList(dottedPaths.keys) filterNot (_ contains '.'),
-      getDottedPaths(dottedPaths, interpreter)
-    )
-  }
-  val agent = new CompletionAgent
-  import agent._
-  
-  import java.lang.reflect.Modifier.{ isPrivate, isProtected, isPublic, isStatic }
-  private def isSingleton(x: Int, isJava: Boolean) = !isJava || isStatic(x)
-  private def existsAndPublic(s: String): Boolean =
-    (dottedPaths containsKey s) || {
-      val clazz =
-        try Class.forName(s)
-        catch { case _: ClassNotFoundException | _: SecurityException => return false }
-    
-      isPublic(clazz.getModifiers)
+  object Forwarder {
+    def apply(forwardTo: () => Option[CompletionAware]): CompletionAware = new CompletionAware {
+      def completions(verbosity: Int) = forwardTo() map (_ completions verbosity) getOrElse Nil
+      override def follow(s: String) = forwardTo() flatMap (_ follow s)
     }
-
-  // One instance of a command line
-  class Buffer(s: String) {
-    val buffer = if (s == null) "" else s
-    def isEmptyBuffer = buffer == ""
-    
-    val segments = buffer.split("\\.", -1).toList
-    val lastDot = buffer.lastIndexOf('.')
-    val hasDot = segments.size > 0 && segments.last == ""
-    
-    // given foo.bar.baz, path = foo.bar and stub = baz
-    val (path, stub) = segments.size match {
-      case 0    => ("", "")
-      case 1    => (segments.head, "")
-      case _    => (segments.init.mkString("."), segments.last)
-    }
-
-    def filt(xs: List[String]) = xs filter (_ startsWith stub)
-
-    case class Result(candidates: List[String], position: Int) {
-      def getCandidates() = (candidates map (_.trim) removeDuplicates) sortWith (_ < _)
-    }
-    
-    // work out completion candidates and position
-    def analyzeBuffer(clist: JList[String]): Result = {
-      lazy val ids = idsStartingWith(path)
-      lazy val pkgs = pkgsStartingWith(path)
-      lazy val count = (ids ::: pkgs).size        
-      
-      def doSimple(): Result = count match {
-        case 0                                    => Result(Nil, 0)
-        case 1 if pkgs.size > 0                   => Result(pkgs, 0)
-        case 1 if buffer.length < ids.head.length => Result(ids, 0)
-        case 1                                    => Result(ids, 0)
-          // XXX for now commented out "dot inference" because it's overcomplicated
-          // val members = membersOfId(ids.head) filter (_ startsWith stub)
-          // if (members.isEmpty) Result(Nil, 0)
-          // else Result(members, path.length + 1)
-        case _                                    => Result(ids ::: pkgs, 0)
-      }
-      
-      def doDotted(): Result = {        
-        def pkgs = membersOfPath(path)
-        def ids = membersOfId(path)
-        def idExtras = List("isInstanceOf", "asInstanceOf", "toString")
-        def statics = completeStaticMembers(path)
-        def pkgMembers = completePackageMembers(path)
-        
-        def calcList = if (pkgs.isEmpty) ids ::: idExtras ::: statics else pkgs
-        def idList = filt(calcList ::: pkgMembers)
-
-        Result(idList.removeDuplicates, path.length + 1)
-      }
-      
-      segments.size match {
-        case 0            => Result(Nil, 0)
-        case 1            => doSimple()
-        case _            => doDotted()
-      }
-    }
-    
-    def isValidId(s: String) = interpreter.unqualifiedIds contains s
-    def membersOfId(s: String) = interpreter membersOfIdentifier s
-    def membersOfPath(s: String) = {
-      val xs =
-        if (dottedPaths containsKey s) dottedPaths get s map (_.visibleName)
-        else Nil
-      
-      s match {
-        case "scala"      => xs filterNot scalaToHide
-        case "java.lang"  => xs filterNot javaLangToHide
-        case _            => xs
-      }
-    }
-    def membersOfPredef() = membersOfId("scala.Predef")
-    
-    def javaLangToHide(s: String) = 
-      (s endsWith "Exception") || 
-      (s endsWith "Error") ||
-      (s endsWith "Impl") ||
-      (s startsWith "CharacterData") ||
-      !existsAndPublic("java.lang." + s)
-    
-    def scalaToHide(s: String) =
-      (List("Tuple", "Product", "Function") exists (x => (x + """\d+""").r findPrefixMatchOf s isDefined)) ||
-      (List("Exception", "Error") exists (s endsWith _))
-    
-    def defaultMembers = (List("scala", "java.lang") flatMap membersOfPath) ::: membersOfPredef
-    
-    def pkgsStartingWith(s: String) = topLevelPackages() filter (_ startsWith s)
-    def idsStartingWith(s: String) = {
-      // on a totally empty buffer, filter out res*
-      val unqIds =
-        if (s == "") interpreter.unqualifiedIds filterNot (_ startsWith INTERPRETER_VAR_PREFIX)
-        else interpreter.unqualifiedIds        
-      
-      (unqIds ::: defaultMembers) filter (_ startsWith s)
-    }
-
-    def complete(clist: JList[String]): Int = {
-      val res = analyzeBuffer(clist)
-      res.getCandidates foreach (x => clist add decode(x))
-      res.position
-    }
-  }
-  
-  private def getMembers(c: Class[_], isJava: Boolean): List[String] =
-    c.getMethods.toList .
-      filter (x => isPublic(x.getModifiers)) .
-      filter (x => isSingleton(x.getModifiers, isJava)) .
-      map (_.getName) .
-      filterNot (shouldHide)
-  
-  private def getClassObject(path: String): Option[Class[_]] =
-    (interpreter getClassObject path) orElse
-    (interpreter getClassObject ("scala." + path)) orElse
-    (interpreter getClassObject ("java.lang." + path))
-  
-  // jline's completion comes through here - we ask a Buffer for the candidates.
-  override def complete(_buffer: String, cursor: Int, candidates: JList[String]): Int =
-    new Buffer(_buffer) complete candidates
-    
-  def completePackageMembers(path: String): List[String] =
-    getClassObject(path + "." + "package") map (getMembers(_, false)) getOrElse Nil
-  
-  def completeStaticMembers(path: String): List[String] = {        
-    // java style, static methods    
-    val js = getClassObject(path) map (getMembers(_, true)) getOrElse Nil
-    // scala style, methods on companion object
-    // if getClassObject fails, see if there is a type alias
-    val clazz = getClassObject(path + "$") orElse {
-      (ByteCode aliasForType path) flatMap (x => getClassObject(x + "$"))
-    }
-    val ss = clazz map (getMembers(_, false)) getOrElse Nil
-    
-    js ::: ss
   }
 }
+import Completion._
 
-object Completion
-{
-  import java.io.File
-  import java.util.jar.{ JarEntry, JarFile }
-  import scala.tools.nsc.io.Streamable
+// REPL completor - queries supplied interpreter for valid
+// completions based on current contents of buffer.
+class Completion(val repl: Interpreter) extends CompletionOutput {
+  // verbosity goes up with consecutive tabs
+  private var verbosity: Int = 0
+  def resetVerbosity() = verbosity = 0
   
-  val EXPAND_SEPARATOR_STRING = "$$"
-  val ANON_CLASS_NAME = "$anon"
-  val TRAIT_SETTER_SEPARATOR_STRING = "$_setter_$"
-  val IMPL_CLASS_SUFFIX ="$class"
-  val INTERPRETER_VAR_PREFIX = "res"
+  def isCompletionDebug = repl.isCompletionDebug
+  def DBG(msg: => Any) = if (isCompletionDebug) println(msg.toString)
+  def debugging[T](msg: String): T => T = (res: T) => returning[T](res)(x => DBG(msg + x))
   
-  case class CompletionInfo(visibleName: String, className: String, jar: String) {
-    lazy val jarfile = new JarFile(jar)
-    lazy val entry = jarfile getEntry className
-    
-    override def hashCode = visibleName.hashCode
-    override def equals(other: Any) = other match {
-      case x: CompletionInfo  => visibleName == x.visibleName
-      case _                  => false
+  lazy val global: repl.compiler.type = repl.compiler
+  import global._
+  import definitions.{ PredefModule, RootClass, AnyClass, AnyRefClass, ScalaPackage, JavaLangPackage }
+
+  // XXX not yet used.
+  lazy val dottedPaths = {
+    def walk(tp: Type): scala.List[Symbol] = {
+      val pkgs = tp.nonPrivateMembers filter (_.isPackage)
+      pkgs ++ (pkgs map (_.tpe) flatMap walk)
     }
+    walk(RootClass.tpe)
+  }
+  
+  def getType(name: String, isModule: Boolean) = {
+    val f = if (isModule) definitions.getModule(_: Name) else definitions.getClass(_: Name)
+    try Some(f(name).tpe)
+    catch { case _: MissingRequirementError => None }
+  }
+  
+  def typeOf(name: String) = getType(name, false)
+  def moduleOf(name: String) = getType(name, true)
     
-    def getBytes(): Array[Byte] = {
-      if (entry == null) Array() else {
-        val x = new Streamable.Bytes { def inputStream() = jarfile getInputStream entry }
-        x.toByteArray()
+  trait CompilerCompletion {
+    def tp: Type
+    def effectiveTp = tp match {
+      case MethodType(Nil, resType) => resType
+      case PolyType(Nil, resType)   => resType
+      case _                        => tp
+    }
+
+    // for some reason any's members don't show up in subclasses, which
+    // we need so 5.<tab> offers asInstanceOf etc.
+    private def anyMembers = AnyClass.tpe.nonPrivateMembers
+    def anyRefMethodsToShow = List("isInstanceOf", "asInstanceOf", "toString")
+
+    def tos(sym: Symbol) = sym.name.decode.toString
+    def memberNamed(s: String) = members find (x => tos(x) == s)
+    def hasMethod(s: String) = methods exists (x => tos(x) == s)
+
+    // XXX we'd like to say "filterNot (_.isDeprecated)" but this causes the
+    // compiler to crash for reasons not yet known.
+    def members     = (effectiveTp.nonPrivateMembers ++ anyMembers) filter (_.isPublic)
+    def methods     = members filter (_.isMethod)
+    def packages    = members filter (_.isPackage)
+    def aliases     = members filter (_.isAliasType)
+
+    def memberNames   = members map tos
+    def methodNames   = methods map tos
+    def packageNames  = packages map tos
+    def aliasNames    = aliases map tos
+  }
+
+  object TypeMemberCompletion {
+    def apply(tp: Type): TypeMemberCompletion = {
+      if (tp.typeSymbol.isPackageClass) new PackageCompletion(tp)
+      else new TypeMemberCompletion(tp)
+    }
+    def imported(tp: Type) = new ImportCompletion(tp)
+  }
+
+  class TypeMemberCompletion(val tp: Type) extends CompletionAware
+                                              with CompilerCompletion {
+    def excludeEndsWith: List[String] = Nil
+    def excludeStartsWith: List[String] = List("<") // <byname>, <repeated>, etc.
+    def excludeNames: List[String] =
+      anyref.methodNames.filterNot(anyRefMethodsToShow contains) ++ List("_root_")
+    
+    def methodSignatureString(sym: Symbol) = {
+      def asString = new MethodSymbolOutput(sym).methodString()
+      
+      if (isCompletionDebug)
+        repl.power.showAtAllPhases(asString)
+
+      atPhase(currentRun.typerPhase)(asString)
+    }
+
+    def exclude(name: String): Boolean = (
+      (name contains "$") ||
+      (excludeNames contains name) ||
+      (excludeEndsWith exists (name endsWith _)) ||
+      (excludeStartsWith exists (name startsWith _))
+    )
+    def filtered(xs: List[String]) = xs filterNot exclude distinct
+
+    def completions(verbosity: Int) =
+      debugging(tp + " completions ==> ")(filtered(memberNames))
+    
+    override def follow(s: String): Option[CompletionAware] =
+      debugging(tp + " -> '" + s + "' ==> ")(memberNamed(s) map (x => TypeMemberCompletion(x.tpe)))      
+    
+    override def alternativesFor(id: String): List[String] =
+      debugging(id + " alternatives ==> ") {
+        val alts = members filter (x => x.isMethod && tos(x) == id) map methodSignatureString
+
+        if (alts.nonEmpty) "" :: alts else Nil
       }
+
+    override def toString = "TypeMemberCompletion(%s)".format(tp)
+  }
+  
+  class PackageCompletion(tp: Type) extends TypeMemberCompletion(tp) {
+    override def excludeNames = anyref.methodNames
+  }
+
+  class LiteralCompletion(lit: Literal) extends TypeMemberCompletion(lit.value.tpe) {
+    override def completions(verbosity: Int) = verbosity match {
+      case 0    => filtered(memberNames)
+      case _    => memberNames
     }
   }
   
-  def enumToList[T](e: java.util.Enumeration[T]): List[T] = enumToList(e, Nil)
-  def enumToList[T](e: java.util.Enumeration[T], xs: List[T]): List[T] =
-    if (e == null || !e.hasMoreElements) xs else enumToList(e, e.nextElement :: xs)
-  
-  // methods to leave out of completion
-  val excludeMethods = List("", "hashCode", "equals", "wait", "notify", "notifyAll")  
-
-  private def exists(path: String) = new File(path) exists
-  
-  def shouldHide(x: String) =
-    (excludeMethods contains x) ||
-    (x contains ANON_CLASS_NAME) ||
-    (x contains TRAIT_SETTER_SEPARATOR_STRING) ||
-    (x endsWith IMPL_CLASS_SUFFIX)
-  
-  def getClassFiles(path: String): List[String] = {
-    if (!exists(path)) return Nil
-
-    (enumToList(new JarFile(path).entries) map (_.getName)) .
-      partialMap { case x: String if x endsWith ".class" => x dropRight 6 } .
-      filterNot { shouldHide }
+  class ImportCompletion(tp: Type) extends TypeMemberCompletion(tp) {
+    override def completions(verbosity: Int) = verbosity match {
+      case 0    => filtered(members filterNot (_.isSetter) map tos)
+      case _    => super.completions(verbosity)
+    }
   }
   
-  // all the dotted path to classfiles we can find by poking through the jars
-  def getDottedPaths(
-    map: ConcurrentHashMap[String, List[CompletionInfo]],
-    interpreter: Interpreter): Unit =
-  {
-    val cp =
-      interpreter.compilerClasspath.map(_.getPath) :::            // compiler jars, scala-library.jar etc.
-      interpreter.settings.bootclasspath.value.split(':').toList  // boot classpath, java.lang.* etc.
-    
-    val jars = cp.removeDuplicates filter (_ endsWith ".jar")
-    
-    // for e.g. foo.bar.baz.C, returns (foo -> bar), (foo.bar -> baz), (foo.bar.baz -> C)
-    // and scala.Range$BigInt needs to go scala -> Range -> BigInt
-    def subpaths(s: String): List[(String, String)] = {
-      val segs = decode(s).split("""[/.]""")
-      val components = segs dropRight 1
+  // not for completion but for excluding
+  object anyref extends TypeMemberCompletion(AnyRefClass.tpe) { }
+  
+  // the unqualified vals/defs/etc visible in the repl
+  object ids extends CompletionAware {
+    override def completions(verbosity: Int) = repl.unqualifiedIds ::: List("classOf")
+    // we try to use the compiler and fall back on reflection if necessary
+    // (which at present is for anything defined in the repl session.)
+    override def follow(id: String) =
+      if (completions(0) contains id) {
+        for (clazz <- repl clazzForIdent id) yield {
+          // XXX The isMemberClass check is a workaround for the crasher described
+          // in the comments of #3431.  The issue as described by iulian is:
+          //
+          // Inner classes exist as symbols
+          // inside their enclosing class, but also inside their package, with a mangled
+          // name (A$B). The mangled names should never be loaded, and exist only for the
+          // optimizer, which sometimes cannot get the right symbol, but it doesn't care
+          // and loads the bytecode anyway.
+          //
+          // So this solution is incorrect, but in the short term the simple fix is
+          // to skip the compiler any time completion is requested on a nested class.
+          if (clazz.isMemberClass) new InstanceCompletion(clazz)
+          else (typeOf(clazz.getName) map TypeMemberCompletion.apply) getOrElse new InstanceCompletion(clazz)
+        }
+      }
+      else None
+  }
 
-      (1 to components.length).toList flatMap { i =>
-        val k = components take i mkString "."
-        if (segs(i) contains "$") {
-          val dollarsegs = segs(i).split("$").toList
-          for (j <- 1 to (dollarsegs.length - 1) toList) yield {
-            val newk = k + "." + (dollarsegs take j mkString ".")
-            (k -> dollarsegs(j))
-          }
+  // wildcard imports in the repl like "import global._" or "import String._"
+  private def imported = repl.wildcardImportedTypes map TypeMemberCompletion.imported
+
+  // literal Ints, Strings, etc.
+  object literals extends CompletionAware {    
+    def simpleParse(code: String): Tree = {
+      val unit    = new CompilationUnit(new util.BatchSourceFile("<console>", code))
+      val scanner = new syntaxAnalyzer.UnitParser(unit)
+      val tss     = scanner.templateStatSeq(false)._2
+
+      if (tss.size == 1) tss.head else EmptyTree
+    }
+  
+    def completions(verbosity: Int) = Nil
+    
+    override def follow(id: String) = simpleParse(id) match {
+      case x: Literal   => Some(new LiteralCompletion(x))
+      case _            => None
+    }
+  }
+
+  // top level packages
+  object rootClass extends TypeMemberCompletion(RootClass.tpe) { }
+  // members of Predef
+  object predef extends TypeMemberCompletion(PredefModule.tpe) {
+    override def excludeEndsWith    = super.excludeEndsWith ++ List("Wrapper", "ArrayOps")
+    override def excludeStartsWith  = super.excludeStartsWith ++ List("wrap")
+    override def excludeNames       = anyref.methodNames
+    
+    override def exclude(name: String) = super.exclude(name) || (
+      (name contains "2")
+    )
+    
+    override def completions(verbosity: Int) = verbosity match {
+      case 0    => Nil
+      case _    => super.completions(verbosity)
+    }
+  }
+  // members of scala.*
+  object scalalang extends PackageCompletion(ScalaPackage.tpe) {
+    def arityClasses = List("Product", "Tuple", "Function")
+    def skipArity(name: String) = arityClasses exists (x => name != x && (name startsWith x))
+    override def exclude(name: String) = super.exclude(name) || (
+      skipArity(name)
+    )
+    
+    override def completions(verbosity: Int) = verbosity match {
+      case 0    => filtered(packageNames ++ aliasNames)
+      case _    => super.completions(verbosity)
+    }
+  }
+  // members of java.lang.*
+  object javalang extends PackageCompletion(JavaLangPackage.tpe) {
+    override lazy val excludeEndsWith   = super.excludeEndsWith ++ List("Exception", "Error")
+    override lazy val excludeStartsWith = super.excludeStartsWith ++ List("CharacterData")
+    
+    override def completions(verbosity: Int) = verbosity match {
+      case 0    => filtered(packageNames)
+      case _    => super.completions(verbosity)
+    }
+  }
+
+  // the list of completion aware objects which should be consulted
+  lazy val topLevelBase: List[CompletionAware] = List(ids, rootClass, predef, scalalang, javalang, literals)
+  def topLevel = topLevelBase ++ imported
+  
+  // the first tier of top level objects (doesn't include file completion)
+  def topLevelFor(parsed: Parsed) = topLevel flatMap (_ completionsFor parsed)
+
+  // the most recent result
+  def lastResult = Forwarder(() => ids follow repl.mostRecentVar)
+
+  def lastResultFor(parsed: Parsed) = {
+    /** The logic is a little tortured right now because normally '.' is
+     *  ignored as a delimiter, but on .<tab> it needs to be propagated.
+     */
+    val xs = lastResult completionsFor parsed
+    if (parsed.isEmpty) xs map ("." + _) else xs
+  }
+
+  // chasing down results which won't parse
+  def execute(line: String): Option[Any] = {
+    val parsed = Parsed(line)
+    def noDotOrSlash = line forall (ch => ch != '.' && ch != '/')
+    
+    if (noDotOrSlash) None  // we defer all unqualified ids to the repl.
+    else {
+      (ids executionFor parsed) orElse
+      (rootClass executionFor parsed) orElse
+      (FileCompletion executionFor line)
+    }
+  }
+  
+  // generic interface for querying (e.g. interpreter loop, testing)
+  def completions(buf: String): List[String] =
+    topLevelFor(Parsed.dotted(buf + ".", buf.length + 1))
+
+  // jline's entry point
+  lazy val jline: ArgumentCompletor =
+    returning(new ArgumentCompletor(new JLineCompletion, new JLineDelimiter))(_ setStrict false)
+
+  /** This gets a little bit hairy.  It's no small feat delegating everything
+   *  and also keeping track of exactly where the cursor is and where it's supposed
+   *  to end up.  The alternatives mechanism is a little hacky: if there is an empty
+   *  string in the list of completions, that means we are expanding a unique
+   *  completion, so don't update the "last" buffer because it'll be wrong.
+   */
+  class JLineCompletion extends Completor {
+    // For recording the buffer on the last tab hit
+    private var lastBuf: String = ""
+    private var lastCursor: Int = -1
+
+    // Does this represent two consecutive tabs?
+    def isConsecutiveTabs(buf: String, cursor: Int) =
+      cursor == lastCursor && buf == lastBuf
+
+    // Longest common prefix
+    def commonPrefix(xs: List[String]) =
+      if (xs.isEmpty) ""
+      else xs.reduceLeft(_ zip _ takeWhile (x => x._1 == x._2) map (_._1) mkString)
+
+    // This is jline's entry point for completion.
+    override def complete(_buf: String, cursor: Int, candidates: JList[String]): Int = {
+      val buf = onull(_buf)
+      verbosity = if (isConsecutiveTabs(buf, cursor)) verbosity + 1 else 0
+      DBG("\ncomplete(%s, %d) last = (%s, %d), verbosity: %s".format(buf, cursor, lastBuf, lastCursor, verbosity))
+
+      // we don't try lower priority completions unless higher ones return no results.
+      def tryCompletion(p: Parsed, completionFunction: Parsed => List[String]): Option[Int] = {
+        completionFunction(p) match {
+          case Nil  => None
+          case xs   =>
+            // modify in place and return the position
+            xs foreach (candidates add _)
+
+            // update the last buffer unless this is an alternatives list
+            if (xs contains "") Some(p.cursor)
+            else {
+              val advance = commonPrefix(xs)            
+              lastCursor = p.position + advance.length
+              lastBuf = (buf take p.position) + advance
+  
+              DBG("tryCompletion(%s, _) lastBuf = %s, lastCursor = %s, p.position = %s".format(p, lastBuf, lastCursor, p.position))
+              Some(p.position) 
+            }
         }
-        else List(k -> segs(i))
+      }
+      
+      def mkDotted      = Parsed.dotted(buf, cursor) withVerbosity verbosity
+      def mkUndelimited = Parsed.undelimited(buf, cursor) withVerbosity verbosity
+
+      // a single dot is special cased to completion on the previous result
+      def lastResultCompletion =
+        if (!looksLikeInvocation(buf)) None            
+        else tryCompletion(Parsed.dotted(buf drop 1, cursor), lastResultFor)
+
+      def regularCompletion = tryCompletion(mkDotted, topLevelFor)
+      def fileCompletion    = tryCompletion(mkUndelimited, FileCompletion completionsFor _.buffer)
+      
+      /** This is the kickoff point for all manner of theoretically possible compiler
+       *  unhappiness - fault may be here or elsewhere, but we don't want to crash the
+       *  repl regardless.  Hopefully catching Exception is enough, but because the
+       *  compiler still throws some Errors it may not be.
+       */
+      try {
+        (lastResultCompletion orElse regularCompletion orElse fileCompletion) getOrElse cursor
+      }
+      catch {
+        case ex: Exception =>
+          DBG("Error: complete(%s, %s, _) provoked %s".format(_buf, cursor, ex))
+          candidates add " "
+          candidates add "<completion error>"
+          cursor
       }
     }
-    
-    def oneJar(jar: String): Unit = {
-      val classfiles = Completion getClassFiles jar
-              
-      for (cl <- classfiles.removeDuplicates ; (k, _v) <- subpaths(cl)) {
-        val v = CompletionInfo(_v, cl, jar)
-        
-        if (map containsKey k) {
-          val vs = map.get(k)
-          if (vs contains v) ()
-          else map.put(k, v :: vs)
-        }
-        else map.put(k, List(v))
-      }
-    }
-    
-    jars foreach oneJar
   }
 }

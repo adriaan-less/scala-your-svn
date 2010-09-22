@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -44,11 +43,11 @@ trait Scopes {
     e
   }
 
-  class Scope(initElems: ScopeEntry) extends Iterable[Symbol] {
+  class Scope(initElems: ScopeEntry) extends AbsScope {
 
     var elems: ScopeEntry = initElems
 
-    /** The number of times this scope is neted in another
+    /** The number of times this scope is nested in another
      */
     private var nestinglevel = 0
 
@@ -218,7 +217,7 @@ trait Scopes {
       if (e eq null) NoSymbol else e.sym
     }
 
-    /** Returns an iterator eidling every symbol with given name in this scope.
+    /** Returns an iterator yielding every symbol with given name in this scope.
      */
     def lookupAll(name: Name): Iterator[Symbol] = new Iterator[Symbol] {
       var e = lookupEntry(name)
@@ -275,10 +274,39 @@ trait Scopes {
       elemsCache
     }
 
-    /** Return all symbols as an interator in the order they were entered in this scope.
+    /** Return the nesting level of this scope, i.e. the number of times this scope
+     *  was nested in another */
+    def nestingLevel = nestinglevel
+
+    /** Return all symbols as an iterator in the order they were entered in this scope.
      */
     def iterator: Iterator[Symbol] = toList.iterator
     
+/*
+    /** Does this scope contain an entry for `sym`?
+     */
+    def contains(sym: Symbol): Boolean = lookupAll(sym.name) contains sym
+
+    /** A scope that contains all symbols of this scope and that also contains `sym`.
+     */
+    def +(sym: Symbol): Scope =
+      if (contains(sym)) this 
+      else {
+        val result = cloneScope
+        result enter sym
+        result
+      }
+
+    /** A scope that contains all symbols of this scope except `sym`.
+     */
+    def -(sym: Symbol): Scope =
+      if (!contains(sym)) this 
+      else {
+        val result = cloneScope
+        result unlink sym
+        result
+      }
+*/
     override def foreach[U](p: Symbol => U): Unit = toList foreach p
 
     override def filter(p: Symbol => Boolean): Scope =
@@ -287,18 +315,17 @@ trait Scopes {
     override def mkString(start: String, sep: String, end: String) =
       toList.map(_.defString).mkString(start, sep, end)
 
-    override def toString(): String = mkString("{\n  ", ";\n  ", "\n}")
+    override def toString(): String = mkString("Scope{\n  ", ";\n  ", "\n}")
 
-    /** Return the nesting level of this scope, i.e. the number of times this scope
-     *  was nested in another */
-    def nestingLevel = nestinglevel
   }
+
+  def newScope: Scope = new Scope
 
   /** The empty scope (immutable).
    */
   object EmptyScope extends Scope {
     override def enter(e: ScopeEntry) {
-      throw new Error("EmptyScope.enter")
+      abort("EmptyScope.enter")
     }
   }
 

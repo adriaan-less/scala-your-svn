@@ -6,59 +6,39 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.concurrent
 
-
-/** The class <code>SyncVar</code> ...
+/** A class to provide safe concurrent access to a mutable cell.
+ *  All methods are synchronized.
  *
- *  @author  Martin Odersky, Stepan Koltsov
+ *  @author  Martin Odersky
  *  @version 1.0, 10/03/2003
  */
 class SyncVar[A] {
   private var isDefined: Boolean = false
   private var value: A = _
-  private var exception: Option[Throwable] = None
 
   def get = synchronized {
     while (!isDefined) wait()
-    if (exception.isEmpty) value
-    else throw exception.get
+    value
   }
 
   def get(timeout: Long): Option[A] = synchronized {
     if (!isDefined) {
-      try {
-        wait(timeout)
-      } catch {
-        case _: InterruptedException =>
-      }
+      try wait(timeout)
+      catch { case _: InterruptedException => () }
     }
-    if (exception.isEmpty) {
-      if (isDefined) Some(value) else None
-    } else
-      throw exception.get
+    if (isDefined) Some(value)
+    else None
   }
 
   def take() = synchronized {
-    try {
-      get
-    } finally {
-      unset()
-    }
+    try get
+    finally unset()
   }
 
   def set(x: A) = synchronized {
     value = x
-    isDefined = true
-    exception = None
-    notifyAll()
-  }
-
-  private def setException(e: Throwable) = synchronized {
-    exception = Some(e)
     isDefined = true
     notifyAll()
   }
@@ -76,5 +56,5 @@ class SyncVar[A] {
     isDefined = false
     notifyAll()
   }
-
 }
+

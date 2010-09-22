@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -495,6 +494,13 @@ import ILGenerator._
 	lastLabel = new Label.NormalLabel(address, stackSize)
 	pc = pc + 1
     }
+
+   def Ldarg0WasJustEmitted() : Boolean = {
+     if(opcodeList.isEmpty)
+       return false
+     val lastEmitted = opcodeList.get(opcodeList.size - 1)
+     lastEmitted eq OpCode.Ldarg_0
+   }
 
     private def emitSpecialLabel(l: Label) {
         emitSpecialLabel(l, null)

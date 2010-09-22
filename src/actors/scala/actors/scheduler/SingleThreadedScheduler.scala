@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package scheduler
@@ -54,11 +53,11 @@ class SingleThreadedScheduler extends IScheduler {
     isShutdown = true
   }
 
-  def newActor(actor: Reactor) {}
-  def terminated(actor: Reactor) {}
+  def newActor(actor: TrackedReactor) {}
+  def terminated(actor: TrackedReactor) {}
 
   // TODO: run termination handlers at end of shutdown.
-  def onTerminate(actor: Reactor)(f: => Unit) {}
+  def onTerminate(actor: TrackedReactor)(f: => Unit) {}
 
   def isActive =
     !isShutdown

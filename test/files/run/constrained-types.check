@@ -52,8 +52,8 @@ val y = b.y  // should keep the annotation
 y: Int @Annot(Stuff.x) = 10
 
 -----
-def m(x: String): String @Annot(x) = x     // m should be annotated with a debruijn
-m: (x$0:String)String @Annot(x)
+def m(x: String): String @Annot(x) = x
+m: (x: String)String @Annot(x)
 
 -----
 val three = "three"
@@ -121,7 +121,7 @@ y: java.lang.String = hello
 
 -----
 val x = 3 : Int @Annot(e+f+g+h) //should have a graceful error message
-<console>:5: error: not found: value e
+<console>:6: error: not found: value e
        val x = 3 : Int @Annot(e+f+g+h) //should have a graceful error message
                               ^
 

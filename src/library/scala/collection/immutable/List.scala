@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -18,10 +17,10 @@ import annotation.tailrec
 
 /** A class for immutable linked lists representing ordered collections
  *  of elements of type. 
- *
- * This class comes with two implementing case classes `scala.Nil`
- * and `scala.::` that implement the abstract members `isEmpty`,
- * `head` and `tail`.
+ *  
+ *  This class comes with two implementing case classes `scala.Nil` 
+ *  and `scala.::` that implement the abstract members `isEmpty`, 
+ *  `head` and `tail`.
  *
  *  @author  Martin Odersky and others
  *  @version 2.8
@@ -46,7 +45,7 @@ import annotation.tailrec
 sealed abstract class List[+A] extends LinearSeq[A] 
                                   with Product 
                                   with GenericTraversableTemplate[A, List]
-                                  with LinearSeqLike[A, List[A]] {
+                                  with LinearSeqOptimized[A, List[A]] {
   override def companion: GenericCompanion[List] = List
 
   import scala.collection.{Iterable, Traversable, Seq, IndexedSeq}
@@ -61,7 +60,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
    *  @param x the element to prepend.
    *  @return  a list which contains `x` as first element and
    *           which continues with this list.
-   *  @ex `1 :: List(2, 3) = List(2, 3).::(1) = List(1, 2, 3)`
+   *  @example `1 :: List(2, 3) = List(2, 3).::(1) = List(1, 2, 3)`
    *  @usecase def ::(x: A): List[A]
    */
   def ::[B >: A] (x: B): List[B] =
@@ -71,7 +70,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
    *  @param prefix  The list elements to prepend.
    *  @return a list resulting from the concatenation of the given
    *    list `prefix` and this list. 
-   *  @ex `List(1, 2) ::: List(3, 4) = List(3, 4).:::(List(1, 2)) = List(1, 2, 3, 4)`
+   *  @example `List(1, 2) ::: List(3, 4) = List(3, 4).:::(List(1, 2)) = List(1, 2, 3, 4)`
    *  @usecase def :::(prefix: List[A]): List[A]
    */
   def :::[B >: A](prefix: List[B]): List[B] =
@@ -98,7 +97,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
 
   /** Builds a new list by applying a function to all elements of this list.
    *  Like `xs map f`, but returns `xs` unchanged if function
-   *  `f` maps all elements to themselves (wrt ==).
+   *  `f` maps all elements to themselves (wrt eq).
    *
    *  Note: Unlike `map`, `mapConserve` is not tail-recursive.
    * 
@@ -106,43 +105,48 @@ sealed abstract class List[+A] extends LinearSeq[A]
    *  @tparam B     the element type of the returned collection.
    *  @return       a list resulting from applying the given function
    *                `f` to each element of this list and collecting the results.
-   *  @usecase def mapConserve[B](f: A => B): List[A] 
+   *  @usecase def mapConserve(f: A => A): List[A] 
    */
-  def mapConserve[B >: A] (f: A => B): List[B] = {
-    def loop(ys: List[A]): List[B] =
-      if (ys.isEmpty) this
+  def mapConserve[B >: A <: AnyRef](f: A => B): List[B] = {
+    @tailrec
+    def loop(mapped: ListBuffer[B], unchanged: List[A], pending: List[A]): List[B] =
+      if (pending.isEmpty) {
+        if (mapped eq null) unchanged
+        else mapped.prependToList(unchanged)
+      }
       else {
-        val head0 = ys.head
+        val head0 = pending.head
         val head1 = f(head0)
-        if (head1 == head0) {
-          loop(ys.tail)
-        } else {
-          val ys1 = head1 :: ys.tail.mapConserve(f)
-          if (this eq ys) ys1
-          else {
-            val b = new ListBuffer[B]
-            var xc = this
-            while (xc ne ys) {
-              b += xc.head
-              xc = xc.tail
-            }
-            b.prependToList(ys1)
+
+        if (head1 == head0)
+          loop(mapped, unchanged, pending.tail)
+        else {
+          val b = if (mapped eq null) new ListBuffer[B] else mapped
+          var xc = unchanged
+          while (xc ne pending) {
+            b += xc.head
+            xc = xc.tail
           }
+          b += head1
+          val tail0 = pending.tail
+          loop(b, tail0, tail0)
         }
       }
-    loop(this)
+    loop(null, this, this)
   }
 
-  // Overridden methods from IterableLike or overloaded variants of such methods
+  // Overridden methods from IterableLike and SeqLike or overloaded variants of such methods
   
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
+  override def ++[B >: A, That](that: TraversableOnce[B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
     val b = bf(this)
     if (b.isInstanceOf[ListBuffer[_]]) (this ::: that.toList).asInstanceOf[That]
     else super.++(that)
   }
 
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[List[A], B, That]): That =
-    this ++ that.toList
+  override def +:[B >: A, That](elem: B)(implicit bf: CanBuildFrom[List[A], B, That]): That = bf match {
+    case _: List.GenericCanBuildFrom[_] => (elem :: this).asInstanceOf[That]
+    case _ => super.+:(elem)(bf)
+  }
 
   override def toList: List[A] = this
 
@@ -243,7 +247,6 @@ sealed abstract class List[+A] extends LinearSeq[A]
     if (isEmpty) Stream.Empty
     else new Stream.Cons(head, tail.toStream)
     
-    
   /** Like <code>span</code> but with the predicate inverted.
    */
   @deprecated("use `span { x => !p(x) }` instead")
@@ -287,6 +290,9 @@ sealed abstract class List[+A] extends LinearSeq[A]
     }
     b.toList
   }
+  
+  @deprecated("use `distinct' instead")
+  def removeDuplicates: List[A] = distinct
 
   /** <p>
    *    Sort the list according to the comparison function
@@ -299,7 +305,7 @@ sealed abstract class List[+A] extends LinearSeq[A]
    *  @param lt the comparison function
    *  @return   a list sorted according to the comparison function
    *            `lt(e1: a, e2: a) =&gt; Boolean`.
-   *  @ex <pre>
+   *  @example <pre>
    *    List("Steve", "Tom", "John", "Bob")
    *      .sort((e1, e2) => (e1 compareTo e2) &lt; 0) =
    *    List("Bob", "John", "Steve", "Tom")</pre>
@@ -383,7 +389,7 @@ case object Nil extends List[Nothing] {
     throw new NoSuchElementException("head of empty list")
   override def tail: List[Nothing] =
     throw new UnsupportedOperationException("tail of empty list")
-  // Removal of equals method here might lead to an infinite recusion similar to IntMap.equals.
+  // Removal of equals method here might lead to an infinite recursion similar to IntMap.equals.
   override def equals(that: Any) = that match {
     case that1: Seq[_] => that1.isEmpty
     case _ => false
@@ -428,7 +434,10 @@ final case class ::[B](private var hd: B, private[scala] var tl: List[B]) extend
   }
 }
 
-/** $factoryInfo */
+/** $factoryInfo
+ *  @define coll list
+ *  @define Coll List
+ */
 object List extends SeqFactory[List] {
   
   import scala.collection.{Iterable, Seq, IndexedSeq}
@@ -539,7 +548,7 @@ object List extends SeqFactory[List] {
    * Returns the `Left` values in the given `Iterable`
    * of `Either`s.
    */
-  @deprecated("use `xs partialMap { case Left(x: A) => x }' instead of `List.lefts(xs)'")
+  @deprecated("use `xs collect { case Left(x: A) => x }' instead of `List.lefts(xs)'")
   def lefts[A, B](es: Iterable[Either[A, B]]) = 
     es.foldRight[List[A]](Nil)((e, as) => e match {
       case Left(a) => a :: as
@@ -549,7 +558,7 @@ object List extends SeqFactory[List] {
   /**
    * Returns the `Right` values in the given`Iterable` of  `Either`s.
    */
-  @deprecated("use `xs partialMap { case Right(x: B) => x }' instead of `List.rights(xs)'")
+  @deprecated("use `xs collect { case Right(x: B) => x }' instead of `List.rights(xs)'")
   def rights[A, B](es: Iterable[Either[A, B]]) = 
     es.foldRight[List[B]](Nil)((e, bs) => e match {
       case Left(_) => bs
@@ -561,9 +570,9 @@ object List extends SeqFactory[List] {
    *  @param xs the iterable of Eithers to separate
    *  @return a pair of lists.
    */
-  @deprecated("use `Either.separate' instead")
+  @deprecated("use `(for (Left(x) <- es) yield x, for (Right(x) <- es) yield x)` instead")  
   def separate[A,B](es: Iterable[Either[A, B]]): (List[A], List[B]) =
-      es.foldRight[(List[A], List[B])]((Nil, Nil)) {
+    es.foldRight[(List[A], List[B])]((Nil, Nil)) {
       case (Left(a), (lefts, rights)) => (a :: lefts, rights)
       case (Right(b), (lefts, rights)) => (lefts, b :: rights)
     }
@@ -590,7 +599,7 @@ object List extends SeqFactory[List] {
    *
    *  @param arr   the array to convert
    *  @param start the first index to consider
-   *  @param len   the lenght of the range to convert
+   *  @param len   the length of the range to convert
    *  @return      a list that contains the same elements than `arr`
    *               in the same order
    */

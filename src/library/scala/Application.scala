@@ -6,12 +6,10 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
-import java.lang.System.getProperty
 import scala.compat.Platform.currentTime
 
 /** <p>
@@ -75,8 +73,8 @@ import scala.compat.Platform.currentTime
 
 trait Application {
 
-  /** The time when execution of this program started.
-   */
+  /** The time when the execution of this program started, in milliseconds since 1
+    * January 1970 UTC. */
   val executionStart: Long = currentTime
 
   /** The default main method.
@@ -84,7 +82,7 @@ trait Application {
    *  @param args the arguments passed to the main method
    */
   def main(args: Array[String]) {
-    if (getProperty("scala.time") ne null) {
+    if (util.Properties.propIsSet("scala.time")) {
       val total = currentTime - executionStart
       Console.println("[total " + total + "ms]")
     }

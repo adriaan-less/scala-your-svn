@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 
 package scala.tools.nsc
@@ -17,6 +16,7 @@ import scala.tools.nsc.util.{Position,NoPosition}
   A pattern match
  
   case THIS(clasz) =>
+  case STORE_THIS(kind) =>
   case CONSTANT(const) =>
   case LOAD_ARRAY_ITEM(kind) =>
   case LOAD_LOCAL(local) =>
@@ -41,6 +41,8 @@ import scala.tools.nsc.util.{Position,NoPosition}
   case DUP(kind) =>
   case MONITOR_ENTER() =>
   case MONITOR_EXIT() =>
+  case BOX(boxType) =>
+  case UNBOX(tpe) =>
   case SCOPE_ENTER(lv) =>
   case SCOPE_EXIT(lv) =>
   case LOAD_EXCEPTION() =>
@@ -170,7 +172,7 @@ trait Opcodes { self: ICodes =>
     case class LOAD_FIELD(field: Symbol, isStatic: Boolean) extends Instruction {
       /** Returns a string representation of this instruction */
       override def toString(): String = 
-        "LOAD_FIELD " + (if (isStatic) field.fullNameString else field.toString());
+        "LOAD_FIELD " + (if (isStatic) field.fullName else field.toString());
 
       override def consumed = if (isStatic) 0 else 1
       override def produced = 1
@@ -320,22 +322,25 @@ trait Opcodes { self: ICodes =>
     case class CALL_METHOD(method: Symbol, style: InvokeStyle) extends Instruction {
       /** Returns a string representation of this instruction */
       override def toString(): String =
-        "CALL_METHOD " + hostClass.fullNameString + method.fullNameString +" ("+style.toString()+")";
+        "CALL_METHOD " + hostClass.fullName + method.fullName +" ("+style.toString()+")";
 
       var hostClass: Symbol = method.owner;
       def setHostClass(cls: Symbol): this.type = { hostClass = cls; this }
+      
+      /** This is specifically for preserving the target native Array type long
+       *  enough that clone() can generate the right call.
+       */      
+      var targetTypeKind: TypeKind = UNIT // the default should never be used, so UNIT should fail fast.
+      def setTargetTypeKind(tk: TypeKind) = targetTypeKind = tk
 
-      override def consumed = {
-        var result = method.tpe.paramTypes.length;
-        result = result + (style match {
+      override def consumed = method.tpe.paramTypes.length + (
+        style match {
           case Dynamic | InvokeDynamic => 1
           case Static(true) => 1
           case Static(false) => 0 
           case SuperCall(_) => 1
-        });
-        
-        result;
-      }
+        }
+      )
       
       override def consumedTypes = {
         val args = method.tpe.paramTypes map toTypeKind
@@ -352,7 +357,7 @@ trait Opcodes { self: ICodes =>
           0
         else 1
         
-      /** object idenity is equality for CALL_METHODs. Needed for
+      /** object identity is equality for CALL_METHODs. Needed for
        *  being able to store such instructions into maps, when more
        *  than one CALL_METHOD to the same method might exist.
        */
@@ -659,6 +664,66 @@ trait Opcodes { self: ICodes =>
     
     /** Call through super[mix]. */
     case class SuperCall(mix: Name) extends InvokeStyle
+
+
+    // CLR backend
+
+    case class CIL_LOAD_LOCAL_ADDRESS(local: Local) extends Instruction {
+      /** Returns a string representation of this instruction */
+      override def toString(): String = "CIL_LOAD_LOCAL_ADDRESS "+local.toString()  //+isArgument?" (argument)":"";
+
+      override def consumed = 0
+      override def produced = 1
+
+      override def producedTypes = List(msil_mgdptr(local.kind))
+  }
+
+    case class CIL_LOAD_FIELD_ADDRESS(field: Symbol, isStatic: Boolean) extends Instruction {
+      /** Returns a string representation of this instruction */
+      override def toString(): String =
+        "CIL_LOAD_FIELD_ADDRESS " + (if (isStatic) field.fullName else field.toString());
+
+      override def consumed = if (isStatic) 0 else 1
+      override def produced = 1
+
+      override def consumedTypes = if (isStatic) Nil else List(REFERENCE(field.owner));
+      override def producedTypes = List(msil_mgdptr(REFERENCE(field.owner)));
+}
+
+    case class CIL_LOAD_ARRAY_ITEM_ADDRESS(kind: TypeKind) extends Instruction {
+      /** Returns a string representation of this instruction */
+      override def toString(): String = "CIL_LOAD_ARRAY_ITEM_ADDRESS (" + kind + ")"
+
+      override def consumed = 2
+      override def produced = 1
+
+      override def consumedTypes = List(ARRAY(kind), INT)
+      override def producedTypes = List(msil_mgdptr(kind))
+    }
+
+    case class CIL_UNBOX(valueType: TypeKind) extends Instruction {
+      override def toString(): String = "CIL_UNBOX " + valueType
+      override def consumed = 1
+      override def consumedTypes = AnyRefReference :: Nil // actually consumes a 'boxed valueType'
+      override def produced = 1
+      override def producedTypes = List(msil_mgdptr(valueType))
+    }
+
+    case class CIL_INITOBJ(valueType: TypeKind) extends Instruction {
+      override def toString(): String = "CIL_INITOBJ " + valueType
+      override def consumed = 1
+      override def consumedTypes = AnyRefReference :: Nil // actually consumes a managed pointer
+      override def produced = 0
+    }
+
+    case class CIL_NEWOBJ(method: Symbol) extends Instruction {
+      override def toString(): String = "CIL_NEWOBJ " + hostClass.fullName + method.fullName
+      var hostClass: Symbol = method.owner;
+      override def consumed = method.tpe.paramTypes.length
+      override def consumedTypes = method.tpe.paramTypes map toTypeKind
+      override def produced = 1
+      override def producedTypes = List(toTypeKind(method.tpe.resultType))
+    }
 
   }
 }

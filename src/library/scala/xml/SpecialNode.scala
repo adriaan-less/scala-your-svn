@@ -6,13 +6,8 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 
 package scala.xml
-
-import collection.immutable.{List, Nil, ::}
-import collection.mutable.StringBuilder
 
 /** <p>
  *    <code>SpecialNode</code> is a special XML node which

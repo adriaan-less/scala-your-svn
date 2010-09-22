@@ -6,14 +6,15 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
-/**
- * @since 2.3
+
+
+/** Class used internally for default map model.
+ *  @since 2.3
  */
 @serializable
 final class DefaultEntry[A, B](val key: A, var value: B) 

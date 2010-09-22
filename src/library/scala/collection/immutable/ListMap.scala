@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,25 +13,33 @@ package immutable
 
 import generic._
 
-/** The canonical factory of <a href="ListMap.html">ListMap</a>'s.
- *
+/** $factoryInfo
  *  @since 1
+ *  @define Coll immutable.ListMap
+ *  @define coll immutable list map
  */
 object ListMap extends ImmutableMapFactory[ListMap] {
+  /** $mapCanBuildFromInfo */
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), ListMap[A, B]] =
     new MapCanBuildFrom[A, B]
   def empty[A, B]: ListMap[A, B] = new ListMap
 }
 
-/** This class implements immutable maps using a list-based data
- *  structure. Instances of <code>ListMap</code> represent
- *  empty maps; they can be either created by calling the constructor
- *  directly, or by applying the function <code>ListMap.empty</code>.
- *
+/** This class implements immutable maps using a list-based data structure.
+ *  Instances of `ListMap` represent empty maps; they can be either created by
+ *  calling the constructor directly, or by applying the function `ListMap.empty`.
+ *  
+ *  @tparam A     the type of the keys in this list map.
+ *  @tparam B     the type of the values associated with the keys.
+ *  
  *  @author  Matthias Zenger
- *  @author  Martin Oderskty
+ *  @author  Martin Odersky
  *  @version 2.0, 01/01/2007
  *  @since   1
+ *  @define Coll immutable.ListMap
+ *  @define coll immutable list map
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 @serializable @SerialVersionUID(301002838095710379L)
 class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
@@ -45,7 +52,7 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
    */
   override def size: Int = 0
 
-  /** Checks if this map maps <code>key</code> to a value and return the
+  /** Checks if this map maps `key` to a value and return the
    *  value if it exists.
    *
    *  @param  key the key of the mapping of interest
@@ -62,7 +69,8 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
    *  @param key  the key element of the updated entry.
    *  @param value the value element of the updated entry.
    */
-  override def updated [B1 >: B] (key: A, value: B1): ListMap[A, B1] = new Node[B1](key, value)
+  override def updated [B1 >: B] (key: A, value: B1): ListMap[A, B1] =
+    new Node[B1](key, value)
 
   /** Add a key/value pair to this map. 
    *  @param    kv the key/value pair
@@ -80,6 +88,14 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
    */
   override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *): ListMap[A, B1] =
     this + elem1 + elem2 ++ elems
+
+  /** Adds a number of elements provided by a traversable object
+   *  and returns a new collection with the added elements.
+   *
+   *  @param xs     the traversable object.
+   */
+  override def ++[B1 >: B](xs: TraversableOnce[(A, B1)]): ListMap[A, B1] =
+    ((repr: ListMap[A, B1]) /: xs) (_ + _)
 
   /** This creates a new mapping without the given <code>key</code>.
    *  If the map does not contain a mapping for the given key, the
@@ -103,7 +119,9 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
   protected def key: A = throw new NoSuchElementException("empty map")
   protected def value: B = throw new NoSuchElementException("empty map")
   protected def next: ListMap[A, B] = throw new NoSuchElementException("empty map")
-
+  
+  /** This class represents an entry in the `ListMap`.
+   */
   @serializable @SerialVersionUID(-6453056603889598734L)
   protected class Node[B1 >: B](override protected val key: A, 
                                 override protected val value: B1) extends ListMap[A, B1] {
@@ -137,11 +155,9 @@ class ListMap[A, +B] extends Map[A, B] with MapLike[A, B, ListMap[A, B]] {
     override def get(k: A): Option[B1] =
       if (k == key) Some(value) else next.get(k)
 
-    /** This method allows one to create a new map with an
-     *  additional mapping from <code>key</code>
-     *  to <code>value</code>. If the map contains already a
-     *  mapping for <code>key</code>, it will be overridden by this
-     *  function.
+    /** This method allows one to create a new map with an additional mapping
+     *  from `key` to `value`. If the map contains already a mapping for `key`,
+     *  it will be overridden by this function.
      *
      *  @param k ...
      *  @param v ...

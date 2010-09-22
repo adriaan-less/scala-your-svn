@@ -6,9 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
+/**
+ * Core Scala types. They are always available without an explicit import.
+ */
 package object scala {
   type Throwable = java.lang.Throwable
   type Exception = java.lang.Exception
@@ -25,6 +27,8 @@ package object scala {
   type NoSuchElementException          = java.util.NoSuchElementException
   type NumberFormatException           = java.lang.NumberFormatException
   type AbstractMethodError             = java.lang.AbstractMethodError
+  
+  type TraversableOnce[+A] = scala.collection.TraversableOnce[A]
 
   type Traversable[+A] = scala.collection.Traversable[A]
   val Traversable = scala.collection.Traversable
@@ -57,14 +61,11 @@ package object scala {
 
   type Vector[+A] = scala.collection.immutable.Vector[A]
   val Vector = scala.collection.immutable.Vector
-
+  
   type StringBuilder = scala.collection.mutable.StringBuilder
-  val StringBuilder = scala.collection.mutable.StringBuilder
 
   type Range = scala.collection.immutable.Range
   val Range = scala.collection.immutable.Range
-
-  type =>? [-A, +B] = PartialFunction[A, B]
 
   // Migrated from Predef
 

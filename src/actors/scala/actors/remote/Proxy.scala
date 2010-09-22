@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package remote
@@ -19,8 +18,6 @@ import scala.collection.mutable.HashMap
 @serializable
 private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: NetKernel) extends AbstractActor {
   import java.io.{IOException, ObjectOutputStream, ObjectInputStream}
-
-  type Future[+R] = scala.actors.Future[R]
 
   @transient
   private[remote] var del: Actor = null
@@ -44,7 +41,7 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   }
 
   private def setupKernel() {
-    kernel = RemoteActor.someKernel
+    kernel = RemoteActor.someNetKernel
     kernel.registerProxy(node, name, this)
   }
 
@@ -66,10 +63,10 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   def !?(msec: Long, msg: Any): Option[Any] =
     del !? (msec, msg)
 
-  override def !!(msg: Any): Future[Any] =
+  def !!(msg: Any): Future[Any] =
     del !! msg
 
-  override def !![A](msg: Any, f: Any =>? A): Future[A] =
+  def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] =
     del !! (msg, f)
 
   def linkTo(to: AbstractActor): Unit =

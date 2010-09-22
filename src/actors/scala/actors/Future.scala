@@ -6,11 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
 import scala.actors.scheduler.DaemonScheduler
+import scala.concurrent.SyncVar
 
 /** A `Future[T]` is a function of arity 0 that returns
  *  a value of type `T`.
@@ -22,11 +22,15 @@ import scala.actors.scheduler.DaemonScheduler
  *
  *  @author Philipp Haller
  */
-abstract class Future[+T](val inputChannel: InputChannel[T]) extends Responder[T] with Function0[T] {
+abstract class Future[+T] extends Responder[T] with Function0[T] {
+
   @volatile
   private[actors] var fvalue: Option[Any] = None
   private[actors] def fvalueTyped = fvalue.get.asInstanceOf[T]
   
+  @deprecated("this member is going to be removed in a future release")
+  def ch: InputChannel[Any] = inputChannel
+
   @deprecated("this member is going to be removed in a future release")
   protected def value: Option[Any] = fvalue
   @deprecated("this member is going to be removed in a future release")
@@ -38,6 +42,72 @@ abstract class Future[+T](val inputChannel: InputChannel[T]) extends Responder[T
    *          `false` otherwise.
    */
   def isSet: Boolean
+
+  /** Returns an input channel that can be used to receive the future's result.
+   *
+   *  @return the future's input channel
+   */
+  def inputChannel: InputChannel[T]
+
+}
+
+private case object Eval
+
+private class FutureActor[T](fun: SyncVar[T] => Unit, channel: Channel[T]) extends Future[T] with DaemonActor {
+
+  var enableChannel = false // guarded by this
+
+  def isSet = !fvalue.isEmpty
+
+  def apply(): T = {
+    if (fvalue.isEmpty) {
+      this !? Eval
+    }
+    fvalueTyped
+  }
+
+  def respond(k: T => Unit) {
+    if (isSet) k(fvalueTyped)
+    else {
+      val ft = this !! Eval
+      ft.inputChannel.react {
+        case _ => k(fvalueTyped)
+      }
+    }
+  }
+
+  def inputChannel: InputChannel[T] = {
+    synchronized {
+      if (!enableChannel) {
+        if (isSet)
+          channel ! fvalueTyped
+        enableChannel = true
+      }
+    }
+    channel
+  }
+
+  def act() {
+    val res = new SyncVar[T]
+
+    {
+      fun(res)
+    } andThen {
+
+      synchronized {
+        val v = res.get
+        fvalue =  Some(v)
+        if (enableChannel)
+          channel ! v
+      }
+
+      loop {
+        react {
+          case Eval => reply()
+        }
+      }
+    }
+  }
 }
 
 /** The `Futures` object contains methods that operate on futures.
@@ -45,41 +115,6 @@ abstract class Future[+T](val inputChannel: InputChannel[T]) extends Responder[T
  *  @author Philipp Haller
  */
 object Futures {
-
-  private case object Eval
-
-  private class FutureActor[T](fun: () => T, channel: Channel[T])
-    extends Future[T](channel) with DaemonActor {
-
-    def isSet = !fvalue.isEmpty
-
-    def apply(): T = {
-      if (fvalue.isEmpty)
-        this !? Eval
-      fvalueTyped
-    }
-
-    def respond(k: T => Unit) {
-      if (isSet) k(fvalueTyped)
-      else {
-        val ft = this !! Eval
-        ft.inputChannel.react {
-          case _ => k(fvalueTyped)
-        }
-      }
-    }
-
-    def act() {
-      val res = fun()
-      fvalue =  Some(res)
-      channel ! res
-      Actor.loop {
-        Actor.react {
-          case Eval => Actor.reply()
-        }
-      }
-    }
-  }
 
   /** Arranges for the asynchronous execution of `body`,
    *  returning a future representing the result.
@@ -90,7 +125,7 @@ object Futures {
    */
   def future[T](body: => T): Future[T] = {
     val c = new Channel[T](Actor.self(DaemonScheduler))
-    val a = new FutureActor[T](() => body, c)
+    val a = new FutureActor[T](_.set(body), c)
     a.start()
     a
   }
@@ -100,10 +135,16 @@ object Futures {
    *  @param  timespan the time span in ms after which the future resolves
    *  @return          the future
    */
-  def alarm(timespan: Long) = future {
-    Actor.reactWithin(timespan) {
-      case TIMEOUT => {}
+  def alarm(timespan: Long): Future[Unit] = {
+    val c = new Channel[Unit](Actor.self(DaemonScheduler))
+    val fun = (res: SyncVar[Unit]) => {
+      Actor.reactWithin(timespan) {
+        case TIMEOUT => res.set({})
+      }
     }
+    val a = new FutureActor[Unit](fun, c)
+    a.start()
+    a
   }
 
   /** Waits for the first result returned by one of two
@@ -153,7 +194,7 @@ object Futures {
 
     val partFuns = unsetFts.map((p: Pair[Int, Future[Any]]) => {
       val FutCh = p._2.inputChannel
-      val singleCase: Any =>? Pair[Int, Any] = {
+      val singleCase: PartialFunction[Any, Pair[Int, Any]] = {
         case FutCh ! any => Pair(p._1, any)
       }
       singleCase
@@ -165,8 +206,8 @@ object Futures {
     }
     Actor.timer.schedule(timerTask, timeout)
 
-    def awaitWith(partFuns: Seq[Any =>? Pair[Int, Any]]) {
-      val reaction: Any =>? Unit = new (Any =>? Unit) {
+    def awaitWith(partFuns: Seq[PartialFunction[Any, Pair[Int, Any]]]) {
+      val reaction: PartialFunction[Any, Unit] = new PartialFunction[Any, Unit] {
         def isDefinedAt(msg: Any) = msg match {
           case TIMEOUT => true
           case _ => partFuns exists (_ isDefinedAt msg)
@@ -203,26 +244,5 @@ object Futures {
 
     results
   }
-
-  private[actors] def fromInputChannel[T](inputChannel: InputChannel[T]): Future[T] =
-    new Future[T](inputChannel) {
-      def apply() =
-        if (isSet) fvalueTyped
-        else inputChannel.receive {
-          case any => fvalue = Some(any); fvalueTyped
-        }
-      def respond(k: T => Unit): Unit =
-        if (isSet) k(fvalueTyped)
-        else inputChannel.react {
-          case any => fvalue = Some(any); k(fvalueTyped)
-        }
-      def isSet = fvalue match {
-        case None => inputChannel.receiveWithin(0) {
-          case TIMEOUT => false
-          case any => fvalue = Some(any); true
-        }
-        case Some(_) => true
-      }
-    }
 
 }

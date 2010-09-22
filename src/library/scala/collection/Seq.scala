@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -16,16 +15,19 @@ import mutable.Builder
 
 /** A base trait for sequences.
  *  $seqInfo
- *  @tparam A    the element type of the $coll
  */
-trait Seq[+A] extends PartialFunction[Int, A]
+trait Seq[+A] extends PartialFunction[Int, A] 
                       with Iterable[A] 
                       with GenericTraversableTemplate[A, Seq]
                       with SeqLike[A, Seq[A]] {
   override def companion: GenericCompanion[Seq] = Seq
 }
 
-/** $factoryInfo */
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ *  @define coll sequence
+ *  @define Coll Seq
+ */
 object Seq extends SeqFactory[Seq] {
 
   private[collection] val hashSeed = "Seq".hashCode

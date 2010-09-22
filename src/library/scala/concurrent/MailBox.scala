@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.concurrent
@@ -26,7 +25,7 @@ class MailBox extends AnyRef with ListQueueCreator {
     def isDefinedAt(msg: Message): Boolean
   }
 
-  private class Receiver[A](receiver: Message =>? A) extends PreReceiver {
+  private class Receiver[A](receiver: PartialFunction[Message, A]) extends PreReceiver {
 
     def isDefinedAt(msg: Message) = receiver.isDefinedAt(msg)
 
@@ -85,7 +84,7 @@ class MailBox extends AnyRef with ListQueueCreator {
   * Block until there is a message in the mailbox for which the processor
   * <code>f</code> is defined.
   */
-  def receive[A](f: Message =>? A): A = {
+  def receive[A](f: PartialFunction[Message, A]): A = {
     val r = new Receiver(f)
     scanSentMsgs(r)
     r.receive()
@@ -95,7 +94,7 @@ class MailBox extends AnyRef with ListQueueCreator {
   * Block until there is a message in the mailbox for which the processor
   * <code>f</code> is defined or the timeout is over.
   */
-  def receiveWithin[A](msec: Long)(f: Message =>? A): A = {
+  def receiveWithin[A](msec: Long)(f: PartialFunction[Message, A]): A = {
     val r = new Receiver(f)
     scanSentMsgs(r)
     r.receiveWithin(msec)

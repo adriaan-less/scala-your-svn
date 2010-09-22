@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -43,13 +42,13 @@ object ScrollPane {
 class ScrollPane extends Component with Container {
   import ScrollPane._
   
-  override lazy val peer: JScrollPane = new JScrollPane
+  override lazy val peer: JScrollPane = new JScrollPane with SuperMixin
   def this(c: Component) = {
     this()
     contents = c
   } 
   def contents: Seq[Component] = 
-    List(UIElement.cachedWrapper(peer.getViewport.getView.asInstanceOf[javax.swing.JComponent]))
+    List(UIElement.cachedWrapper[Component](peer.getViewport.getView.asInstanceOf[javax.swing.JComponent]))
   
   /**
    * Sets the single child.
@@ -63,17 +62,20 @@ class ScrollPane extends Component with Container {
    * want to let the row header be a list view with the same row height as 
    * the viewport component.
    */
-  def rowHeaderView: Option[Component] = Swing.toOption(peer.getRowHeader.getView).map(UIElement.cachedWrapper(_))
+  def rowHeaderView: Option[Component] = 
+    Option(peer.getRowHeader.getView) map UIElement.cachedWrapper[Component]
   def rowHeaderView_=(c: Component) = peer.setRowHeaderView(c.peer)
-  def rowHeaderView_=(c: Option[Component]) = peer.setRowHeaderView(Swing.toNull(c.map(_.peer)))
+  def rowHeaderView_=(c: Option[Component]) = peer.setRowHeaderView(c map (_.peer) orNull)
   
-  def columnHeaderView: Option[Component] = Swing.toOption(peer.getColumnHeader.getView).map(UIElement.cachedWrapper(_))
+  def columnHeaderView: Option[Component] = 
+    Option(peer.getColumnHeader.getView) map UIElement.cachedWrapper[Component]
   def columnHeaderView_=(c: Component) = peer.setColumnHeaderView(c.peer)
-  def columnHeaderView_=(c: Option[Component]) = peer.setColumnHeaderView(Swing.toNull(c.map(_.peer)))
+  def columnHeaderView_=(c: Option[Component]) = peer.setColumnHeaderView(c map (_.peer) orNull)
   
-  def viewportView: Option[Component] = Swing.toOption(peer.getViewport.getView).map(UIElement.cachedWrapper(_))
+  def viewportView: Option[Component] = 
+    Option(peer.getViewport.getView) map UIElement.cachedWrapper[Component]
   def viewportView_=(c: Component) = peer.setViewportView(c.peer)
-  def viewportView_=(c: Option[Component]) = peer.setViewportView(Swing.toNull(c.map(_.peer)))
+  def viewportView_=(c: Option[Component]) = peer.setViewportView(c map (_.peer) orNull)
 
   def verticalScrollBarPolicy = BarPolicy.wrap(peer.getVerticalScrollBarPolicy)
   def verticalScrollBarPolicy_=(p: BarPolicy.Value) = peer.setVerticalScrollBarPolicy(p.verticalPeer)

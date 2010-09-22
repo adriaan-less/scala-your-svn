@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,6 +13,7 @@ package mutable
 
 import generic._
 import script._
+import annotation.migration
 
 /** A template trait for buffers of type `Buffer[A]`.
  * 
@@ -29,10 +29,6 @@ import script._
  * 
  *  @author  Martin Odersky
  *  @author  Matthias Zenger
- *  @version 2.8
- *  @since 2.8
- *  @author Matthias Zenger
- *  @author Martin Odersky
  *  @version 2.8
  *  @since   2.8
  *  @define buffernote @note
@@ -57,21 +53,24 @@ import script._
  *  @define Add  Append
  *  @define willNotTerminateInf
  *  @define mayNotTerminateInf
+ *  @define compatMutate
+ *  Note that for backward compatibility reasons, this method
+ *  mutates the collection in place, unlike similar but
+ *  undeprecated methods throughout the collections hierarchy.
  */
 @cloneable
 trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]] 
                 extends Growable[A]
                    with Shrinkable[A]
                    with Scriptable[A]
-                   with Addable[A, This] 
                    with Subtractable[A, This]
-                   with Cloneable[This]
                    with SeqLike[A, This]
 { self : This =>
+  
+  // Note this does not extend Addable because `+` is being phased out of
+  // all Seq-derived classes.
 
-  import scala.collection.{Iterable, Traversable}
-
-  // Abstract methods from IndexedSeq:
+  // Abstract methods from Seq:
 
   def apply(n: Int): A
   def update(n: Int, newelem: A)
@@ -97,7 +96,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *  @throws   IndexOutofBoundsException if the index `n` is not in the valid range
    *            `0 <= n <= length`.
    */
-  def insertAll(n: Int, elems: Traversable[A])
+  def insertAll(n: Int, elems: collection.Traversable[A])
 
    /** Removes the element at a given index from this buffer.
     *
@@ -131,51 +130,34 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
     if (i != -1) remove(i)
     this
   }
-
-  /** Prepends the elements contained in a traversable collection
-   *  to this buffer.
-   *  @param elems  the collection containing the elements to prepend.
+  
+  /** Prepends elements to this buffer.
+   *
+   *  @param xs  the TraversableOnce containing the elements to prepend.
    *  @return the buffer itself.
    */
-  def ++=:(elems: Traversable[A]): this.type = { insertAll(0, elems); this }
-
-  /** Prepends the elements produced by an iterator to this buffer.
-   *
-   *  @param iter   the iterator producing the elements to prepend.
-   *  @return       the buffer itself.
-   */
-  def ++=:(iter: Iterator[A]): this.type = { insertAll(0, iter.toSeq); this }
+  def ++=:(xs: TraversableOnce[A]): this.type = { insertAll(0, xs.toTraversable); this }
 
   /** Appends the given elements to this buffer.
    *
    *  @param elems  the elements to append.
    */
-  def append(elems: A*) { this ++= elems }
+  def append(elems: A*) { appendAll(elems) }
 
-  /** Appends the elements contained in a traversable collection to this buffer.
-   *  @param elems  the collection containing the elements to append.
+  /** Appends the elements contained in a traversable object to this buffer.
+   *  @param xs  the traversable object containing the elements to append.
    */
-  def appendAll(elems: Traversable[A]) { this ++= elems }
-
-  /** Appends the elements produced by an iterator to this buffer.
-   *  @param elems  the iterator producing the elements to append.
-   */
-  def appendAll(iter: Iterator[A]) { this ++= iter }
+  def appendAll(xs: TraversableOnce[A]) { this ++= xs }
 
   /** Prepends given elements to this buffer.
    *  @param elems  the elements to prepend.
    */
-  def prepend(elems: A*) { elems ++=: this } 
+  def prepend(elems: A*) { prependAll(elems) } 
 
-  /** Prepends the elements contained in a traversable collection to this buffer.
+  /** Prepends the elements contained in a traversable object to this buffer.
    *  @param elems  the collection containing the elements to prepend.
    */
-  def prependAll(iter: Traversable[A]) { iter ++=: this }
-
-  /** Prepends a number of elements produced by an iterator to this buffer.
-   *  @param iter  the iterator producing the elements to prepend.
-   */
-  def prependAll(iter: Iterator[A]) { iter ++=: this }
+  def prependAll(xs: TraversableOnce[A]) { xs ++=: this }
 
   /** Inserts new elements at a given index into this buffer.
    *
@@ -230,7 +212,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    */
   override def stringPrefix: String = "Buffer"
     
-  /** Provide a read-only view of this byffer as a sequence
+  /** Provide a read-only view of this buffer as a sequence
    *  @return  A sequence which refers to this buffer for all its operations.
    */
   def readOnly: scala.collection.Seq[A] = toSeq
@@ -251,106 +233,108 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
     }
   }
 
+
+  /** This method prepends elements to the buffer and
+   *  returns the same buffer.
+   *
+   *  $compatMutate
+   *  You are strongly recommended to use `++=:` instead.
+   *
+   *  @param xs   elements to prepend
+   *  @return     this buffer
+   */
   @deprecated("use ++=: instead")
-  final def ++:(iter: Traversable[A]): This = ++=:(iter)
+  final def ++:(xs: collection.Traversable[A]): This = ++=:(xs)
+ 
+  /** This method prepends elements to the buffer and
+   *  returns the same buffer.
+   *
+   *  $compatMutate
+   *  You are strongly recommended to use `+=:` instead.
+   *
+   *  @param xs   elements to prepend
+   *  @return     this buffer
+   */ 
+  @deprecated("use `+=:' instead") 
+  final def +:(elem: A): This = +=:(elem)
 
   /** Adds a single element to this collection and returns 
    *  the collection itself.
    *
+   *  $compatMutate
+   *  You are strongly recommended to use '+=' instead.
+   *
    *  @param elem  the element to add.
    */
   @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=' if you intend to create a new collection.")
-  override def + (elem: A): This = { +=(elem); repr }
+              "Use `clone() +=' if you intend to create a new collection.")
+  def + (elem: A): This = { +=(elem); repr }
 
   /** Adds two or more elements to this collection and returns
    *  the collection itself.
+   *  
+   *  $compatMutate
+   *  You are strongly recommended to use '++=' instead.
    *
    *  @param elem1 the first element to add.
    *  @param elem2 the second element to add.
    *  @param elems the remaining elements to add.
    */
-  @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
+  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
               "Use `clone() ++=' if you intend to create a new collection.")
-  override def + (elem1: A, elem2: A, elems: A*): This = {
+  def + (elem1: A, elem2: A, elems: A*): This = {
     this += elem1 += elem2 ++= elems
     repr
-  }
+  } 
 
-  /** Adds a number of elements provided by a traversable object and returns
-   *  either the collection itself.
+  /** Creates a new collection containing both the elements of this collection and the provided
+   *  traversable object.
    *
-   *  @param iter     the iterable object.
+   *  @param xs     the traversable object.
+   *  @return       a new collection consisting of all the elements of this collection and `xs`.
    */
-  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=` if you intend to create a new collection.")
-  override def ++(iter: Traversable[A]): This = { 
-    for (elem <- iter) +=(elem)
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, ++ always creates a new collection, even on Buffers.\n"+
+    "Use ++= instead if you intend to add by side effect to an existing collection.\n"
+  )
+  def ++(xs: TraversableOnce[A]): This = clone() ++= xs
 
-  /** Adds a number of elements provided by an iterator and returns
-   *  the collection itself.
-   *
-   *  @param iter   the iterator
-   */
-  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=` if you intend to create a new collection.")
-  override def ++ (iter: Iterator[A]): This = {
-    for (elem <- iter) +=(elem)
-    repr
-  }
-
-  /** Removes a single element from this collection and returns 
-   *  the collection itself.
+  /** Creates a new collection with all the elements of this collection except `elem`.
    *
    *  @param elem  the element to remove.
+   *  @return      a new collection consisting of all the elements of this collection except `elem`.
    */
-  @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() -=` if you intend to create a new collection.")
-  override def -(elem: A): This = { -=(elem); repr }
+  @migration(2, 8,
+    "As of 2.8, - always creates a new collection, even on Buffers.\n"+
+    "Use -= instead if you intend to remove by side effect from an existing collection.\n"
+  )
+  override def -(elem: A): This = clone() -= elem
 
-  /** Removes two or more elements from this collection and returns
-   *  the collection itself.
+  /** Creates a new collection with all the elements of this collection except the two
+   *  or more specified elements.
    *
    *  @param elem1 the first element to remove.
    *  @param elem2 the second element to remove.
    *  @param elems the remaining elements to remove.
+   *  @return      a new collection consisting of all the elements of this collection except
+   *               `elem1`, `elem2` and those in `elems`.
    */
-  @deprecated("Use -= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() -=` if you intend to create a new collection.")
-  override def -(elem1: A, elem2: A, elems: A*): This = {
-    this -= elem1 -= elem2 --= elems
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, - always creates a new collection, even on Buffers.\n"+
+    "Use -= instead if you intend to remove by side effect from an existing collection.\n"
+  )
+  override def -(elem1: A, elem2: A, elems: A*): This = clone() -= elem1 -= elem2 --= elems
 
-  /** Removes a number of elements provided by a Traversable object and returns
-   *  the collection itself.
+  /** Creates a new collection with all the elements of this collection except those
+   *  provided by the specified traversable object.
    *
-   *  @param iter     the Traversable object.
+   *  @param xs       the traversable object.
+   *  @return         a new collection with all the elements of this collection except
+   *                  those in `xs`
    */
-  @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() --=` if you intend to create a new collection.")
-  override def --(iter: Traversable[A]): This = { 
-    for (elem <- iter) -=(elem)
-    repr
-  }
-
-  @deprecated("use `+=:' instead") 
-  final def +:(elem: A): This = +=:(elem)
-
-  /** Removes a number of elements provided by an iterator and returns
-   *  the collection itself.
-   *
-   *  @param iter   the iterator
-   */
-  @deprecated("Use --= instead if you intend to remove by side effect from an existing collection.\n"+
-              "Use `clone() --=` if you intend to create a new collection.")
-  override def --(iter: Iterator[A]): This = { 
-    for (elem <- iter) -=(elem)
-    repr
-  }
+  @migration(2, 8,
+    "As of 2.8, -- always creates a new collection, even on Buffers.\n"+
+    "Use --= instead if you intend to remove by side effect from an existing collection.\n"
+  )
+  override def --(xs: TraversableOnce[A]): This = clone() --= xs
 }
-
-
-

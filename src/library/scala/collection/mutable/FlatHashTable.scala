@@ -6,13 +6,19 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package mutable
 
-/**
- * @since 2.3
+
+/** An implementation class backing a `HashSet`.
+ *  
+ *  This trait is used internally. It can be mixed in with various collections relying on
+ *  hash table as an implementation.
+ *  
+ *  @since 2.3
+ *  
+ *  @tparam A   the type of the elements contained in the flat hash table.
  */
 trait FlatHashTable[A] {
 
@@ -46,7 +52,7 @@ trait FlatHashTable[A] {
   private def initialCapacity = capacity(initialSize)
   
   /**
-   * Initialises the collection from the input stream. `f` will be called for each element
+   * Initializes the collection from the input stream. `f` will be called for each element
    * read from the input stream in the order determined by the stream. This is useful for
    * structures where iteration order is important (e.g. LinkedHashSet).
    * 
@@ -85,6 +91,7 @@ trait FlatHashTable[A] {
     iterator.foreach(out.writeObject)
   }
   
+  /** Finds an entry in the hash table if such an element exists. */
   def findEntry(elem: A): Option[A] = {
     var h = index(elemHashCode(elem))
     var entry = table(h)
@@ -95,6 +102,7 @@ trait FlatHashTable[A] {
     if (null == entry) None else Some(entry.asInstanceOf[A])
   }
 
+  /** Checks whether an element is contained in the hash table. */
   def containsEntry(elem: A): Boolean = {
     var h = index(elemHashCode(elem))
     var entry = table(h)
@@ -105,8 +113,8 @@ trait FlatHashTable[A] {
     null != entry
   }
 
-  /** Add entry if not yet in table
-   *  Return whether a new entry was added
+  /** Add entry if not yet in table.
+   *  @return Returns `true` if a new entry was added, `false` otherwise.
    */
   def addEntry(elem: A) : Boolean = {
     var h = index(elemHashCode(elem))
@@ -122,6 +130,7 @@ trait FlatHashTable[A] {
     true
   }
 
+  /** Removes an entry from the hash table, returning an option value with the element, or `None` if it didn't exist. */
   def removeEntry(elem: A) : Option[A] = {
     if (tableDebug) checkConsistent()
     def precedes(i: Int, j: Int) = {
@@ -184,7 +193,7 @@ trait FlatHashTable[A] {
   private def checkConsistent() {
     for (i <- 0 until table.length)
       if (table(i) != null && !containsEntry(table(i).asInstanceOf[A]))
-        assert(false, i+" "+table(i)+" "+table.toString)
+        assert(false, i+" "+table(i)+" "+table.mkString)
   }
 
   protected def elemHashCode(elem: A) = if (elem == null) 0 else elem.hashCode()

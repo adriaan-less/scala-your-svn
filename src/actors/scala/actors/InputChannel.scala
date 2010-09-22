@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -14,53 +13,54 @@ package scala.actors
  * The <code>InputChannel</code> trait provides a common interface
  * for all channels from which values can be received.
  *
- * @version 0.9.8
  * @author Philipp Haller
+ *
+ * @define channel `InputChannel`
  */
 trait InputChannel[+Msg] {
 
   /**
-   * Receives a message from this <code>InputChannel</code>.
+   * Receives a message from this $channel.
    *
    * @param  f    a partial function with message patterns and actions
    * @return      result of processing the received value
    */
-  def receive[R](f: Msg =>? R): R
+  def receive[R](f: PartialFunction[Msg, R]): R
 
   /**
-   * Receives a message from this <code>InputChannel</code> within
+   * Receives a message from this $channel within
    * a certain time span.
    *
    * @param  msec the time span before timeout
    * @param  f    a partial function with message patterns and actions
    * @return      result of processing the received value
    */
-  def receiveWithin[R](msec: Long)(f: Any =>? R): R
+  def receiveWithin[R](msec: Long)(f: PartialFunction[Any, R]): R
 
   /**
-   * Receives a message from this <code>InputChannel</code>.
-   * <p>
+   * Receives a message from this $channel.
+   *
    * This method never returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *
    * @param  f    a partial function with message patterns and actions
    */
-  def react(f: Msg =>? Unit): Nothing
+  def react(f: PartialFunction[Msg, Unit]): Nothing
 
   /**
-   * Receives a message from this <code>InputChannel</code> within
+   * Receives a message from this $channel within
    * a certain time span.
-   * <p>
+   *
    * This method never returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *
    * @param  msec the time span before timeout
    * @param  f    a partial function with message patterns and actions
    */
-  def reactWithin(msec: Long)(f: Any =>? Unit): Nothing
+  def reactWithin(msec: Long)(f: PartialFunction[Any, Unit]): Nothing
 
   /**
-   * Receives the next message from this <code>Channel</code>.
+   * Receives the next message from this $channel.
    */
   def ? : Msg
 }

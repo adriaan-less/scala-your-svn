@@ -3,7 +3,6 @@
  * Copyright 2007 Google Inc. All Rights Reserved.
  * Author: bqe@google.com (Burak Emir)
  */
-// $Id$
 
 package scala.tools.nsc
 package matching
@@ -95,7 +94,7 @@ trait ParallelMatching extends ast.TreeDSL
       def sym   = pv.sym      
       def tpe   = sym.tpe
       def pos   = sym.pos
-      def id    = ID(sym)   // attributed ident
+      def id    = ID(sym) setPos pos  // attributed ident
       
       def accessors     = if (isCaseClass) sym.caseFieldAccessors else Nil
       def accessorTypes = accessors map (x => (tpe memberType x).resultType)
@@ -149,7 +148,7 @@ trait ParallelMatching extends ast.TreeDSL
       if (!scrut.isSimple) None
       else {
         val (_lits, others) = ps span isSwitchableConst
-        val lits = _lits partialMap { case x: LiteralPattern => x }
+        val lits = _lits collect { case x: LiteralPattern => x }
     
         condOpt(others) {
           case Nil                                => new PatternSwitch(scrut, lits, None)
@@ -176,7 +175,6 @@ trait ParallelMatching extends ast.TreeDSL
       def isCaseHead = head.isCaseClass
       private val dummyCount = if (isCaseHead) headType.typeSymbol.caseFieldAccessors.length else 0
       def dummies = emptyPatterns(dummyCount)
-      // def dummies = head.dummies
 
       def apply(i: Int): Pattern = ps(i)
       def pzip() = ps.zipWithIndex
@@ -280,7 +278,9 @@ trait ParallelMatching extends ast.TreeDSL
       
       lazy val pvgroup  = PatternVarGroup.fromBindings(subst.get())
       
-      final def tree(): Tree = squeezedBlock(pvgroup.valDefs, codegen)
+      final def tree(): Tree = 
+        if (guard.isEmpty) success
+        else squeezedBlock(pvgroup.valDefs, codegen)
     }
 
     /** Mixture rule for all literal ints (and chars) i.e. hopefully a switch
@@ -442,32 +442,92 @@ trait ParallelMatching extends ast.TreeDSL
      *  Note: pivot == head, just better typed.
      */
     sealed class MixSequence(val pmatch: PatternMatch, val rest: Rep, pivot: SequencePattern) extends RuleApplication {
+      require(scrut.tpe <:< head.tpe)
+
       def hasStar = pivot.hasStar
-      private def pivotLen = pivot.nonStarLength
+      private def pivotLen    = pivot.nonStarLength
+      private def seqDummies  = emptyPatterns(pivot.elems.length + 1)
       
       // one pattern var per sequence element up to elemCount, and one more for the rest of the sequence
       lazy val pvs = scrut createSequenceVars pivotLen
       
-      // divide the remaining rows into success/failure branches, expanding subsequences of patterns
-      private lazy val rowsplit = {
-        require(scrut.tpe <:< head.tpe)
-        
-        val res = for ((c, rows) <- pmatch pzip rest.rows) yield {
-          def canSkip                     = pivot canSkipSubsequences c
-          def passthrough(skip: Boolean)  = if (skip) None else Some(rows insert c)
-        
-          pivot.subsequences(c, scrut.seqType) match {
-            case Some(ps) => (Some(rows insert ps), passthrough(canSkip))
-            case None     => (None, passthrough(false))
-          }
-        } 
-        
-        res.unzip match { case (l1, l2) => (l1.flatten, l2.flatten) }
+      // Should the given pattern join the expanded pivot in the success matrix? If so,
+      // this partial function will be defined for the pattern, and the result of the apply
+      // is the expanded sequence of new patterns.
+      lazy val successMatrixFn = new PartialFunction[Pattern, List[Pattern]] {
+        private def seqIsDefinedAt(x: SequenceLikePattern) = (hasStar, x.hasStar) match {
+          case (true, true)   => true
+          case (true, false)  => pivotLen <= x.nonStarLength
+          case (false, true)  => pivotLen >= x.nonStarLength
+          case (false, false) => pivotLen == x.nonStarLength
+        }
+
+        def isDefinedAt(pat: Pattern) = pat match {
+          case x: SequenceLikePattern => seqIsDefinedAt(x)
+          case WildcardPattern()      => true
+          case _                      => false
+        }
+                
+        def apply(pat: Pattern): List[Pattern] = pat match {
+          case x: SequenceLikePattern =>
+            def isSameLength  = pivotLen == x.nonStarLength
+            def rebound       = x.nonStarPatterns :+ (x.elemPatterns.last rebindTo WILD(scrut.seqType))
+          
+            (pivot.hasStar, x.hasStar, isSameLength) match {
+              case (true, true, true)   => rebound :+ NoPattern
+              case (true, true, false)  => (seqDummies drop 1) :+ x
+              case (true, false, true)  => x.elemPatterns ++ List(NilPattern, NoPattern)
+              case (false, true, true)  => rebound
+              case (false, false, true) => x.elemPatterns :+ NoPattern
+              case _                    => seqDummies
+            }
+
+          case _  => seqDummies
+        }
       }
 
-      lazy val cond     = (pivot precondition pmatch).get   // length check
-      lazy val success  = squeezedBlockPVs(pvs, remake(rowsplit._1, pvs, hasStar).toTree)
-      lazy val failure  = remake(rowsplit._2).toTree
+      // Should the given pattern be in the fail matrix? This is true of any sequences
+      // as long as the result of the length test on the pivot doesn't make it impossible:
+      // for instance if neither sequence is right ignoring and they are of different
+      // lengths, the later one cannot match since its length must be wrong.
+      def failureMatrixFn(c: Pattern) = (pivot ne c) && (c match {
+        case x: SequenceLikePattern =>
+          (hasStar, x.hasStar) match {
+            case (_, true)      => true
+            case (true, false)  => pivotLen > x.nonStarLength
+            case (false, false) => pivotLen != x.nonStarLength
+          }
+        case WildcardPattern()      => true
+        case _                      => false
+      })
+      
+      // divide the remaining rows into success/failure branches, expanding subsequences of patterns
+      val successRows = pmatch pzip rest.rows collect {
+        case (c, row) if successMatrixFn isDefinedAt c => row insert successMatrixFn(c)
+      }
+      val failRows = pmatch pzip rest.rows collect {
+        case (c, row) if failureMatrixFn(c) => row insert c
+      }
+
+      // the discrimination test for sequences is a call to lengthCompare.  Note that
+      // this logic must be fully consistent wiith successMatrixFn and failureMatrixFn above:
+      // any inconsistency will (and frequently has) manifested as pattern matcher crashes.
+      lazy val cond = {
+        // the method call symbol
+        val methodOp: Symbol                = head.tpe member nme.lengthCompare
+        
+        // the comparison to perform.  If the pivot is right ignoring, then a scrutinee sequence
+        // of >= pivot length could match it; otherwise it must be exactly equal.
+        val compareOp: (Tree, Tree) => Tree = if (hasStar) _ INT_>= _ else _ INT_== _
+        
+        // scrutinee.lengthCompare(pivotLength) [== | >=] 0
+        val compareFn: Tree => Tree         = (t: Tree) => compareOp((t DOT methodOp)(LIT(pivotLen)), ZERO)
+        
+        // wrapping in a null check on the scrutinee
+        nullSafe(compareFn, FALSE)(scrut.id)
+      }
+      lazy val success  = squeezedBlockPVs(pvs, remake(successRows, pvs, hasStar).toTree)
+      lazy val failure  = remake(failRows).toTree
             
       final def tree(): Tree = codegen
     }
@@ -535,7 +595,10 @@ trait ParallelMatching extends ast.TreeDSL
             case Pattern(LIT(null), _) if !(p =:= s)        => (None, passr)      // (1)
             case x if isObjectTest                          => (passl(), None)    // (2)
             case Pattern(Typed(pp, _), _)     if sMatchesP  => (typed(pp), None)  // (4)
-            case Pattern(_: UnApply, _)                     => (passl(), passr)
+            // The next line used to be this which "fixed" 1697 but introduced
+            // numerous regressions including #3136.
+            // case Pattern(_: UnApply, _)                     => (passl(), passr)
+            case Pattern(_: UnApply, _)                     => (None, passr)
             case x if !x.isDefault && sMatchesP             => (subs(), None)
             case x if  x.isDefault || pMatchesS             => (passl(), passr)
             case _                                          => (None, passr)              
@@ -619,7 +682,7 @@ trait ParallelMatching extends ast.TreeDSL
         def isNotAlternative(p: Pattern) = !cond(p.tree) { case _: Alternative => true }
         
         // classify all the top level patterns - alternatives come back unaltered
-        val newPats: List[Pattern] = pats.zipWithIndex map classifyPat.tuple
+        val newPats: List[Pattern] = pats.zipWithIndex map classifyPat.tupled
         // see if any alternatives were in there
         val (ps, others) = newPats span isNotAlternative
         // make a new row for each alternative, with it spliced into the original position
@@ -674,7 +737,7 @@ trait ParallelMatching extends ast.TreeDSL
       def duplicate = body.duplicate setType bodyTpe
       
       def isFinal = true
-      def isLabellable = !cond(body)  { case _: Throw | _: Literal => true }
+      def isLabellable = !cond(body)  { case _: Literal => true }
       def isNotReached = referenceCount == 0
       def isReachedOnce = referenceCount == 1
       def isReachedTwice = referenceCount > 1
@@ -690,34 +753,28 @@ trait ParallelMatching extends ast.TreeDSL
       }
       
       def createLabelBody(index: Int, pvgroup: PatternVarGroup) = {
-        def args = pvgroup.syms
-        def vdefs = pvgroup.valDefs
+        val args = pvgroup.syms
+        val vdefs = pvgroup.valDefs
         
         val name = "body%" + index
         require(_labelSym == null)
         referenceCount += 1
 
         if (isLabellable) {
-          // val mtype = MethodType(freeVars, bodyTpe)
-          val mtype = MethodType(args, bodyTpe)
+          val mtype = MethodType(freeVars, bodyTpe)
           _labelSym = owner.newLabel(body.pos, name) setInfo mtype
           
           TRACE("Creating index %d: mtype = %s".format(bx, mtype))
-          if (freeVars.size != args.size)
-            TRACE("We will be hosed! freeVars = %s, args = %s, vdefs = %s".format(freeVars, args, vdefs))
-
-          // Labelled expression - the symbols in the array (must be Idents!) 
-          // are those the label takes as argument 
-          _label = typer typedLabelDef LabelDef(_labelSym, args, body setType bodyTpe)
-          TRACE("[New label] def %s%s: %s = %s".format(name, pp(args), bodyTpe, body))
+          _label = typer typedLabelDef LabelDef(_labelSym, freeVars, body setType bodyTpe)
+          TRACE("[New label] def %s%s: %s = %s".format(name, pp(freeVars), bodyTpe, body))
         }
         
         ifLabellable(vdefs, squeezedBlock(vdefs, label))
       }
       
       def getLabelBody(pvgroup: PatternVarGroup): Tree = {
-        def idents = pvgroup map (_.rhs)
-        def vdefs = pvgroup.valDefs
+        val idents = pvgroup map (_.rhs)
+        val vdefs = pvgroup.valDefs
         referenceCount += 1
         // if (idents.size != labelParamTypes.size)
         //   consistencyFailure(idents, vdefs)
@@ -829,12 +886,18 @@ trait ParallelMatching extends ast.TreeDSL
           }
         case _: SingletonType if useEqTest                      =>
           val eqTest = REF(tpe.termSymbol) MEMBER_== scrutTree
+
           // See ticket #1503 for the motivation behind checking for a binding.
           // The upshot is that it is unsound to assume equality means the right
           // type, but if the value doesn't appear on the right hand side of the
           // match that's unimportant; so we add an instance check only if there
           // is a binding.
-          if (isBound) eqTest AND (scrutTree IS tpe.widen)
+          if (isBound) {
+            if (settings.Xmigration28.value) {
+              cunit.warning(scrutTree.pos, "A bound pattern such as 'x @ Pattern' now matches fewer cases than the same pattern with no binding.")
+            }
+            eqTest AND (scrutTree IS tpe.widen)
+          }
           else eqTest
                   
         case _ if scrutTree.tpe <:< tpe && tpe.isAnyRef         => scrutTree OBJ_!= NULL

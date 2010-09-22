@@ -6,9 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
+import annotation.target._
+
+@field
 class transient extends StaticAnnotation

@@ -2,59 +2,66 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Alexander Spoon
  */
-// $Id$
 
 package scala.tools.nsc
 
-import java.io.{ BufferedReader, File, FileReader, PrintWriter }
+import Predef.{ println => _, _ }
+import java.io.{ BufferedReader, FileReader, PrintWriter }
 import java.io.IOException
 
 import scala.tools.nsc.{ InterpreterResults => IR }
+import scala.annotation.tailrec
+import scala.collection.mutable.ListBuffer
+import scala.concurrent.ops
+import util.{ ClassPath }
 import interpreter._
-import io.{ Process }
+import io.{ File, Process }
 
 // Classes to wrap up interpreter commands and their results
 // You can add new commands by adding entries to val commands
 // inside InterpreterLoop.
-object InterpreterControl {
+trait InterpreterControl {
+  self: InterpreterLoop =>
+  
   // the default result means "keep running, and don't record that line"
   val defaultResult = Result(true, None)
   
   // a single interpreter command
   sealed abstract class Command extends Function1[List[String], Result] {
-    val name: String
-    val help: String
+    def name: String
+    def help: String
     def error(msg: String) = {
-      println(":" + name + " " + msg + ".")
+      out.println(":" + name + " " + msg + ".")
       Result(true, None)
     }
-    def getHelp(): String = ":" + name + " " + help + "."
+    def usage(): String
   }
   
   case class NoArgs(name: String, help: String, f: () => Result) extends Command {
+    def usage(): String = ":" + name
     def apply(args: List[String]) = if (args.isEmpty) f() else error("accepts no arguments")
   }
   
   case class LineArg(name: String, help: String, f: (String) => Result) extends Command {
+    def usage(): String = ":" + name + " <line>"
     def apply(args: List[String]) = f(args mkString " ")
   }
 
   case class OneArg(name: String, help: String, f: (String) => Result) extends Command {
+    def usage(): String = ":" + name + " <arg>"
     def apply(args: List[String]) =
       if (args.size == 1) f(args.head)
       else error("requires exactly one argument")
   }
 
   case class VarArgs(name: String, help: String, f: (List[String]) => Result) extends Command {
+    def usage(): String = ":" + name + " [arg]"
     def apply(args: List[String]) = f(args)
   }
 
   // the result of a single command
   case class Result(keepRunning: Boolean, lineToRecord: Option[String])
 }
-import InterpreterControl._
-
-// import scala.concurrent.ops.defaultRunner
 
 /** The 
  *  <a href="http://scala-lang.org/" target="_top">Scala</a>
@@ -70,7 +77,7 @@ import InterpreterControl._
  *  @author  Lex Spoon
  *  @version 1.2
  */
-class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
+class InterpreterLoop(in0: Option[BufferedReader], protected val out: PrintWriter) extends InterpreterControl {
   def this(in0: BufferedReader, out: PrintWriter) = this(Some(in0), out)
   def this() = this(None, new PrintWriter(Console.out))
 
@@ -82,19 +89,18 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
   
   var settings: Settings = _          // set by main()
   var interpreter: Interpreter = _    // set by createInterpreter()
-  def isettings = interpreter.isettings
     
-  // XXX
-  var addedClasspath: List[String] = Nil
+  // classpath entries added via :cp
+  var addedClasspath: String = ""
 
   /** A reverse list of commands to replay if the user requests a :replay */
-  var replayCommandsRev: List[String] = Nil
+  var replayCommandStack: List[String] = Nil
 
   /** A list of commands to replay if the user requests a :replay */
-  def replayCommands = replayCommandsRev.reverse
+  def replayCommands = replayCommandStack.reverse
 
   /** Record a command for replay should the user request a :replay */
-  def addReplay(cmd: String) = replayCommandsRev = cmd :: replayCommandsRev
+  def addReplay(cmd: String) = replayCommandStack ::= cmd
 
   /** Close the interpreter and set the var to <code>null</code>. */
   def closeInterpreter() {
@@ -107,28 +113,25 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
 
   /** Create a new interpreter. */
   def createInterpreter() {
-    if (!addedClasspath.isEmpty)
-      settings.classpath.value += addedClasspath.map(File.pathSeparator + _).mkString
+    if (addedClasspath != "")
+      settings.classpath append addedClasspath
       
     interpreter = new Interpreter(settings, out) {
-      override protected def parentClassLoader = classOf[InterpreterLoop].getClassLoader
+      override protected def parentClassLoader =
+        settings.explicitParentLoader.getOrElse( classOf[InterpreterLoop].getClassLoader )
     }
     interpreter.setContextClassLoader()
-  }
-
-  /** Bind the settings so that evaluated code can modify them */
-  def bindSettings() {
-    interpreter.beQuietDuring {
-      interpreter.compileString(InterpreterSettings.sourceCodeForClass)
-      interpreter.bind("settings", "scala.tools.nsc.InterpreterSettings", isettings)
-    }
+    // interpreter.quietBind("settings", "scala.tools.nsc.InterpreterSettings", interpreter.isettings)
   }
 
   /** print a friendly help message */
   def printHelp() = {
-    out println "All commands can be abbreviated - for example :h or :he instead of :help.\n"
-    commands foreach { c => out println c.getHelp }
-  }      
+    out println "All commands can be abbreviated - for example :he instead of :help.\n"
+    val cmds = commands map (x => (x.usage, x.help))
+    val width: Int = cmds map { case (x, _) => x.length } max
+    val formatStr = "%-" + width + "s %s"
+    cmds foreach { case (usage, help) => out println formatStr.format(usage, help) }
+  } 
   
   /** Print a welcome message */
   def printWelcome() {
@@ -139,8 +142,42 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
         |Type :help for more information.""" .
     stripMargin.format(versionString, javaVmName, javaVersion)
         
-    out println welcomeMsg
-    out.flush
+    plushln(welcomeMsg)
+  }
+  
+  /** Show the history */
+  def printHistory(xs: List[String]) {
+    val defaultLines = 20
+    
+    if (in.history.isEmpty)
+      return println("No history available.")
+
+    val current = in.history.get.index
+    val count = try xs.head.toInt catch { case _: Exception => defaultLines }
+    val lines = in.historyList takeRight count
+    val offset = current - lines.size + 1
+
+    for ((line, index) <- lines.zipWithIndex)
+      println("%d %s".format(index + offset, line))
+  }
+  
+  /** Some print conveniences */
+  def println(x: Any) = out println x
+  def plush(x: Any) = { out print x ; out.flush() }
+  def plushln(x: Any) = { out println x ; out.flush() }
+  
+  /** Search the history */
+  def searchHistory(_cmdline: String) {
+    val cmdline = _cmdline.toLowerCase
+    
+    if (in.history.isEmpty)
+      return println("No history available.")
+    
+    val current = in.history.get.index
+    val offset = current - in.historyList.size + 1
+    
+    for ((line, index) <- in.historyList.zipWithIndex ; if line.toLowerCase contains cmdline)
+      println("%d %s".format(index + offset, line))
   }
   
   /** Prompt to print when awaiting input */
@@ -160,28 +197,29 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
   val standardCommands: List[Command] = {
     import CommandImplicits._
     List(
-       NoArgs("help", "prints this help message", printHelp),
-       OneArg("jar", "add a jar to the classpath", addJar),
-       OneArg("load", "followed by a filename loads a Scala file", load),
+       OneArg("cp", "add an entry (jar or directory) to the classpath", addClasspath),
+       NoArgs("help", "print this help message", printHelp),
+       VarArgs("history", "show the history (optional arg: lines to show)", printHistory),
+       LineArg("h?", "search the history", searchHistory),
+       OneArg("load", "load and interpret a Scala file", load),
        NoArgs("power", "enable power user mode", power),
-       NoArgs("quit", "exits the interpreter", () => Result(false, None)),
-       NoArgs("replay", "resets execution and replays all previous commands", replay),
-       LineArg("sh", "forks a shell and runs a command", runShellCmd),
+       NoArgs("quit", "exit the interpreter", () => Result(false, None)),
+       NoArgs("replay", "reset execution and replay all previous commands", replay),
+       LineArg("sh", "fork a shell and run a command", runShellCmd),
        NoArgs("silent", "disable/enable automatic printing of results", verbosity) 
     )
   }
   
   /** Power user commands */
-  // XXX - why does a third argument like "interpreter dumpState(_)" throw an NPE
-  // while the version below works?
   var powerUserOn = false
   val powerCommands: List[Command] = {
     import CommandImplicits._
     List(
-      VarArgs("dump", "displays a view of the interpreter's internal state", 
-        (xs: List[String]) => interpreter dumpState xs),
-      VarArgs("tree", "displays ASTs for specified identifiers",
-        (xs: List[String]) => interpreter dumpTrees xs)
+      OneArg("completions", "generate list of completions for a given String", completions),
+      NoArgs("dump", "displays a view of the interpreter's internal state", () => interpreter.power.dump())
+      
+      // VarArgs("tree", "displays ASTs for specified identifiers",
+      //   (xs: List[String]) => interpreter dumpTrees xs)
       // LineArg("meta", "given code which produces scala code, executes the results",
       //   (xs: List[String]) => )
     )
@@ -200,7 +238,7 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
       in readLine prompt
     }
     // return false if repl should exit
-    def processLine(line: String): Boolean =       
+    def processLine(line: String): Boolean =
       if (line eq null) false               // assume null means EOF
       else command(line) match {
         case Result(false, _)           => false
@@ -208,39 +246,22 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
         case _                          => true
       }
     
-    /* For some reason, the first interpreted command always takes
-     * a second or two.  So, wait until the welcome message
-     * has been printed before calling bindSettings.  That way,
-     * the user can read the welcome message while this
-     * command executes.
-     */
-    val futLine = scala.concurrent.ops.future(readOneLine)
-    bindSettings()
-    if (!processLine(futLine()))
-      return
-
-    // loops until false, then returns
     while (processLine(readOneLine)) { }
   }
 
   /** interpret all lines from a specified file */
-  def interpretAllFrom(filename: String) {
-    val fileIn = 
-      try   { new FileReader(filename) }
-      catch { case _:IOException => return out.println("Error opening file: " + filename) }
-      
+  def interpretAllFrom(file: File) {    
     val oldIn = in
-    val oldReplay = replayCommandsRev
-    try {
-      val inFile = new BufferedReader(fileIn)
-      in = new SimpleReader(inFile, out, false)
-      out.println("Loading " + filename + "...")
-      out.flush
-      repl
-    } finally {
+    val oldReplay = replayCommandStack
+    
+    try file applyReader { reader =>
+      in = new SimpleReader(reader, out, false)
+      plushln("Loading " + file + "...")
+      repl()
+    }
+    finally {
       in = oldIn
-      replayCommandsRev = oldReplay
-      fileIn.close
+      replayCommandStack = oldReplay
     }
   }
 
@@ -249,13 +270,12 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     closeInterpreter()
     createInterpreter()
     for (cmd <- replayCommands) {
-      out.println("Replaying: " + cmd)
-      out.flush()  // because maybe cmd will have its own output
+      plushln("Replaying: " + cmd)  // flush because maybe cmd will have its own output
       command(cmd)
       out.println
     }
   }
-  
+    
   /** fork a shell and run a command */
   def runShellCmd(line: String) {
     // we assume if they're using :sh they'd appreciate being able to pipeline
@@ -267,12 +287,14 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     def add(name: String, it: Iterator[String]) =
       if (it.hasNext) interpreter.bind(name, "scala.List[String]", it.toList)
     
-    List(("stdout", p.stdout), ("stderr", p.stderr)) foreach (add _).tuple
+    List(("stdout", p.stdout), ("stderr", p.stderr)) foreach (add _).tupled
   }
   
-  def withFile(filename: String)(action: String => Unit) {
-    if (! new File(filename).exists) out.println("That file does not exist")
-    else action(filename)
+  def withFile(filename: String)(action: File => Unit) {
+    val f = File(filename)
+    
+    if (f.exists) action(f)
+    else out.println("That file does not exist")
   }
   
   def load(arg: String) = {
@@ -283,22 +305,38 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     })
     Result(true, shouldReplay)
   }
-  
 
-  def addJar(arg: String): Unit = {
-    val f = new java.io.File(arg)
-    if (!f.exists) {
-      out.println("The file '" + f + "' doesn't seem to exist.")
-      return
+  def addClasspath(arg: String): Unit = {
+    val f = File(arg).normalize
+    if (f.exists) {
+      addedClasspath = ClassPath.join(addedClasspath, f.path)
+      val totalClasspath = ClassPath.join(settings.classpath.value, addedClasspath)
+      println("Added '%s'.  Your new classpath is:\n%s".format(f.path, totalClasspath))
+      replay()
     }
-    addedClasspath = addedClasspath ::: List(f.getCanonicalPath)
-    println("Added " + f.getCanonicalPath + " to your classpath.")
-    replay()
+    else out.println("The path '" + f + "' doesn't seem to exist.")
   }
   
-  def power() = {
+  def completions(arg: String): Unit = {
+    val comp = in.completion getOrElse { return println("Completion unavailable.") }
+    val xs  = comp completions arg
+
+    injectAndName(xs)
+  }
+  
+  def power() {
+    val powerUserBanner =
+      """** Power User mode enabled - BEEP BOOP      **
+        |** scala.tools.nsc._ has been imported      **
+        |** New vals! Try repl, global, power        **
+        |** New cmds! :help to discover them         **
+        |** New defs! Type power.<tab> to reveal     **""".stripMargin
+
     powerUserOn = true
-    interpreter.powerUser()
+    interpreter.unleash()    
+    injectOne("history", in.historyList)
+    in.completion foreach (x => injectOne("completion", x))
+    out println powerUserBanner
   }
   
   def verbosity() = {
@@ -318,10 +356,13 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     def ambiguous(cmds: List[Command]) = "Ambiguous: did you mean " + cmds.map(":" + _.name).mkString(" or ") + "?"
 
     // not a command
-    if (!line.startsWith(":"))
-      return Result(true, interpretStartingWith(line))
+    if (!line.startsWith(":")) {
+      // Notice failure to create compiler
+      if (interpreter.compiler == null) return Result(false, None)
+      else return Result(true, interpretStartingWith(line))
+    }
 
-    val tokens = line.substring(1).split("""\s+""").toList
+    val tokens = (line drop 1 split """\s+""").toList
     if (tokens.isEmpty)
       return withError(ambiguous(commands))
     
@@ -334,15 +375,101 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
       case xs       => withError(ambiguous(xs))
     }
   }
+
+  private val CONTINUATION_STRING = "     | "
+  private val PROMPT_STRING = "scala> "
   
+  /** If it looks like they're pasting in a scala interpreter
+   *  transcript, remove all the formatting we inserted so we
+   *  can make some sense of it.
+   */
+  private var pasteStamp: Long = 0
+
+  /** Returns true if it's long enough to quit. */
+  def updatePasteStamp(): Boolean = {
+    /* Enough milliseconds between readLines to call it a day. */
+    val PASTE_FINISH = 1000
+
+    val prevStamp = pasteStamp
+    pasteStamp = System.currentTimeMillis
+    
+    (pasteStamp - prevStamp > PASTE_FINISH)
+  
+  }
+  /** TODO - we could look for the usage of resXX variables in the transcript.
+   *  Right now backreferences to auto-named variables will break.
+   */
+  
+  /** The trailing lines complication was an attempt to work around the introduction
+   *  of newlines in e.g. email messages of repl sessions.  It doesn't work because
+   *  an unlucky newline can always leave you with a syntactically valid first line,
+   *  which is executed before the next line is considered.  So this doesn't actually
+   *  accomplish anything, but I'm leaving it in case I decide to try harder.
+   */
+  case class PasteCommand(cmd: String, trailing: ListBuffer[String] = ListBuffer[String]())
+  
+  /** Commands start on lines beginning with "scala>" and each successive
+   *  line which begins with the continuation string is appended to that command.
+   *  Everything else is discarded.  When the end of the transcript is spotted,
+   *  all the commands are replayed.
+   */
+  @tailrec private def cleanTranscript(lines: List[String], acc: List[PasteCommand]): List[PasteCommand] = lines match {
+    case Nil                                    => acc.reverse      
+    case x :: xs if x startsWith PROMPT_STRING  =>
+      val first = x stripPrefix PROMPT_STRING
+      val (xs1, xs2) = xs span (_ startsWith CONTINUATION_STRING)
+      val rest = xs1 map (_ stripPrefix CONTINUATION_STRING)
+      val result = (first :: rest).mkString("", "\n", "\n")
+      
+      cleanTranscript(xs2, PasteCommand(result) :: acc)
+      
+    case ln :: lns =>
+      val newacc = acc match {
+        case Nil => Nil
+        case PasteCommand(cmd, trailing) :: accrest =>
+          PasteCommand(cmd, trailing :+ ln) :: accrest
+      }
+      cleanTranscript(lns, newacc)
+  }
+
+  /** The timestamp is for safety so it doesn't hang looking for the end
+   *  of a transcript.  Ad hoc parsing can't be too demanding.  You can
+   *  also use ctrl-D to start it parsing.
+   */
+  @tailrec private def interpretAsPastedTranscript(lines: List[String]) {
+    val line = in.readLine("")
+    val finished = updatePasteStamp()
+
+    if (line == null || finished || line.trim == PROMPT_STRING.trim) {
+      val xs = cleanTranscript(lines.reverse, Nil)
+      println("Replaying %d commands from interpreter transcript." format xs.size)
+      for (PasteCommand(cmd, trailing) <- xs) {
+        out.flush()
+        def runCode(code: String, extraLines: List[String]) {
+          (interpreter interpret code) match {
+            case IR.Incomplete if extraLines.nonEmpty =>
+              runCode(code + "\n" + extraLines.head, extraLines.tail)
+            case _ => ()
+          }
+        }
+        runCode(cmd, trailing.toList)
+      }
+    }
+    else
+      interpretAsPastedTranscript(line :: lines)
+  }
+
   /** Interpret expressions starting with the first line.
     * Read lines until a complete compilation unit is available
     * or until a syntax error has been seen.  If a full unit is
     * read, go ahead and interpret it.  Return the full string
     * to be recorded for replay, if any.
     */
-  def interpretStartingWith(code: String): Option[String] =
-    interpreter.interpret(code) match {
+  def interpretStartingWith(code: String): Option[String] = {
+    // signal completion non-completion input has been received
+    in.completion foreach (_.resetVerbosity())
+    
+    def reallyInterpret = interpreter.interpret(code) match {
       case IR.Error       => None
       case IR.Success     => Some(code)
       case IR.Incomplete  =>
@@ -350,11 +477,45 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
           out.println("You typed two blank lines.  Starting a new command.")
           None
         } 
-        else in.readLine("     | ") match {
-          case null => None         // end of file
+        else in.readLine(CONTINUATION_STRING) match {
+          case null =>
+            // we know compilation is going to fail since we're at EOF and the
+            // parser thinks the input is still incomplete, but since this is
+            // a file being read non-interactively we want to fail.  So we send
+            // it straight to the compiler for the nice error message.
+            interpreter.compileString(code)
+            None
+
           case line => interpretStartingWith(code + "\n" + line)
         }
     }
+    
+    /** Here we place ourselves between the user and the interpreter and examine
+     *  the input they are ostensibly submitting.  We intervene in several cases:
+     * 
+     *  1) If the line starts with "scala> " it is assumed to be an interpreter paste.
+     *  2) If the line starts with "." (but not ".." or "./") it is treated as an invocation
+     *     on the previous result.
+     *  3) If the Completion object's execute returns Some(_), we inject that value
+     *     and avoid the interpreter, as it's likely not valid scala code.
+     */
+    if (code == "") None
+    else if (code startsWith PROMPT_STRING) {
+      updatePasteStamp()
+      interpretAsPastedTranscript(List(code))
+      None
+    }
+    else if (Completion.looksLikeInvocation(code) && interpreter.mostRecentVar != "") {
+      interpretStartingWith(interpreter.mostRecentVar + code)
+    }
+    else {
+      val result = for (comp <- in.completion ; res <- comp execute code) yield res
+      result match {
+        case Some(res)  => injectAndName(res) ; None   // completion took responsibility, so do not parse
+        case _          => reallyInterpret
+      }
+    }
+  }
 
   // runs :load <file> on any files passed via -i
   def loadFiles(settings: Settings) = settings match {
@@ -362,7 +523,7 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
       for (filename <- settings.loadfiles.value) {
         val cmd = ":load " + filename
         command(cmd)
-        replayCommandsRev = cmd :: replayCommandsRev
+        addReplay(cmd)
         out.println()
       }
     case _ =>
@@ -375,11 +536,9 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     // sets in to some kind of reader depending on environmental cues
     in = in0 match {
       case Some(in0)  => new SimpleReader(in0, out, true)
-      case None       =>
-        val emacsShell = System.getProperty("env.emacs", "") != ""
-        
-        // the interpeter is passed as an argument to expose tab completion info
-        if (settings.Xnojline.value || emacsShell) new SimpleReader
+      case None       =>        
+        // the interpreter is passed as an argument to expose tab completion info
+        if (settings.Xnojline.value || Properties.isEmacsShell) new SimpleReader
         else if (settings.noCompletion.value) InteractiveReader.createDefault()
         else InteractiveReader.createDefault(interpreter)
     }
@@ -390,21 +549,43 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
       if (interpreter.reporter.hasErrors) return
       
       printWelcome()
+      
+      // this is about the illusion of snappiness.  We call initialize()
+      // which spins off a separate thread, then print the prompt and try 
+      // our best to look ready.  Ideally the user will spend a
+      // couple seconds saying "wow, it starts so fast!" and by the time
+      // they type a command the compiler is ready to roll.
+      interpreter.initialize()
       repl()
-    } finally {
-      closeInterpreter()
     }
+    finally closeInterpreter()
+  }
+  
+  private def objClass(x: Any) = x.asInstanceOf[AnyRef].getClass
+  private def objName(x: Any) = {
+    val clazz = objClass(x)
+    val typeParams = clazz.getTypeParameters
+    val basename = clazz.getName
+    val tpString = if (typeParams.isEmpty) "" else "[%s]".format(typeParams map (_ => "_") mkString ", ")
+
+    basename + tpString
   }
 
   // injects one value into the repl; returns pair of name and class
   def injectOne(name: String, obj: Any): Tuple2[String, String] = {
-    val className = obj.asInstanceOf[AnyRef].getClass.getName     
+    val className = objName(obj)
+    interpreter.quietBind(name, className, obj)
+    (name, className)
+  }
+  def injectAndName(obj: Any): Tuple2[String, String] = {
+    val name = interpreter.getVarName
+    val className = objName(obj)
     interpreter.bind(name, className, obj)
     (name, className)
   }
   
   // injects list of values into the repl; returns summary string
-  def inject(args: List[Any]): String = {
+  def injectDebug(args: List[Any]): String = {
     val strs = 
       for ((arg, i) <- args.zipWithIndex) yield {
         val varName = "p" + (i + 1)
@@ -427,7 +608,7 @@ class InterpreterLoop(in0: Option[BufferedReader], out: PrintWriter) {
     // if they asked for no help and command is valid, we call the real main
     neededHelp() match {
       case ""     => if (command.ok) main(command.settings) // else nothing
-      case help   => out print help ; out flush
+      case help   => plush(help)
     }
   }
 }

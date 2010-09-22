@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -14,4 +13,5 @@ package scala
 /**
  * @since 2.0
  */
+@deprecated("Use a custom Error class instead")
 final class NotDefinedError(msg: String) extends Error("not defined: " + msg)

@@ -2,26 +2,24 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
-trait EvalLoop {
+import annotation.tailrec
+import java.io.EOFException
 
+trait EvalLoop {
   def prompt: String
 
   def loop(action: (String) => Unit) {
-    Console.print(prompt)
-    try {
-      val line = Console.readLine
-      if (line.length() > 0) {
+    @tailrec def inner() {
+      Console.print(prompt)
+      val line = try Console.readLine catch { case _: EOFException => null }
+      if (line != null && line != "") {
         action(line)
-        loop(action)
+        inner()
       }
     }
-    catch {
-      case _: java.io.EOFException => //nop
-    }
+    inner()
   }
-
 }

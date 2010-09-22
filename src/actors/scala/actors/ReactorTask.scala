@@ -6,13 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 
 package scala.actors
 
 import java.lang.Runnable
 import java.util.concurrent.Callable
+
+import scala.concurrent.forkjoin.RecursiveAction
 
 /** <p>
  *    The class <code>ReactorTask</code>.
@@ -20,45 +20,58 @@ import java.util.concurrent.Callable
  *
  *  @author Philipp Haller
  */
-private[actors] class ReactorTask[T >: Null <: Reactor](var reactor: T, var fun: () => Unit)
-  extends Callable[Unit] with Runnable {
+private[actors] class ReactorTask[Msg >: Null](var reactor: Reactor[Msg],
+                                               var fun: () => Any,
+                                               var handler: PartialFunction[Msg, Any],
+                                               var msg: Msg)
+  extends RecursiveAction with Callable[Unit] with Runnable {
 
   def run() {
-    val saved = Actor.tl.get
-    Actor.tl set reactor
     try {
-      beforeExecuting()
+      beginExecution()
       try {
-        try {
+        if (fun eq null)
+          handler(msg)
+        else
           fun()
-        } catch {
-          case e: Exception if (reactor.exceptionHandler.isDefinedAt(e)) =>
-            reactor.exceptionHandler(e)
-        }
       } catch {
-        case _: KillActorException =>
+        case _: KillActorControl =>
+          // do nothing
+
+        case e: Exception if reactor.exceptionHandler.isDefinedAt(e) =>
+          reactor.exceptionHandler(e)
       }
       reactor.kill()
     }
     catch {
-      case _: SuspendActorException =>
+      case _: SuspendActorControl =>
         // do nothing (continuation is already saved)
 
-      case e: Exception =>
-        Debug.info(reactor+": caught "+e)
+      case e: Throwable =>
+        terminateExecution(e)
         reactor.terminated()
-        afterExecuting(e)
+        if (!e.isInstanceOf[Exception])
+          throw e
     } finally {
-      Actor.tl set saved
+      suspendExecution()
       this.reactor = null
       this.fun = null
+      this.handler = null
+      this.msg = null
     }
   }
 
   def call() = run()
 
-  protected def beforeExecuting() {}
+  def compute() = run()
 
-  protected def afterExecuting(e: Exception) {}
+  protected def beginExecution() {}
+
+  protected def suspendExecution() {}
+
+  protected def terminateExecution(e: Throwable) {
+    Console.err.println(reactor+": caught "+e)
+    e.printStackTrace()
+  }
 
 }

@@ -6,15 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala
 
 import scala.collection.SetLike
-import scala.collection.mutable.{Builder, AddingBuilder, Map, HashMap}
-import scala.collection.immutable.{Set, BitSet}
-import scala.collection.generic.CanBuildFrom
+import scala.collection.{ mutable, immutable, generic }
+import java.lang.reflect.{ Modifier, Method => JMethod, Field => JField }
 
 /** <p>
  *    Defines a finite set of values specific to the enumeration. Typically
@@ -44,7 +40,7 @@ import scala.collection.generic.CanBuildFrom
  *
  *    <b>def</b> isWorkingDay(d: WeekDay) = ! (d == Sat || d == Sun)
  * 
- *    WeekDay.iterator filter isWorkingDay foreach println
+ *    WeekDay.values filter isWorkingDay foreach println
  *  }</pre>
  *
  *  @param initial The initial value from which to count the integers that
@@ -57,26 +53,22 @@ import scala.collection.generic.CanBuildFrom
 @serializable
 @SerialVersionUID(8476000850333817230L)
 abstract class Enumeration(initial: Int, names: String*) {
+  thisenum =>
     
   def this() = this(0, null)
   def this(names: String*) = this(0, names: _*)
-  
+
+  /* Note that `readResolve` cannot be private, since otherwise
+     the JVM does not invoke it when deserializing subclasses. */
+  protected def readResolve(): AnyRef = thisenum.getClass.getField("MODULE$").get()
+
   /** The name of this enumeration.  
    */
-  override def toString = {
-    val name = this.getClass.getName
-    var string =
-      if (name endsWith "$") name.substring(0, name.length - 1) else name
-    val idx1 = string.lastIndexOf('.' : Int)
-    if (idx1 != -1) string = string.substring(idx1 + 1)
-    val idx2 = string.indexOf('$')
-    if (idx2 != -1) string = string.substring(idx2 + 1)
-    string
-  }
+  override def toString = (getClass.getName stripSuffix "$" split '.' last) split '$' last
   
   /** The mapping from the integer used to identify values to the actual
     * values. */
-  private val vmap: Map[Int, Value] = new HashMap
+  private val vmap: mutable.Map[Int, Value] = new mutable.HashMap
 
   /** The cache listing all values of this enumeration. */
   @transient private var vset: ValueSet = null
@@ -84,13 +76,13 @@ abstract class Enumeration(initial: Int, names: String*) {
 
   /** The mapping from the integer used to identify values to their
     * names. */
-  private val nmap: Map[Int, String] = new HashMap
+  private val nmap: mutable.Map[Int, String] = new mutable.HashMap
 
   /** The values of this enumeration as a set.
    */
   def values: ValueSet = {
     if (!vsetDefined) {
-      vset = new ValueSet(BitSet.empty ++ (vmap.valuesIterator map (_.id)))
+      vset = new ValueSet(immutable.BitSet.empty ++ (vmap.values map (_.id)))
       vsetDefined = true
     }
     vset
@@ -101,6 +93,8 @@ abstract class Enumeration(initial: Int, names: String*) {
   
   /** The string to use to name the next created value. */
   protected var nextName = names.iterator
+  private def nextNameOrElse(orElse: => String) =
+    if (nextName.hasNext) nextName.next else orElse
 
   /** The highest integer amongst those used to identify values in this
     * enumeration. */
@@ -142,8 +136,7 @@ abstract class Enumeration(initial: Int, names: String*) {
    *           unique amongst all values of the enumeration.
    *  @return  ..
    */
-  protected final def Value(i: Int): Value = 
-    Value(i, if (nextName.hasNext) nextName.next else null)
+  protected final def Value(i: Int): Value = Value(i, nextNameOrElse(null))
   
   /** Creates a fresh value, part of this enumeration, called <code>name</code>.
    *
@@ -161,40 +154,44 @@ abstract class Enumeration(initial: Int, names: String*) {
    */
   protected final def Value(i: Int, name: String): Value = new Val(i, name)
 
+  private def populateNameMap() {
+    // The list of possible Value methods: 0-args which return a conforming type
+    val methods = getClass.getMethods filter (m => m.getParameterTypes.isEmpty && classOf[Value].isAssignableFrom(m.getReturnType))
+    
+    methods foreach { m =>
+      val name = m.getName
+      // invoke method to obtain actual `Value` instance
+      val value = m.invoke(this).asInstanceOf[Value]
+      // verify that outer points to the correct Enumeration: ticket #3616.
+      if (value.outerEnum eq thisenum) {
+        val id = Int.unbox(classOf[Val] getMethod "id" invoke value)
+        nmap += ((id, name))
+      }
+    }
+  }
+
   /* Obtains the name for the value with id `i`. If no name is cached
    * in `nmap`, it populates `nmap` using reflection.
    */
-  private def nameOf(i: Int): String = nmap.get(i) match {
-    case Some(name) => name
-    case None =>
-      val methods = getClass.getMethods
-      for (m <- methods
-                if classOf[Value].isAssignableFrom(m.getReturnType) &&
-                   !java.lang.reflect.Modifier.isFinal(m.getModifiers)) {
-        val name = m.getName
-        // invoke method to obtain actual `Value` instance
-        val value = m.invoke(this)
-        // invoke `id` method
-        val idMeth = classOf[Val].getMethod("id")
-        val id: Int = idMeth.invoke(value).asInstanceOf[java.lang.Integer].intValue()
-        nmap += (id -> name)
-      }
-      nmap(i)
+  private def nameOf(i: Int): String = synchronized {
+    nmap.getOrElse(i, { populateNameMap() ; nmap(i) })
   }
 
   /** The type of the enumerated values. */
   @serializable
   @SerialVersionUID(7091335633555234129L)
-  abstract class Value extends Ordered[Enumeration#Value] {
+  abstract class Value extends Ordered[Value] {
     /** the id and bit location of this enumeration value */
     def id: Int
-    override def compare(that: Enumeration#Value): Int = this.id - that.id
-    override def equals(other: Any): Boolean = 
-      other match {
-        case that: Enumeration#Value => compare(that) == 0
-        case _ => false
-      } 
-    override def hashCode: Int = id.hashCode
+    /** a marker so we can tell whose values belong to whom come reflective-naming time */
+    private[Enumeration] val outerEnum = thisenum
+
+    override def compare(that: Value): Int = this.id - that.id
+    override def equals(other: Any) = other match {
+      case that: Enumeration#Value  => (outerEnum eq that.outerEnum) && (id == that.id)
+      case _                        => false
+    }
+    override def hashCode: Int = id.##
 
     /** this enumeration value as an <code>Int</code> bit mask.
      *  @throws IllegalArgumentException if <code>id</code> is greater than 31
@@ -204,7 +201,7 @@ abstract class Enumeration(initial: Int, names: String*) {
       if (id >= 32) throw new IllegalArgumentException
       1  << id
     }
-    /** this enumeration value as an <code>Long</code> bit mask. 
+    /** this enumeration value as a <code>Long</code> bit mask. 
      *  @throws IllegalArgumentException if <code>id</code> is greater than 63
      */
     @deprecated("mask64 will be removed")
@@ -216,50 +213,56 @@ abstract class Enumeration(initial: Int, names: String*) {
   
   /** A class implementing the <a href="Enumeration.Value.html"
    *  target="contentFrame"><code>Value</code></a> type. This class can be
-   *  overriden to change the enumeration's naming and integer identification
+   *  overridden to change the enumeration's naming and integer identification
    *  behaviour.
    */
   @serializable
   @SerialVersionUID(0 - 3501153230598116017L)
   protected class Val(i: Int, name: String) extends Value {
-    def this(i: Int) =
-      this(i, if (nextName.hasNext) nextName.next else i.toString())
-    def this(name: String) = this(nextId, name)
-    def this() =
-      this(nextId, if (nextName.hasNext) nextName.next else nextId.toString())
-    assert(!vmap.isDefinedAt(i))
+    def this(i: Int)        = this(i, nextNameOrElse(i.toString))
+    def this(name: String)  = this(nextId, name)
+    def this()              = this(nextId)
+
+    assert(!vmap.isDefinedAt(i), "Duplicate id: " + i)
     vmap(i) = this
     vsetDefined = false
     nextId = i + 1
     if (nextId > topId) topId = nextId
     def id = i
     override def toString() =
-      if (name eq null) Enumeration.this.nameOf(i)
-      else name
-    private def readResolve(): AnyRef =
-      if (vmap ne null) vmap(i)
-      else this
+      if (name != null) name
+      else try thisenum.nameOf(i)
+      catch { case _: NoSuchElementException => "<Invalid enum: no field for #" + i + ">" }
+
+    protected def readResolve(): AnyRef = {
+      val enum = thisenum.readResolve().asInstanceOf[Enumeration]
+      if (enum.vmap == null) this
+      else enum.vmap(i)
+    }
   }
 
   /** A class for sets of values
    *  Iterating through this set will yield values in increasing order of their ids.
    *  @param   ids   The set of ids of values, organized as a BitSet. 
    */
-  class ValueSet private[Enumeration] (val ids: BitSet) extends Set[Value] with SetLike[Value, ValueSet] {
+  class ValueSet private[Enumeration] (val ids: immutable.BitSet) extends Set[Value] with SetLike[Value, ValueSet] {
     override def empty = ValueSet.empty
     def contains(v: Value) = ids contains (v.id)
     def + (value: Value) = new ValueSet(ids + value.id)
     def - (value: Value) = new ValueSet(ids - value.id)
-    def iterator = ids.iterator map Enumeration.this.apply
-    override def stringPrefix = Enumeration.this + ".ValueSet"
+    def iterator = ids.iterator map thisenum.apply
+    override def stringPrefix = thisenum + ".ValueSet"
   }
 
   /** A factory object for value sets */
   object ValueSet {
+    import mutable.{ Builder, AddingBuilder }
+    import generic.CanBuildFrom
+
     /** The empty value set */
-    val empty = new ValueSet(BitSet.empty)
+    val empty = new ValueSet(immutable.BitSet.empty)
     /** A value set consisting of given elements */ 
-    def apply(elems: Value*): ValueSet = elems.foldLeft(empty)(_ + _)
+    def apply(elems: Value*): ValueSet = empty ++ elems
     /** A builder object for value sets */
     def newBuilder: Builder[Value, ValueSet] = new AddingBuilder(empty)
     /** The implicit builder for value sets */

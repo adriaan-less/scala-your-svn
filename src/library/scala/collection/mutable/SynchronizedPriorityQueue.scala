@@ -6,19 +6,22 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
-/** This class implements synchronized priority queues using a heap.
- *  The elements of the queue have to be ordered in terms of the
- *  <code>Ordered[T]</code> class.
- *
+/** This class implements synchronized priority queues using a binary heap.
+ *  The elements of the queue have to be ordered in terms of the `Ordered[T]` class.
+ *  
+ *  @tparam A    type of the elements contained in this synchronized priority queue
+ *  @param ord   implicit ordering used to compared elements of type `A`
+ *  
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
  *  @since   1
+ *  @define Coll SynchronizedPriorityQueue
+ *  @define coll synchronized priority queue
  */
 class SynchronizedPriorityQueue[A](implicit ord: Ordering[A]) extends PriorityQueue[A] {
 
@@ -39,25 +42,13 @@ class SynchronizedPriorityQueue[A](implicit ord: Ordering[A]) extends PriorityQu
     this
   }
 
-  /** Adds all elements provided by an <code>Iterable</code> object
-   *  into the priority queue.
+  /** Adds all elements of a traversable object into the priority queue.
    *
-   *  @param  iter        an iterable object
+   *  @param  xs        a traversable object
    */
-  def ++=(iter: scala.collection.Iterable[A]): this.type = {
+  override def ++=(xs: TraversableOnce[A]): this.type = {
     synchronized {
-      super.++=(iter)
-    }
-    this
-  }
-
-  /** Adds all elements provided by an iterator into the priority queue.
-   *
-   *  @param  it        an iterator
-   */
-  override def ++=(it: Iterator[A]): this.type = {
-    synchronized {
-      super.++=(it)
+      super.++=(xs)
     }
     this
   }
@@ -87,7 +78,7 @@ class SynchronizedPriorityQueue[A](implicit ord: Ordering[A]) extends PriorityQu
    */
   override def clear(): Unit = synchronized { super.clear }
 
-  /** Returns an iterator which yiels all the elements of the priority
+  /** Returns an iterator which yield all the elements of the priority
    *  queue in descending priority order.
    *
    *  @return  an iterator over all elements sorted in descending order.
