@@ -176,61 +176,77 @@ trait Typers { self: Analyzer =>
 
     /** Find implicit arguments and pass them to given tree.
      */
-    def applyImplicitArgs(fun: Tree): Tree = fun.tpe match {
-      case MethodType(params, _) =>
-        val argResultsBuff = new ListBuffer[SearchResult]()
-        val argBuff = new ListBuffer[Tree]()
+    def applyImplicitArgs(fun: Tree, pt: Type): Tree = {
+      // called from case (4.1) of adapt
+      // #3808: the infer needs to be under the silent in adapt
+      if (context.undetparams nonEmpty) {
+        context.undetparams =
+          infer.inferExprInstance(fun, context.extractUndetparams(), pt,
+                  // approximate types that depend on arguments since dependency on implicit argument is like dependency on type parameter
+                  fun.tpe.asInstanceOf[MethodType].approximate,
+                  // if we are looking for a manifest, instantiate type to Nothing anyway,
+                  // as we would get ambiguity errors otherwise. Example
+                  // Looking for a manifest of Nil: This mas many potential types,
+                  // so we need to instantiate to minimal type List[Nothing].
+                  false) // false: retract Nothing's that indicate failure, ambiguities in manifests are dealt with in manifestOfType
+      }
 
-        def mkPositionalArg(argTree: Tree, paramName: Name) = argTree
-        def mkNamedArg(argTree: Tree, paramName: Name) = atPos(argTree.pos)(new AssignOrNamedArg(Ident(paramName), (argTree)))
-        var mkArg: (Tree, Name) => Tree = mkPositionalArg
+      fun.tpe match {
+        case MethodType(params, _) =>
+          val argResultsBuff = new ListBuffer[SearchResult]()
+          val argBuff = new ListBuffer[Tree]()
 
-        def errorMessage(paramName: Name, paramTp: Type) =
-          paramTp.typeSymbol match {
-            case ImplicitNotFoundMsg(msg) => msg.format(paramName, paramTp)
-            case _ =>
-              "could not find implicit value for "+
-                 (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
-                  else "parameter "+paramName+": ")+paramTp  
+          def mkPositionalArg(argTree: Tree, paramName: Name) = argTree
+          def mkNamedArg(argTree: Tree, paramName: Name) = atPos(argTree.pos)(new AssignOrNamedArg(Ident(paramName), (argTree)))
+          var mkArg: (Tree, Name) => Tree = mkPositionalArg
+
+          def errorMessage(paramName: Name, paramTp: Type) =
+            paramTp.typeSymbol match {
+              case ImplicitNotFoundMsg(msg) => msg.format(paramName, paramTp)
+              case _ =>
+                "could not find implicit value for "+
+                   (if (paramName startsWith nme.EVIDENCE_PARAM_PREFIX) "evidence parameter of type "
+                    else "parameter "+paramName+": ")+paramTp
+            }
+
+          // DEPMETTODO: instantiate type vars that depend on earlier implicit args (see adapt (4.1))
+          //
+          // apply the substitutions (undet type param -> type) that were determined
+          // by implicit resolution of implicit arguments on the left of this argument
+          for(param <- params) {
+            var paramTp = param.tpe
+            for(ar <- argResultsBuff)
+              paramTp = paramTp.subst(ar.subst.from, ar.subst.to)
+
+            val res = inferImplicit(fun, paramTp, true, false, context)
+            argResultsBuff += res
+
+            if (res != SearchFailure) {
+              argBuff += mkArg(res.tree, param.name)
+            } else {
+              mkArg = mkNamedArg // don't pass the default argument (if any) here, but start emitting named arguments for the following args
+              if (!param.hasFlag(DEFAULTPARAM))
+                context.error(fun.pos, errorMessage(param.name, param.tpe))
+              /* else {
+               TODO: alternative (to expose implicit search failure more) -->
+               resolve argument, do type inference, keep emitting positional args, infer type params based on default value for arg
+               for (ar <- argResultsBuff) ar.subst traverse defaultVal
+               val targs = exprTypeArgs(context.undetparams, defaultVal.tpe, paramTp)
+               substExpr(tree, tparams, targs, pt)
+              }*/
+            }
           }
 
-        // DEPMETTODO: instantiate type vars that depend on earlier implicit args (see adapt (4.1))
-        //
-        // apply the substitutions (undet type param -> type) that were determined
-        // by implicit resolution of implicit arguments on the left of this argument
-        for(param <- params) {
-          var paramTp = param.tpe
-          for(ar <- argResultsBuff)
-            paramTp = paramTp.subst(ar.subst.from, ar.subst.to)
-
-          val res = inferImplicit(fun, paramTp, true, false, context)
-          argResultsBuff += res
-
-          if (res != SearchFailure) {
-            argBuff += mkArg(res.tree, param.name)
-          } else {
-            mkArg = mkNamedArg // don't pass the default argument (if any) here, but start emitting named arguments for the following args
-            if (!param.hasFlag(DEFAULTPARAM))
-              context.error(fun.pos, errorMessage(param.name, param.tpe))
-            /* else {
-             TODO: alternative (to expose implicit search failure more) --> 
-             resolve argument, do type inference, keep emitting positional args, infer type params based on default value for arg
-             for (ar <- argResultsBuff) ar.subst traverse defaultVal
-             val targs = exprTypeArgs(context.undetparams, defaultVal.tpe, paramTp)
-             substExpr(tree, tparams, targs, pt)
-            }*/
+          val args = argBuff.toList
+          for (ar <- argResultsBuff) {
+            ar.subst traverse fun
+            for (arg <- args) ar.subst traverse arg
           }
-        }
 
-        val args = argBuff.toList
-        for (ar <- argResultsBuff) {
-          ar.subst traverse fun
-          for (arg <- args) ar.subst traverse arg
-        }
-
-        new ApplyToImplicitArgs(fun, args) setPos fun.pos
-      case ErrorType =>
-        fun
+          new ApplyToImplicitArgs(fun, args) setPos fun.pos
+        case ErrorType =>
+          fun
+      }
     }
 
     /** Infer an implicit conversion (``view'') between two types.
@@ -830,33 +846,23 @@ trait Typers { self: Analyzer =>
                       TypeTree(tparam.tpeHK) setPos tree.pos.focus)) setPos tree.pos //@M/tcpolyinfer: changed tparam.tpe to tparam.tpeHK
         context.undetparams = context.undetparams ::: tparams1
         adapt(tree1 setType restpe.substSym(tparams, tparams1), mode, pt, original)
-      case mt: MethodType if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
-        if (context.undetparams nonEmpty) {  // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
-                                             // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
-                                             // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
-          context.undetparams =
-            inferExprInstance(tree, context.extractUndetparams(), pt,
-                    // approximate types that depend on arguments since dependency on implicit argument is like dependency on type parameter
-                    if(settings.YdepMethTpes.value) mt.approximate else mt,
-                    // if we are looking for a manifest, instantiate type to Nothing anyway,
-                    // as we would get ambiguity errors otherwise. Example
-                    // Looking for a manifest of Nil: This mas many potential types,
-                    // so we need to instantiate to minimal type List[Nothing].
-                    false) // false: retract Nothing's that indicate failure, ambiguities in manifests are dealt with in manifestOfType
-        }
-
+      case mt: MethodType 
+      if mt.isImplicit && ((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) => // (4.1)
+          // (9) -- should revisit dropped condition `(mode & POLYmode) == 0`
+          // dropped so that type args of implicit method are inferred even if polymorphic expressions are allowed
+          // needed for implicits in 2.8 collection library -- maybe once #3346 is fixed, we can reinstate the condition?
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
         if (original != EmptyTree && pt != WildcardType)
-          typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
+          typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree, pt), mode, pt)) match { // first try with expected type
             case result: Tree => result
-            case ex: TypeError => 
+            case ex: TypeError =>
               if (settings.debug.value) log("fallback on implicits: "+tree+"/"+resetAllAttrs(original))
-              val tree1 = typed(resetAllAttrs(original), mode, WildcardType)
+              val tree1 = typed(resetAllAttrs(original), mode, WildcardType) // retry typing `original` (first try may have changed `tree`(?)) without expected type
               tree1.tpe = addAnnotations(tree1, tree1.tpe)
-              if (tree1.isEmpty) tree1 else adapt(tree1, mode, pt, EmptyTree)
+              if (tree1.isEmpty) tree1
+              else adapt(tree1, mode, pt, EmptyTree)
           }
-        else
-          typer1.typed(typer1.applyImplicitArgs(tree), mode, pt)
+        else typer1.typed(typer1.applyImplicitArgs(tree, pt), mode, pt)
       case mt: MethodType
       if (((mode & (EXPRmode | FUNmode | LHSmode)) == EXPRmode) && 
           (context.undetparams.isEmpty || (mode & POLYmode) != 0)) =>

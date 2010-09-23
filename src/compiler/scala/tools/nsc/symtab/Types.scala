@@ -1957,7 +1957,7 @@ A type's typeSymbol should never be inspected directly.
       }
 
     // implicit args can only be depended on in result type: TODO this may be generalised so that the only constraint is dependencies are acyclic
-    def approximate: MethodType = MethodType(params, resultApprox)
+    def approximate: MethodType = if(settings.YdepMethTpes.value) MethodType(params, resultApprox) else this
 
     override def finalResultType: Type = resultType.finalResultType
 
