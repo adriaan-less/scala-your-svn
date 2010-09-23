@@ -93,9 +93,6 @@ trait TypeKinds { self: ICodes =>
         }
       case _ => this eq other
     })
-
-    override def equals(other: Any): Boolean =
-      this eq other.asInstanceOf[AnyRef]
                      
     /** Is this type a category 2 type in JVM terms? */
     def isWideType: Boolean = this match {
@@ -288,11 +285,6 @@ trait TypeKinds { self: ICodes =>
       }
 
     override def isReferenceType: Boolean = true;
-
-    override def equals(other: Any): Boolean = other match {
-      case REFERENCE(cls2) => cls == cls2
-      case _               => false
-    }
   }
 
 //   final case class VALUE(cls: Symbol) extends TypeKind {
@@ -356,12 +348,6 @@ trait TypeKinds { self: ICodes =>
           true  //  TODO: platform dependent!
         case _ => false
       }
-
-    override def equals(other: Any): Boolean = other match {
-      case ARRAY(elem2) => elem == elem2
-      case _               => false
-    }
-
   }
   
   /** A boxed value. */
@@ -393,12 +379,6 @@ trait TypeKinds { self: ICodes =>
 
         case _ => false
       }
-
-    override def equals(other: Any): Boolean = other match {
-      case BOXED(kind2) => kind == kind2
-      case _            => false
-    }
-
   }
 
  /**
@@ -486,6 +466,12 @@ trait TypeKinds { self: ICodes =>
       assert(sym.isType, sym) // it must be compiling Array[a]
       AnyRefReference
     }
+  }
+
+  def msil_mgdptr(tk: TypeKind): TypeKind = (tk: @unchecked) match {
+    case REFERENCE(cls)  => REFERENCE(loaders.clrTypes.mdgptrcls4clssym(cls))
+    // TODO have ready class-symbols for the by-ref versions of built-in valuetypes 
+    case _ => abort("cannot obtain a managed pointer for " + tk)
   }
 
 }

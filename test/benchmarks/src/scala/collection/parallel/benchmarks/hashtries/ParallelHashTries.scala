@@ -3,45 +3,94 @@ package scala.collection.parallel.benchmarks.hashtries
 
 
 
-import scala.collection.parallel.benchmarks.generic.StandardParallelIterableBench
-import scala.collection.parallel.benchmarks.generic.NotBenchmark
+import scala.collection.parallel.benchmarks.generic.StandardParIterableBenches
 import scala.collection.parallel.benchmarks.generic.Dummy
 import scala.collection.parallel.benchmarks.generic.Operators
-import scala.collection.parallel.immutable.ParallelHashTrie
+import scala.collection.parallel.immutable.ParHashTrie
 
 
 
 
 
-trait ParallelHashTrieBenches[K, V] extends StandardParallelIterableBench[(K, V), ParallelHashTrie[K, V]] {
+trait ParHashTrieBenches[K, V] extends StandardParIterableBenches[(K, V), ParHashTrie[K, V]] {
   
-  def nameOfCollection = "ParallelHashTrie"
+  def nameOfCollection = "ParHashTrie"
   def comparisonMap = collection.Map()
   val forkJoinPool = new scala.concurrent.forkjoin.ForkJoinPool
   
   object Map2 extends IterableBenchCompanion {
     override def defaultSize = 5000
+    override def comparisons = List("jhashtable", "hashtable")
     def benchName = "map2";
     def apply(sz: Int, p: Int, w: String) = new Map2(sz, p, w)
   }
   
   class Map2(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParallelIterableBench[(K, V), ParallelHashTrie[K, V]] {
+  extends IterableBench {
     var result: Int = 0
-    def comparisonMap = collection.Map()
-    def runseq = result = this.seqcoll.map(operators.mapper2).size
+    def comparisonMap = collection.Map("jhashtable" -> runjhashtable _, "hashtable" -> runhashtable _)
+    def runseq = {
+      val r = this.seqcoll.asInstanceOf[collection.immutable.HashMap[K, V]].map(operators.mapper2)
+      result = r.size
+    }
     def runpar = {
       result = this.parcoll.map(operators.mapper2).size
-      //println(collection.parallel.immutable.ParallelHashTrie.totalcombines)
+      //println(collection.parallel.immutable.ParHashTrie.totalcombines)
       //System.exit(1)
+    }
+    def runjhashtable = {
+      val jumap = new java.util.HashMap[K, V]()
+      val it = this.seqcoll.iterator
+      while (it.hasNext) {
+        val p = it.next
+        jumap.put(p._1, p._2)
+      }
+      result = jumap.size
+    }
+    def runhashtable = {
+      val smap = collection.mutable.HashMap[K, V]()
+      val it = this.seqcoll.iterator
+      while (it.hasNext) {
+        val p = it.next
+        smap.put(p._1, p._2)
+      }
+      result = smap.size
+    }
+    override def reset = runWhat match {
+      case "jhashtable" => this.seqcoll = createSequential(size, parallelism)
+      case "hashtable" => this.seqcoll = createSequential(size, parallelism)
+      case _ => super.reset
     }
     def companion = Map2
     override def repetitionsPerRun = 50
     override def printResults {
-      println("Total combines: " + collection.parallel.immutable.ParallelHashTrie.totalcombines)
+      println("Total combines: " + collection.parallel.immutable.ParHashTrie.totalcombines)
       println("Size of last result: " + result)
     }
   }
+  
+  object Reduce2 extends IterableBenchCompanion {
+    override def defaultSize = 50000
+    override def comparisons = List("hashtable")
+    def benchName = "reduce2";
+    def apply(sz: Int, p: Int, w: String) = new Reduce2(sz, p, w)
+  }
+  
+  class Reduce2(val size: Int, val parallelism: Int, val runWhat: String)
+  extends IterableBench {
+    private var ht: collection.mutable.HashMap[K, V] = _
+    def comparisonMap = collection.Map("hashtable" -> runhashtable _)
+    def runseq = this.seqcoll.reduceLeft(operators.reducer)
+    def runpar = this.parcoll.reduce(operators.reducer)
+    def runhashtable = ht.reduceLeft(operators.reducer)
+    override def reset = runWhat match {
+      case "hashtable" => ht = createHashTable(size)
+      case _ => super.reset
+    }
+    def companion = Reduce2
+  }
+  
+  def createHashTable(sz: Int): collection.mutable.HashMap[K, V]
   
 }
 
@@ -49,7 +98,7 @@ trait ParallelHashTrieBenches[K, V] extends StandardParallelIterableBench[(K, V)
 
 
 
-object RefParallelHashTrieBenches extends ParallelHashTrieBenches[Dummy, Dummy] with NotBenchmark {
+object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] {
   
   type DPair = (Dummy, Dummy)
   
@@ -70,7 +119,7 @@ object RefParallelHashTrieBenches extends ParallelHashTrieBenches[Dummy, Dummy] 
       sum
     }
     val reducer = (x: DPair, y: DPair) => {
-      y._2.num = x._2.in + y._2.in
+      //y._2.num = x._2.in + y._2.in
       y
     }
     val mediumreducer = (x: DPair, y: DPair) => {
@@ -99,6 +148,9 @@ object RefParallelHashTrieBenches extends ParallelHashTrieBenches[Dummy, Dummy] 
       (a, p._2)
     }
     val taker = (p: DPair) => true
+    val eachFun: DPair => Unit = { dp =>
+      dp._1.dummy
+    }
   }
   
   def createSequential(sz: Int, p: Int) = {
@@ -108,11 +160,17 @@ object RefParallelHashTrieBenches extends ParallelHashTrieBenches[Dummy, Dummy] 
   }
   
   def createParallel(sz: Int, p: Int) = {
-    var pht = new ParallelHashTrie[Dummy, Dummy]
+    var pht = new ParHashTrie[Dummy, Dummy]
     for (i <- 0 until sz) pht += ((new Dummy(i), new Dummy(i)))
     forkJoinPool.setParallelism(p)
     pht.environment = forkJoinPool
     pht
+  }
+  
+  def createHashTable(sz: Int) = {
+    val hm = collection.mutable.HashMap[Dummy, Dummy]()
+    for (i <- 0 until sz) hm.put(new Dummy(i), new Dummy(i))
+    hm
   }
   
 }

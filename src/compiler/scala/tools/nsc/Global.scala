@@ -132,6 +132,10 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
    */
   def registerContext(c: analyzer.Context) {}
 
+  /** Register top level class (called on entering the class)
+   */
+  def registerTopLevelSym(sym: Symbol) {}
+
 // ------------------ Reporting -------------------------------------
 
   def error(msg: String) = reporter.error(NoPosition, msg)
@@ -149,7 +153,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def informTime(msg: String, start: Long) =
     informProgress(msg + " in " + (currentTime - start) + "ms")
 
-  def log(msg: AnyRef) {
+  /*@inline final*/ def log(msg: => AnyRef) {
     if (settings.log contains phase.name) inform("[log " + phase + "] " + msg)
   }
 
@@ -265,9 +269,11 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     override def specialized: Boolean = isSpecialized
 
     /** Is current phase cancelled on this unit? */
-    def cancelled(unit: CompilationUnit) = 
-      reporter.cancelled ||
-      unit.isJava && this.id > currentRun.namerPhase.id
+    def cancelled(unit: CompilationUnit) = {
+      // run the typer only if in `createJavadoc` mode
+      val maxJavaPhase = if (createJavadoc) currentRun.typerPhase.id else currentRun.namerPhase.id
+      reporter.cancelled || unit.isJava && this.id > maxJavaPhase
+    }
 
     final def applyPhase(unit: CompilationUnit) {
       if (settings.debug.value) inform("[running phase " + name + " on " + unit + "]")
@@ -513,15 +519,16 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
     phasesSet += analyzer.namerFactory      //   note: types are there because otherwise
     phasesSet += analyzer.packageObjects    //   consistency check after refchecks would fail.
     phasesSet += analyzer.typerFactory
-    phasesSet += superAccessors             // add super accessors
-    phasesSet += pickler                    // serialize symbol tables
-    phasesSet += refchecks                  // perform reference and override checking, translate nested objects
-    // phasesSet += devirtualize               // Desugar virtual classes
+    phasesSet += superAccessors			       // add super accessors
+    phasesSet += pickler			       // serialize symbol tables
+    phasesSet += refchecks			       // perform reference and override checking, translate nested objects
+    
+//    if (false && settings.YvirtClasses)
+//	phasesSet += devirtualize		       // Desugar virtual classes4
     
     phasesSet += uncurry                    // uncurry, translate function values to anonymous classes
     phasesSet += tailCalls                  // replace tail calls by jumps
-    if (!settings.nospecialization.value)
-      phasesSet += specializeTypes
+    phasesSet += specializeTypes
     phasesSet += explicitOuter              // replace C.this by explicit outer pointers, eliminate pattern matching
     phasesSet += erasure                    // erase types, add interfaces for traits
     phasesSet += lazyVals
@@ -688,6 +695,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
     /** add unit to be compiled in this run */
     private def addUnit(unit: CompilationUnit) {
+//      unit.parseSettings()
       unitbuf += unit
       compiledFiles += unit.source.file.path
     }
@@ -808,11 +816,13 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
     /** Compile list of files given by their names */
     def compile(filenames: List[String]) {
-      val sources: List[SourceFile] =
-        if (isScriptRun && filenames.size > 1) returning(Nil)(_ => error("can only compile one script at a time"))
-        else filenames map getSourceFile
+      try {
+        val sources: List[SourceFile] =
+          if (isScriptRun && filenames.size > 1) returning(Nil)(_ => error("can only compile one script at a time"))
+          else filenames map getSourceFile
       
-      try compileSources(sources)
+        compileSources(sources)
+      }
       catch { case ex: IOException => error(ex.getMessage()) }
     }
 
@@ -975,4 +985,5 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def forJVM : Boolean = settings.target.value startsWith "jvm"
   def forMSIL: Boolean = settings.target.value == "msil"
   def onlyPresentation = false
+  def createJavadoc = false
 }
