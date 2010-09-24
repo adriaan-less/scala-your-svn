@@ -3032,10 +3032,9 @@ trait Typers { self: Analyzer =>
         errorTree(tree, treeSymTypeMsg(fun)+" does not take type parameters.")
     }
 
-    private[this] var typingIndent: String = ""
-    @inline final def deindentTyping() = if (printTypings) typingIndent = typingIndent.substring(0, typingIndent.length() - 2)
-    @inline final def indentTyping() = if (printTypings) typingIndent += "  "
-    @inline final def printTyping(s: => String) = if (printTypings) println(typingIndent+s)
+    @inline final def deindentTyping() = if (printTypings) context.typingIndent = context.typingIndent.substring(0, context.typingIndent.length() - 2)
+    @inline final def indentTyping() = if (printTypings) context.typingIndent += "  "
+    @inline final def printTyping(s: => String) = if (printTypings) println(context.typingIndent+s)
 
     /**
      *  @param tree ...
