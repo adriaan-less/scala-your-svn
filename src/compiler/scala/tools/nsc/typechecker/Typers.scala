@@ -843,7 +843,7 @@ trait Typers { self: Analyzer =>
                     // Looking for a manifest of Nil: This mas many potential types,
                     // so we need to instantiate to minimal type List[Nothing].
                     keepNothings = false, // retract Nothing's that indicate failure, ambiguities in manifests are dealt with in manifestOfType
-                    checkCompat = isWeaklyCompatible)
+                    checkCompat = isWeaklyCompatible) // #3808
         }
 
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
