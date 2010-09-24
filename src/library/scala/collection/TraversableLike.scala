@@ -494,10 +494,9 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   }
 
   /** Selects the last element.
-   *  $orderDependent
-   *  @return  the first element of this $coll.
-   *  @throws `NoSuchElementException` if the $coll is empty.
-   */
+    * $orderDependent
+    * @return The last element of this $coll.
+    * @throws NoSuchElementException If the $coll is empty. */
   def last: A = {
     var lst = head
     for (x <- this)
@@ -698,7 +697,7 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
 
   def toTraversable: Traversable[A] = thisCollection
   def toIterator: Iterator[A] = toStream.iterator
-  def toStream: Stream[A] = Stream.empty[A] ++ thisCollection
+  def toStream: Stream[A] = toBuffer.toStream
 
   /** Converts this $coll to a string.
    *  @return   a string representation of this collection. By default this

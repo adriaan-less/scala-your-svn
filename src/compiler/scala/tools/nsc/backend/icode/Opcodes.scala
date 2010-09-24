@@ -16,6 +16,7 @@ import scala.tools.nsc.util.{Position,NoPosition}
   A pattern match
  
   case THIS(clasz) =>
+  case STORE_THIS(kind) =>
   case CONSTANT(const) =>
   case LOAD_ARRAY_ITEM(kind) =>
   case LOAD_LOCAL(local) =>
@@ -40,6 +41,8 @@ import scala.tools.nsc.util.{Position,NoPosition}
   case DUP(kind) =>
   case MONITOR_ENTER() =>
   case MONITOR_EXIT() =>
+  case BOX(boxType) =>
+  case UNBOX(tpe) =>
   case SCOPE_ENTER(lv) =>
   case SCOPE_EXIT(lv) =>
   case LOAD_EXCEPTION() =>
@@ -316,12 +319,12 @@ trait Opcodes { self: ICodes =>
      *    ->: ...:result
      *
      */
-    case class CALL_METHOD(method: Symbol, style: InvokeStyle) extends Instruction {
+    case class CALL_METHOD(method: Symbol, style: InvokeStyle) extends Instruction with ReferenceEquality {
       /** Returns a string representation of this instruction */
       override def toString(): String =
         "CALL_METHOD " + hostClass.fullName + method.fullName +" ("+style.toString()+")";
 
-      var hostClass: Symbol = method.owner;
+      var hostClass: Symbol = method.owner
       def setHostClass(cls: Symbol): this.type = { hostClass = cls; this }
       
       /** This is specifically for preserving the target native Array type long
@@ -330,38 +333,32 @@ trait Opcodes { self: ICodes =>
       var targetTypeKind: TypeKind = UNIT // the default should never be used, so UNIT should fail fast.
       def setTargetTypeKind(tk: TypeKind) = targetTypeKind = tk
 
-      override def consumed = method.tpe.paramTypes.length + (
-        style match {
-          case Dynamic | InvokeDynamic => 1
-          case Static(true) => 1
-          case Static(false) => 0 
-          case SuperCall(_) => 1
-        }
-      )
-      
-      override def consumedTypes = {
-        val args = method.tpe.paramTypes map toTypeKind
-        style match {
-          case Dynamic | Static(true) => AnyRefReference :: args
-          case _ => args
-        }
+      private def params = method.info.paramTypes
+      private def consumesInstance = style match {
+        case Static(false)  => 0 
+        case _              => 1
       }
       
-      override def produced = 
-        if(toTypeKind(method.tpe.resultType) == UNIT)
-          0
-        else if(method.isConstructor)
-          0
+      override def consumed = params.length + consumesInstance      
+      override def consumedTypes = {
+        val args = params map toTypeKind
+        if (consumesInstance > 0) AnyRefReference :: args
+        else args
+      }
+
+      override def produced =
+        if (producedType == UNIT || method.isConstructor) 0
         else 1
+
+      private def producedType: TypeKind = toTypeKind(method.info.resultType)
+      override def producedTypes =
+        if (produced == 0) Nil
+        else List(producedType)
         
       /** object identity is equality for CALL_METHODs. Needed for
        *  being able to store such instructions into maps, when more
        *  than one CALL_METHOD to the same method might exist.
        */
-      override def equals(other: Any) = other match {
-        case o: AnyRef => this eq o
-        case _ => false
-      }
     }
 
     case class BOX(boxType: TypeKind) extends Instruction {
@@ -611,7 +608,6 @@ trait Opcodes { self: ICodes =>
 
     /** This class represents a method invocation style. */
     sealed abstract class InvokeStyle {
-
       /** Is this a dynamic method call? */
       def isDynamic: Boolean = this match {
         case Dynamic =>  true
@@ -661,6 +657,66 @@ trait Opcodes { self: ICodes =>
     
     /** Call through super[mix]. */
     case class SuperCall(mix: Name) extends InvokeStyle
+
+
+    // CLR backend
+
+    case class CIL_LOAD_LOCAL_ADDRESS(local: Local) extends Instruction {
+      /** Returns a string representation of this instruction */
+      override def toString(): String = "CIL_LOAD_LOCAL_ADDRESS "+local.toString()  //+isArgument?" (argument)":"";
+
+      override def consumed = 0
+      override def produced = 1
+
+      override def producedTypes = List(msil_mgdptr(local.kind))
+  }
+
+    case class CIL_LOAD_FIELD_ADDRESS(field: Symbol, isStatic: Boolean) extends Instruction {
+      /** Returns a string representation of this instruction */
+      override def toString(): String =
+        "CIL_LOAD_FIELD_ADDRESS " + (if (isStatic) field.fullName else field.toString());
+
+      override def consumed = if (isStatic) 0 else 1
+      override def produced = 1
+
+      override def consumedTypes = if (isStatic) Nil else List(REFERENCE(field.owner));
+      override def producedTypes = List(msil_mgdptr(REFERENCE(field.owner)));
+}
+
+    case class CIL_LOAD_ARRAY_ITEM_ADDRESS(kind: TypeKind) extends Instruction {
+      /** Returns a string representation of this instruction */
+      override def toString(): String = "CIL_LOAD_ARRAY_ITEM_ADDRESS (" + kind + ")"
+
+      override def consumed = 2
+      override def produced = 1
+
+      override def consumedTypes = List(ARRAY(kind), INT)
+      override def producedTypes = List(msil_mgdptr(kind))
+    }
+
+    case class CIL_UNBOX(valueType: TypeKind) extends Instruction {
+      override def toString(): String = "CIL_UNBOX " + valueType
+      override def consumed = 1
+      override def consumedTypes = AnyRefReference :: Nil // actually consumes a 'boxed valueType'
+      override def produced = 1
+      override def producedTypes = List(msil_mgdptr(valueType))
+    }
+
+    case class CIL_INITOBJ(valueType: TypeKind) extends Instruction {
+      override def toString(): String = "CIL_INITOBJ " + valueType
+      override def consumed = 1
+      override def consumedTypes = AnyRefReference :: Nil // actually consumes a managed pointer
+      override def produced = 0
+    }
+
+    case class CIL_NEWOBJ(method: Symbol) extends Instruction {
+      override def toString(): String = "CIL_NEWOBJ " + hostClass.fullName + method.fullName
+      var hostClass: Symbol = method.owner;
+      override def consumed = method.tpe.paramTypes.length
+      override def consumedTypes = method.tpe.paramTypes map toTypeKind
+      override def produced = 1
+      override def producedTypes = List(toTypeKind(method.tpe.resultType))
+    }
 
   }
 }

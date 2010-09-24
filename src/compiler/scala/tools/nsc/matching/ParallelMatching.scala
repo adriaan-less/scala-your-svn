@@ -737,7 +737,7 @@ trait ParallelMatching extends ast.TreeDSL
       def duplicate = body.duplicate setType bodyTpe
       
       def isFinal = true
-      def isLabellable = !cond(body)  { case _: Throw | _: Literal => true }
+      def isLabellable = !cond(body)  { case _: Literal => true }
       def isNotReached = referenceCount == 0
       def isReachedOnce = referenceCount == 1
       def isReachedTwice = referenceCount > 1
@@ -886,6 +886,7 @@ trait ParallelMatching extends ast.TreeDSL
           }
         case _: SingletonType if useEqTest                      =>
           val eqTest = REF(tpe.termSymbol) MEMBER_== scrutTree
+
           // See ticket #1503 for the motivation behind checking for a binding.
           // The upshot is that it is unsound to assume equality means the right
           // type, but if the value doesn't appear on the right hand side of the

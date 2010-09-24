@@ -43,9 +43,21 @@ class LogFile(parent: File, child: String) extends File(parent, child) {
   var toDelete = false
 }
 
+class ScalaCheckFileManager(val origmanager: FileManager) extends FileManager {
+  def testRootDir: Directory = origmanager.testRootDir
+  def testRootPath: String = origmanager.testRootPath
+
+  var JAVACMD: String = origmanager.JAVACMD
+  var JAVAC_CMD: String = origmanager.JAVAC_CMD
+
+  var CLASSPATH: String = join(origmanager.CLASSPATH, PathSettings.scalaCheck.path)
+  var LATEST_LIB: String = origmanager.LATEST_LIB
+}
+
 class Worker(val fileManager: FileManager) extends Actor {
   import fileManager._
-
+  
+  val scalaCheckFileManager = new ScalaCheckFileManager(fileManager)
   var reporter: ConsoleReporter = _
   val timer = new Timer
 
@@ -305,6 +317,8 @@ class Worker(val fileManager: FileManager) extends Actor {
    */
   def runTests(kind: String, files: List[File])(topcont: ImmMap[String, Int] => Unit) {
     val compileMgr = new CompileManager(fileManager)
+    if (kind == "scalacheck") fileManager.CLASSPATH += File.pathSeparator + PathSettings.scalaCheck
+    
     var errors = 0
     var succeeded = true
     var diff = ""
@@ -371,14 +385,14 @@ class Worker(val fileManager: FileManager) extends Actor {
 
     def compileFilesIn(dir: File, kind: String, logFile: File, outDir: File) {
       val testFiles = dir.listFiles.toList filter isJavaOrScala
-      
+
       def isInGroup(f: File, num: Int) = SFile(f).stripExtension endsWith ("_" + num)
       val groups = (0 to 9).toList map (num => testFiles filter (f => isInGroup(f, num)))
-      val noGroupSuffix = testFiles -- groups.flatten      
+      val noGroupSuffix = testFiles filterNot (groups.flatten contains)
 
       def compileGroup(g: List[File]) {
         val (scalaFiles, javaFiles) = g partition isScala
-
+        
         if (scalaFiles.nonEmpty) {
           if (!compileMgr.shouldCompile(outDir, javaFiles ::: scalaFiles, kind, logFile))
             fail(g)
@@ -469,7 +483,8 @@ class Worker(val fileManager: FileManager) extends Actor {
           
           NestUI.verbose(SFile(logFile).slurp())
           // obviously this must be improved upon
-          succeeded = SFile(logFile).lines() forall (_ contains " OK")
+          succeeded =
+            SFile(logFile).lines.filter(_.trim != "") forall (_ contains "OK")
       })
 
       case "pos" =>

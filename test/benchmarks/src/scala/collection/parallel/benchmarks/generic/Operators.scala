@@ -14,6 +14,9 @@ trait Operators[T] {
   def mapper2: T => T = error("unsupported")
   def heavymapper: T => T
   def taker: T => Boolean
+  def eachFun: T => Unit
+  def eachPairFun: ((T, T)) => Unit = error("unsupported")
+  def sequence(sz: Int): Seq[T] = error("unsupported")
   
 }
 
@@ -40,6 +43,9 @@ trait IntOperators extends Operators[Int] {
     n + sum
   }
   val taker: Int => Boolean = _ < 10000
+  val eachFun: Int => Unit = { n =>
+    n % 2 == 0
+  }
   
 }
 

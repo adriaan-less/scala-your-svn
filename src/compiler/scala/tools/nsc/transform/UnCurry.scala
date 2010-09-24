@@ -55,6 +55,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
   
   private val uncurry: TypeMap = new TypeMap {
     def apply(tp0: Type): Type = {
+      // tp0.typeSymbolDirect.initialize
       val tp = expandAlias(tp0)
       tp match {
         case MethodType(params, MethodType(params1, restpe)) =>
@@ -62,6 +63,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
           assert(false, "unexpected curried method types with intervening existential") 
           tp0
+        case MethodType(h :: t, restpe) if h.isImplicit =>
+          apply(MethodType(h.cloneSymbol.resetFlag(IMPLICIT) :: t, restpe))
         case PolyType(List(), restpe) => // nullary method type
           apply(MethodType(List(), restpe))
         case PolyType(tparams, restpe) => // polymorphic nullary method type, since it didn't occur in a higher-kinded position
@@ -395,26 +398,14 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           def arrayToSequence(tree: Tree, elemtp: Type) = {
             atPhase(phase.next) {
               localTyper.typedPos(pos) {
-                val predef = gen.mkAttributedRef(PredefModule)
-                val meth = 
-                  if ((elemtp <:< AnyRefClass.tpe) && !isPhantomClass(elemtp.typeSymbol))
-                    Select(predef, "wrapRefArray")
-                  else if (isValueClass(elemtp.typeSymbol))
-                    Select(predef, "wrap"+elemtp.typeSymbol.name+"Array")
-                  else
-                    TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
                 val pt = arrayType(elemtp)
                 val adaptedTree = // might need to cast to Array[elemtp], as arrays are not covariant
                   if (tree.tpe <:< pt) tree
-                  else gen.mkCast(
-                    if (elemtp.typeSymbol == AnyClass && isValueClass(tree.tpe.typeArgs.head.typeSymbol))
-                      gen.mkRuntimeCall("toObjectArray", List(tree))
-                    else 
-                      tree,
-                    arrayType(elemtp))
-                Apply(meth, List(adaptedTree))
+                  else gen.mkCastArray(tree, elemtp, pt)
+                
+                gen.mkWrapArray(adaptedTree, elemtp)
               }
-            } 
+            }
           }
 
           // when calling into java varargs, make sure it's an array - see bug #1360
