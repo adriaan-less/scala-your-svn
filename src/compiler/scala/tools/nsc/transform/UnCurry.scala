@@ -188,7 +188,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
      *  additional parameter sections of a case class are skipped.
      */
     def uncurryTreeType(tp: Type): Type = tp match {
-      case MethodType(params, MethodType(params1, restpe)) if (inPattern) =>
+      case MethodType(params, MethodType(params1, restpe)) if inPattern =>
         uncurryTreeType(MethodType(params, restpe))
       case _ =>
         uncurry(tp)
@@ -204,14 +204,12 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     private val nonLocalReturnKeys = new HashMap[Symbol, Symbol]
 
     /** Return non-local return key for given method */
-    private def nonLocalReturnKey(meth: Symbol) = nonLocalReturnKeys.get(meth) match {
-      case Some(k) => k
-      case None =>
-        val k = meth.newValue(meth.pos, unit.fresh.newName(meth.pos, "nonLocalReturnKey"))
-          .setFlag(SYNTHETIC).setInfo(ObjectClass.tpe)
-        nonLocalReturnKeys(meth) = k
-        k
-    }
+    private def nonLocalReturnKey(meth: Symbol) = 
+      nonLocalReturnKeys.getOrElseUpdate(meth, {
+        meth.newValue(meth.pos, unit.fresh.newName(meth.pos, "nonLocalReturnKey"))
+          .setFlag (SYNTHETIC)
+          .setInfo (ObjectClass.tpe)
+      })
 
     /** Generate a non-local return throw with given return expression from given method.
      *  I.e. for the method's non-local return key, generate:
@@ -630,7 +628,10 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           }
           tree1
       }
-    } setType uncurryTreeType(tree.tpe)
+    } setType {
+      assert(tree.tpe != null, tree + " tpe is null")
+      uncurryTreeType(tree.tpe)
+    }
 
     def postTransform(tree: Tree): Tree = atPhase(phase.next) {
       def applyUnary(): Tree = {
@@ -703,17 +704,51 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
   /** Set of mutable local variables that are free in some inner method. */
   private val freeMutableVars: mutable.Set[Symbol] = new mutable.HashSet
   
+  /** PP: There is apparently some degree of overlap between the CAPTURED
+   *  flag and the role being filled here.  I think this is how this was able
+   *  to go for so long looking only at DefDef and Ident nodes, as bugs
+   *  would only emerge under more complicated conditions such as #3855.
+   *  I'll try to figure it all out, but if someone who already knows the
+   *  whole story wants to fill it in, that too would be great.
+   */   
   private val freeLocalsTraverser = new Traverser {
     var currentMethod: Symbol = NoSymbol
+    var maybeEscaping = false
+    
+    def withEscaping(body: => Unit) {
+      val savedEscaping = maybeEscaping
+      maybeEscaping = true
+      body
+      maybeEscaping = savedEscaping
+    }
+    
     override def traverse(tree: Tree) = tree match {
       case DefDef(_, _, _, _, _, _) =>
         val lastMethod = currentMethod
         currentMethod = tree.symbol
         super.traverse(tree)
         currentMethod = lastMethod
+      /** A method call with a by-name parameter represents escape. */
+      case Apply(fn, args) if fn.symbol.paramss.nonEmpty =>
+        traverse(fn)
+        (fn.symbol.paramss.head zip args) foreach {
+          case (param, arg) =>
+            if (param.tpe != null && param.tpe.typeSymbol == ByNameParamClass)
+              withEscaping(traverse(arg))
+            else
+              traverse(arg)
+        }
+      /** The rhs of a closure represents escape. */
+      case Function(vparams, body) =>
+        vparams foreach traverse
+        withEscaping(traverse(body))
+
+      /** The appearance of an ident outside the method where it was defined or
+       *  anytime maybeEscaping is true implies escape.
+       */
       case Ident(_) =>
         val sym = tree.symbol
-        if (sym.isVariable && sym.owner.isMethod && sym.owner != currentMethod)
+        if (sym.isVariable && sym.owner.isMethod && (maybeEscaping || sym.owner != currentMethod))
           freeMutableVars += sym
       case _ =>
         super.traverse(tree)

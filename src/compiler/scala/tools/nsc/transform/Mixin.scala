@@ -396,7 +396,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
    *  Each field has to be private and defined in the enclosing class, and there must
    *  be exactly one lazy value using it.
    *
-   *  Such fields will be nulled after the initializer has memorized the lazy value.
+   *  Such fields will be nulled after the initializer has memoized the lazy value.
    */
   def singleUseFields(templ: Template): collection.Map[Symbol, List[Symbol]] = {
     val usedIn = new mutable.HashMap[Symbol, List[Symbol]] {

@@ -43,8 +43,6 @@ self =>
   
   override protected[this] def newCombiner: Combiner[T, This] = throw new UnsupportedOperationException(this + ".newCombiner");
   
-  type CPI = SignalContextPassingIterator[ParIterator]
-  
   /* wrappers */
   
   trait Transformed[+S] extends ParIterableView[S, Coll, CollSeq] with super.Transformed[S] {

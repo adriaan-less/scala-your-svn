@@ -62,9 +62,7 @@ trait TreeDSL {
     def fn(lhs: Tree, op:   Name, args: Tree*)  = Apply(Select(lhs, op), args.toList)
     def fn(lhs: Tree, op: Symbol, args: Tree*)  = Apply(Select(lhs, op), args.toList)
     
-    class TreeMethods(target: Tree) {
-      private def toAnyRef(x: Tree) = x setType AnyRefClass.tpe
-      
+    class TreeMethods(target: Tree) {      
       /** logical/comparison ops **/
       def OR(other: Tree) = 
         if (target == EmptyTree) other
@@ -87,8 +85,7 @@ trait TreeDSL {
         if (opSym == NoSymbol) ANY_==(other)
         else fn(target, opSym, other)
       }
-      def ANY_EQ  (other: Tree)     = fn(target, nme.eq, toAnyRef(other))
-      def ANY_NE  (other: Tree)     = fn(target, nme.ne, toAnyRef(other))
+      def ANY_EQ  (other: Tree)     = OBJ_EQ(other AS ObjectClass.tpe)
       def ANY_==  (other: Tree)     = fn(target, Any_==, other)
       def ANY_!=  (other: Tree)     = fn(target, Any_!=, other)
       def OBJ_==  (other: Tree)     = fn(target, Object_==, other)
@@ -196,7 +193,7 @@ trait TreeDSL {
       def defaultPos  = sym.pos
       
       final def ===(rhs: Tree): ResultTreeType =
-        atPos(sym.pos)(mkTree(rhs) setSymbol sym)
+        atPos(pos)(mkTree(rhs) setSymbol sym)
     }
     trait ValCreator {
       self: VODDStart =>
@@ -241,9 +238,9 @@ trait TreeDSL {
     }
 
     class IfStart(cond: Tree, thenp: Tree) {
-      def THEN(x: Tree) = new IfStart(cond, x)
+      def THEN(x: Tree)     = new IfStart(cond, x)
       def ELSE(elsep: Tree) = If(cond, thenp, elsep)
-      def ENDIF = If(cond, thenp, EmptyTree)
+      def ENDIF             = If(cond, thenp, EmptyTree)
     }
     class TryStart(body: Tree, catches: List[CaseDef], fin: Tree) {
       def CATCH(xs: CaseDef*) = new TryStart(body, xs.toList, fin)
@@ -262,8 +259,8 @@ trait TreeDSL {
         if (target.tpe.typeSymbol == SomeClass) TRUE   // is Some[_]
         else NOT(ID(target) DOT nme.isEmpty)           // is Option[_]
       
-      def IS_NULL() = REF(target) ANY_EQ NULL
-      def NOT_NULL() = REF(target) ANY_NE NULL
+      def IS_NULL()  = REF(target) OBJ_EQ NULL
+      def NOT_NULL() = REF(target) OBJ_NE NULL
       
       def GET() = fn(REF(target), nme.get)
       
@@ -290,6 +287,7 @@ trait TreeDSL {
     def VAL(name: Name): ValTreeStart           = new ValTreeStart(name)
     def VAL(sym: Symbol): ValSymStart           = new ValSymStart(sym)
 
+    def DEF(name: Name): DefTreeStart = new DefTreeStart(name)
     def DEF(sym: Symbol): DefSymStart = new DefSymStart(sym)
     def AND(guards: Tree*) =
       if (guards.isEmpty) EmptyTree
@@ -302,10 +300,8 @@ trait TreeDSL {
     def IF(tree: Tree)    = new IfStart(tree, EmptyTree)
     def TRY(tree: Tree)   = new TryStart(tree, Nil, EmptyTree)
     def BLOCK(xs: Tree*)  = Block(xs.init.toList, xs.last)
-    def NOT(tree: Tree)   = Select(tree, getMember(BooleanClass, nme.UNARY_!))
-    
-    private val _SOME     = scalaDot(nme.Some)
-    def SOME(xs: Tree*)   = Apply(_SOME, List(makeTupleTerm(xs.toList, true)))
+    def NOT(tree: Tree)   = Select(tree, getMember(BooleanClass, nme.UNARY_!))    
+    def SOME(xs: Tree*)   = Apply(scalaDot(nme.Some), List(makeTupleTerm(xs.toList, true)))
     
     /** Typed trees from symbols. */
     def THIS(sym: Symbol)             = gen.mkAttributedThis(sym)

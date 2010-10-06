@@ -366,12 +366,13 @@ self =>
     def next = { remaining -= 1; self.next }
     def split: Seq[ParIterableIterator[T]] = takeSeq(self.split) { (p, n) => p.take(n) }
     protected[this] def takeSeq[PI <: ParIterableIterator[T]](sq: Seq[PI])(taker: (PI, Int) => PI) = {
-      val shortened = for ((it, total) <- sq zip sq.scanLeft(0)(_ + _.remaining).tail) yield
-        if (total < remaining) it else taker(it, total - remaining)
+      val sizes = sq.scanLeft(0)(_ + _.remaining)
+      val shortened = for ((it, (from, until)) <- sq zip (sizes.init zip sizes.tail)) yield
+        if (until < remaining) it else taker(it, remaining - from)
       shortened filter { _.remaining > 0 }
     }
   }
-
+  
   override def take(n: Int) = new Taken(n)
   
   override def slice(from1: Int, until1: Int) = {
@@ -547,6 +548,28 @@ self =>
   }
   
   override def zipAllParSeq[S, U >: T, R >: S](that: ParSeqIterator[S], thisElem: U, thatElem: R) = new ZippedAll[U, R](that, thisElem, thatElem)
+  
+  def reverse: ParSeqIterator[T] = {
+    val pa = mutable.ParArray.fromTraversables(self)
+    new pa.ParArrayIterator with pa.SCPI {
+      override def reverse = self
+    }
+  }
+  
+  class Patched[U >: T](from: Int, patch: ParSeqIterator[U], replaced: Int) extends ParSeqIterator[U] {
+    var signalDelegate = self.signalDelegate
+    private[this] val trio = {
+      val pits = self.psplit(from, replaced, self.remaining - from - replaced)
+      (pits(0).appendParSeq[U, ParSeqIterator[U]](patch)) appendParSeq pits(2)
+    }
+    def hasNext = trio.hasNext
+    def next = trio.next
+    def remaining = trio.remaining
+    def split = trio.split
+    def psplit(sizes: Int*) = trio.psplit(sizes: _*)
+  }
+  
+  def patchParSeq[U >: T](from: Int, patchElems: ParSeqIterator[U], replaced: Int) = new Patched(from, patchElems, replaced)
   
 }
 

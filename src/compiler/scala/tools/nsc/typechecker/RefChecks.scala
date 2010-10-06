@@ -52,7 +52,7 @@ abstract class RefChecks extends InfoTransform {
   override def changesBaseClasses = false
 
   def transformInfo(sym: Symbol, tp: Type): Type = {
-    def isNestedModule = sym.isModule && !sym.isRoot && !sym.owner.isPackageClass
+    def isNestedModule = sym.isModule && !sym.isRootPackage && !sym.owner.isPackageClass
         
     if (sym.isModule && !sym.isStatic) {
       
@@ -60,7 +60,8 @@ abstract class RefChecks extends InfoTransform {
       if (isNestedModule) {
         val moduleVar = sym.owner.info.decl(nme.moduleVarName(sym.name))
         if (moduleVar == NoSymbol) {
-          gen.mkModuleVarDef(sym).symbol.setInfo(tp)
+          val tree = gen.mkModuleVarDef(sym)
+          tree.symbol.setInfo(tp)
           sym.resetFlag(MODULE)
           sym.setFlag(LAZY | ACCESSOR)
         }
@@ -1010,8 +1011,9 @@ abstract class RefChecks extends InfoTransform {
             typed(ValDef(vsym, EmptyTree)) :: atPhase(phase.next) { typed(lazyDef) } :: Nil
         } else {
           if (tree.symbol.isLocal && index <= currentLevel.maxindex) {
-            if (settings.debug.value) Console.println(currentLevel.refsym);
-            unit.error(currentLevel.refpos, "forward reference extends over definition of " + tree.symbol)
+            if (settings.debug.value)
+              Console.println(currentLevel.refsym)
+            unit.error(currentLevel.refpos, "forward reference extends over definition of " + tree.symbol);
           }
           List(tree1)
         }

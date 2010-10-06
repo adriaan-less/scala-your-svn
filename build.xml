@@ -184,7 +184,7 @@ PROPERTIES
 
   <!-- if ANT_OPTS is already set by the environment, it will be unaltered,
        but if it is unset it will take this default value. -->
-  <property name="env.ANT_OPTS" value="-Xms1536M -Xmx1536M -Xss1M -XX:MaxPermSize=128M -XX:+UseParallelGC" />
+  <property name="env.ANT_OPTS" value="-Xms1536M -Xmx1536M -Xss1M -XX:MaxPermSize=192M -XX:+UseParallelGC" />
   <!--  to find max heap usage: -Xaprof ; currently at 980M for locker.comp -->
   <echo message="Using ANT_OPTS: ${env.ANT_OPTS}" />
 
@@ -1563,11 +1563,13 @@ BOOTRAPING TEST AND TEST SUITE
         <include name="run/**/*.scala"/>
       </runtests>
       <jvmtests dir="${partest.dir}/${partest.srcdir}/jvm" includes="*.scala"/>
-	  <scalachecktests dir="${partest.dir}/${partest.srcdir}/scalacheck" includes="**/*.scala"/>
       <residenttests dir="${partest.dir}/${partest.srcdir}/res" includes="*.res"/>
       <buildmanagertests dir="${partest.dir}/${partest.srcdir}/buildmanager" includes="*"/>
       <shootouttests dir="${partest.dir}/${partest.srcdir}/shootout" includes="*.scala"/>
       <scalaptests dir="${partest.dir}/${partest.srcdir}/scalap" includes="**/*.scala"/>
+      <scalachecktests dir="${partest.dir}/${partest.srcdir}/scalacheck">
+	<include name="*.scala"/>
+      </scalachecktests>
       <!-- <scripttests dir="${partest.dir}/${partest.srcdir}/script" includes="*.scala"/> -->
     </partest>
   </target>

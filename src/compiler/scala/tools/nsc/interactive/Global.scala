@@ -41,7 +41,7 @@ self =>
                        SynchronizedMap[AbstractFile, RichCompilationUnit]
 
   /** The currently active typer run */
-  private var currentTyperRun: TyperRun = _
+  private var currentTyperRun: TyperRun = newTyperRun
 
   /** Is a background compiler run needed?
    *  Note: outOfDate is true as long as there is a backgroud compile scheduled or going on.
@@ -208,11 +208,13 @@ self =>
   // ----------------- The Background Runner Thread -----------------------
 
   /** The current presentation compiler runner */
-  private var compileRunner = newRunnerThread
+  protected var compileRunner = newRunnerThread
+
+  private var threadId = 1
 
   /** Create a new presentation compiler runner.
    */
-  def newRunnerThread: Thread = new Thread("Scala Presentation Compiler") {
+  def newRunnerThread: Thread = new Thread("Scala Presentation Compiler V"+threadId) {
     override def run() {
       try {
         while (true) {
@@ -240,6 +242,7 @@ self =>
           }
       }
     }
+    threadId += 1
     start()
   }
 
@@ -296,7 +299,7 @@ self =>
       activeLocks = 0
       currentTyperRun.typeCheck(unit)
       unit.status = currentRunId
-      syncTopLevelSyms(unit)
+      if (!unit.isJava) syncTopLevelSyms(unit)
     }
   }
 
@@ -469,7 +472,7 @@ self =>
 
   def getTypeCompletion(pos: Position, response: Response[List[Member]]) {
     respondGradually(response) { typeMembers(pos) }
-    if (debugIDE) scopeMembers(pos)
+    if (debugIDE) typeMembers(pos)
   }
 
   def typeMembers(pos: Position): Stream[List[TypeMember]] = {

@@ -270,7 +270,6 @@ abstract class TreeGen {
       mval.owner.info.decls.enter(mval)
     }
     ValDef(mval, EmptyTree)
-    //ValDef(mval, newModule(accessor, mval.tpe))
   }
   
   // def m: T = { if (m$ eq null) m$ = new m$class(...) m$ }

@@ -103,6 +103,13 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     override def toString: String =
       "specialized overload " + sym + " in " + env
   } 
+
+
+  /** Just to mark uncheckable */
+  override def newPhase(prev: scala.tools.nsc.Phase): StdPhase = new SpecializationPhase(prev)
+  class SpecializationPhase(prev: scala.tools.nsc.Phase) extends super.Phase(prev) {
+    override def checkable = false
+  }
     
   protected def newTransformer(unit: CompilationUnit): Transformer =
     new SpecializationTransformer(unit)
@@ -1186,7 +1193,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
               val tree1 = addBody(ddef, target)
               (new ChangeOwnerTraverser(target, tree1.symbol))(tree1.rhs)
               if (settings.debug.value)
-                println("changed owners, now: " + tree1)
+                log("changed owners, now: " + tree1)
               val DefDef(mods, name, tparams, vparamss, tpt, rhs) = tree1
               treeCopy.DefDef(tree1, mods, name, tparams, vparamss, tpt, transform(rhs))
 
@@ -1419,25 +1426,6 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
 
   /** Concrete methods that use a specialized type, or override such methods. */
   private val concreteSpecMethods: mutable.Set[Symbol] = new mutable.HashSet
-  
-  /** Instantiate polymorphic function `target' with type parameters from `from'.
-   *  For each type parameter `tp' in `target', its argument is:
-   *    - a corresponding type parameter of `from', if tp is not bound in
-   *      typeEnv(from)
-   *    - the upper bound of tp, if the binding conflicts with tp's bounds
-   *    - typeEnv(from)(tp), if the binding is not conflicting in its bounds
-   */
-  private def makeTypeArguments(from: Symbol, target: Symbol): List[Type] = {
-    val owner = from.owner
-    val env = typeEnv(from)
-    for (tp <- owner.info.memberType(target).typeParams) 
-      yield 
-        if (!env.isDefinedAt(tp)) 
-          typeRef(NoPrefix, from.info.typeParams.find(_.name == tp.name).get, Nil)
-        else if ((env(tp) <:< tp.info.bounds.hi) && (tp.info.bounds.lo <:< env(tp))) 
-          env(tp)
-        else tp.info.bounds.hi
-  }
 
   private def makeArguments(fun: Symbol, vparams: List[Symbol]): List[Tree] = {
     def needsCast(tp1: Type, tp2: Type): Boolean = 

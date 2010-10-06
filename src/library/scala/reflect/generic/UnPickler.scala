@@ -198,11 +198,10 @@ abstract class UnPickler {
                 val moduleVar = owner.info.decl(nme.moduleVarName(name))
                 if (moduleVar.hasFlag(LAZY)) {
                   val lazyAcc = moduleVar.lazyAccessor
-                  // TODO: Necessary check?
                   if (lazyAcc != NoSymbol)
                     sym = lazyAcc.lazyAccessor
-                  }
-                case _ =>
+                }
+              case _ =>
             }
               
             if (sym == NoSymbol)
