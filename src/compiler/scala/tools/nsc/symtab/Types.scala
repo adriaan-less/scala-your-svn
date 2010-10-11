@@ -3567,7 +3567,9 @@ A type's typeSymbol should never be inspected directly.
 
     def apply(tp: Type): Type =
       mapOver(tp) match {
-        case SingleType(NoPrefix, ParamWithActual(arg)) if arg isStable => arg // unsound to replace args by unstable actual #3873
+        case SingleType(NoPrefix, sym@ParamWithActual(arg)) =>
+          if (arg isStable) arg // unsound to replace args by unstable actual #3873
+          else typeRef(NoPrefix, existSymFor(params indexOf sym), List()) // leaving in the reference to the argument is a bit sloppy, so replace by existential
         // (soundly) expand type alias selections on implicit arguments, see depmet_implicit_oopsla* test cases -- typically, `param.isImplicit`
         case tp1@TypeRef(SingleType(NoPrefix, param@ParamWithActual(arg)), sym, targs) =>
           val res = typeRef(arg, sym, targs)
