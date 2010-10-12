@@ -1467,7 +1467,7 @@ self =>
      *                |  val Pattern1 `=' Expr
      */
     def enumerators(): List[Enumerator] = {
-      val newStyle = in.token != VAL // todo: deprecate old style
+      val newStyle = in.token != VAL
       if (!newStyle)
         deprecationWarning(in.offset, "for (val x <- ... ) has been deprecated; use for (x <- ... ) instead")
       val enums = new ListBuffer[Enumerator]
@@ -1882,7 +1882,7 @@ self =>
       val start = in.offset
       newLineOptWhenFollowedBy(LPAREN)
       if (ofCaseClass && in.token != LPAREN)
-        deprecationWarning(in.offset, "case classes without a parameter list have been deprecated;\n"+
+        deprecationWarning(in.lastOffset, "case classes without a parameter list have been deprecated;\n"+
                            "use either case objects or case classes with `()' as parameter list.")
       while (implicitmod == 0 && in.token == LPAREN) {
         in.nextToken()
@@ -2598,7 +2598,6 @@ self =>
                    in.token == TRAIT ||
                    in.token == OBJECT ||
                    in.token == CASEOBJECT ||
-                   in.token == LBRACKET || //todo: remove
                    in.token == AT ||
                    isModifier) {
           stats ++= joinComment(List(topLevelTmplDef))
@@ -2649,7 +2648,7 @@ self =>
         } else if (isExprIntro) {
           in.flushDoc
           stats += statement(InTemplate)
-        } else if (isDefIntro || isModifier || in.token == LBRACKET /*todo: remove */ || in.token == AT) {
+        } else if (isDefIntro || isModifier || in.token == AT) {
           stats ++= joinComment(nonLocalDefOrDcl)
         } else if (!isStatSep) {
           syntaxErrorOrIncomplete("illegal start of definition", true)

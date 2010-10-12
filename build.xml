@@ -650,7 +650,8 @@ QUICK BUILD (QUICK)
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
       <compilationpath>
-	<pathelement location="${build-quick.dir}/classes/library"/>
+        <pathelement location="${build-quick.dir}/classes/library"/>
+        <pathelement location="${build-quick.dir}/classes/scalacheck"/>
       </compilationpath>
     </scalacfork>
   </target>
@@ -1596,7 +1597,9 @@ BOOTRAPING TEST AND TEST SUITE
       <compilationpath>
         <path refid="pack.classpath"/>
       </compilationpath>
-      <scalachecktests dir="test/scaladoc" includes="**/*.scala"/>
+      <scalachecktests dir="test/scaladoc">
+	<include name="*.scala"/>
+      </scalachecktests>
     </partest>
   </target>
 

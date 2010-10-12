@@ -16,7 +16,7 @@ import scala.util.Properties.{ isWin }
 import scala.tools.nsc.{ ObjectRunner, Settings, CompilerCommand, Global }
 import scala.tools.nsc.io.{ AbstractFile, PlainFile, Path, Directory, File => SFile }
 import scala.tools.nsc.reporters.ConsoleReporter
-import scala.tools.nsc.util.{ ClassPath, FakePos }
+import scala.tools.nsc.util.{ ClassPath, FakePos, ScalaClassLoader }
 import ClassPath.{ join, split }
 
 import scala.actors.{ Actor, Exit, TIMEOUT }
@@ -54,7 +54,7 @@ class ScalaCheckFileManager(val origmanager: FileManager) extends FileManager {
   var LATEST_LIB: String = origmanager.LATEST_LIB
 }
 
-class Worker(val fileManager: FileManager) extends Actor {
+class Worker(val fileManager: FileManager, scalaCheckParentClassLoader: ScalaClassLoader) extends Actor {
   import fileManager._
   
   val scalaCheckFileManager = new ScalaCheckFileManager(fileManager)
@@ -309,7 +309,14 @@ class Worker(val fileManager: FileManager) extends Actor {
   def isJava(f: File) = SFile(f) hasExtension "java"
   def isScala(f: File) = SFile(f) hasExtension "scala"
   def isJavaOrScala(f: File) = isJava(f) || isScala(f)
+  
+  def outputLogFile(logFile: File) {
+    NestUI.normal("Log file '" + logFile + "': \n")
+    val lines = SFile(logFile).lines
+    for (lin <- lines) NestUI.normal(lin + "\n")
+  }
 
+  
   /** Runs a list of tests.
    *
    * @param kind  The test kind (pos, neg, run, etc.)
@@ -375,6 +382,7 @@ class Worker(val fileManager: FileManager) extends Actor {
             val writer = new PrintWriter(new FileWriter(logFile), true)
             e.printStackTrace(writer)
             writer.close()
+            outputLogFile(logFile) // if running the test threw an exception, output log file
             succeeded = false
         }
 
@@ -403,7 +411,7 @@ class Worker(val fileManager: FileManager) extends Actor {
           if (succeeded && scalaFiles.nonEmpty && !compileMgr.shouldCompile(outDir, scalaFiles, kind, logFile))
             fail(scalaFiles)
         }
-      }      
+      }
       
       if (noGroupSuffix.nonEmpty)
         compileGroup(noGroupSuffix)
@@ -421,7 +429,7 @@ class Worker(val fileManager: FileManager) extends Actor {
       }
     }
     
-    def runTestCommon(file: File, kind: String, expectFailure: Boolean)(onSuccess: (File, File) => Unit): LogContext =
+    def runTestCommon(file: File, kind: String, expectFailure: Boolean)(onSuccess: (File, File) => Unit, onFail: (File, File) => Unit = (logf, outd) => ()): LogContext =
       runInContext(file, kind, (logFile: File, outDir: File) => {
  
         if (file.isDirectory) {
@@ -439,6 +447,8 @@ class Worker(val fileManager: FileManager) extends Actor {
         
         if (succeeded)  // run test
           onSuccess(logFile, outDir)
+        else
+          onFail(logFile, outDir)
       })
 
     def runJvmTest(file: File, kind: String): LogContext =
@@ -462,30 +472,33 @@ class Worker(val fileManager: FileManager) extends Actor {
     def processSingleFile(file: File): LogContext = kind match {
       case "scalacheck" =>
         runTestCommon(file, kind, expectFailure = false)((logFile, outDir) => {
-          val consFM = new ConsoleFileManager
-          import consFM.{ latestCompFile, latestLibFile, latestPartestFile }
-          
           NestUI.verbose("compilation of "+file+" succeeded\n")
-
-          val scalacheckURL = PathSettings.scalaCheck.toURL
-          val outURL = outDir.getCanonicalFile.toURI.toURL
-          val classpath: List[URL] =
-            List(outURL, scalacheckURL, latestCompFile.toURI.toURL, latestLibFile.toURI.toURL, latestPartestFile.toURI.toURL).distinct
           
-          NestUI.debug("scalacheck urls")
-          classpath foreach (x => NestUI.debug(x.toString))
-
+          val outURL = outDir.getCanonicalFile.toURI.toURL
+          
           val logWriter = new PrintStream(new FileOutputStream(logFile))
           
           withOutputRedirected(logWriter) {
-            ObjectRunner.run(classpath, "Test", Nil)
+            // this classloader is test specific
+            // its parent contains library classes and others
+            val classloader = ScalaClassLoader.fromURLs(List(outURL), scalaCheckParentClassLoader)
+            classloader.run("Test", Nil)
           }
           
           NestUI.verbose(SFile(logFile).slurp())
           // obviously this must be improved upon
-          succeeded =
-            SFile(logFile).lines.filter(_.trim != "") filter (_ contains "+") forall (_ contains "OK")
-      })
+          val lines = SFile(logFile).lines.filter(_.trim != "").toBuffer
+          succeeded = {
+            val failures = lines filter (_ startsWith "!")
+            val passedok = lines filter (_ startsWith "+") forall (_ contains "OK")
+            failures.isEmpty && passedok
+          }
+          if (!succeeded) {
+            NestUI.normal("ScalaCheck test failed. Output:\n")
+            for (lin <- lines) NestUI.normal(lin + "\n")
+          }
+          NestUI.verbose("test for '" + file + "' success: " + succeeded)
+        }, (logFile, outDir) => outputLogFile(logFile))
 
       case "pos" =>
         runTestCommon(file, kind, expectFailure = false)((_, _) => ())
