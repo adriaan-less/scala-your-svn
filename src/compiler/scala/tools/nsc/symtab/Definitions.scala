@@ -97,8 +97,15 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def Boolean_or  = getMember(BooleanClass, nme.ZOR)
 
     def ScalaValueClasses = List(
-      UnitClass, ByteClass, ShortClass, IntClass, LongClass,
-      CharClass, FloatClass, DoubleClass, BooleanClass
+      UnitClass,
+      BooleanClass,
+      ByteClass, 
+      ShortClass,
+      CharClass,
+      IntClass,
+      LongClass,
+      FloatClass,
+      DoubleClass
     )
     
     // exceptions and other throwables
@@ -454,14 +461,19 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def BoxedUnit_TYPE = getMember(BoxedUnitModule, "TYPE")
 
     // special attributes
-    lazy val SerializableAttr: Symbol = getClass("scala.serializable")
-    lazy val SerialVersionUIDAttr: Symbol = getClass("scala.SerialVersionUID")
-    lazy val DeprecatedAttr: Symbol = getClass("scala.deprecated")
-    lazy val DeprecatedNameAttr: Symbol = getClass("scala.deprecatedName")
-    lazy val MigrationAnnotationClass: Symbol = getClass("scala.annotation.migration")
+    lazy val BeanPropertyAttr: Symbol           = getClass(sn.BeanProperty)
+    lazy val BooleanBeanPropertyAttr: Symbol    = getClass(sn.BooleanBeanProperty)
+    lazy val CloneableAttr: Symbol              = getClass("scala.cloneable")
+    lazy val DeprecatedAttr: Symbol             = getClass("scala.deprecated")
+    lazy val DeprecatedNameAttr: Symbol         = getClass("scala.deprecatedName")
+    lazy val MigrationAnnotationClass: Symbol   = getClass("scala.annotation.migration")
+    lazy val NativeAttr: Symbol                 = getClass("scala.native")
+    lazy val RemoteAttr: Symbol                 = getClass("scala.remote")
+    lazy val SerialVersionUIDAttr: Symbol       = getClass("scala.SerialVersionUID")
+    lazy val SerializableAttr: Symbol           = getClass("scala.serializable")
     lazy val TraitSetterAnnotationClass: Symbol = getClass("scala.runtime.TraitSetter")
-    lazy val BeanPropertyAttr: Symbol = getClass(sn.BeanProperty)
-    lazy val BooleanBeanPropertyAttr: Symbol = getClass(sn.BooleanBeanProperty)
+    lazy val TransientAttr: Symbol              = getClass("scala.transient")
+    lazy val VolatileAttr: Symbol               = getClass("scala.volatile")
     
     lazy val AnnotationDefaultAttr: Symbol = {
       val attr = newClass(RuntimePackageClass, nme.AnnotationDefaultATTR, List(AnnotationClass.typeConstructor))
@@ -469,9 +481,6 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       attr.info.decls enter (attr newConstructor NoPosition setInfo MethodType(Nil, attr.tpe))
       attr
     }
-    
-    lazy val NativeAttr: Symbol = getClass("scala.native")
-    lazy val VolatileAttr: Symbol = getClass("scala.volatile")
 
     def getModule(fullname: Name): Symbol = getModuleOrClass(fullname, true)
     def getModule2(name1: Name, name2: Name) = try {
