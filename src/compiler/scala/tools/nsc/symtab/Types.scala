@@ -2362,10 +2362,13 @@ A type's typeSymbol should never be inspected directly.
         if(isLowerBound) isSubArgs(args1, args2, params)
         else             isSubArgs(args2, args1, params)
 
+      // needed because HK unification is limited to constraints of the shape TC1[T1,..., TN] <: TC2[T'1,...,T'N], which precludes e.g., Nothing <: ?TC[?T]
+      def constraintTrivial = (isLowerBound && tp.typeSymbol == NothingClass) || (!isLowerBound && tp.typeSymbol == AnyClass)
+
       if (suspended) checkSubtype(tp, origin)
       else if (constr.instValid) // type var is already set
         checkSubtype(tp, constr.inst)
-      else isRelatable(tp) && { 
+      else isRelatable(tp) && (constraintTrivial || {
         if(params.isEmpty) { // type var has kind *
           addBound(tp)
           true
@@ -2380,7 +2383,7 @@ A type's typeSymbol should never be inspected directly.
             }
           unifyHK(tp) || unifyHK(tp.dealias)
         }
-      }
+      })
     }
 
     def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = { //println("regTypeEq: "+(safeToString, debugString(tp), typeVarLHS)) //@MDEBUG
