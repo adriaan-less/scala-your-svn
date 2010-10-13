@@ -124,7 +124,7 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val nopredefs     = BooleanSetting    ("-Yno-predefs", "Compile without any implicit predefined values")
   val Yrecursion    = IntSetting        ("-Yrecursion", "Recursion depth used when locking symbols", 0, Some(0, Int.MaxValue), (_: String) => None)
   val selfInAnnots  = BooleanSetting    ("-Yself-in-annots", "Include a \"self\" identifier inside of annotations")
-  val Xshowtrees    = BooleanSetting    ("-Yshow-trees", "Show detailed trees when used in connection with -print:phase")
+  val Xshowtrees    = BooleanSetting    ("-Yshow-trees", "Show detailed trees when used in connection with -Xprint:<phase>")
   val skip          = PhasesSetting     ("-Yskip", "Skip")
   val Xsqueeze      = ChoiceSetting     ("-Ysqueeze", "if on, creates compact code in matching", List("on","off"), "on") .
                                           withHelpSyntax("-Ysqueeze:<enabled>")
@@ -145,7 +145,7 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val Yrepldebug    = BooleanSetting    ("-Yrepl-debug", "Trace all repl activity.")
   val Ycompletion   = BooleanSetting    ("-Ycompletion-debug", "Trace all tab completion activity.")
   val Ypmatnaive    = BooleanSetting    ("-Ypmat-naive", "Desugar matches as naively as possible..")
-  // val Yjenkins      = BooleanSetting    ("-Yjenkins-hashCodes", "Use jenkins hash algorithm for case class generated hashCodes.")
+  val Ymurmur       = BooleanSetting    ("-Ymurmur", "Use Murmur hash algorithm for case class generated hashCodes.")
   val Ynotnull      = BooleanSetting    ("-Ynotnull", "Enable the experimental and incomplete scala.NotNull")
 
   // Warnings

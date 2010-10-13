@@ -7,7 +7,7 @@ package scala.tools.nsc
 package transform
 
 import symtab.Flags._
-import scala.collection.mutable.{HashMap, HashSet}
+import scala.collection.{ mutable, immutable }
 
 /*<export>*/
 /** - uncurry all symbol and tree types (@see UnCurryPhase)
@@ -152,13 +152,13 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     private var needTryLift = false
     private var inPattern = false
     private var inConstructorFlag = 0L
-    private val byNameArgs = new HashSet[Tree]
-    private val noApply = new HashSet[Tree]
+    private val byNameArgs = new mutable.HashSet[Tree]
+    private val noApply = new mutable.HashSet[Tree]
 
     override def transformUnit(unit: CompilationUnit) {
       freeMutableVars.clear
       freeLocalsTraverser(unit.body)
-      unit.body = transform(unit.body)
+      super.transformUnit(unit)
     }
 
     private var nprinted = 0
@@ -201,7 +201,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
       appliedType(NonLocalReturnControlClass.typeConstructor, List(argtype))
 
     /** A hashmap from method symbols to non-local return keys */
-    private val nonLocalReturnKeys = new HashMap[Symbol, Symbol]
+    private val nonLocalReturnKeys = new mutable.HashMap[Symbol, Symbol]
 
     /** Return non-local return key for given method */
     private def nonLocalReturnKey(meth: Symbol) = 
@@ -596,7 +596,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
 
         case Assign(Select(_, _), _) =>
           withNeedLift(true) { super.transform(tree) }
-        case Assign(lhs, _) if lhs.symbol.owner != currentMethod =>
+          
+        case Assign(lhs, _) if lhs.symbol.owner != currentMethod || lhs.symbol.hasFlag(LAZY | ACCESSOR) =>
           withNeedLift(true) { super.transform(tree) }
 
         case Try(block, catches, finalizer) =>
@@ -615,7 +616,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         case Template(_, _, _) =>
           withInConstructorFlag(0) { super.transform(tree) }
 
-        case _ => 
+        case _ =>
           val tree1 = super.transform(tree)
           if (isByNameRef(tree1)) {
             val tree2 = tree1 setType functionType(List(), tree1.tpe)
@@ -700,7 +701,6 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     }
   }
   
-  import collection.mutable
   /** Set of mutable local variables that are free in some inner method. */
   private val freeMutableVars: mutable.Set[Symbol] = new mutable.HashSet
   

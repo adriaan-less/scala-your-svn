@@ -3,17 +3,17 @@
  * @author  Martin Odersky
  */
 
-//todo: rewrite or disllow new T where T is a mixin (currently: <init> not a member of T)
+// Added: Sat Oct 7 16:08:21 2006
 //todo: use inherited type info also for vars and values
+
+// Added: Thu Apr 12 18:23:58 2007
 //todo: disallow C#D in superclass
 //todo: treat :::= correctly
 package scala.tools.nsc
 package typechecker
 
-import scala.collection.mutable.{HashMap, ListBuffer}
-import scala.util.control.ControlThrowable
-import scala.tools.nsc.interactive.RangePositions
-import scala.tools.nsc.util.{Set, SourceFile, BatchSourceFile}
+import scala.collection.mutable.{ HashMap, ListBuffer }
+import scala.tools.nsc.util.BatchSourceFile
 import symtab.Flags._
 
 import util.Statistics
@@ -168,11 +168,11 @@ trait Typers { self: Analyzer =>
     import context0.unit
 
     val infer = new Inferencer(context0) {
-      override def isCoercible(tp: Type, pt: Type): Boolean =
+      override def isCoercible(tp: Type, pt: Type): Boolean = undoLog undo { // #3281
         tp.isError || pt.isError ||
         context0.implicitsEnabled && // this condition prevents chains of views
         inferView(EmptyTree, tp, pt, false) != EmptyTree
-    }
+      }}
 
     /** Find implicit arguments and pass them to given tree.
      */
@@ -1301,7 +1301,7 @@ trait Typers { self: Analyzer =>
       val tparams1 = cdef.tparams mapConserve (typedTypeDef)
       val impl1 = newTyper(context.make(cdef.impl, clazz, new Scope))
         .typedTemplate(cdef.impl, parentTypes(cdef.impl))
-      val impl2 = addSyntheticMethods(impl1, clazz, context)
+      val impl2 = typerAddSyntheticMethods(impl1, clazz, context)
       if ((clazz != ClassfileAnnotationClass) &&
           (clazz isNonBottomSubClass ClassfileAnnotationClass))
         unit.warning (cdef.pos,
@@ -1338,7 +1338,7 @@ trait Typers { self: Analyzer =>
       assert(clazz != NoSymbol)
       val impl1 = newTyper(context.make(mdef.impl, clazz, new Scope))
         .typedTemplate(mdef.impl, parentTypes(mdef.impl))
-      val impl2 = addSyntheticMethods(impl1, clazz, context)
+      val impl2 = typerAddSyntheticMethods(impl1, clazz, context)
 
       if (mdef.name == nme.PACKAGEkw) 
         for (m <- mdef.symbol.info.members)
@@ -1346,6 +1346,13 @@ trait Typers { self: Analyzer =>
             context.error(if (m.pos.isDefined) m.pos else mdef.pos,
                           "implementation restriction: "+mdef.symbol+" cannot contain case "+m)
       treeCopy.ModuleDef(mdef, typedMods, mdef.name, impl2) setType NoType
+    }
+    
+    /** In order to override this in the TreeCheckers Typer so synthetics aren't re-added
+     *  all the time, it is exposed here the module/class typing methods go through it.
+     */
+    protected def typerAddSyntheticMethods(templ: Template, clazz: Symbol, context: Context): Template = {
+      addSyntheticMethods(templ, clazz, context)
     }
 
     /**
@@ -1625,11 +1632,11 @@ trait Typers { self: Analyzer =>
       
       // an object cannot be allowed to pass a reference to itself to a superconstructor
       // because of initialization issues; bug #473
-      for { 
-        arg <- superArgs
-        val sym = arg.symbol
-        if sym != null && sym.isModule && (sym.info.baseClasses contains clazz)
-      } error(rhs.pos, "super constructor cannot be passed a self reference unless parameter is declared by-name")
+      for (arg <- superArgs ; tree <- arg) {
+        val sym = tree.symbol
+        if (sym != null && sym.isModule && (sym.info.baseClasses contains clazz))
+          error(rhs.pos, "super constructor cannot be passed a self reference unless parameter is declared by-name")
+      }
       
       if (superConstr.symbol.isPrimaryConstructor) {
         val superClazz = superConstr.symbol.owner
@@ -1741,7 +1748,7 @@ trait Typers { self: Analyzer =>
       // for `val` and `var` parameter, look at `target` meta-annotation
       if (phase.id <= currentRun.typerPhase.id && meth.isPrimaryConstructor) {
         for (vparams <- ddef.vparamss; vd <- vparams) {
-          if (vd hasFlag PARAMACCESSOR) {
+          if (vd.mods.isParamAccessor) {
             val sym = vd.symbol
             sym.setAnnotations(memberAnnots(sym.annotations, ParamTargetClass, keepClean = true))
           }

@@ -6,6 +6,7 @@
 package scala.tools.nsc
 package typechecker
 
+import scala.collection.{ mutable, immutable }
 import scala.collection.mutable.ListBuffer
 import scala.util.control.ControlThrowable
 import symtab.Flags._
@@ -78,7 +79,7 @@ trait Infer {
    *  @throws    NoInstance
    */
   object instantiate extends TypeMap {
-    private var excludedVars = scala.collection.immutable.Set[TypeVar]()
+    private var excludedVars = immutable.Set[TypeVar]()
     def apply(tp: Type): Type = tp match {
       case WildcardType | BoundedWildcardType(_) | NoType =>
         throw new NoInstance("undetermined type")
@@ -421,7 +422,7 @@ trait Infer {
     def isCoercible(tp: Type, pt: Type): Boolean = false
 
     def isCompatibleArgs(tps: List[Type], pts: List[Type]) = 
-      (tps corresponds pts)(isCompatibleArg)  // @PP: corresponds
+      (tps corresponds pts)(isCompatibleArg)
 
     /* -- Type instantiation------------------------------------------------ */
 
@@ -1163,7 +1164,15 @@ trait Infer {
           val treeSubst = new TreeTypeSubstituter(okparams, okargs)
           treeSubst.traverse(fn)
           treeSubst.traverseTrees(args)
-          leftUndet
+          if(leftUndet nonEmpty) {  // #3890
+            val leftUndet1 = treeSubst.typeSubst mapOver leftUndet
+            if(leftUndet ne leftUndet1) {
+              val symSubst = new TreeSymSubstTraverser(leftUndet, leftUndet1)
+              symSubst.traverse(fn)
+              symSubst.traverseTrees(args)
+            }
+            leftUndet1
+          } else leftUndet
         } catch {
           case ex: NoInstance =>
             errorTree(fn, 

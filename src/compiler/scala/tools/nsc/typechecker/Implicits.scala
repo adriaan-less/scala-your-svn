@@ -886,7 +886,7 @@ self: Analyzer =>
       case TypeRef(_, tsym, _) if (tsym.isAbstractType) =>
         implicitManifestOrOfExpectedType(pt.bounds.lo)
       case _ =>
-        searchImplicit(implicitsOfExpectedType, false)
+        searchImplicit(implicitsOfExpectedType, false) // shouldn't we pass `pt` to `implicitsOfExpectedType`, or is the recursive case for an abstract type really only meant for manifests?
     }
             
     /** The result of the implicit search:
@@ -903,7 +903,7 @@ self: Analyzer =>
 
       if (result == SearchFailure) {
         stopTimer(inscopeFailNanos, failstart)
-      } else {                                        
+      } else {
         stopTimer(inscopeSucceedNanos, succstart)
         incCounter(inscopeImplicitHits)
       }
@@ -915,7 +915,7 @@ self: Analyzer =>
 
         if (result == SearchFailure) {
           stopTimer(oftypeFailNanos, failstart)
-        } else {                                        
+        } else {
           stopTimer(oftypeSucceedNanos, succstart)
           incCounter(oftypeImplicitHits)
         }
@@ -950,7 +950,7 @@ self: Analyzer =>
       // http://dcsobral.blogspot.com/2010/01/string-interpolation-in-scala-with.html
       private def interpolate(text: String, vars: Map[String, String]) = { import scala.util.matching.Regex
         """\$\{([^}]+)\}""".r.replaceAllIn(text, (_: Regex.Match) match { 
-          case Regex.Groups(v) => vars.getOrElse(v, "") 
+          case Regex.Groups(v) => java.util.regex.Matcher.quoteReplacement(vars.getOrElse(v, "")) // #3915: need to quote replacement string since it may include $'s (such as the interpreter's $iw)
         })}
 
       private lazy val typeParamNames: List[String] = sym.typeParams.map(_.decodedName)
