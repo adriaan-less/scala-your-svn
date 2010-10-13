@@ -114,10 +114,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
     }
 
     private[Types] def record(tv: TypeVar) = {log = (tv, tv.constr.cloneInternal) :: log}
-    private[Types] def clear() {
-      // XXX AM TODO: figure out when it is safe and needed to clear the log -- the current approach is definitely too eager
-      // log = List()
-    }
+    private[Types] def clear() { log = List() } // TODO: what's the point of this method? -- we roll back the log (using undoTo) in the combinators below anyway, see comments at clear() calls below
 
     // `block` should not affect constraints on typevars
     def undo[T](block: => T): T = {
@@ -4031,7 +4028,9 @@ A type's typeSymbol should never be inspected directly.
     }
   } finally {
     subsametypeRecursions -= 1
-    if (subsametypeRecursions == 0) undoLog.clear()
+    // XXX AM TODO: figure out when it is safe and needed to clear the log -- the commented approach below is too eager (it breaks #3281, #3866)
+    // it doesn't help to keep separate recursion counts for the three methods that now share it
+    // if (subsametypeRecursions == 0) undoLog.clear()
   }
 
   def isDifferentType(tp1: Type, tp2: Type): Boolean = try {
@@ -4041,7 +4040,9 @@ A type's typeSymbol should never be inspected directly.
     }
   } finally {
     subsametypeRecursions -= 1
-    if (subsametypeRecursions == 0) undoLog.clear()
+    // XXX AM TODO: figure out when it is safe and needed to clear the log -- the commented approach below is too eager (it breaks #3281, #3866)
+    // it doesn't help to keep separate recursion counts for the three methods that now share it
+    // if (subsametypeRecursions == 0) undoLog.clear()
   }
 
   def isDifferentTypeConstructor(tp1: Type, tp2: Type): Boolean = tp1 match {
@@ -4370,7 +4371,9 @@ A type's typeSymbol should never be inspected directly.
     }
   } finally {
     subsametypeRecursions -= 1
-    if (subsametypeRecursions == 0) undoLog.clear()
+    // XXX AM TODO: figure out when it is safe and needed to clear the log -- the commented approach below is too eager (it breaks #3281, #3866)
+    // it doesn't help to keep separate recursion counts for the three methods that now share it
+    // if (subsametypeRecursions == 0) undoLog.clear()
   }
 
   /** Does this type have a prefix that begins with a type variable,
