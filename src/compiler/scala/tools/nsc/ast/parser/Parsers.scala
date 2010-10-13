@@ -9,7 +9,7 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable.ListBuffer
-import util.{ OffsetPosition, BatchSourceFile }
+import util.{ OffsetPosition }
 import symtab.Flags
 import Tokens._
 
@@ -91,7 +91,7 @@ self =>
     val syntaxErrors = new ListBuffer[(Int, String)]
     
     def incompleteInputError(msg: String) {
-      val offset = unit.source.asInstanceOf[BatchSourceFile].content.length - 1
+      val offset = unit.source.content.length - 1
       if (smartParsing) syntaxErrors += ((offset, msg))
       else unit.incompleteInputError(o2p(offset), msg)
     }
@@ -175,6 +175,10 @@ self =>
     /** The types of the context bounds of type parameters of the surrounding class
      */
     var classContextBounds: List[Tree] = Nil
+
+    /** Are we inside the Scala package? Set for files that start with package scala
+     */
+    private var inScalaPackage = false
     
     def parseStartRule: () => Tree
 
@@ -194,6 +198,47 @@ self =>
     def scriptBody(): Tree = {
       val stmts = templateStatSeq(false)._2
       accept(EOF)
+      
+      def mainModuleName = settings.script.value
+      /** If there is only a single object template in the file and it has a
+       *  suitable main method, we will use it rather than building another object
+       *  around it.  Since objects are loaded lazily the whole script would have
+       *  been a no-op, so we're not taking much liberty.
+       */
+      def searchForMain(): Option[Tree] = {
+        /** Have to be fairly liberal about what constitutes a main method since
+         *  nothing has been typed yet - for instance we can't assume the parameter
+         *  type will look exactly like "Array[String]" as it could have been renamed
+         *  via import, etc.
+         */
+        def isMainMethod(t: Tree) = t match {
+          case DefDef(_, nme.main, Nil, List(_), _, _)  => true
+          case _                                        => false
+        }
+        /** For now we require there only be one top level object. */
+        var seenModule = false
+        val newStmts = stmts collect {
+          case t @ Import(_, _) => t
+          case md @ ModuleDef(mods, name, template) if !seenModule && (md exists isMainMethod) =>
+            seenModule = true
+            /** This slightly hacky situation arises because we have no way to communicate
+             *  back to the scriptrunner what the name of the program is.  Even if we were
+             *  willing to take the sketchy route of settings.script.value = progName, that
+             *  does not work when using fsc.  And to find out in advance would impose a
+             *  whole additional parse.  So instead, if the actual object's name differs from
+             *  what the script is expecting, we transform it to match.
+             */
+            if (name.toString == mainModuleName) md
+            else treeCopy.ModuleDef(md, mods, mainModuleName, template)
+          case _ =>
+            /** If we see anything but the above, fail. */
+            return None
+        }
+        Some(makePackaging(0, emptyPkg, newStmts))
+      }
+      
+      if (mainModuleName == ScriptRunner.defaultScriptMain)
+        searchForMain() foreach { return _ }
       
       /** Here we are building an AST representing the following source fiction,
        *  where <moduleName> is from -Xscript (defaults to "Main") and <stmts> are
@@ -221,11 +266,11 @@ self =>
       )
 
       // def main
-      def mainParamType = AppliedTypeTree(Ident("Array".toTypeName), List(Ident("String".toTypeName)))
+      def mainParamType = AppliedTypeTree(Ident(nme.Array.toTypeName), List(Ident(nme.String.toTypeName)))
       def mainParameter = List(ValDef(Modifiers(Flags.PARAM), "argv", mainParamType, EmptyTree))
       def mainSetArgv   = List(ValDef(NoMods, "args", TypeTree(), Ident("argv")))
       def mainNew       = makeNew(Nil, emptyValDef, stmts, List(Nil), NoPosition, NoPosition)
-      def mainDef       = DefDef(NoMods, "main", Nil, List(mainParameter), scalaDot(nme.Unit.toTypeName), Block(mainSetArgv, mainNew))
+      def mainDef       = DefDef(NoMods, nme.main, Nil, List(mainParameter), scalaDot(nme.Unit.toTypeName), Block(mainSetArgv, mainNew))
 
       // object Main
       def moduleName  = ScriptRunner scriptMain settings
@@ -448,6 +493,15 @@ self =>
       case VAL | VAR | DEF | TYPE => true
       case _ => false
     }
+
+    def isNumericLit: Boolean = in.token match {
+      case INTLIT | LONGLIT | FLOATLIT | DOUBLELIT => true
+      case _ => false
+    }
+    def isUnaryOp: Boolean = isIdent && (in.name match {
+      case MINUS | PLUS | TILDE | BANG  => true
+      case _                            => false
+    })
 
     def isIdent = in.token == IDENTIFIER || in.token == BACKQUOTED_IDENT
 
@@ -1087,7 +1141,7 @@ self =>
       case WHILE =>
         val start = in.offset
         atPos(in.skipToken()) {
-          val lname: Name = freshName(o2p(start), "while$")
+          val lname: Name = freshName(o2p(start), nme.WHILE_PREFIX)
           val cond = condExpr()
           newLinesOpt()
           val body = expr()
@@ -1096,7 +1150,7 @@ self =>
       case DO =>
         val start = in.offset
         atPos(in.skipToken()) {
-          val lname: Name = freshName(o2p(start), "doWhile$")
+          val lname: Name = freshName(o2p(start), nme.DO_WHILE_PREFIX)
           val body = expr()
           if (isStatSep) in.nextToken()
           accept(WHILE)
@@ -1236,25 +1290,15 @@ self =>
 
     /** PrefixExpr   ::= [`-' | `+' | `~' | `!' | `&'] SimpleExpr 
     */
-    def prefixExpr(): Tree = {
-      def unaryOp(): Name = "unary_" + ident()
-      if (isIdent && in.name == MINUS) {
+    def prefixExpr(): Tree = {      
+      if (isUnaryOp) {
         atPos(in.offset) {
-          val name = unaryOp()
-          in.token match {
-            // Don't include double and float here else we lose -0.0
-            case INTLIT | LONGLIT => literal(true)
-            case _ => Select(stripParens(simpleExpr()), name)
-          }
+          val name: Name = "unary_" + ident()
+          if (in.name == MINUS && isNumericLit) simpleExprRest(atPos(in.offset)(literal(true)), true)
+          else Select(stripParens(simpleExpr()), name)
         }
-      } else if (isIdent && (in.name == PLUS || in.name == TILDE || in.name == BANG)) {
-        atPos(in.offset) {
-          val name = unaryOp()
-          Select(stripParens(simpleExpr()), name)
-        }
-      } else {
-        simpleExpr()
       }
+      else simpleExpr()
     }
     def xmlLiteral(): Tree
     
@@ -1312,6 +1356,9 @@ self =>
     }
 
     def simpleExprRest(t: Tree, canApply: Boolean): Tree = {
+      // Various errors in XML literals can cause xmlLiteral to propagate
+      // EmptyTree's. Watch out for them here (see also postfixExpr).
+      if (EmptyTree == t) return EmptyTree   // #3604 (mics)
       if (canApply) newLineOptWhenFollowedBy(LBRACE)
       in.token match {
         case DOT =>
@@ -1363,25 +1410,10 @@ self =>
         }
       }
 
-      // if arg has the form "x$1 => a = x$1" it's treated as "a = x$1" with x$1
-      // in placeholderParams. This allows e.g. "val f: Int => Int = foo(a = 1, b = _)"
-      def convertArg(arg: Tree): Tree = arg match {
-        case Function(
-          List(vd @ ValDef(mods, pname1, ptype1, EmptyTree)),
-          Assign(Ident(aname), rhs)) if (mods hasFlag Flags.SYNTHETIC) =>
-          rhs match {
-            case Ident(`pname1`) | Typed(Ident(`pname1`), _) =>
-              placeholderParams = vd :: placeholderParams
-              atPos(arg.pos) { AssignOrNamedArg(Ident(aname), Ident(pname1)) }
-            case _ => arg
-          }
-        case _ => arg
-      }
-
-      if (in.token == LBRACE) 
+      if (in.token == LBRACE)
         List(blockExpr())
       else
-        surround(LPAREN, RPAREN)(if (in.token == RPAREN) List() else (args() map convertArg), List())
+        surround(LPAREN, RPAREN)(if (in.token == RPAREN) List() else args(), List())
     }
         
     /** BlockExpr ::= `{' (CaseClauses | Block) `}'
@@ -1435,7 +1467,7 @@ self =>
      *                |  val Pattern1 `=' Expr
      */
     def enumerators(): List[Enumerator] = {
-      val newStyle = in.token != VAL // todo: deprecate old style
+      val newStyle = in.token != VAL
       if (!newStyle)
         deprecationWarning(in.offset, "for (val x <- ... ) has been deprecated; use for (x <- ... ) instead")
       val enums = new ListBuffer[Enumerator]
@@ -1802,7 +1834,7 @@ self =>
         val name = ident()
         var bynamemod = 0
         val tpt =
-          if (settings.Xexperimental.value && !owner.isTypeName && in.token != COLON) {
+          if (settings.YmethodInfer.value && !owner.isTypeName && in.token != COLON) {
             TypeTree()
           } else { // XX-METHOD-INFER
             accept(COLON)
@@ -1835,7 +1867,7 @@ self =>
         if (in.token != RPAREN) {
           if (in.token == IMPLICIT) {
             if (!contextBounds.isEmpty)
-              syntaxError("cannot have both implicit parameters and context bounds `: ...' on type parameters", false)
+              syntaxError("cannot have both implicit parameters and context bounds `: ...' or view bounds `<% ...' on type parameters", false)
             in.nextToken()
             implicitmod = Flags.IMPLICIT 
           }
@@ -1850,7 +1882,7 @@ self =>
       val start = in.offset
       newLineOptWhenFollowedBy(LPAREN)
       if (ofCaseClass && in.token != LPAREN)
-        deprecationWarning(in.offset, "case classes without a parameter list have been deprecated;\n"+
+        deprecationWarning(in.lastOffset, "case classes without a parameter list have been deprecated;\n"+
                            "use either case objects or case classes with `()' as parameter list.")
       while (implicitmod == 0 && in.token == LPAREN) {
         in.nextToken()
@@ -2343,7 +2375,7 @@ self =>
         classContextBounds = contextBoundBuf.toList
         val tstart = (in.offset::classContextBounds.map(_.pos.startOrPoint)).min 
         if (!classContextBounds.isEmpty && mods.hasFlag(Flags.TRAIT)) {
-          syntaxError("traits cannot have type parameters with context bounds `: ...'", false)
+          syntaxError("traits cannot have type parameters with context bounds `: ...' nor view bounds `<% ...'", false)
           classContextBounds = List()
         }
         val constrAnnots = annotations(false, true)
@@ -2352,7 +2384,7 @@ self =>
           else (accessModifierOpt(), paramClauses(name, classContextBounds, mods.hasFlag(Flags.CASE)))
         var mods1 = mods
         if (mods hasFlag Flags.TRAIT) {
-          if (settings.Xexperimental.value && in.token == SUBTYPE) mods1 |= Flags.DEFERRED
+          if (settings.YvirtClasses && in.token == SUBTYPE) mods1 |= Flags.DEFERRED
         } else if (in.token == SUBTYPE) {
           syntaxError("classes are not allowed to be virtual", false)
         }
@@ -2443,7 +2475,7 @@ self =>
     def templateOpt(mods: Modifiers, name: Name, constrMods: Modifiers,
                     vparamss: List[List[ValDef]], tstart: Int): Template = {
       val (parents0, argss, self, body) = 
-        if (in.token == EXTENDS || settings.Xexperimental.value && (mods hasFlag Flags.TRAIT) && in.token == SUBTYPE) {
+        if (in.token == EXTENDS || settings.YvirtClasses && (mods hasFlag Flags.TRAIT) && in.token == SUBTYPE) {
           in.nextToken()
           template(mods hasFlag Flags.TRAIT)
         } else if ((in.token == SUBTYPE) && (mods hasFlag Flags.TRAIT)) {
@@ -2455,7 +2487,7 @@ self =>
           (List(), List(List()), self, body)
         }
       var parents = parents0
-      if (name != nme.ScalaObject.toTypeName && !isInterface(mods, body)) 
+      if (!isInterface(mods, body) && !(inScalaPackage && name == nme.Array.toTypeName))
         parents = parents ::: List(scalaScalaObjectConstr)
       if (parents.isEmpty)
         parents = List(scalaAnyRefConstr)
@@ -2566,7 +2598,6 @@ self =>
                    in.token == TRAIT ||
                    in.token == OBJECT ||
                    in.token == CASEOBJECT ||
-                   in.token == LBRACKET || //todo: remove
                    in.token == AT ||
                    isModifier) {
           stats ++= joinComment(List(topLevelTmplDef))
@@ -2617,7 +2648,7 @@ self =>
         } else if (isExprIntro) {
           in.flushDoc
           stats += statement(InTemplate)
-        } else if (isDefIntro || isModifier || in.token == LBRACKET /*todo: remove */ || in.token == AT) {
+        } else if (isDefIntro || isModifier || in.token == AT) {
           stats ++= joinComment(nonLocalDefOrDcl)
         } else if (!isStatSep) {
           syntaxErrorOrIncomplete("illegal start of definition", true)
@@ -2724,6 +2755,8 @@ self =>
             }
           } else {
             in.flushDoc
+            if (in.token == IDENTIFIER && in.name.encode == nme.scala_)
+              inScalaPackage = true
             val pkg = qualId()
             newLineOptWhenFollowedBy(LBRACE)
             if (in.token == EOF) {
@@ -2746,10 +2779,10 @@ self =>
       topstats() match {        
         case List(stat @ PackageDef(_, _)) => stat
         case stats =>
-          val start = stats match {
-            case Nil => 0
-            case _ => wrappingPos(stats).startOrPoint
-          }
+          val start =
+            if (stats forall (_ == EmptyTree)) 0
+            else wrappingPos(stats).startOrPoint
+
           makePackaging(start, atPos(start, start, start) { Ident(nme.EMPTY_PACKAGE_NAME) }, stats)
       }
     }

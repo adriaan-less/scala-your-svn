@@ -24,7 +24,7 @@ abstract class Phase(val prev: Phase) {
   def flagMask: Long = fmask
 
   private var nx: Phase = this
-  if (prev ne null) prev.nx = this
+  if ((prev ne null) && (prev ne NoPhase)) prev.nx = this
 
   def next: Phase = nx
 
@@ -36,6 +36,7 @@ abstract class Phase(val prev: Phase) {
   def specialized: Boolean = false
   def erasedTypes: Boolean = false
   def flatClasses: Boolean = false
+  def refChecked: Boolean = false
   def keepsTypeParams = true
   def run: Unit
 

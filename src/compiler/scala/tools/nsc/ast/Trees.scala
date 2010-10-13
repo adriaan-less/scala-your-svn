@@ -20,6 +20,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
   }
 
   type CompilationUnit <: CompilationUnitTrait
+  
+  protected def flagsIntoString(flags: Long, privateWithin: String): String = flagsToString(flags, privateWithin)
 
   // sub-components --------------------------------------------------
 
@@ -59,6 +61,11 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
 
     /** Apply `f' to each subtree */
     def foreach(f: Tree => Unit) { new ForeachTreeTraverser(f).traverse(tree) }
+    
+    /** If 'pf' is defined for a given subtree, call super.traverse(pf(tree)),
+     *  otherwise super.traverse(tree).
+     */
+    def foreachPartial(pf: PartialFunction[Tree, Tree]) { new ForeachPartialTreeTraverser(pf).traverse(tree) }
 
     /** Find all subtrees matching predicate `p' */
     def filter(f: Tree => Boolean): List[Tree] = {
@@ -237,7 +244,7 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     } unzip
 
     val constrs = {
-      if (constrMods.isTrait) {
+      if (constrMods hasFlag TRAIT) {
         if (body forall treeInfo.isInterfaceMember) List()
         else List(
           atPos(wrappingPos(superPos, lvdefs)) (
@@ -338,6 +345,9 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
 
   case class Parens(args: List[Tree]) extends Tree // only used during parsing
 
+  /** emitted by typer, eliminated by refchecks **/
+  case class TypeTreeWithDeferredRefCheck()(val check: () => TypeTree) extends AbsTypeTree
+
 // ----- subconstructors --------------------------------------------
 
   class ApplyToImplicitArgs(fun: Tree, args: List[Tree]) extends Apply(fun, args)
@@ -383,6 +393,7 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     def Ident(tree: Tree, name: Name): Ident
     def Literal(tree: Tree, value: Constant): Literal
     def TypeTree(tree: Tree): TypeTree
+    def TypeTreeWithDeferredRefCheck(tree: Tree): TypeTreeWithDeferredRefCheck
     def Annotated(tree: Tree, annot: Tree, arg: Tree): Annotated
     def SingletonTypeTree(tree: Tree, ref: Tree): SingletonTypeTree
     def SelectFromTypeTree(tree: Tree, qualifier: Tree, selector: Name): SelectFromTypeTree
@@ -470,6 +481,9 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       new Literal(value).copyAttrs(tree)
     def TypeTree(tree: Tree) =
       new TypeTree().copyAttrs(tree)
+    def TypeTreeWithDeferredRefCheck(tree: Tree) = tree match {
+      case dc@TypeTreeWithDeferredRefCheck() => new TypeTreeWithDeferredRefCheck()(dc.check).copyAttrs(tree)
+    }
     def Annotated(tree: Tree, annot: Tree, arg: Tree) =
       new Annotated(annot, arg).copyAttrs(tree)
     def SingletonTypeTree(tree: Tree, ref: Tree) =
@@ -670,6 +684,10 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
       case t @ TypeTree() => t
       case _ => treeCopy.TypeTree(tree)
     }
+    def TypeTreeWithDeferredRefCheck(tree: Tree) = tree match {
+      case t @ TypeTreeWithDeferredRefCheck() => t
+      case _ => treeCopy.TypeTreeWithDeferredRefCheck(tree)
+    }
     def Annotated(tree: Tree, annot: Tree, arg: Tree) = tree match {
       case t @ Annotated(annot0, arg0)
       if (annot0==annot) => t
@@ -816,6 +834,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
         treeCopy.Literal(tree, value)
       case TypeTree() =>
         treeCopy.TypeTree(tree)
+      case TypeTreeWithDeferredRefCheck() =>
+        treeCopy.TypeTreeWithDeferredRefCheck(tree)
       case Annotated(annot, arg) =>
         treeCopy.Annotated(tree, transform(annot), transform(arg))
       case SingletonTypeTree(ref) =>
@@ -878,6 +898,8 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
         traverse(definition) 
       case Parens(ts) =>
         traverseTrees(ts)
+      case TypeTreeWithDeferredRefCheck() => // TODO: should we traverse the wrapped tree?
+      // (and rewrap the result? how to update the deferred check? would need to store wrapped tree instead of returning it from check)
       case _ => super.traverse(tree)
     }
     
@@ -941,6 +963,21 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
 
   lazy val EmptyTreeTypeSubstituter = new TreeTypeSubstituter(List(), List())
 
+  class TreeSymSubstTraverser(val from: List[Symbol], val to: List[Symbol]) extends Traverser {
+    val subst = new SubstSymMap(from, to)
+    override def traverse(tree: Tree) {
+      if (tree.tpe ne null) tree.tpe = subst(tree.tpe)
+      if (tree.isDef) {
+        val sym = tree.symbol
+        val info1 = subst(sym.info)
+        if (info1 ne sym.info) sym.setInfo(info1)
+      }
+      super.traverse(tree)
+    }
+    override def apply[T <: Tree](tree: T): T = super.apply(tree.duplicate)
+    override def toString() = "TreeSymSubstTraverser("+from+","+to+")"
+  }
+
   /** Substitute symbols in 'from' with symbols in 'to'. Returns a new
    *  tree using the new symbols and whose Ident and Select nodes are
    *  name-consistent with the new symbols. 
@@ -1002,6 +1039,13 @@ trait Trees extends reflect.generic.Trees { self: SymbolTable =>
     posAssigner.pos = pos
     posAssigner.traverse(tree)
     tree
+  }
+  
+  class ForeachPartialTreeTraverser(pf: PartialFunction[Tree, Tree]) extends Traverser {
+    override def traverse(tree: Tree) {
+      val t = if (pf isDefinedAt tree) pf(tree) else tree
+      super.traverse(t)
+    }
   }
 
   class ForeachTreeTraverser(f: Tree => Unit) extends Traverser {

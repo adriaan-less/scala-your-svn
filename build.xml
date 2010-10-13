@@ -133,7 +133,7 @@ END-USER TARGETS
     description="Requires forkjoin library to be rebuilt. Add this target before any other if class file format is incompatible.">
     <property name="forkjoin.outdated" value="yes"/>
   </target>
-
+  
 <!-- ===========================================================================
 PROPERTIES
 ============================================================================ -->
@@ -184,7 +184,7 @@ PROPERTIES
 
   <!-- if ANT_OPTS is already set by the environment, it will be unaltered,
        but if it is unset it will take this default value. -->
-  <property name="env.ANT_OPTS" value="-Xms512M -Xmx1536M -Xss1M -XX:MaxPermSize=128M" />
+  <property name="env.ANT_OPTS" value="-Xms1536M -Xmx1536M -Xss1M -XX:MaxPermSize=192M -XX:+UseParallelGC" />
   <!--  to find max heap usage: -Xaprof ; currently at 980M for locker.comp -->
   <echo message="Using ANT_OPTS: ${env.ANT_OPTS}" />
 
@@ -231,11 +231,7 @@ INITIALISATION
       <equals arg1="${svn.number.svn}" arg2="0" />
       <then>
         <!-- Finding SVN revision, git style -->
-        <exec osfamily="unix" executable="tools/git-get-rev" outputproperty="svn.number.git" failifexecutionfails="false" />
-        <propertyregex
-          property="svn.number" input="${svn.number.git}" select="\1"
-          regexp="\D*?(\d+)"
-          defaultValue="0"/>
+        <exec osfamily="unix" executable="tools/get-git-svn-rev" outputproperty="svn.number" failifexecutionfails="false" />
       </then>
       <else>
         <property name="svn.number" value="${svn.number.svn}" />
@@ -261,6 +257,15 @@ INITIALISATION
       <pathelement location="${lib.dir}/forkjoin.jar"/>
       <pathelement location="${ant.jar}"/>
     </path>
+    <!-- What to have on the compilation path when compiling during certain phases -->
+    <path id="quick.compilation.path">
+      <pathelement location="${build-quick.dir}/classes/library"/>
+      <pathelement location="${lib.dir}/forkjoin.jar"/>
+    </path>
+    <path id="strap.compilation.path">
+      <pathelement location="${build-strap.dir}/classes/library"/>
+      <pathelement location="${lib.dir}/forkjoin.jar"/>
+    </path>  
     <taskdef resource="scala/tools/ant/sabbus/antlib.xml" classpathref="starr.classpath"/>
   </target>
 
@@ -304,6 +309,7 @@ LOCAL REFERENCE BUILD (LOCKER)
       <include name="**/*.scala"/>
       <compilationpath>
         <pathelement location="${build-locker.dir}/classes/library"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
       </compilationpath>
     </scalacfork>
     <propertyfile file="${build-locker.dir}/classes/library/library.properties">
@@ -357,6 +363,7 @@ LOCAL REFERENCE BUILD (LOCKER)
         <include name="**/*.tmpl"/>
         <include name="**/*.xml"/>
         <include name="**/*.js"/>
+        <include name="**/*.html"/>
         <include name="**/*.css"/>
         <include name="**/*.properties"/>
         <include name="**/*.swf"/>
@@ -437,14 +444,13 @@ QUICK BUILD (QUICK)
 ============================================================================ -->
   
   <target name="quick.start" depends="locker.done"/>
-  
+
   <target name="quick.pre-lib" depends="quick.start">
     <uptodate property="quick.lib.available" targetfile="${build-quick.dir}/library.complete">
       <srcfiles dir="${src.dir}">
         <include name="library/**"/>
         <include name="dbc/**"/>
         <include name="actors/**"/>
-	<include name="parallel-collections/**"/>
         <include name="continuations/**"/>
         <include name="swing/**"/>
       </srcfiles>
@@ -478,9 +484,7 @@ QUICK BUILD (QUICK)
       srcdir="${src.dir}/library"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-quick.dir}/classes/library"/>
-      </compilationpath>
+      <compilationpath refid="quick.compilation.path"/>
     </scalacfork>
     <scalacfork
       destdir="${build-quick.dir}/classes/library"
@@ -489,22 +493,7 @@ QUICK BUILD (QUICK)
       srcdir="${src.dir}/actors"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-quick.dir}/classes/library"/>
-        <pathelement location="${lib.dir}/forkjoin.jar"/>
-      </compilationpath>
-    </scalacfork>
-    <scalacfork
-      destdir="${build-quick.dir}/classes/library"
-      compilerpathref="locker.classpath"
-      params="${scalac.args.quick}"
-      srcdir="${src.dir}/parallel-collections"
-      jvmargs="${scalacfork.jvmargs}">
-      <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-quick.dir}/classes/library"/>
-        <pathelement location="${lib.dir}/forkjoin.jar"/>
-      </compilationpath>
+      <compilationpath refid="quick.compilation.path"/>
     </scalacfork>
     <scalacfork
       destdir="${build-quick.dir}/classes/library"
@@ -513,9 +502,7 @@ QUICK BUILD (QUICK)
       srcdir="${src.dir}/dbc"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-quick.dir}/classes/library"/>
-      </compilationpath>
+      <compilationpath refid="quick.compilation.path"/>
     </scalacfork>
     <scalacfork
       destdir="${build-quick.dir}/classes/library"
@@ -524,9 +511,7 @@ QUICK BUILD (QUICK)
       srcdir="${src.dir}/swing"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-quick.dir}/classes/library"/>
-      </compilationpath>
+      <compilationpath refid="quick.compilation.path"/>
     </scalacfork>
     <propertyfile file="${build-quick.dir}/classes/library/library.properties">
       <entry key="version.number" value="${version.number}"/>
@@ -600,6 +585,7 @@ QUICK BUILD (QUICK)
         <include name="**/*.xml"/>
         <include name="**/*.js"/>
         <include name="**/*.css"/>
+        <include name="**/*.html"/>
         <include name="**/*.properties"/>
         <include name="**/*.swf"/>
         <include name="**/*.png"/>
@@ -629,6 +615,7 @@ QUICK BUILD (QUICK)
         <pathelement location="${build-quick.dir}/classes/library"/>
         <pathelement location="${build-quick.dir}/classes/compiler"/>
         <pathelement location="${build-quick.dir}/classes/continuations-plugin"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
       </compilationpath>
     </scalacfork>
     <copy
@@ -647,16 +634,29 @@ QUICK BUILD (QUICK)
       srcdir="${src.dir}/continuations/library"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-quick.dir}/classes/library"/>
-        <pathelement location="${lib.dir}/forkjoin.jar"/>
-      </compilationpath>
+      <compilationpath refid="quick.compilation.path"/>
     </scalacfork>
     <touch file="${build-quick.dir}/plugins.complete" verbose="no"/>
     <stopwatch name="quick.plugins.timer" action="total"/>
   </target>
-
-  <target name="quick.pre-scalap" depends="quick.plugins">
+  
+  <target name="quick.scalacheck" depends="quick.plugins">
+    <mkdir dir="${build-quick.dir}/classes/scalacheck"/>
+    <scalacfork
+      destdir="${build-quick.dir}/classes/scalacheck"
+      compilerpathref="locker.classpath"
+      params="${scalac.args.all}"
+      srcdir="${src.dir}/scalacheck"
+      jvmargs="${scalacfork.jvmargs}">
+      <include name="**/*.scala"/>
+      <compilationpath>
+        <pathelement location="${build-quick.dir}/classes/library"/>
+        <pathelement location="${build-quick.dir}/classes/scalacheck"/>
+      </compilationpath>
+    </scalacfork>
+  </target>
+  
+  <target name="quick.pre-scalap" depends="quick.scalacheck">
     <uptodate property="quick.scalap.available" targetfile="${build-quick.dir}/scalap.complete">
       <srcfiles dir="${src.dir}/scalap"/>
     </uptodate>
@@ -678,6 +678,7 @@ QUICK BUILD (QUICK)
         <pathelement location="${build-quick.dir}/classes/scalap"/>
         <pathelement location="${build-quick.dir}/classes/partest"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
       </compilationpath>
     </scalacfork>
     <touch file="${build-quick.dir}/scalap.complete" verbose="no"/>
@@ -719,6 +720,7 @@ QUICK BUILD (QUICK)
         <pathelement location="${build-quick.dir}/classes/scalap"/>
         <pathelement location="${build-quick.dir}/classes/partest"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
         <pathelement location="${scalacheck.jar}"/>
       </compilationpath>
     </scalacfork>
@@ -785,7 +787,7 @@ QUICK BUILD (QUICK)
     <chmod perm="ugo+rx" file="${build-quick.dir}/bin/scalap"/>
     <touch file="${build-quick.dir}/bin.complete" verbose="no"/>
   </target>
-
+  
   <target name="quick.done" depends="quick.bin">
     <path id="quick.classpath">
       <pathelement location="${build-quick.dir}/classes/library"/>
@@ -837,7 +839,7 @@ PACKED QUICK BUILD (PACK)
       </fileset>
     </jar>
   </target>
-
+  
   <target name="pack.pre-comp" depends="pack.lib">
     <uptodate
       property="pack.comp.available"
@@ -875,7 +877,13 @@ PACKED QUICK BUILD (PACK)
     </jar>
   </target>
   
-  <target name="pack.pre-partest" depends="pack.plugins">
+  <target name="pack.scalacheck" depends="pack.plugins">
+    <jar destfile="${build-pack.dir}/lib/scalacheck.jar">
+      <fileset dir="${build-quick.dir}/classes/scalacheck"/>
+    </jar>
+  </target>
+  
+  <target name="pack.pre-partest" depends="pack.scalacheck">
     <uptodate
       property="pack.partest.available"
       targetfile="${build-pack.dir}/lib/scala-partest.jar"
@@ -1009,9 +1017,7 @@ BOOTSTRAPPING BUILD (STRAP)
       srcdir="${src.dir}/library"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-strap.dir}/classes/library"/>
-      </compilationpath>
+      <compilationpath refid="strap.compilation.path"/>
     </scalacfork>
     <scalacfork
       destdir="${build-strap.dir}/classes/library"
@@ -1020,22 +1026,7 @@ BOOTSTRAPPING BUILD (STRAP)
       srcdir="${src.dir}/actors"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-strap.dir}/classes/library"/>
-        <pathelement location="${forkjoin.jar}"/>
-      </compilationpath>
-    </scalacfork>
-    <scalacfork
-      destdir="${build-strap.dir}/classes/library"
-      compilerpathref="pack.classpath"
-      params="${scalac.args.all}"
-      srcdir="${src.dir}/parallel-collections"
-      jvmargs="${scalacfork.jvmargs}">
-      <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-strap.dir}/classes/library"/>
-        <pathelement location="${forkjoin.jar}"/>
-      </compilationpath>
+      <compilationpath refid="strap.compilation.path"/>
     </scalacfork>
     <scalacfork
       destdir="${build-strap.dir}/classes/library"
@@ -1044,9 +1035,7 @@ BOOTSTRAPPING BUILD (STRAP)
       srcdir="${src.dir}/dbc"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-strap.dir}/classes/library"/>
-      </compilationpath>
+      <compilationpath refid="strap.compilation.path"/>
     </scalacfork>
     <scalacfork
       destdir="${build-strap.dir}/classes/library"
@@ -1055,9 +1044,7 @@ BOOTSTRAPPING BUILD (STRAP)
       srcdir="${src.dir}/swing"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-strap.dir}/classes/library"/>
-      </compilationpath>
+      <compilationpath refid="strap.compilation.path"/>
     </scalacfork>
     <propertyfile file="${build-strap.dir}/classes/library/library.properties">
       <entry key="version.number" value="${version.number}"/>
@@ -1111,6 +1098,7 @@ BOOTSTRAPPING BUILD (STRAP)
         <include name="**/*.xml"/>
         <include name="**/*.js"/>
         <include name="**/*.css"/>
+        <include name="**/*.html"/>
         <include name="**/*.properties"/>
         <include name="**/*.swf"/>
         <include name="**/*.png"/>
@@ -1140,6 +1128,7 @@ BOOTSTRAPPING BUILD (STRAP)
         <pathelement location="${build-strap.dir}/classes/library"/>
         <pathelement location="${build-strap.dir}/classes/compiler"/>
         <pathelement location="${build-strap.dir}/classes/continuations-plugin"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
       </compilationpath>
     </scalacfork>
     <copy
@@ -1158,16 +1147,28 @@ BOOTSTRAPPING BUILD (STRAP)
       srcdir="${src.dir}/continuations/library"
       jvmargs="${scalacfork.jvmargs}">
       <include name="**/*.scala"/>
-      <compilationpath>
-        <pathelement location="${build-strap.dir}/classes/library"/>
-        <pathelement location="${lib.dir}/forkjoin.jar"/>
-      </compilationpath>
+      <compilationpath refid="strap.compilation.path"/>
     </scalacfork>
     <touch file="${build-strap.dir}/plugins.complete" verbose="no"/>
     <stopwatch name="strap.plugins.timer" action="total"/>
   </target>
+  
+  <target name="strap.scalacheck" depends="strap.plugins">
+    <mkdir dir="${build-strap.dir}/classes/scalacheck"/>
+    <scalacfork
+      destdir="${build-strap.dir}/classes/scalacheck"
+      compilerpathref="pack.classpath"
+      params="${scalac.args.all}"
+      srcdir="${src.dir}/scalacheck"
+      jvmargs="${scalacfork.jvmargs}">
+      <include name="**/*.scala"/>
+      <compilationpath>
+	<pathelement location="${build-strap.dir}/classes/library"/>
+      </compilationpath>
+    </scalacfork>
+  </target>
 
-  <target name="strap.pre-scalap" depends="strap.plugins">
+  <target name="strap.pre-scalap" depends="strap.scalacheck">
     <uptodate property="strap.scalap.available" targetfile="${build-strap.dir}/scalap.complete">
       <srcfiles dir="${src.dir}/scalap"/>
     </uptodate>
@@ -1189,6 +1190,7 @@ BOOTSTRAPPING BUILD (STRAP)
         <pathelement location="${build-strap.dir}/classes/scalap"/>
         <pathelement location="${build-strap.dir}/classes/partest"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
       </compilationpath>
     </scalacfork>
     <touch file="${build-strap.dir}/scalap.complete" verbose="no"/>
@@ -1229,8 +1231,9 @@ BOOTSTRAPPING BUILD (STRAP)
         <pathelement location="${build-strap.dir}/classes/compiler"/>
         <pathelement location="${build-strap.dir}/classes/scalap"/>
         <pathelement location="${build-strap.dir}/classes/partest"/>
-        <pathelement location="${scalacheck.jar}"/>
         <pathelement location="${ant.jar}"/>
+        <pathelement location="${lib.dir}/forkjoin.jar"/>
+        <pathelement location="${scalacheck.jar}"/>
       </compilationpath>
     </scalacfork>
     <copy todir="${build-strap.dir}/classes/partest">
@@ -1295,7 +1298,7 @@ LIBRARIES (MSIL, FJBG maybe later)
       <fileset dir="${build-libs.dir}/classes/forkjoin"/>
     </jar>
   </target>
-  
+    
   <target name="libs.pre-msil" depends="libs.start">
     <uptodate property="libs.msil.available" targetfile="${build-libs.dir}/msil.complete">
       <srcfiles dir="${src.dir}/msil">
@@ -1376,7 +1379,7 @@ LIBRARIES (MSIL, FJBG maybe later)
   <target name="libs.done" depends="libs.msilpack, libs.fjbgpack"/>
 
   <target name="forkjoin.done" depends="libs.forkjoinpack"/>
-
+  
   <target name="libs.clean" depends="pack.clean">
     <delete dir="${build-libs.dir}" includeemptydirs="yes" quiet="yes" failonerror="no"/>
   </target>
@@ -1393,7 +1396,6 @@ DOCUMENTATION
         <include name="library/**"/>
         <include name="dbc/**"/>
         <include name="actors/**"/>
-	<include name="parallel-collections/**"/>
         <include name="swing/**"/>
       </srcfiles>
     </uptodate>
@@ -1406,12 +1408,11 @@ DOCUMENTATION
       destdir="${build-docs.dir}/library"
       doctitle="Scala Standard Library"
       docversion="${version.number}"
-      docsourceurl="https://lampsvn.epfl.ch/trac/scala/browser/scala/trunk/src/"
+      docsourceurl="https://lampsvn.epfl.ch/trac/scala/browser/scala/trunk/src/€{FILE_PATH}.scala#L1"
       sourcepath="${src.dir}"
       classpathref="pack.classpath">
       <src>
         <files includes="${src.dir}/actors"/>
-	<files includes="${src.dir}/parallel-collections"/>
         <files includes="${src.dir}/library/scala"/>
         <files includes="${src.dir}/swing"/>
         <files includes="${src.dir}/continuations/library"/>
@@ -1494,7 +1495,7 @@ DOCUMENTATION
       destdir="${build-docs.dir}/compiler"
       doctitle="Scala Compiler"
       docversion="${version.number}"
-      docsourceurl="https://lampsvn.epfl.ch/trac/scala/browser/scala/trunk/src/"
+      docsourceurl="https://lampsvn.epfl.ch/trac/scala/browser/scala/trunk/src/€{FILE_PATH}.scala#L1"
       sourcepath="${src.dir}"
       classpathref="pack.classpath"
       srcdir="${src.dir}/compiler">
@@ -1563,11 +1564,13 @@ BOOTRAPING TEST AND TEST SUITE
         <include name="run/**/*.scala"/>
       </runtests>
       <jvmtests dir="${partest.dir}/${partest.srcdir}/jvm" includes="*.scala"/>
-	  <scalachecktests dir="${partest.dir}/${partest.srcdir}/scalacheck" includes="**/*.scala"/>
       <residenttests dir="${partest.dir}/${partest.srcdir}/res" includes="*.res"/>
       <buildmanagertests dir="${partest.dir}/${partest.srcdir}/buildmanager" includes="*"/>
       <shootouttests dir="${partest.dir}/${partest.srcdir}/shootout" includes="*.scala"/>
       <scalaptests dir="${partest.dir}/${partest.srcdir}/scalap" includes="**/*.scala"/>
+      <scalachecktests dir="${partest.dir}/${partest.srcdir}/scalacheck">
+	<include name="*.scala"/>
+      </scalachecktests>
       <!-- <scripttests dir="${partest.dir}/${partest.srcdir}/script" includes="*.scala"/> -->
     </partest>
   </target>
@@ -1589,7 +1592,18 @@ BOOTRAPING TEST AND TEST SUITE
     </partest>
   </target>
 
-  <target name="test.done" depends="test.suite, test.continuations.suite, test.stability"/>
+  <target name="test.scaladoc" depends="pack.done">
+    <partest erroronfailed="yes" scalacopts="${scalac.args.optimise}">
+      <compilationpath>
+        <path refid="pack.classpath"/>
+      </compilationpath>
+      <scalachecktests dir="test/scaladoc">
+	<include name="*.scala"/>
+      </scalachecktests>
+    </partest>
+  </target>
+
+  <target name="test.done" depends="test.suite, test.continuations.suite, test.scaladoc, test.stability"/>
 
 <!-- ===========================================================================
 DISTRIBUTION
@@ -1651,7 +1665,6 @@ DISTRIBUTION
     <jar destfile="${dist.dir}/src/scala-library-src.jar">
       <fileset dir="${src.dir}/library"/>
       <fileset dir="${src.dir}/actors"/>
-      <fileset dir="${src.dir}/parallel-collections"/>
       <fileset dir="${src.dir}/continuations/library"/>
     </jar>
     <jar destfile="${dist.dir}/src/scala-dbc-src.jar">
@@ -1740,7 +1753,6 @@ STABLE REFERENCE (STARR)
     <jar destfile="${basedir}/lib/scala-library-src.jar">
       <fileset dir="${basedir}/src/library"/>
       <fileset dir="${basedir}/src/actors"/>
-      <fileset dir="${basedir}/src/parallel-collections"/>
       <fileset dir="${basedir}/src/swing"/>
       <fileset dir="${basedir}/src/dbc"/>
     </jar>

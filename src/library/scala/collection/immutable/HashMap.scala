@@ -14,6 +14,10 @@ package immutable
 import generic._
 import annotation.unchecked.uncheckedVariance
 
+
+import parallel.immutable.ParHashMap
+
+
 /** This class implements immutable maps using a hash trie.
  *  
  *  '''Note:''' the builder of a hash map returns specialized representations EmptyMap,Map1,..., Map4
@@ -32,7 +36,7 @@ import annotation.unchecked.uncheckedVariance
  *  @define willNotTerminateInf
  */
 @serializable @SerialVersionUID(2L)
-class HashMap[A, +B] extends Map[A,B] with MapLike[A, B, HashMap[A, B]] {
+class HashMap[A, +B] extends Map[A,B] with MapLike[A, B, HashMap[A, B]] with Parallelizable[ParHashMap[A, B]] {
 
   override def size: Int = 0
 
@@ -46,10 +50,10 @@ class HashMap[A, +B] extends Map[A,B] with MapLike[A, B, HashMap[A, B]] {
     get0(key, computeHash(key), 0)
 
   override def updated [B1 >: B] (key: A, value: B1): HashMap[A, B1] =
-    updated0(key, computeHash(key), 0, value, null)
+    updated0(key, computeHash(key), 0, value, null, null)
 
   override def + [B1 >: B] (kv: (A, B1)): HashMap[A, B1] =
-    updated0(kv._1, computeHash(kv._1), 0, kv._2, kv)
+    updated0(kv._1, computeHash(kv._1), 0, kv._2, kv, null)
 
   override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *): HashMap[A, B1] =
     this + elem1 + elem2 ++ elems
@@ -68,10 +72,12 @@ class HashMap[A, +B] extends Map[A,B] with MapLike[A, B, HashMap[A, B]] {
   }
   
   protected def computeHash(key: A) = improve(elemHashCode(key))
+  
+  protected type Merger[B1] = ((A, B1), (A, B1)) => (A, B1)
 
   protected def get0(key: A, hash: Int, level: Int): Option[B] = None
 
-  protected def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1)): HashMap[A, B1] = 
+  def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1), merger: Merger[B1]): HashMap[A, B1] = 
     new HashMap.HashMap1(key, hash, value, kv)
 
   protected def removed0(key: A, hash: Int, level: Int): HashMap[A, B] = this
@@ -80,9 +86,11 @@ class HashMap[A, +B] extends Map[A,B] with MapLike[A, B, HashMap[A, B]] {
   
   def split: Seq[HashMap[A, B]] = Seq(this)
   
-  def combine[B1 >: B](that: HashMap[A, B1]): HashMap[A, B1] = combine0(that, 0)
+  def merge[B1 >: B](that: HashMap[A, B1], merger: Merger[B1] = null): HashMap[A, B1] = merge0(that, 0, merger)
   
-  protected def combine0[B1 >: B](that: HashMap[A, B1], level: Int): HashMap[A, B1] = that
+  protected def merge0[B1 >: B](that: HashMap[A, B1], level: Int, merger: Merger[B1]): HashMap[A, B1] = that
+  
+  def par = ParHashMap.fromTrie(this)
   
 }
 
@@ -104,13 +112,6 @@ object HashMap extends ImmutableMapFactory[HashMap] {
   
   // TODO: add HashMap2, HashMap3, ...
   
-  // statistics - will remove in future
-  var dives = 0
-  var colls = 0
-  var two_colls = 0
-  var two_nocolls = 0
-
-  
   class HashMap1[A,+B](private[HashMap] var key: A, private[HashMap] var hash: Int, private[HashMap] var value: (B @uncheckedVariance), private[HashMap] var kv: (A,B @uncheckedVariance)) extends HashMap[A,B] {
     override def size = 1
 
@@ -123,18 +124,20 @@ object HashMap extends ImmutableMapFactory[HashMap] {
     //     var thatindex = (hash >>> level) & 0x1f
     //     var thisindex = (this.hash >>> level) & 0x1f
     //     if (hash != this.hash) {
-    //       //new HashTrieMap[A,B1](level+5, this, new HashMap1(key, hash, value, kv)) 
+    //       --new HashTrieMap[A,B1](level+5, this, new HashMap1(key, hash, value, kv)) 
     //       val m = new HashTrieMap[A,B1](0,new Array[HashMap[A,B1]](0),0) // TODO: could save array alloc
-    //       m.updated0(this.key, this.hash, level, this.value, this.kv).updated0(key, hash, level, value, kv) // TODO and it will
+    //       m.updated0(this.key, this.hash, level, this.value, this.kv).updated0(key, hash, level, value, kv)  TODO and it will
     //     } else {
-    //       // 32-bit hash collision (rare, but not impossible)
+    //        32-bit hash collision (rare, but not impossible)
     //       new HashMapCollision1(hash, ListMap.empty.updated(this.key,this.value).updated(key,value))
     //     }
     //   }
-
-    override def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1)): HashMap[A, B1] = 
-      if (hash == this.hash && key == this.key) new HashMap1(key, hash, value, kv)
-      else {
+    
+    override def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1), merger: Merger[B1]): HashMap[A, B1] = 
+      if (hash == this.hash && key == this.key ) {
+        if (merger eq null) new HashMap1(key, hash, value, kv)
+        else new HashMap1(key, hash, value, merger(this.kv, kv))
+      } else {
         var thatindex = (hash >>> level) & 0x1f
         var thisindex = (this.hash >>> level) & 0x1f
         if (hash != this.hash) {
@@ -171,7 +174,9 @@ object HashMap extends ImmutableMapFactory[HashMap] {
     override def iterator: Iterator[(A,B)] = Iterator(ensurePair)
     override def foreach[U](f: ((A, B)) => U): Unit = f(ensurePair)
     private[HashMap] def ensurePair: (A,B) = if (kv ne null) kv else { kv = (key, value); kv }
-    protected override def combine0[B1 >: B](that: HashMap[A, B1], level: Int): HashMap[A, B1] = that.updated0(key, hash, level, value, kv)
+    protected override def merge0[B1 >: B](that: HashMap[A, B1], level: Int, merger: Merger[B1]): HashMap[A, B1] = {
+      that.updated0(key, hash, level, value, kv, merger)
+    }
   }
 
   private class HashMapCollision1[A,+B](private[HashMap] var hash: Int, var kvs: ListMap[A,B @uncheckedVariance]) extends HashMap[A,B] {
@@ -180,14 +185,16 @@ object HashMap extends ImmutableMapFactory[HashMap] {
     override def get0(key: A, hash: Int, level: Int): Option[B] = 
       if (hash == this.hash) kvs.get(key) else None
 
-    override def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1)): HashMap[A, B1] = 
-      if (hash == this.hash) new HashMapCollision1(hash, kvs.updated(key, value))
-      else {
+    override def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1), merger: Merger[B1]): HashMap[A, B1] = 
+      if (hash == this.hash) {
+        if ((merger eq null) || !kvs.contains(key)) new HashMapCollision1(hash, kvs.updated(key, value))
+        else new HashMapCollision1(hash, kvs + merger((key, kvs(key)), kv))
+      } else {
         var m: HashMap[A,B1] = new HashTrieMap[A,B1](0,new Array[HashMap[A,B1]](0),0)
         // might be able to save some ops here, but it doesn't seem to be worth it
         for ((k,v) <- kvs)
-          m = m.updated0(k, this.hash, level, v, null)
-        m.updated0(key, hash, level, value, kv)
+          m = m.updated0(k, this.hash, level, v, null, merger)
+        m.updated0(key, hash, level, value, kv, merger)
       }
       
     override def removed0(key: A, hash: Int, level: Int): HashMap[A, B] = 
@@ -206,10 +213,10 @@ object HashMap extends ImmutableMapFactory[HashMap] {
       def newhm(lm: ListMap[A, B @uncheckedVariance]) = new HashMapCollision1(hash, lm)
       List(newhm(x), newhm(y))
     }
-    protected override def combine0[B1 >: B](that: HashMap[A, B1], level: Int): HashMap[A, B1] = {
+    protected override def merge0[B1 >: B](that: HashMap[A, B1], level: Int, merger: Merger[B1]): HashMap[A, B1] = {
       // this can be made more efficient by passing the entire ListMap at once
       var m = that
-      for (p <- kvs) m = m.updated0(p._1, this.hash, level, p._2, p)
+      for (p <- kvs) m = m.updated0(p._1, this.hash, level, p._2, p, merger)
       m
     }
   }
@@ -249,7 +256,7 @@ object HashMap extends ImmutableMapFactory[HashMap] {
         None
     }
     
-    override def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1)): HashMap[A, B1] = {
+    override def updated0[B1 >: B](key: A, hash: Int, level: Int, value: B1, kv: (A, B1), merger: Merger[B1]): HashMap[A, B1] = {
       val index = (hash >>> level) & 0x1f
       val mask = (1 << index)
       val offset = Integer.bitCount(bitmap & (mask-1))
@@ -258,7 +265,7 @@ object HashMap extends ImmutableMapFactory[HashMap] {
         Array.copy(elems, 0, elemsNew, 0, elems.length)
         val sub = elems(offset)
         // TODO: might be worth checking if sub is HashTrieMap (-> monomorphic call site)
-        val subNew = sub.updated0(key, hash, level + 5, value, kv)
+        val subNew = sub.updated0(key, hash, level + 5, value, kv, merger)
         elemsNew(offset) = subNew
         new HashTrieMap(bitmap, elemsNew, size + (subNew.size - sub.size))
       } else {
@@ -266,8 +273,7 @@ object HashMap extends ImmutableMapFactory[HashMap] {
         Array.copy(elems, 0, elemsNew, 0, offset)
         elemsNew(offset) = new HashMap1(key, hash, value, kv)
         Array.copy(elems, offset, elemsNew, offset + 1, elems.length - offset)
-        val bitmapNew = bitmap | mask
-        new HashTrieMap(bitmapNew, elemsNew, size + 1)
+        new HashTrieMap(bitmap | mask, elemsNew, size + 1)
       }
     }
 
@@ -301,78 +307,7 @@ object HashMap extends ImmutableMapFactory[HashMap] {
       }
     }
 
-/*
-    override def iterator = {   // TODO: optimize (use a stack to keep track of pos)
-      
-      def iter(m: HashTrieMap[A,B], k: => Stream[(A,B)]): Stream[(A,B)] = {
-        def horiz(elems: Array[HashMap[A,B]], i: Int, k: => Stream[(A,B)]): Stream[(A,B)] = {
-          if (i < elems.length) {
-            elems(i) match {
-              case m: HashTrieMap[A,B] => iter(m, horiz(elems, i+1, k))
-              case m: HashMap1[A,B] => new Stream.Cons(m.ensurePair, horiz(elems, i+1, k))
-            }
-          } else k
-        }
-        horiz(m.elems, 0, k)
-      }
-      iter(this, Stream.empty).iterator
-    }
-*/
-
-
-    override def iterator = new Iterator[(A,B)] {
-      private[this] var depth = 0
-      private[this] var arrayStack = new Array[Array[HashMap[A,B]]](6)
-      private[this] var posStack = new Array[Int](6)
-
-      private[this] var arrayD = elems
-      private[this] var posD = 0
-
-      private[this] var subIter: Iterator[(A,B)] = null // to traverse collision nodes
-
-      def hasNext = (subIter ne null) || depth >= 0
-      
-      def next: (A,B) = {
-        if (subIter ne null) {
-          val el = subIter.next
-          if (!subIter.hasNext)
-            subIter = null
-          el
-        } else
-          next0(arrayD, posD)
-      }
-      
-      @scala.annotation.tailrec private[this] def next0(elems: Array[HashMap[A,B]], i: Int): (A,B) = {
-        if (i == elems.length-1) { // reached end of level, pop stack
-          depth -= 1
-          if (depth >= 0) {
-            arrayD = arrayStack(depth)
-            posD = posStack(depth)
-            arrayStack(depth) = null
-          } else {
-            arrayD = null
-            posD = 0
-          }
-        } else
-          posD += 1
-
-        elems(i) match {
-          case m: HashTrieMap[A,B] => // push current pos onto stack and descend
-            if (depth >= 0) {
-              arrayStack(depth) = arrayD
-              posStack(depth) = posD
-            }
-            depth += 1
-            arrayD = m.elems
-            posD = 0
-            next0(m.elems, 0)
-          case m: HashMap1[A,B] => m.ensurePair
-          case m =>
-            subIter = m.iterator
-            subIter.next
-        }
-      }
-    }
+    override def iterator = new TrieIterator[A, B](elems)
 
 /*
 
@@ -427,34 +362,36 @@ time { mNew.iterator.foreach( p => ()) }
       i
     }
     
-    override def split: Seq[HashMap[A, B]] = {
-      // printBitmap(bitmap)
-      // println(elems.toList)
-      
-      // println("subtrees: " + Integer.bitCount(bitmap))
-      // println("will split at: " + posOf(Integer.bitCount(bitmap) / 2, bitmap))
-      val splitpoint = posOf(Integer.bitCount(bitmap) / 2, bitmap) 
-      val bm1 = bitmap & (-1 << splitpoint)
-      val bm2 = bitmap & (-1 >>> (32 - splitpoint))
-      // printBitmap(bm1)
-      // printBitmap(bm2)
-      val (e1, e2) = elems.splitAt(splitpoint)
-      // println(e1.toList)
-      // println(e2.toList)
-      val hm1 = new HashTrieMap(bm1, e1, e1.foldLeft(0)(_ + _.size))
-      val hm2 = new HashTrieMap(bm2, e2, e2.foldLeft(0)(_ + _.size))
-      
-      List(hm1, hm2)
+    override def split: Seq[HashMap[A, B]] = if (size == 1) Seq(this) else {
+      val nodesize = Integer.bitCount(bitmap)
+      if (nodesize > 1) {
+        // printBitmap(bitmap)
+        // println(elems.toList)
+        
+        // println("subtrees: " + nodesize)
+        // println("will split at: " + (nodesize / 2))
+        val splitpoint = nodesize / 2
+        val bitsplitpoint = posOf(nodesize / 2, bitmap)
+        val bm1 = bitmap & (-1 << bitsplitpoint)
+        val bm2 = bitmap & (-1 >>> (32 - bitsplitpoint))
+        // printBitmap(bm1)
+        // printBitmap(bm2)
+        val (e1, e2) = elems.splitAt(splitpoint)
+        // println(e1.toList)
+        // println(e2.toList)
+        val hm1 = new HashTrieMap(bm1, e1, e1.foldLeft(0)(_ + _.size))
+        val hm2 = new HashTrieMap(bm2, e2, e2.foldLeft(0)(_ + _.size))
+        
+        List(hm1, hm2)
+      } else elems(0).split
     }
     
-    protected override def combine0[B1 >: B](that: HashMap[A, B1], level: Int): HashMap[A, B1] = that match {
+    protected override def merge0[B1 >: B](that: HashMap[A, B1], level: Int, merger: Merger[B1]): HashMap[A, B1] = that match {
       case hm: HashMap1[_, _] =>
-        this.updated0(hm.key, hm.hash, level, hm.value.asInstanceOf[B1], hm.kv)
-      case hm: HashMapCollision1[_, _] =>
-        var m: HashMap[A, B1] = this
-        for (p <- that) m = m.updated0(p._1, computeHash(p._1), level, p._2, p)
-        m
+        // onetrie += 1
+        this.updated0(hm.key, hm.hash, level, hm.value.asInstanceOf[B1], hm.kv, merger)
       case hm: HashTrieMap[_, _] =>
+        // bothtries += 1
         val that = hm.asInstanceOf[HashTrieMap[A, B1]]
         val thiselems = this.elems
         val thatelems = that.elems
@@ -465,7 +402,7 @@ time { mNew.iterator.foreach( p => ()) }
 	val subcount = Integer.bitCount(thisbm | thatbm)
         
         // construct a new array of appropriate size
-        val combined = new Array[HashMap[A, B1 @uncheckedVariance]](subcount)
+        val merged = new Array[HashMap[A, B1]](subcount)
         
 	// run through both bitmaps and add elements to it
         var i = 0
@@ -482,9 +419,9 @@ time { mNew.iterator.foreach( p => ()) }
           // }
           if (thislsb == thatlsb) {
             // println("a collision")
-            val m = thiselems(thisi).combine0(thatelems(thati), level + 5)
+            val m = thiselems(thisi).merge0(thatelems(thati), level + 5, merger)
             totalelems += m.size
-            combined(i) = m
+            merged(i) = m
             thisbm = thisbm & ~thislsb
             thatbm = thatbm & ~thatlsb
             thati += 1
@@ -497,20 +434,20 @@ time { mNew.iterator.foreach( p => ()) }
             // and compare a and b defined as below:
             val a = thislsb - 1
             val b = thatlsb - 1
-            //  ! our case indeed is more specific, but this didn't help:
+            // ! our case indeed is more specific, but this didn't help:
             // if ((thislsb > 0 && thislsb < thatlsb) || thatlsb == 0 || (thatlsb < 0 && thislsb != 0)) {
             if ((a < b) ^ (a < 0) ^ (b < 0)) {
               // println("an element from this trie")
               val m = thiselems(thisi)
               totalelems += m.size
-              combined(i) = m
+              merged(i) = m
               thisbm = thisbm & ~thislsb
               thisi += 1
             } else {
               // println("an element from that trie")
               val m = thatelems(thati)
               totalelems += m.size
-              combined(i) = m
+              merged(i) = m
               thatbm = thatbm & ~thatlsb
               thati += 1
             }
@@ -518,19 +455,131 @@ time { mNew.iterator.foreach( p => ()) }
           i += 1
         }
         
-        val res = new HashTrieMap[A, B1](this.bitmap | that.bitmap, combined, totalelems)
-        // if (!check(this, that, res)) { TODO remove
-        //   printBitmap(this.bitmap)
-        //   printBitmap(that.bitmap)
-        //   printBitmap(res.bitmap)
-        //   println(this.bitmap)
-        //   System.exit(1)
-        // }
-        res
-      case empty: HashMap[_, _] => this
+        new HashTrieMap[A, B1](this.bitmap | that.bitmap, merged, totalelems)
+      case hm: HashMapCollision1[_, _] => that.merge0(this, level, merger)
+      case hm: HashMap[_, _] => this
       case _ => error("section supposed to be unreachable.")
     }
     
+  }
+  
+  class TrieIterator[A, +B](elems: Array[HashMap[A, B]]) extends Iterator[(A, B)] {
+    private[this] var depth = 0
+    private[this] var arrayStack = new Array[Array[HashMap[A,B]]](6)
+    private[this] var posStack = new Array[Int](6)
+    
+    private[this] var arrayD = elems
+    private[this] var posD = 0
+    
+    private[this] var subIter: Iterator[(A, B)] = null // to traverse collision nodes
+    
+    def hasNext = (subIter ne null) || depth >= 0
+    
+    def next: (A,B) = {
+      if (subIter ne null) {
+        val el = subIter.next
+        if (!subIter.hasNext)
+          subIter = null
+        el
+      } else
+        next0(arrayD, posD)
+    }
+    
+    @scala.annotation.tailrec private[this] def next0(elems: Array[HashMap[A,B]], i: Int): (A,B) = {
+      if (i == elems.length-1) { // reached end of level, pop stack
+        depth -= 1
+        if (depth >= 0) {
+          arrayD = arrayStack(depth)
+          posD = posStack(depth)
+          arrayStack(depth) = null
+        } else {
+          arrayD = null
+          posD = 0
+        }
+      } else
+        posD += 1
+      
+      elems(i) match {
+        case m: HashTrieMap[A,B] => // push current pos onto stack and descend
+          if (depth >= 0) {
+            arrayStack(depth) = arrayD
+            posStack(depth) = posD
+          }
+          depth += 1
+          arrayD = m.elems
+          posD = 0
+          next0(m.elems, 0)
+        case m: HashMap1[A,B] => m.ensurePair
+        case m =>
+          subIter = m.iterator
+          subIter.next
+      }
+    }
+    
+    // assumption: contains 2 or more elements
+    // splits this iterator into 2 iterators
+    // returns the 1st iterator, its number of elements, and the second iterator
+    def split: ((Iterator[(A, B)], Int), Iterator[(A, B)]) = {
+      // 0) simple case: no elements have been iterated - simply divide arrayD
+      if (arrayD != null && depth == 0 && posD == 0) {
+        val (fst, snd) = arrayD.splitAt(arrayD.length / 2)
+        val szfst = fst.foldLeft(0)(_ + _.size)
+        return ((new TrieIterator(fst), szfst), new TrieIterator(snd))
+      }
+      
+      // otherwise, some elements have been iterated over
+      // 1) collision case: if we have a subIter, we return subIter and elements after it
+      if (subIter ne null) {
+        val buff = subIter.toBuffer
+        subIter = null
+        ((buff.iterator, buff.length), this)
+      } else {
+        // otherwise find the topmost array stack element
+        if (depth > 0) {
+          // 2) topmost comes before (is not) arrayD
+          //    steal a portion of top to create a new iterator
+          val topmost = arrayStack(0)
+          if (posStack(0) == arrayStack(0).length - 1) {
+            // 2a) only a single entry left on top
+            // this means we have to modify this iterator - pop topmost
+            val snd = Array(arrayStack(0).last)
+            val szsnd = snd(0).size
+            // modify this - pop
+            depth -= 1
+            arrayStack = arrayStack.tail ++ Array[Array[HashMap[A, B]]](null)
+            posStack = posStack.tail ++ Array[Int](0)
+            // we know that `this` is not empty, since it had something on the arrayStack and arrayStack elements are always non-empty
+            ((new TrieIterator[A, B](snd), szsnd), this)
+          } else {
+            // 2b) more than a single entry left on top
+            val (fst, snd) = arrayStack(0).splitAt(arrayStack(0).length - (arrayStack(0).length - posStack(0) + 1) / 2)
+            arrayStack(0) = fst
+            val szsnd = snd.foldLeft(0)(_ + _.size)
+            ((new TrieIterator[A, B](snd), szsnd), this)
+          }
+        } else {
+          // 3) no topmost element (arrayD is at the top)
+          //    steal a portion of it and update this iterator
+          if (posD == arrayD.length - 1) {
+            // 3a) positioned at the last element of arrayD
+            val arr: Array[HashMap[A, B]] = arrayD(posD) match {
+              case c: HashMapCollision1[_, _] => c.asInstanceOf[HashMapCollision1[A, B]].kvs.toArray map { HashMap() + _ }
+              case ht: HashTrieMap[_, _] => ht.asInstanceOf[HashTrieMap[A, B]].elems
+              case _ => error("cannot divide single element")
+            }
+            val (fst, snd) = arr.splitAt(arr.length / 2)
+            val szsnd = snd.foldLeft(0)(_ + _.size)
+            ((new TrieIterator(snd), szsnd), new TrieIterator(fst))
+          } else {
+            // 3b) arrayD has more free elements
+            val (fst, snd) = arrayD.splitAt(arrayD.length - (arrayD.length - posD + 1) / 2)
+            arrayD = fst
+            val szsnd = snd.foldLeft(0)(_ + _.size)
+            ((new TrieIterator[A, B](snd), szsnd), this)
+          }
+        }
+      }
+    }
   }
   
   private def check[K](x: HashMap[K, _], y: HashMap[K, _], xy: HashMap[K, _]) = { // TODO remove this debugging helper

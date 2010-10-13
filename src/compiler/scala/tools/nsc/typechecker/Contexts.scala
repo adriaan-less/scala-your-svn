@@ -8,6 +8,7 @@ package typechecker
 
 import symtab.Flags._
 import scala.collection.mutable.ListBuffer
+import annotation.tailrec
 
 /** This trait ...
  *
@@ -101,7 +102,7 @@ trait Contexts { self: Analyzer =>
                                                     // not inherited to child contexts
     var depth: Int = 0
     var imports: List[ImportInfo] = List()   // currently visible imports
-    var openImplicits: List[Type] = List()   // types for which implicit arguments
+    var openImplicits: List[(Type,Symbol)] = List()   // types for which implicit arguments
                                              // are currently searched
     // for a named application block (Tree) the corresponding NamedApplyInfo
     var namedApplyBlockInfo: Option[(Tree, NamedApplyInfo)] = None
@@ -119,6 +120,8 @@ trait Contexts { self: Analyzer =>
 
     var savedTypeBounds: List[(Symbol, Type)] = List() // saved type bounds
        // for type parameters which are narrowed in a GADT
+
+    var typingIndent: String = ""
 
     def undetparams = _undetparams
     def undetparams_=(ps: List[Symbol]) = {
@@ -174,6 +177,7 @@ trait Contexts { self: Analyzer =>
       c.reportAmbiguousErrors = this.reportAmbiguousErrors
       c.reportGeneralErrors = this.reportGeneralErrors
       c.diagnostic = this.diagnostic
+      c.typingIndent = typingIndent
       c.implicitsEnabled = this.implicitsEnabled
       c.checking = this.checking
       c.retyping = this.retyping
@@ -213,8 +217,8 @@ trait Contexts { self: Analyzer =>
     def make(tree: Tree): Context =
       make(tree, owner)
 
-    def makeSilent(reportAmbiguousErrors: Boolean): Context = {
-      val c = make(tree)
+    def makeSilent(reportAmbiguousErrors: Boolean, newtree: Tree = tree): Context = {
+      val c = make(newtree)
       c.reportGeneralErrors = false
       c.reportAmbiguousErrors = reportAmbiguousErrors
       c
@@ -261,7 +265,7 @@ trait Contexts { self: Analyzer =>
     }
 
     private def unitError(pos: Position, msg: String) = 
-      unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
+      unit.error(pos, if (checking) "\n**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
 
     def error(pos: Position, err: Throwable) =
       if (reportGeneralErrors) unitError(pos, addDiagString(err.getMessage()))
@@ -349,9 +353,26 @@ trait Contexts { self: Analyzer =>
      *  @return            ...
      */
     def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
+      @inline def accessWithinLinked(ab: Symbol) = {
+        val linked = ab.linkedClassOfClass
+        // don't have access if there is no linked class
+        // (before adding the `ne NoSymbol` check, this was a no-op when linked eq NoSymbol,
+        //  since `accessWithin(NoSymbol) == true` whatever the symbol)
+        (linked ne NoSymbol) && accessWithin(linked)
+      }
 
-      /** Are we inside definition of `sym'? */
-      def accessWithin(sym: Symbol): Boolean = this.owner.ownersIterator contains sym
+      /** Are we inside definition of `ab'? */
+      def accessWithin(ab: Symbol) = {
+        // #3663: we must disregard package nesting if sym isJavaDefined
+        if(sym.isJavaDefined) {
+          // is `o` or one of its transitive owners equal to `ab`?
+          // stops at first package, since further owners can only be surrounding packages
+          @tailrec def abEnclosesStopAtPkg(o: Symbol): Boolean =
+            (o eq ab) || (!o.isPackageClass && (o ne NoSymbol) && abEnclosesStopAtPkg(o.owner))
+          abEnclosesStopAtPkg(owner)
+        } else (owner hasTransOwner ab)
+      }
+
 /*
         var c = this
         while (c != NoContext && c.owner != owner) {
@@ -373,18 +394,20 @@ trait Contexts { self: Analyzer =>
 
       (pre == NoPrefix) || {
         val ab = sym.accessBoundary(sym.owner)
-        ((ab.isTerm || ab == definitions.RootClass)
-         ||
-         (accessWithin(ab) || accessWithin(ab.linkedClassOfClass)) &&
-         (!sym.hasFlag(LOCAL) || 
-          sym.owner.isImplClass || // allow private local accesses to impl classes
-          (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner) ||
-          pre =:= sym.owner.thisType)
-         ||
-         (sym hasFlag PROTECTED) &&
-         (superAccess || sym.isConstructor ||
-          (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) && 
-           (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))))
+        (  (ab.isTerm || ab == definitions.RootClass)
+        || (accessWithin(ab) || accessWithinLinked(ab)) &&
+             (  !sym.hasFlag(LOCAL)
+             || sym.owner.isImplClass // allow private local accesses to impl classes
+             || (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner)
+             || pre =:= sym.owner.thisType
+             )
+        || (sym hasFlag PROTECTED) &&
+             (  superAccess
+             || sym.isConstructor
+             || (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) &&
+                  (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))
+             )
+        )
         // note: phase.erasedTypes disables last test, because after addinterfaces
         // implementation classes are not in the superclass chain. If we enable the
         // test, bug780 fails.

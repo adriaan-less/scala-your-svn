@@ -7,7 +7,7 @@ package scala.tools.nsc
 package transform
 
 import symtab.Flags._
-import scala.collection.mutable.{HashMap, HashSet}
+import scala.collection.{ mutable, immutable }
 
 /*<export>*/
 /** - uncurry all symbol and tree types (@see UnCurryPhase)
@@ -55,6 +55,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
   
   private val uncurry: TypeMap = new TypeMap {
     def apply(tp0: Type): Type = {
+      // tp0.typeSymbolDirect.initialize
       val tp = expandAlias(tp0)
       tp match {
         case MethodType(params, MethodType(params1, restpe)) =>
@@ -62,6 +63,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
           assert(false, "unexpected curried method types with intervening existential") 
           tp0
+        case MethodType(h :: t, restpe) if h.isImplicit =>
+          apply(MethodType(h.cloneSymbol.resetFlag(IMPLICIT) :: t, restpe))
         case PolyType(List(), restpe) => // nullary method type
           apply(MethodType(List(), restpe))
         case PolyType(tparams, restpe) => // polymorphic nullary method type, since it didn't occur in a higher-kinded position
@@ -149,13 +152,13 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     private var needTryLift = false
     private var inPattern = false
     private var inConstructorFlag = 0L
-    private val byNameArgs = new HashSet[Tree]
-    private val noApply = new HashSet[Tree]
+    private val byNameArgs = new mutable.HashSet[Tree]
+    private val noApply = new mutable.HashSet[Tree]
 
     override def transformUnit(unit: CompilationUnit) {
       freeMutableVars.clear
       freeLocalsTraverser(unit.body)
-      unit.body = transform(unit.body)
+      super.transformUnit(unit)
     }
 
     private var nprinted = 0
@@ -185,7 +188,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
      *  additional parameter sections of a case class are skipped.
      */
     def uncurryTreeType(tp: Type): Type = tp match {
-      case MethodType(params, MethodType(params1, restpe)) if (inPattern) =>
+      case MethodType(params, MethodType(params1, restpe)) if inPattern =>
         uncurryTreeType(MethodType(params, restpe))
       case _ =>
         uncurry(tp)
@@ -198,17 +201,15 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
       appliedType(NonLocalReturnControlClass.typeConstructor, List(argtype))
 
     /** A hashmap from method symbols to non-local return keys */
-    private val nonLocalReturnKeys = new HashMap[Symbol, Symbol]
+    private val nonLocalReturnKeys = new mutable.HashMap[Symbol, Symbol]
 
     /** Return non-local return key for given method */
-    private def nonLocalReturnKey(meth: Symbol) = nonLocalReturnKeys.get(meth) match {
-      case Some(k) => k
-      case None =>
-        val k = meth.newValue(meth.pos, unit.fresh.newName(meth.pos, "nonLocalReturnKey"))
-          .setFlag(SYNTHETIC).setInfo(ObjectClass.tpe)
-        nonLocalReturnKeys(meth) = k
-        k
-    }
+    private def nonLocalReturnKey(meth: Symbol) = 
+      nonLocalReturnKeys.getOrElseUpdate(meth, {
+        meth.newValue(meth.pos, unit.fresh.newName(meth.pos, "nonLocalReturnKey"))
+          .setFlag (SYNTHETIC)
+          .setInfo (ObjectClass.tpe)
+      })
 
     /** Generate a non-local return throw with given return expression from given method.
      *  I.e. for the method's non-local return key, generate:
@@ -395,26 +396,14 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           def arrayToSequence(tree: Tree, elemtp: Type) = {
             atPhase(phase.next) {
               localTyper.typedPos(pos) {
-                val predef = gen.mkAttributedRef(PredefModule)
-                val meth = 
-                  if ((elemtp <:< AnyRefClass.tpe) && !isPhantomClass(elemtp.typeSymbol))
-                    Select(predef, "wrapRefArray")
-                  else if (isValueClass(elemtp.typeSymbol))
-                    Select(predef, "wrap"+elemtp.typeSymbol.name+"Array")
-                  else
-                    TypeApply(Select(predef, "genericWrapArray"), List(TypeTree(elemtp)))
                 val pt = arrayType(elemtp)
                 val adaptedTree = // might need to cast to Array[elemtp], as arrays are not covariant
                   if (tree.tpe <:< pt) tree
-                  else gen.mkCast(
-                    if (elemtp.typeSymbol == AnyClass && isValueClass(tree.tpe.typeArgs.head.typeSymbol))
-                      gen.mkRuntimeCall("toObjectArray", List(tree))
-                    else 
-                      tree,
-                    arrayType(elemtp))
-                Apply(meth, List(adaptedTree))
+                  else gen.mkCastArray(tree, elemtp, pt)
+                
+                gen.mkWrapArray(adaptedTree, elemtp)
               }
-            } 
+            }
           }
 
           // when calling into java varargs, make sure it's an array - see bug #1360
@@ -607,7 +596,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
 
         case Assign(Select(_, _), _) =>
           withNeedLift(true) { super.transform(tree) }
-        case Assign(lhs, _) if lhs.symbol.owner != currentMethod =>
+          
+        case Assign(lhs, _) if lhs.symbol.owner != currentMethod || lhs.symbol.hasFlag(LAZY | ACCESSOR) =>
           withNeedLift(true) { super.transform(tree) }
 
         case Try(block, catches, finalizer) =>
@@ -626,7 +616,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
         case Template(_, _, _) =>
           withInConstructorFlag(0) { super.transform(tree) }
 
-        case _ => 
+        case _ =>
           val tree1 = super.transform(tree)
           if (isByNameRef(tree1)) {
             val tree2 = tree1 setType functionType(List(), tree1.tpe)
@@ -639,7 +629,10 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
           }
           tree1
       }
-    } setType uncurryTreeType(tree.tpe)
+    } setType {
+      assert(tree.tpe != null, tree + " tpe is null")
+      uncurryTreeType(tree.tpe)
+    }
 
     def postTransform(tree: Tree): Tree = atPhase(phase.next) {
       def applyUnary(): Tree = {
@@ -708,21 +701,54 @@ abstract class UnCurry extends InfoTransform with TypingTransformers {
     }
   }
   
-  import collection.mutable
   /** Set of mutable local variables that are free in some inner method. */
   private val freeMutableVars: mutable.Set[Symbol] = new mutable.HashSet
   
+  /** PP: There is apparently some degree of overlap between the CAPTURED
+   *  flag and the role being filled here.  I think this is how this was able
+   *  to go for so long looking only at DefDef and Ident nodes, as bugs
+   *  would only emerge under more complicated conditions such as #3855.
+   *  I'll try to figure it all out, but if someone who already knows the
+   *  whole story wants to fill it in, that too would be great.
+   */   
   private val freeLocalsTraverser = new Traverser {
     var currentMethod: Symbol = NoSymbol
+    var maybeEscaping = false
+    
+    def withEscaping(body: => Unit) {
+      val savedEscaping = maybeEscaping
+      maybeEscaping = true
+      body
+      maybeEscaping = savedEscaping
+    }
+    
     override def traverse(tree: Tree) = tree match {
       case DefDef(_, _, _, _, _, _) =>
         val lastMethod = currentMethod
         currentMethod = tree.symbol
         super.traverse(tree)
         currentMethod = lastMethod
+      /** A method call with a by-name parameter represents escape. */
+      case Apply(fn, args) if fn.symbol.paramss.nonEmpty =>
+        traverse(fn)
+        (fn.symbol.paramss.head zip args) foreach {
+          case (param, arg) =>
+            if (param.tpe != null && param.tpe.typeSymbol == ByNameParamClass)
+              withEscaping(traverse(arg))
+            else
+              traverse(arg)
+        }
+      /** The rhs of a closure represents escape. */
+      case Function(vparams, body) =>
+        vparams foreach traverse
+        withEscaping(traverse(body))
+
+      /** The appearance of an ident outside the method where it was defined or
+       *  anytime maybeEscaping is true implies escape.
+       */
       case Ident(_) =>
         val sym = tree.symbol
-        if (sym.isVariable && sym.owner.isMethod && sym.owner != currentMethod)
+        if (sym.isVariable && sym.owner.isMethod && (maybeEscaping || sym.owner != currentMethod))
           freeMutableVars += sym
       case _ =>
         super.traverse(tree)

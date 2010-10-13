@@ -86,7 +86,12 @@ abstract class TreeInfo {
     case TypeApply(fn, _) =>
       isPureExpr(fn)
     case Apply(fn, List()) =>
-      isPureExpr(fn)
+      /* Note: After uncurry, field accesses are represented as Apply(getter, Nil),
+       * so an Apply can also be pure.
+       * However, before typing, applications of nullary functional values are also
+       * Apply(function, Nil) trees. To prevent them from being treated as pure,
+       * we check that the callee is a method. */
+      fn.symbol.isMethod && isPureExpr(fn)
     case Typed(expr, _) =>
       isPureExpr(expr)
     case Block(stats, expr) =>
@@ -144,11 +149,15 @@ abstract class TreeInfo {
   }
 
   /** The first constructor definitions in `stats' */
-  def firstConstructor(stats: List[Tree]): Tree = stats match {
-    case List() => EmptyTree
-    case (constr @ DefDef(_, name, _, _, _, _)) :: _ 
-    if (name == nme.CONSTRUCTOR || name == nme.MIXIN_CONSTRUCTOR) => constr
-    case _ :: stats1 => firstConstructor(stats1)
+  def firstConstructor(stats: List[Tree]): Tree = stats find {
+    case x: DefDef  => nme.isConstructorName(x.name)
+    case _          => false
+  } getOrElse EmptyTree
+  
+  /** The arguments to the first constructor in `stats'. */
+  def firstConstructorArgs(stats: List[Tree]): List[Tree] = firstConstructor(stats) match {
+    case DefDef(_, _, _, args :: _, _, _) => args
+    case _                                => Nil
   }
 
   /** The value definitions marked PRESUPER in this statement sequence */
@@ -199,7 +208,7 @@ abstract class TreeInfo {
   /** Is name a variable name? */
   def isVariableName(name: Name): Boolean = {
     val first = name(0)
-    (('a' <= first && first <= 'z') || first == '_') && !(reserved contains name)
+    ((first.isLower && first.isLetter) || first == '_') && !(reserved contains name)
   }
 
   /** Is tree a this node which belongs to `enclClass'? */

@@ -75,6 +75,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val TRAIT_SETTER_SEPARATOR_STRING = "$_setter_$"
     val TUPLE_FIELD_PREFIX_STRING = "_"
     val CHECK_IF_REFUTABLE_STRING = "check$ifrefutable$"
+    val DEFAULT_GETTER_STRING = "$default$"
 
     val INTERPRETER_WRAPPER_SUFFIX = "$object"
     val INTERPRETER_LINE_PREFIX = "line"
@@ -89,7 +90,6 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val LOCAL_SUFFIX = newTermName(LOCAL_SUFFIX_STRING)
     val SETTER_SUFFIX = encode("_=")
     val IMPL_CLASS_SUFFIX = newTermName("$class")
-    val MODULE_SUFFIX = newTermName("$module")
     val LOCALDUMMY_PREFIX = newTermName(LOCALDUMMY_PREFIX_STRING)
     val SELECTOR_DUMMY = newTermName("<unapply-selector>")
 
@@ -100,6 +100,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     def isSetterName(name: Name) = name.endsWith(SETTER_SUFFIX)
     def isLocalDummyName(name: Name) = name.startsWith(LOCALDUMMY_PREFIX)
     def isTraitSetterName(name: Name) = isSetterName(name) && name.pos(TRAIT_SETTER_SEPARATOR_STRING) < name.length
+    def isConstructorName(name: Name) = name == CONSTRUCTOR || name == MIXIN_CONSTRUCTOR
     def isOpAssignmentName(name: Name) = 
       name(name.length - 1) == '=' &&
       isOperatorPart(name(0)) &&
@@ -162,10 +163,21 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
       else
         name.subName(0, name.length - SETTER_SUFFIX.length)
     }
+    
+    def defaultGetterName(name: Name, pos: Int): Name = {
+      val prefix = if (isConstructorName(name)) "init" else name
+      newTermName(prefix + DEFAULT_GETTER_STRING + pos)
+    }
 
     def getterName(name: Name): Name =
       if (isLocalName(name)) localToGetter(name) else name;
 
+    def isExceptionResultName(name: Name) =
+      (name startsWith EXCEPTION_RESULT_PREFIX)
+
+    def isLoopHeaderLabel(name: Name): Boolean =
+      (name startsWith WHILE_PREFIX) || (name startsWith DO_WHILE_PREFIX)
+        
     def isImplClassName(name: Name): Boolean = 
       name endsWith IMPL_CLASS_SUFFIX;
 
@@ -174,9 +186,6 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
 
     def interfaceName(implname: Name): Name = 
       implname.subName(0, implname.length - IMPL_CLASS_SUFFIX.length)
-
-    def moduleVarName(name: Name): Name = 
-      newTermName(name.toString() + MODULE_SUFFIX)
 
     def superName(name: Name) = newTermName("super$" + name)
    
@@ -191,6 +200,11 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     
     /** The name of bitmaps for initialized lazy vals. */
     def bitmapName(n: Int): Name = newTermName("bitmap$" + n)
+    
+    /** The label prefixes for generated while and do loops. */
+    val WHILE_PREFIX = "while$"
+    val DO_WHILE_PREFIX = "doWhile$"
+    val EXCEPTION_RESULT_PREFIX = "exceptionResult"
 
     val ERROR = newTermName("<error>")
     val LOCALCHILD = newTypeName("<local child>")
@@ -299,14 +313,15 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val forName = newTermName(if (forMSIL) "GetType" else "forName")
     val foreach = newTermName("foreach")
     val get = newTermName("get")
-    val getCause = newTermName("getCause")
-    val getClass_ = newTermName("getClass")
-    val getMethod_ = newTermName("getMethod")
+    val getCause = newTermName(if (forMSIL) "InnerException" /* System.Reflection.TargetInvocationException.InnerException */
+                               else "getCause")
+    val getClass_ = newTermName(if (forMSIL) "GetType" else "getClass")
+    val getMethod_ = newTermName(if (forMSIL) "GetMethod" else "getMethod")
     val hash_ = newTermName("hash")
     val hashCode_ = newTermName("hashCode")
     val hasNext = newTermName("hasNext")
     val head = newTermName("head")
-    val invoke_ = newTermName("invoke")
+    val invoke_ = newTermName(if (forMSIL) "Invoke" else "invoke")
     val isArray = newTermName("isArray")
     val isInstanceOf_ = newTermName("isInstanceOf")
     val isDefinedAt = newTermName("isDefinedAt")
@@ -335,6 +350,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     val sameElements = newTermName("sameElements")
     val scala_ = newTermName("scala")
     val self = newTermName("self")
+    val setAccessible = newTermName("setAccessible")
     val synchronized_ = newTermName("synchronized")
     val tail = newTermName("tail")
     val toArray = newTermName("toArray")
@@ -495,7 +511,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     final val BoxedNumber   = newTermName("System.IConvertible")
     final val BoxedCharacter = newTermName("System.IConvertible")
     final val BoxedBoolean = newTermName("System.IConvertible")
-    final val MethodAsObject = nme.NOSYMBOL // TODO: is there something like Method in MSIL?
+    final val MethodAsObject = newTermName("System.Reflection.MethodInfo")
 
     Boxed += (nme.Boolean -> newTermName("System.Boolean"))
     Boxed += (nme.Byte    -> newTermName("System.Byte"))

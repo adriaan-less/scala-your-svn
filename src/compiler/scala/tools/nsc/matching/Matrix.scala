@@ -75,8 +75,37 @@ trait Matrix extends MatrixAdditions {
   matrix and the ﬁnal states, and the state is the result of applying match to the new matrix and 
   states. Otherwise,the error state is used after its reference count has been incremented. 
   **/
+  
+  /** Handles all translation of pattern matching.
+   */
+  def handlePattern(
+    selector: Tree,         // tree being matched upon (called scrutinee after this)
+    cases: List[CaseDef],   // list of cases in the match
+    isChecked: Boolean,     // whether exhaustiveness checking is enabled (disabled with @unchecked)
+    context: MatrixContext): Tree =
+  {
+    import context._
+    log("handlePattern: selector.tpe = " + selector.tpe)
+
+    // sets up top level match
+    val matrixInit: MatrixInit = {
+      val v = copyVar(selector, isChecked, selector.tpe, "temp")
+      MatrixInit(List(v), cases, atPos(selector.pos)(MATCHERROR(v.ident)))
+    }
+    
+    val matrix  = new MatchMatrix(context) { lazy val data = matrixInit }
+    val rep     = matrix.expansion                            // expands casedefs and assigns name
+    val mch     = typer typed rep.toTree                      // executes algorithm, converts tree to DFA
+    val dfatree = typer typed Block(matrixInit.valDefs, mch)  // packages into a code block
+
+    // redundancy check
+    matrix.targets filter (_.isNotReached) foreach (cs => cunit.error(cs.body.pos, "unreachable code"))
+    // optimize performs squeezing and resets any remaining TRANS_FLAGs
+    tracing("handlePattern(" + selector + ")", matrix optimize dfatree)
+  }
 
   case class MatrixContext(
+    cunit: CompilationUnit,       // current unit
     handleOuter: Tree => Tree,    // for outer pointer
     typer: Typer,                 // a local typer
     owner: Symbol,                // the current owner
@@ -155,12 +184,17 @@ trait Matrix extends MatrixAdditions {
       // XXX how will valsym.tpe differ from sym.tpe ?
       def tpe = valsym.tpe
 
-      lazy val ident  = ID(lhs)
-      lazy val valDef = tracing("typedVal", typer typedValDef (VAL(lhs) === rhs) setPos lhs.pos)
+      // See #1427 for an example of a crash which occurs unless we retype:
+      // in that instance there is an existential in the pattern.
+      lazy val ident  = typer typed { ID(lhs) setType null }
+      lazy val valDef = typer typedValDef {
+        (VAL(lhs) withType ident.tpe) === rhs
+      }
 
       override def toString() = "%s: %s = %s".format(lhs, lhs.info, rhs)
     }
-    // val NoPatternVar = PatternVar(NoSymbol, EmptyTree, false)
+
+    def newName(pos: Position, s: String) = cunit.fresh.newName(pos, s)
     
     /** Sets the rhs to EmptyTree, which makes the valDef ignored in Scrutinee.
      */

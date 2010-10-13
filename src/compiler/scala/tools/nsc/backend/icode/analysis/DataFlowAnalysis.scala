@@ -11,7 +11,7 @@ import scala.collection.mutable.{Map, HashMap, Set, HashSet, LinkedHashSet}
 
 /** A generic framework for data flow analysis.
  */
-trait DataFlowAnalysis[L <: CompleteLattice] {
+trait DataFlowAnalysis[L <: SemiLattice] {
   /** A type for program points. */
   type P <: ProgramPoint[P]
   val  lattice: L
@@ -73,7 +73,7 @@ trait DataFlowAnalysis[L <: CompleteLattice] {
               assert(false, "Invalid successor for: " + point + " successor " + p + " does not exist")
 //          if (!p.exceptionHandlerHeader) {
 //            println("lubbing " + p.predecessors + " outs: " + p.predecessors.map(out.apply).mkString("\n", "\n", ""))
-            in(p) = lattice.lub(/*in(p) :: */(p.predecessors map out.apply), p.exceptionHandlerStart)
+            in(p) = lattice.lub(in(p) :: (p.predecessors map out.apply), p.exceptionHandlerStart)
 //          }
         }
       }

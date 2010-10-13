@@ -10,7 +10,19 @@ var domCache = undefined;
 var kindFilterState = undefined;
 var focusFilterState = undefined;
 
+var title = $(document).attr('title')
+
 $(document).ready(function() {
+    $('body').layout({ west__size: '20%' });
+    $('#browser').layout({	
+    	center__paneSelector: ".ui-west-center"
+        //,center__initClosed:true
+    	,north__paneSelector: ".ui-west-north"
+	}); 
+    $('iframe').bind("load", function(){
+        var subtitle = $(this).contents().find('title').text();
+        $(document).attr('title', (title ? title + " - " : "") + subtitle);
+    });
 
     // workaround for IE's iframe sizing lack of smartness
     if($.browser.msie) {
@@ -47,6 +59,24 @@ $(document).ready(function() {
     configureEntityList();
 
 });
+
+var Index = {};
+
+(function (ns) {
+    function toId(name) {
+        return name.replace(/[^A-Za-z0-9-]/g, function (str) {
+            return '-' + str.charCodeAt(0);
+        });
+    }
+
+    ns.idOfTemplate = function (name) {
+        return 'template-' + toId(name);
+    }
+
+    ns.idOfPackage = function (name) {
+        return 'package-' + toId(name);
+    }
+})(Index);
 
 function configureEntityList() {
     kindFilterSync();
@@ -95,8 +125,8 @@ function prepareEntityList() {
 /* Configures the text filter  */
 function configureTextFilter() {
     scheduler.add("init", function() {
-        $("#filter").append("<div id='textfilter'><input type='text' accesskey='/'/></div>");
-        var input = $("#textfilter > input");
+        $("#filter").append("<div id='textfilter'><span class='pre'/><span class='input'><input type='text' accesskey='/'/></span><span class='post'/></div>");
+        var input = $("#textfilter input");
         resizeFilterBlock();
         input.bind("keyup", function(event) {
             if (event.keyCode == 27) { // escape
@@ -105,6 +135,12 @@ function configureTextFilter() {
             textFilter();
         });
         input.focus(function(event) { input.select(); });
+    });
+    scheduler.add("init", function() {
+        $("#textfilter > .post").click(function(){
+            $("#textfilter input").attr("value", "");
+            textFilter();
+        });
     });
 }
 
@@ -123,37 +159,37 @@ function textFilter() {
         else { // if query is all lower case make a normal case insensitive search
             queryRegExp = new RegExp(query, "i");
         }
-        scheduler.addForAll("filter", domCache.packs, function(pack0) {
-            var pack = $(pack0);
-            $("> ol.templates > li", pack).each(function(){
-                var item = $(this).attr("title");
-                if (item == "" || queryRegExp.test(item)) {
-                    $(this).show();
-                    $(this).removeClass("hide");
-                }
-                else {
-                    $(this).addClass("hide");
-                    $(this).hide();
+
+        $.each(Index.PACKAGES, function (i, package) {
+            var empty = true;
+            var matchedSet = {};
+
+            $.each(package.children, function (j, child) {
+                if (queryRegExp.test(child)) {
+                    matchedSet[child] = 1;
+                    empty = false;
                 }
             });
-            if ($("> ol > li:not(.hide)", pack).length > 0) {
-                pack.show();
-                pack.removeClass("hide");
-            }
-            else {
-                pack.addClass("hide");
-                pack.hide();
-            }
-            if ($("> ol.templates > li:not(.hide)", pack).length > 0) {
-                $("> h3", pack).show();
-                $("> .packhide", pack).show();
-                $("> .packfocus", pack).show();
-            }
-            else {
+
+            var pack = $('#' + Index.idOfPackage(package.name));
+            if (empty) {
                 $("> h3", pack).hide();
+                $("> .templates", pack).hide();
                 $("> .packhide", pack).hide();
                 $("> .packfocus", pack).hide();
+
+                return;
             }
+
+            $("> h3", pack).show();
+            $.each(package.children, function (j, child) {
+                $('#' + Index.idOfTemplate(child))[
+                    matchedSet[child] ? 'show' : 'hide'
+                ]();
+            });
+            if(kindFilterState=="all") $("> .templates", pack).show();
+            $("> .packhide", pack).show();
+            $("> .packfocus", pack).show();
         });
     });
 }
@@ -170,7 +206,9 @@ function configureHideFilter() {
                 packhide.text("show");
             }
             else {
-                $("~ ol", packhide).show();
+            	  // When the filter is in "packs" state, we don't want to show the `.templates`, only `.packages`
+            	  var selector = kindFilterState=="packs" ? "~ ol.packages" : "~ ol"
+                $(selector, packhide).show();
                 packhide.text("hide");
             }
             return false;

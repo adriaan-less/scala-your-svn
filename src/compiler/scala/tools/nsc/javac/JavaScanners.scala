@@ -73,7 +73,7 @@ trait JavaScanners {
     def floatVal: Double = floatVal(false)
     //def token2string(token : Int) : String = configuration.token2string(token)
     /** return recent scala doc, if any */
-    def flushDoc: String
+    def flushDoc: DocComment
     def currentPos: Position
   }
 
@@ -282,8 +282,8 @@ trait JavaScanners {
      */
     var docBuffer: StringBuilder = null
 
-    def flushDoc = {
-      val ret = if (docBuffer != null) docBuffer.toString else null
+    def flushDoc: DocComment = {
+      val ret = if (docBuffer != null) DocComment(docBuffer.toString, NoPosition) else null
       docBuffer = null
       ret
     }
@@ -331,12 +331,6 @@ trait JavaScanners {
       this copyFrom prev
       t
     }
-
-    private def afterLineEnd() = (
-      lastPos < in.lineStartPos && 
-      (in.lineStartPos <= pos ||
-       lastPos < in.lastLineStartPos && in.lastLineStartPos <= pos)
-    )
 
     /** read next token
      */
@@ -951,7 +945,7 @@ trait JavaScanners {
   /** ...
    */   
   class JavaUnitScanner(unit: CompilationUnit) extends JavaScanner {
-    in = new JavaCharArrayReader(unit.source.asInstanceOf[BatchSourceFile].content, !settings.nouescape.value, syntaxError)
+    in = new JavaCharArrayReader(unit.source.content, !settings.nouescape.value, syntaxError)
     init
     def warning(pos: Int, msg: String) = unit.warning(pos, msg)
     def error  (pos: Int, msg: String) = unit.  error(pos, msg)

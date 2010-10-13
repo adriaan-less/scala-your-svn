@@ -42,7 +42,7 @@ import StringLike._
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
-trait StringLike[+Repr] extends IndexedSeqOptimized[Char, Repr] with Ordered[String] {
+trait StringLike[+Repr] extends collection.IndexedSeqOptimized[Char, Repr] with Ordered[String] {
 self =>
 
   /** Creates a string builder buffer as builder for this class */
@@ -148,7 +148,8 @@ self =>
     if (toString.startsWith(prefix)) toString.substring(prefix.length)
     else toString
 
-  /** Returns this string with the given `suffix` stripped. */
+  /** Returns this string with the given `suffix` stripped. If this string does not
+    * end with `suffix`, it is returned unchanged. */
   def stripSuffix(suffix: String) =
     if (toString.endsWith(suffix)) toString.substring(0, toString.length() - suffix.length)
     else toString

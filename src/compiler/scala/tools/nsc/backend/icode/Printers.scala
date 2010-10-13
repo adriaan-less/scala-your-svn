@@ -58,9 +58,7 @@ trait Printers { self: ICodes =>
       case x :: xs  => pr(x); print(sep); printList(pr)(xs, sep)
     }
 
-    private var clazz: IClass = _
     def printClass(cls: IClass) {
-      this.clazz = cls;
       print(cls.symbol.toString()); print(" extends ");
       printList(cls.symbol.info.parents, ", ");
       indent; println(" {");
@@ -120,7 +118,7 @@ trait Printers { self: ICodes =>
       print(": ");
       if (settings.debug.value) print("pred: " + bb.predecessors + " succs: " + bb.successors + " flags: " + bb.flagsString)
       indent; println
-      bb foreach printInstruction
+      bb.toList foreach printInstruction
       undent; println
     }
 

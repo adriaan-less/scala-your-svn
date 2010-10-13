@@ -8,6 +8,9 @@
 
 
 
+/**
+ * Core Scala types. They are always available without an explicit import.
+ */
 package object scala {
   type Throwable = java.lang.Throwable
   type Exception = java.lang.Exception
@@ -58,7 +61,7 @@ package object scala {
 
   type Vector[+A] = scala.collection.immutable.Vector[A]
   val Vector = scala.collection.immutable.Vector
-
+  
   type StringBuilder = scala.collection.mutable.StringBuilder
   val StringBuilder = scala.collection.mutable.StringBuilder
 

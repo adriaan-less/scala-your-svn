@@ -64,6 +64,7 @@ trait BenchmarkRegister {
   register(parallel_array.PatchHalf)
   register(parallel_array.PadToDouble)
   register(parallel_array.AggregateLight)
+  register(parallel_array.ScanLight)
   register(parallel_array.MatrixMultiplication)
   
   // parallel views
@@ -71,6 +72,12 @@ trait BenchmarkRegister {
   register(parallel_view.DummyViewBenchList.MediumReduce)
   register(parallel_view.DummyViewBenchList.ModifyThenReduce)
   register(parallel_view.DummyViewBenchList.ModifyThenForce)
+  register(parallel_view.DummyViewBenchList.Iteration)
+  register(parallel_view.DummyViewBenchList.IterationS)
+  register(parallel_view.DummyViewBenchList.IterationM)
+  register(parallel_view.DummyViewBenchList.IterationA)
+  register(parallel_view.DummyViewBenchList.IterationZ)
+  register(parallel_view.DummyViewBenchList.IterationP)
   
   // parallel ranges
   register(parallel_range.RangeBenches.Reduce)
@@ -93,6 +100,14 @@ trait BenchmarkRegister {
   register(hashtries.Construct)
   register(hashtries.Lookup)
   register(hashtries.Combine)
+  register(hashtries.MultipleCombine)
+  
+  // parallel hash trie benchmarks
+  register(hashtries.RefParHashTrieBenches.Reduce)
+  register(hashtries.RefParHashTrieBenches.ReduceMedium)
+  register(hashtries.RefParHashTrieBenches.Reduce2)
+  register(hashtries.RefParHashTrieBenches.Map)
+  register(hashtries.RefParHashTrieBenches.Map2)
 }
 
 
@@ -103,8 +118,8 @@ object Benchmarking extends BenchmarkRegister {
   
   def printHelp {
     println("Must enter at least four arguments: <collection> <benchmark> <size of the collection> <type>")
-    println("  Example: ParallelArray reduce-light 50000 par")
-    println("  Example: ParallelArray -all 50000 par")
+    println("  Example: ParArray reduce-light 50000 par")
+    println("  Example: ParArray -all 50000 par")
     println
     println("General synthax: <collection> <benchmark> <size> <type> <parallelism-level>")
     println("          <collection>  - name of the collection to test, `-all` runs benchmarks for all collections")

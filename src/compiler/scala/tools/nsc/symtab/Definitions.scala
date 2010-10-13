@@ -97,8 +97,15 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def Boolean_or  = getMember(BooleanClass, nme.ZOR)
 
     def ScalaValueClasses = List(
-      UnitClass, ByteClass, ShortClass, IntClass, LongClass,
-      CharClass, FloatClass, DoubleClass, BooleanClass
+      UnitClass,
+      BooleanClass,
+      ByteClass, 
+      ShortClass,
+      CharClass,
+      IntClass,
+      LongClass,
+      FloatClass,
+      DoubleClass
     )
     
     // exceptions and other throwables
@@ -108,8 +115,9 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val IndexOutOfBoundsExceptionClass = getClass(sn.IOOBException)
     lazy val UninitializedErrorClass        = getClass("scala.UninitializedFieldError")
     lazy val MatchErrorClass                = getClass("scala.MatchError")
+    lazy val InvocationTargetExceptionClass = getClass(if   (forMSIL) "System.Reflection.TargetInvocationException"
+                                                       else           "java.lang.reflect.InvocationTargetException")
     // java is hard coded because only used by structural values
-    lazy val InvocationTargetExceptionClass = getClass("java.lang.reflect.InvocationTargetException")
     lazy val NoSuchMethodExceptionClass     = getClass("java.lang.NoSuchMethodException")
     
     // annotations
@@ -123,6 +131,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val TailrecClass               = getClass("scala.annotation.tailrec")
     lazy val SwitchClass                = getClass("scala.annotation.switch")
     lazy val ElidableMethodClass        = getClass("scala.annotation.elidable")
+    lazy val ImplicitNotFoundClass      = getClass("scala.annotation.implicitNotFound")
     lazy val FieldTargetClass           = getClass("scala.annotation.target.field")
     lazy val GetterTargetClass          = getClass("scala.annotation.target.getter")
     lazy val SetterTargetClass          = getClass("scala.annotation.target.setter")
@@ -131,11 +140,14 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val ParamTargetClass           = getClass("scala.annotation.target.param")
     lazy val ScalaInlineClass           = getClass("scala.inline")
     lazy val ScalaNoInlineClass         = getClass("scala.noinline")
+    lazy val SpecializedClass           = definitions.getClass("scala.specialized")
+
 
     // fundamental reference classes
     lazy val ScalaObjectClass     = getClass("scala.ScalaObject")
     lazy val PartialFunctionClass = getClass("scala.PartialFunction")
     lazy val SymbolClass          = getClass("scala.Symbol")
+      lazy val Symbol_apply = getMember(SymbolClass.companionModule, nme.apply)
     lazy val StringClass          = getClass(sn.String)
     lazy val ClassClass           = getClass(sn.Class)
       def Class_getMethod = getMember(ClassClass, nme.getMethod_)
@@ -224,6 +236,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val SoftReferenceClass     = getClass("java.lang.ref.SoftReference")
     lazy val WeakReferenceClass     = getClass("java.lang.ref.WeakReference")
     lazy val MethodClass            = getClass(sn.MethodAsObject)
+      def methodClass_setAccessible = getMember(MethodClass, nme.setAccessible)
     lazy val EmptyMethodCacheClass  = getClass("scala.runtime.EmptyMethodCache")
     lazy val MethodCacheClass       = getClass("scala.runtime.MethodCache")
       def methodCache_find  = getMember(MethodCacheClass, nme.find_)
@@ -282,9 +295,15 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val AbstractFunctionClass = mkArityArray("runtime.AbstractFunction", MaxFunctionArity, 0)
     
       def tupleField(n: Int, j: Int) = getMember(TupleClass(n), "_" + j)
-      def isTupleType(tp: Type): Boolean = cond(tp.normalize) {
-        case TypeRef(_, sym, elems) => elems.length <= MaxTupleArity && sym == TupleClass(elems.length)
+      def isTupleType(tp: Type): Boolean = isTupleType(tp, false)
+      def isTupleTypeOrSubtype(tp: Type): Boolean = isTupleType(tp, true)
+      private def isTupleType(tp: Type, subtypeOK: Boolean): Boolean = cond(tp.normalize) {
+        case t @ TypeRef(_, sym, elems) =>
+          elems.length <= MaxTupleArity && 
+          (sym == TupleClass(elems.length) ||
+           subtypeOK && !tp.isHigherKinded && (t <:< TupleClass(elems.length).tpe))
       }
+      
       def tupleType(elems: List[Type]) =
         if (elems.length <= MaxTupleArity) {
           val sym = TupleClass(elems.length)
@@ -442,11 +461,19 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def BoxedUnit_TYPE = getMember(BoxedUnitModule, "TYPE")
 
     // special attributes
-    lazy val SerializableAttr: Symbol = getClass("scala.serializable")
-    lazy val DeprecatedAttr: Symbol = getClass("scala.deprecated")
-    lazy val MigrationAnnotationClass: Symbol = getClass("scala.annotation.migration")
-    lazy val BeanPropertyAttr: Symbol = getClass(sn.BeanProperty)
-    lazy val BooleanBeanPropertyAttr: Symbol = getClass(sn.BooleanBeanProperty)
+    lazy val BeanPropertyAttr: Symbol           = getClass(sn.BeanProperty)
+    lazy val BooleanBeanPropertyAttr: Symbol    = getClass(sn.BooleanBeanProperty)
+    lazy val CloneableAttr: Symbol              = getClass("scala.cloneable")
+    lazy val DeprecatedAttr: Symbol             = getClass("scala.deprecated")
+    lazy val DeprecatedNameAttr: Symbol         = getClass("scala.deprecatedName")
+    lazy val MigrationAnnotationClass: Symbol   = getClass("scala.annotation.migration")
+    lazy val NativeAttr: Symbol                 = getClass("scala.native")
+    lazy val RemoteAttr: Symbol                 = getClass("scala.remote")
+    lazy val SerialVersionUIDAttr: Symbol       = getClass("scala.SerialVersionUID")
+    lazy val SerializableAttr: Symbol           = getClass("scala.serializable")
+    lazy val TraitSetterAnnotationClass: Symbol = getClass("scala.runtime.TraitSetter")
+    lazy val TransientAttr: Symbol              = getClass("scala.transient")
+    lazy val VolatileAttr: Symbol               = getClass("scala.volatile")
     
     lazy val AnnotationDefaultAttr: Symbol = {
       val attr = newClass(RuntimePackageClass, nme.AnnotationDefaultATTR, List(AnnotationClass.typeConstructor))
@@ -454,9 +481,6 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       attr.info.decls enter (attr newConstructor NoPosition setInfo MethodType(Nil, attr.tpe))
       attr
     }
-    
-    lazy val NativeAttr: Symbol = getClass("scala.native")
-    lazy val VolatileAttr: Symbol = getClass("scala.volatile")
 
     def getModule(fullname: Name): Symbol = getModuleOrClass(fullname, true)
     def getModule2(name1: Name, name2: Name) = try {
@@ -580,9 +604,14 @@ trait Definitions extends reflect.generic.StandardDefinitions {
 
     val boxedClass = new HashMap[Symbol, Symbol]
     val boxedModule = new HashMap[Symbol, Symbol]
-    val unboxMethod = new HashMap[Symbol, Symbol] // Type -> Method
-    val boxMethod = new HashMap[Symbol, Symbol] // Type -> Method
-    val primitiveCompanions = new HashSet[Symbol]
+    val unboxMethod = new HashMap[Symbol, Symbol]     // Type -> Method
+    val boxMethod = new HashMap[Symbol, Symbol]       // Type -> Method
+    val primitiveCompanions = new HashSet[Symbol]     // AnyVal -> Companion
+    
+    /** Maps a companion object like scala.Int to scala.runtime.Int. */
+    def getPrimitiveCompanion(sym: Symbol) =
+      if (primitiveCompanions(sym)) Some(getModule("scala.runtime." + sym.name))
+      else None
 
     def isUnbox(m: Symbol) = unboxMethod.valuesIterator contains m
     def isBox(m: Symbol) = boxMethod.valuesIterator contains m
@@ -706,9 +735,14 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       List(ByteClass, ShortClass, CharClass, IntClass, LongClass) foreach (x => initValueClass(x, true))
       List(FloatClass, DoubleClass)                               foreach (x => initValueClass(x, false))
 
-      def addModuleMethod(clazz: Symbol, name: Name, value: Any) {
+      def addModuleMethod(clazz: Symbol, name: Name, value: Any) = {
         val owner = clazz.linkedClassOfClass
         newParameterlessMethod(owner, name, ConstantType(Constant(value)))
+      }
+      def addDeprecatedModuleMethod(clazz: Symbol, name: Name, value: Any, msg: String) = {
+        val m = addModuleMethod(clazz, name, value)
+        val arg = Literal(Constant(msg))
+        m.addAnnotation(AnnotationInfo(DeprecatedAttr.tpe, List(arg), List()))
       }
       addModuleMethod(ByteClass,  "MinValue",  java.lang.Byte.MIN_VALUE)
       addModuleMethod(ByteClass,  "MaxValue",  java.lang.Byte.MAX_VALUE)
@@ -721,16 +755,22 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       addModuleMethod(LongClass,  "MinValue",  java.lang.Long.MIN_VALUE)
       addModuleMethod(LongClass,  "MaxValue",  java.lang.Long.MAX_VALUE)
 
-      addModuleMethod(FloatClass, "MinValue", -java.lang.Float.MAX_VALUE)
+      addDeprecatedModuleMethod(FloatClass, "MinValue", -java.lang.Float.MAX_VALUE, "use Float.MinNegativeValue instead")
+      addModuleMethod(FloatClass, "MinNegativeValue", -java.lang.Float.MAX_VALUE)
       addModuleMethod(FloatClass, "MaxValue",  java.lang.Float.MAX_VALUE)
-      addModuleMethod(FloatClass, "Epsilon",   java.lang.Float.MIN_VALUE)
+      addDeprecatedModuleMethod(FloatClass, "Epsilon",   java.lang.Float.MIN_VALUE, "use Float.MinPositiveValue instead")
+      addModuleMethod(FloatClass, "MinPositiveValue", java.lang.Float.MIN_VALUE)
       addModuleMethod(FloatClass, "NaN",       java.lang.Float.NaN)
       addModuleMethod(FloatClass, "PositiveInfinity", java.lang.Float.POSITIVE_INFINITY)
       addModuleMethod(FloatClass, "NegativeInfinity", java.lang.Float.NEGATIVE_INFINITY)
 
-      addModuleMethod(DoubleClass, "MinValue", -java.lang.Double.MAX_VALUE)
+      addDeprecatedModuleMethod(DoubleClass, "MinValue", -java.lang.Double.MAX_VALUE, "use Double.MinNegativeValue instead")
+      addModuleMethod(DoubleClass, "MinNegativeValue", -java.lang.Double.MAX_VALUE)
       addModuleMethod(DoubleClass, "MaxValue",  java.lang.Double.MAX_VALUE)
-      addModuleMethod(DoubleClass, "Epsilon",   java.lang.Double.MIN_VALUE)
+      // see #3791. change cycle for `Epsilon`: 1. deprecate, 2. remove, 3. re-introduce as
+      // org.apache.commons.math.util.MathUtils.EPSILON (0x1.0p-53). not sure what to do for float.
+      addDeprecatedModuleMethod(DoubleClass, "Epsilon",   java.lang.Double.MIN_VALUE, "use Double.MinPositiveValue instead")
+      addModuleMethod(DoubleClass, "MinPositiveValue",   java.lang.Double.MIN_VALUE)
       addModuleMethod(DoubleClass, "NaN",       java.lang.Double.NaN)
       addModuleMethod(DoubleClass, "PositiveInfinity", java.lang.Double.POSITIVE_INFINITY)
       addModuleMethod(DoubleClass, "NegativeInfinity", java.lang.Double.NEGATIVE_INFINITY)
@@ -840,6 +880,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
         Object_isInstanceOf,
         Object_asInstanceOf
       )
+      // AnyVal is sealed but needs to be made aware of its children
+      ScalaValueClasses foreach (AnyValClass addChild _)      
 
       if (forMSIL) {
         val intType = IntClass.typeConstructor

@@ -77,6 +77,8 @@ public final class BoxesRunTime
     }
     
     public static java.lang.Double boxToDouble(double d) {
+        // System.out.println("box " + d);
+        // (new Throwable()).printStackTrace();
         return java.lang.Double.valueOf(d);
     }
         
@@ -111,6 +113,7 @@ public final class BoxesRunTime
     }
     
     public static double unboxToDouble(Object d) {
+        //        System.out.println("unbox " + d);
         return d == null ? 0.0d : ((java.lang.Double)d).doubleValue();
     }
 
@@ -127,7 +130,6 @@ public final class BoxesRunTime
     
     public static boolean equals(Object x, Object y) {      
         if (x == y) return true;
-        if (x == null) return false;
         return equals2(x, y);
     }
 
@@ -139,15 +141,19 @@ public final class BoxesRunTime
             return equalsNumObject((java.lang.Number)x, y);
         if (x instanceof java.lang.Character)
             return equalsCharObject((java.lang.Character)x, y);
-        
+        if (x == null)
+            return y == null;
+          
         return x.equals(y);
     }
     
     public static boolean equalsNumObject(java.lang.Number xn, Object y) {
         if (y instanceof java.lang.Number)
             return equalsNumNum(xn, (java.lang.Number)y);
-        else if (y instanceof java.lang.Character)
+        if (y instanceof java.lang.Character)
             return equalsNumChar(xn, (java.lang.Character)y);
+        if (xn == null)
+            return y == null;
           
         return xn.equals(y);
     }
@@ -166,8 +172,11 @@ public final class BoxesRunTime
             return xn.doubleValue() == yn.doubleValue();
         default:
             if ((yn instanceof ScalaNumber) && !(xn instanceof ScalaNumber))
-                return yn.equals(xn);                
+                return yn.equals(xn);
         }
+        if (xn == null)
+            return yn == null;
+            
         return xn.equals(yn);
     }
     
@@ -176,7 +185,9 @@ public final class BoxesRunTime
             return xc.charValue() == ((java.lang.Character)y).charValue();
         if (y instanceof java.lang.Number)
             return equalsNumChar((java.lang.Number)y, xc);
-            
+        if (xc == null)
+            return y == null;
+             
         return xc.equals(y);
     }
 
@@ -192,6 +203,9 @@ public final class BoxesRunTime
         case DOUBLE:
             return xn.doubleValue() == ch;
         default:
+            if (xn == null)
+                return yc == null;
+                
             return xn.equals(yc);
         }
     }

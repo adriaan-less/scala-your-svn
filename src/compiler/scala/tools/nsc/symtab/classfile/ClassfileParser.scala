@@ -10,8 +10,8 @@ package classfile
 import java.io.{ File, IOException }
 import java.lang.Integer.toHexString
 
-import scala.collection.immutable.{Map, ListMap}
-import scala.collection.mutable.{ListBuffer, ArrayBuffer}
+import scala.collection.{ mutable, immutable }
+import scala.collection.mutable.{ ListBuffer, ArrayBuffer }
 import scala.tools.nsc.io.AbstractFile
 import scala.annotation.switch
 import reflect.generic.PickleBuffer
@@ -82,6 +82,7 @@ abstract class ClassfileParser {
         println("Skipping class: " + root + ": " + root.getClass)
     }
 */
+    log("parsing " + file.name)
     this.in = new AbstractFileReader(file)
     if (root.isModule) {
       this.clazz = root.companionClass
@@ -386,7 +387,7 @@ abstract class ClassfileParser {
           val start = starts(index)
           if (in.buf(start).toInt != CONSTANT_UTF8) errorBadTag(start)
           val len = in.getChar(start + 1)
-          bytesBuffer ++= (in.buf, start + 3, len)
+          bytesBuffer ++= in.buf.view(start + 3, start + 3 + len)
         }
         val bytes = bytesBuffer.toArray
         val decodedLength = reflect.generic.ByteCodecs.decode(bytes)
@@ -427,14 +428,50 @@ abstract class ClassfileParser {
     sym
   }
 
-
   /** Return the class symbol of the given name. */
   def classNameToSymbol(name: Name): Symbol = {
-    def lookupClass(name: Name) = 
+    def loadClassSymbol(name: Name) = {
+      val s = name.toString
+      val file = global.classPath findSourceFile s getOrElse {
+        throw new MissingRequirementError("class " + s)
+      }
+      val completer = new global.loaders.ClassfileLoader(file)
+      var owner: Symbol = definitions.RootClass
+      var sym: Symbol = NoSymbol
+      var ss: String = null
+      var start = 0
+      var end = s indexOf '.'
+      while (end > 0) {
+        ss = s.substring(start, end)
+        sym = owner.info.decls lookup ss
+        if (sym == NoSymbol) {
+          sym = owner.newPackage(NoPosition, ss) setInfo completer
+          sym.moduleClass setInfo completer
+          owner.info.decls enter sym
+        }
+        owner = sym.moduleClass
+        start = end + 1
+        end = s.indexOf('.', start)
+      }
+      ss = s substring start
+      sym = owner.info.decls lookup ss
+      if (sym == NoSymbol) {
+        sym = owner.newClass(NoPosition, ss) setInfo completer
+        owner.info.decls enter sym
+        if (settings.debug.value && settings.verbose.value)
+          println("loaded "+sym+" from file "+file)
+      }
+      sym
+    }
+
+    def lookupClass(name: Name) = try {
       if (name.pos('.') == name.length)
         definitions.getMember(definitions.EmptyPackageClass, name.toTypeName)
       else
-        definitions.getClass(name)
+        definitions.getClass(name) // see tickets #2464, #3756
+    } catch { 
+      case _: FatalError => loadClassSymbol(name) 
+    }
     
     innerClasses.get(name) match {
       case Some(entry) =>
@@ -653,7 +690,7 @@ abstract class ClassfileParser {
     }
     def existentialType(tparams: List[Symbol], tp: Type): Type = 
       if (tparams.isEmpty) tp else ExistentialType(tparams, tp)
-    def sig2type(tparams: Map[Name,Symbol], skiptvs: Boolean): Type = {
+    def sig2type(tparams: immutable.Map[Name,Symbol], skiptvs: Boolean): Type = {
       val tag = sig(index); index += 1
       tag match {
         case BYTE_TAG   => definitions.ByteClass.tpe
@@ -709,7 +746,8 @@ abstract class ClassfileParser {
                 val eparams = typeParamsToExistentials(classSym, classSym.unsafeTypeParams)            
                 val t = TypeRef(pre, classSym, eparams.map(_.tpe))
                 val res = existentialType(eparams, t)
-                if (settings.debug.value && settings.verbose.value) println("raw type " + classSym + " -> " + res)
+                if (settings.debug.value && settings.verbose.value)
+                  println("raw type " + classSym + " -> " + res)
                 res
               }
             case tp => 
@@ -759,7 +797,7 @@ abstract class ClassfileParser {
       }
     } // sig2type(tparams, skiptvs)
 
-    def sig2typeBounds(tparams: Map[Name, Symbol], skiptvs: Boolean): Type = {
+    def sig2typeBounds(tparams: immutable.Map[Name, Symbol], skiptvs: Boolean): Type = {
       val ts = new ListBuffer[Type]
       while (sig(index) == ':') {
         index += 1
@@ -850,7 +888,7 @@ abstract class ClassfileParser {
         case nme.ScalaSignatureATTR =>
           if (!isScalaAnnot) {
             if (settings.debug.value)
-              global.inform("warning: symbol " + sym.fullName + " has pickled signature in attribute")
+              log("warning: symbol " + sym.fullName + " has pickled signature in attribute")
             unpickler.unpickle(in.buf, in.bp, clazz, staticModule, in.file.toString())
           }
           in.skip(attrLen)
@@ -878,7 +916,7 @@ abstract class ClassfileParser {
                   throw new RuntimeException("Scala class file does not contain Scala annotation")
               }
             if (settings.debug.value)
-              global.inform("" + sym + "; annotations = " + sym.rawAnnotations)
+              log("" + sym + "; annotations = " + sym.rawAnnotations)
           } else
             in.skip(attrLen)
 
@@ -995,8 +1033,8 @@ abstract class ClassfileParser {
       case f: FatalError => throw f // don't eat fatal errors, they mean a class was not found
       case ex: Throwable =>
         if (settings.debug.value)
-          global.inform("dropping annotation on " + sym +
-                        ", an error occured during parsing (e.g. annotation  class not found)")
+          log("dropping annotation on " + sym + ", an error occured during parsing (e.g. annotation  class not found)")
+                          
         None // ignore malformed annotations ==> t1135
     }
 
