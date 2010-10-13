@@ -21,8 +21,7 @@ trait Infer {
   import global._
   import definitions._
 
-  private final val inferInfo = true //@MDEBUG
-  import global.typer.{printTyping, deindentTyping, indentTyping}
+  private final val inferInfo = false //@MDEBUG
 
 /* -- Type parameter inference utility functions --------------------------- */
 
@@ -613,6 +612,13 @@ trait Infer {
     def methTypeArgs(tparams: List[Symbol], formals: List[Type], restpe: Type, 
                      argtpes: List[Type], pt: Type): AdjustedTypeArgs.Result = {
       val tvars = tparams map freshVar
+      if (inferInfo) 
+        println("methTypeArgs tparams = "+tparams+
+                ", formals = "+formals+
+                ", restpe = "+restpe+
+                ", argtpes = "+argtpes+
+                ", pt = "+pt+
+                ", tvars = "+tvars+" "+(tvars map (_.constr)))
       if (formals.length != argtpes.length) {
         throw new NoInstance("parameter lists differ in length")
       }
@@ -624,7 +630,6 @@ trait Infer {
                 "  restpe = "+restpe+"\n"+
                 "  restpe_inst = "+restpe.instantiateTypeParams(tparams, tvars)+"\n"+
                 "  argtpes = "+argtpes+"\n"+
-                "  tvars = "+tvars+" "+(tvars map (_.constr))+"\n"+
                 "  pt = "+pt)
       
       // check first whether type variables can be fully defined from
@@ -656,10 +661,10 @@ trait Infer {
         println("solve "+tvars+" "+(tvars map (_.constr)))
       val targs = solvedTypes(tvars, tparams, tparams map varianceInTypes(formals), 
                               false, lubDepth(formals) max lubDepth(argtpes))
-     val res =
+//      val res =
       adjustTypeArgs(tparams, targs, restpe)
-     println("meth type args "+", tparams = "+tparams+", formals = "+formals+", restpe = "+restpe+", argtpes = "+argtpes+", underlying = "+(argtpes map (_.widen))+", pt = "+ pt +", result = "+res) //DEBUG
-     res
+//      println("meth type args "+", tparams = "+tparams+", formals = "+formals+", restpe = "+restpe+", argtpes = "+argtpes+", underlying = "+(argtpes map (_.widen))+", pt = "+pt+", uninstantiated = "+uninstantiated.toList+", result = "+res) //DEBUG
+//      res
     }
 
     private[typechecker] def followApply(tp: Type): Type = tp match {
@@ -925,8 +930,8 @@ trait Infer {
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
         val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
                             (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
-        printTyping("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
-               specificCount+"/"+subClassCount)
+//        println("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
+//                specificCount+"/"+subClassCount)
         specificCount + subClassCount > 0
       }
     }
