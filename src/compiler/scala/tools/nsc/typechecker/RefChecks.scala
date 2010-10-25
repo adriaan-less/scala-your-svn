@@ -569,7 +569,7 @@ abstract class RefChecks extends InfoTransform {
               // If a public class has a [member] with default access, then this [member] is not accessible to,
               // or inherited by a subclass declared outside this package.
               // (sym is a java member with default access in pkg P) implies (member's enclosing package == P)
-              !(inclazz.isJavaDefined && sym.privateWithin == sym.enclosingPackageClass) || memberEnclPackageCls == sym.privateWithin
+              !(inclazz.isJavaDefined && sym.privateWithin == sym.enclosingPackageClass && !sym.isProtected) || memberEnclPackageCls == sym.privateWithin
             }
           } != NoSymbol
         }
