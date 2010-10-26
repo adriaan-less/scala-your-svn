@@ -3443,7 +3443,7 @@ trait Typers { self: Analyzer =>
           ) setPos tree.pos
         
         def mkUpdate(table: Tree, indices: List[Tree]) = {
-          gen.evalOnceAll(table :: indices, context.owner, context.unit) { ts =>
+          evalOnceAll(table :: indices, context.owner, context.unit) { ts =>
             val tab = ts.head
             val is = ts.tail
             Apply(
@@ -3466,7 +3466,7 @@ trait Typers { self: Analyzer =>
             mkAssign(qual)
             
           case Select(qualqual, vname) =>
-            gen.evalOnce(qualqual, context.owner, context.unit) { qq =>
+            evalOnce(qualqual, context.owner, context.unit) { qq =>
               val qq1 = qq()
               mkAssign(Select(qq1, vname) setPos qual.pos)
             }
@@ -4370,6 +4370,52 @@ trait Typers { self: Analyzer =>
 
     def typedTypeConstructor(tree: Tree): Tree = typedTypeConstructor(tree, NOmode)
 
+// AM: moved evalOnce* to Typer because we need to call packedType on expr
+// note [1]: we can't use expr.tpe as the tpt of the valdef, since it is the result of typing in EXPRmode, where adapt skolemizes existentials
+// the tpt of a valdef is supposed to be typed in TYPEmode, which leaves existentials alone.
+// Thus, packing expr.tpe makes it suitable for reuse.
+
+    /** Used in situations where you need to access value of an expression several times
+     */
+    def evalOnce(expr: Tree, owner: Symbol, unit: CompilationUnit)(within: (() => Tree) => Tree): Tree = {
+      var used = false
+      if (treeInfo.isPureExpr(expr)) {
+        within(() => if (used) expr.duplicate else { used = true; expr })
+      } else {
+        val temp = owner.newValue(expr.pos.makeTransparent, unit.fresh.newName(expr.pos, "eval$"))
+          .setFlag(SYNTHETIC).setInfo(packedType(expr, owner)) // see note above [1]
+        val containing = within(() => Ident(temp) setPos temp.pos.focus setType expr.tpe) // we're replacing expr by Ident(temp), so we can just use expr.tpe for its type (no need for packing)
+        ensureNonOverlapping(containing, List(expr))
+        Block(List(ValDef(temp, expr)), containing) setPos (containing.pos union expr.pos)
+      }
+    }
+
+    def evalOnceAll(exprs: List[Tree], owner: Symbol, unit: CompilationUnit)(within: (List[() => Tree]) => Tree): Tree = {
+      val vdefs = new ListBuffer[ValDef]
+      val exprs1 = new ListBuffer[() => Tree]
+      val used = new Array[Boolean](exprs.length)
+      var i = 0
+      for (expr <- exprs) {
+        if (treeInfo.isPureExpr(expr)) {
+          exprs1 += {
+            val idx = i
+            () => if (used(idx)) expr.duplicate else { used(idx) = true; expr }
+          }
+        } else {
+          val temp = owner.newValue(expr.pos.makeTransparent, unit.fresh.newName(expr.pos, "eval$"))
+            .setFlag(SYNTHETIC).setInfo(packedType(expr, owner)) // see note above [1]
+          vdefs += ValDef(temp, expr)
+          exprs1 += (() => Ident(temp) setPos temp.pos.focus setType expr.tpe) // we're replacing expr by Ident(temp), so we can just use expr.tpe for its type (no need for packing)
+        }
+        i += 1
+      }
+      val prefix = vdefs.toList
+      val containing = within(exprs1.toList)
+      ensureNonOverlapping(containing, exprs)
+      if (prefix.isEmpty) containing
+      else Block(prefix, containing) setPos (prefix.head.pos union containing.pos)
+    }
+  
     def computeType(tree: Tree, pt: Type): Type = {
       val tree1 = typed(tree, pt)
       transformed(tree) = tree1

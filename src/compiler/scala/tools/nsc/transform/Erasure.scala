@@ -938,7 +938,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
           typedPos(tree.pos) {
             if (level == 1) isArrayTest(qual)
             else
-              gen.evalOnce(qual, currentOwner, unit) { qual1 =>
+              typer.evalOnce(qual, currentOwner, unit) { qual1 =>
                 gen.mkAnd(
                   Apply(TypeApply(Select(qual1(), fun.symbol), 
                                   List(TypeTree(erasure(arg.tpe)))), 
@@ -1000,7 +1000,7 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
                       Apply(Select(qual, cmpOp), List(gen.mkAttributedQualifier(targ.tpe)))
                     }
                   case RefinedType(parents, decls) if (parents.length >= 2) =>
-                    gen.evalOnce(qual, currentOwner, unit) { q =>
+                    typer.evalOnce(qual, currentOwner, unit) { q =>
                       atPos(tree.pos) {
                         parents map mkIsInstanceOf(q) reduceRight gen.mkAnd
                       }
