@@ -2386,7 +2386,9 @@ A type's typeSymbol should never be inspected directly.
               // use variances as defined in the type parameter that we're trying to infer (the result is sanity-checked later)
               isKindPolymorphic(tp) || checkArgs(tp.typeArgs, typeArgs, params)
             }
-            unifyHK(tp) || unifyHK(tp.dealias)
+            unifyHK(tp) || unifyHK(tp.dealias) || unifyHK(tp.widen) || {
+              if(isLowerBound) tp.parents exists unifyHK else tp.parents forall unifyHK
+            }
         }
       }
     }
