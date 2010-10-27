@@ -1044,7 +1044,7 @@ trait Typers { self: Analyzer =>
           qtpe = qtpe.normalize.skolemizeExistential(context.owner, qual) // open the existential
           qual setType qtpe
         }
-        val coercion = inferView(qual, qtpe, searchTemplate, true)
+        val coercion = inferView(qual, qual.tpe/*qtpe*/, searchTemplate, true)
         if (coercion != EmptyTree)
           typedQualifier(atPos(qual.pos)(new ApplyImplicitView(coercion, List(qual))))
         else
