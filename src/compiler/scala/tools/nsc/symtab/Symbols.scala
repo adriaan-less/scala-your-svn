@@ -419,6 +419,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     final def isPackageObjectClass = isModuleClass && name.toTermName == nme.PACKAGEkw && owner.isPackageClass
     final def definedInPackage  = owner.isPackageClass || owner.isPackageObjectClass
     final def isPredefModule = isModule && name == nme.Predef && owner.isScalaPackageClass // not printed as a prefix
+    final def isJavaInterface = isJavaDefined && isTrait
     final def isScalaPackage = isPackage && name == nme.scala_ && owner.isRoot || // not printed as a prefix
                                isPackageObject && owner.isScalaPackageClass
     final def isScalaPackageClass: Boolean = isPackageClass && owner.isRoot && name == nme.scala_.toTypeName ||
@@ -670,10 +671,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     final def resetFlags { rawflags = rawflags & TopLevelCreationFlags }
 
     /** The class or term up to which this symbol is accessible,
-     *  or RootClass if it is public
+     *  or RootClass if it is public.
      */
     def accessBoundary(base: Symbol): Symbol = {
-      if (hasFlag(PRIVATE) || owner.isTerm) owner
+      if (hasFlag(PRIVATE) || isLocal) owner
       else if (hasAccessBoundary && !phase.erasedTypes) privateWithin
       else if (hasFlag(PROTECTED)) base
       else RootClass
@@ -1506,7 +1507,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     /** String representation of symbol's definition key word */
     final def keyString: String =
-      if (isTrait && hasFlag(JAVA)) "interface"
+      if (isJavaInterface) "interface"
       else if (isTrait) "trait"
       else if (isClass) "class"
       else if (isType && !isParameter) "type"
