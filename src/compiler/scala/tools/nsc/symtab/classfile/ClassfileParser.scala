@@ -829,8 +829,22 @@ abstract class ClassfileParser {
       accept('>')
     }
     val ownTypeParams = newTParams.toList
-    if (!ownTypeParams.isEmpty)
+    if (!ownTypeParams.isEmpty){
+      // pretend java.lang.Class was defined as `class Class[+T]`
+      // this yields a nicer inferred type for lists of classes (no existential), and is generally more faithful to the conceptual intent of Class
+      // same should hold for java.lang.reflect.TypeVariable and java.lang.reflect.Constructor
+      def shouldBeCovariant(sym: Symbol) = {
+        val n = sym.name.toString
+        (  (n == "Class" /* MSIL note: System.Type is not generic*/ && sym.owner.companionModule == definitions.JavaLangPackage)
+        || ((n == "TypeVariable" || n == "Constructor") && sym.owner.companionModule == definitions.JavaLangReflectPackage)
+        )
+      }
+      if(shouldBeCovariant(sym)) {
+        // assert(ownTypeParams.length == 1)
+        ownTypeParams(0).setFlag(COVARIANT)
+      }
       sym.setInfo(new TypeParamsType(ownTypeParams))
+    }
     val tpe =
       if ((sym eq null) || !sym.isClass)
         sig2type(tparams, false)

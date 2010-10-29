@@ -34,6 +34,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val EmptyPackageClass  = EmptyPackage.moduleClass
 
     lazy val JavaLangPackage    = getModule(sn.JavaLang)
+    lazy val JavaLangReflectPackage = getModule(sn.JavaLangReflect)
     lazy val ScalaPackage       = getModule("scala")
     lazy val ScalaPackageClass  = ScalaPackage.tpe.typeSymbol
     

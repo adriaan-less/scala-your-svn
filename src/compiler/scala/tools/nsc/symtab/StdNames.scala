@@ -440,6 +440,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
 
   abstract class SymbolNames {
     val JavaLang     : Name
+    val JavaLangReflect : Name
     val Object       : Name
     val Class        : Name
     val String       : Name
@@ -480,8 +481,9 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     final val BoxedInteger  = newTermName("java.lang.Integer")
     final val BoxedLong     = newTermName("java.lang.Long")
     final val BoxedFloat    = newTermName("java.lang.Float")
-    final val BoxedDouble   = newTermName("java.lang.Double")    
-    
+    final val BoxedDouble   = newTermName("java.lang.Double")
+
+    final val JavaLangReflect = newTermName("java.lang.reflect")
     final val MethodAsObject = newTermName("java.lang.reflect.Method")
 
     Boxed += (nme.Boolean -> BoxedBoolean)
@@ -511,6 +513,7 @@ trait StdNames extends reflect.generic.StdNames { self: SymbolTable =>
     final val BoxedNumber   = newTermName("System.IConvertible")
     final val BoxedCharacter = newTermName("System.IConvertible")
     final val BoxedBoolean = newTermName("System.IConvertible")
+    final val JavaLangReflect = newTermName("System.Reflection")
     final val MethodAsObject = newTermName("System.Reflection.MethodInfo")
 
     Boxed += (nme.Boolean -> newTermName("System.Boolean"))
