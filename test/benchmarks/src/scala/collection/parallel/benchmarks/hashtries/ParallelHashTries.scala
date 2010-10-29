@@ -6,15 +6,15 @@ package scala.collection.parallel.benchmarks.hashtries
 import scala.collection.parallel.benchmarks.generic.StandardParIterableBenches
 import scala.collection.parallel.benchmarks.generic.Dummy
 import scala.collection.parallel.benchmarks.generic.Operators
-import scala.collection.parallel.immutable.ParHashTrie
+import scala.collection.parallel.immutable.ParHashMap
 
 
 
 
 
-trait ParHashTrieBenches[K, V] extends StandardParIterableBenches[(K, V), ParHashTrie[K, V]] {
+trait ParHashTrieBenches[K, V] extends StandardParIterableBenches[(K, V), ParHashMap[K, V]] {
   
-  def nameOfCollection = "ParHashTrie"
+  def nameOfCollection = "immutable.ParHashMap"
   def comparisonMap = collection.Map()
   val forkJoinPool = new scala.concurrent.forkjoin.ForkJoinPool
   
@@ -35,8 +35,6 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBenches[(K, V), ParHas
     }
     def runpar = {
       result = this.parcoll.map(operators.mapper2).size
-      //println(collection.parallel.immutable.ParHashTrie.totalcombines)
-      //System.exit(1)
     }
     def runjhashtable = {
       val jumap = new java.util.HashMap[K, V]()
@@ -64,7 +62,6 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBenches[(K, V), ParHas
     def companion = Map2
     override def repetitionsPerRun = 50
     override def printResults {
-      println("Total combines: " + collection.parallel.immutable.ParHashTrie.totalcombines)
       println("Size of last result: " + result)
     }
   }
@@ -118,6 +115,10 @@ object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] {
       }
       sum
     }
+    val foreachFun = (t: DPair) => {
+      t
+      ()
+    }
     val reducer = (x: DPair, y: DPair) => {
       //y._2.num = x._2.in + y._2.in
       y
@@ -160,7 +161,7 @@ object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] {
   }
   
   def createParallel(sz: Int, p: Int) = {
-    var pht = new ParHashTrie[Dummy, Dummy]
+    var pht = new ParHashMap[Dummy, Dummy]
     for (i <- 0 until sz) pht += ((new Dummy(i), new Dummy(i)))
     forkJoinPool.setParallelism(p)
     pht.environment = forkJoinPool

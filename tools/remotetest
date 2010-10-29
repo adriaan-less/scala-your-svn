@@ -56,7 +56,8 @@ function instruct()
 
 function help()
 {
-  title
+  usage
+  echo
   echo "Make sure you have git installed on both your computer and the server, as well as java and ant."
   echo "Add your ssh key to the list of authorized keys on the server (see .ssh dir in your home). This is not required, but makes life easier, as you will have to answer fewer passwords."
   echo "To initialize the remote repositories on a server 'server.url.com', see the following example:"
@@ -71,7 +72,14 @@ function help()
   echo
   echo "> tools/remotetest --all jack server.url.com ~jack/git-repos-dir/scala ~jack/tmp-build-dir/scala"
   echo 
-  echo "Optionally, build and test results will be saved into the logfile on the server (an additional, last argument)."
+  echo "Optionally, build and test results will be saved into the logfile on the server (an additional, last argument). Be aware that problems arise should you push an ammended commit over a previously pushed commit - this has nothing to do with this script per se."
+  echo
+  echo "  Example workflow:"
+  echo 
+  echo "          -------------------          "
+  echo "         |                   |         "
+  echo "         V                   |         "
+  echo "   init ---> [ all | incr ] ---> clear "
   echo
   echo "Complete argument list:"
   echo "  --help       prints this help"
@@ -191,10 +199,10 @@ fi
 
 # if it's not the init operation, proceed normally
 # push to remote bare repo
-git push $LOCATION $LOCATION/master
+git push $LOCATION master
 if [ $? -ne 0 ]
 then
-  error "Could not push to bare repo."
+  error "Could not push to bare repo - push from local machine failed."
 fi
 
 # remotely checkout the repo
@@ -211,11 +219,13 @@ then
 fi
 
 # run the build and tests
+SET_ANT_OPTS='export ANT_OPTS="-XX:MaxPermSize=192M -Xmx1536m"; echo $ANT_OPTS'
+echo "Set ant options command: $SET_ANT_OPTS"
 if [[ $LOGFILE != "" ]]
 then
-  ssh $USER@$LOCATION "cd $WORKREPO; ant test"
+  ssh $USER@$LOCATION "cd $WORKREPO; $SET_ANT_OPTS; ant test"
 else
-  ssh $USER@$LOCATION "cd $WORKREPO; ant test | tee -a $LOGFILE"
+  ssh $USER@$LOCATION "cd $WORKREPO; $SET_ANT_OPTS; ant test | tee -a $LOGFILE"
 fi
 
 success

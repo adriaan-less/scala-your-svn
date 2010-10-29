@@ -30,9 +30,11 @@ trait ParHashTable[K, Entry >: Null <: HashEntry[K, Entry]] extends collection.m
     def entry2item(e: Entry): T
     def newIterator(idxFrom: Int, idxUntil: Int, totalSize: Int, es: Entry): IterRepr
     
-    def hasNext = es != null
+    def hasNext = {
+      es ne null
+    }
     
-    def next = {
+    def next: T = {
       val res = es
       es = es.next
       scan()
@@ -49,17 +51,34 @@ trait ParHashTable[K, Entry >: Null <: HashEntry[K, Entry]] extends collection.m
     
     def remaining = totalsize - traversed
     
+    private[parallel] override def debugInformation = {
+      buildString {
+        append =>
+        append("/--------------------\\")
+        append("Parallel hash table entry iterator")
+        append("total hash table elements: " + tableSize)
+        append("pos: " + idx)
+        append("until: " + until)
+        append("traversed: " + traversed)
+        append("totalsize: " + totalsize)
+        append("current entry: " + es)
+        append("underlying from " + idx + " until " + until)
+        append(itertable.slice(idx, until).map(x => if (x != null) x.toString else "n/a").mkString(" | "))
+        append("\\--------------------/")
+      }
+    }
+    
     def split: Seq[ParIterableIterator[T]] = if (remaining > 1) {
-      if ((until - idx) > 1) {
+      if (until > idx) {
         // there is at least one more slot for the next iterator
         // divide the rest of the table
         val divsz = (until - idx) / 2
         
         // second iterator params
-        val sidx = idx + divsz
+        val sidx = idx + divsz + 1 // + 1 preserves iteration invariant
         val suntil = until
-        val ses = itertable(sidx).asInstanceOf[Entry]
-        val stotal = calcNumElems(sidx, suntil)
+        val ses = itertable(sidx - 1).asInstanceOf[Entry] // sidx - 1 ensures counting from the right spot
+        val stotal = calcNumElems(sidx - 1, suntil)
         
         // first iterator params
         val fidx = idx
@@ -83,10 +102,11 @@ trait ParHashTable[K, Entry >: Null <: HashEntry[K, Entry]] extends collection.m
     private def convertToArrayBuffer(chainhead: Entry): mutable.ArrayBuffer[T] = {
       var buff = mutable.ArrayBuffer[Entry]()
       var curr = chainhead
-      while (curr != null) {
+      while (curr ne null) {
         buff += curr
         curr = curr.next
       }
+      // println("converted " + remaining + " element iterator into buffer: " + buff)
       buff map { e => entry2item(e) }
     }
     
@@ -95,7 +115,9 @@ trait ParHashTable[K, Entry >: Null <: HashEntry[K, Entry]] extends collection.m
       val fbindex = from / sizeMapBucketSize
       
       // find the last bucket
-      val lbindex = from / sizeMapBucketSize
+      val lbindex = until / sizeMapBucketSize
+      // note to self: FYI if you define lbindex as from / sizeMapBucketSize, the first branch
+      // below always triggers and tests pass, so you spend a great day benchmarking and profiling
       
       if (fbindex == lbindex) {
         // if first and last are the same, just count between `from` and `until`
@@ -146,5 +168,7 @@ trait ParHashTable[K, Entry >: Null <: HashEntry[K, Entry]] extends collection.m
 
 
 
-
+object ParHashTable {
+  var iters = 0
+}
 

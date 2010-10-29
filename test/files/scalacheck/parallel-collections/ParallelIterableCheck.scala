@@ -18,11 +18,28 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
   type CollType <: ParIterable[T] with Sequentializable[T, Iterable[T]]
   
   def values: Seq[Gen[T]]
-  def instances(valgens: Seq[Gen[T]]): Gen[Traversable[T]]
+  def ofSize(vals: Seq[Gen[T]], sz: Int): Iterable[T]
   def fromTraversable(t: Traversable[T]): CollType
   def isCheckingViews: Boolean
   def hasStrictOrder: Boolean
-    
+  
+  
+  def instances(vals: Seq[Gen[T]]): Gen[Iterable[T]] = oneOf(
+    sized(
+      sz =>
+      ofSize(vals, sz)
+    ),
+    for (sz <- choose(1000, 2000)) yield ofSize(vals, sz),
+    for (sz <- choose(4000, 4001)) yield ofSize(vals, sz),
+    for (sz <- choose(10000, 10001)) yield ofSize(vals, sz)    
+  )
+  
+  // used to check if constructed collection is valid
+  def checkDataStructureInvariants(orig: Traversable[T], cf: AnyRef) = {
+    // can be overriden in subclasses
+    true
+  }
+  
   def printDataStructureDebugInfo(cf: AnyRef) {
     // can be overridden in subclasses
   }
@@ -54,10 +71,30 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     (inst, fromTraversable(inst), modif)
   }
   
+  def areEqual(t1: Traversable[T], t2: Traversable[T]) = if (hasStrictOrder) {
+    t1 == t2 && t2 == t1
+  } else (t1, t2) match { // it is slightly delicate what `equal` means if the order is not strict
+    case (m1: Map[_, _], m2: Map[_, _]) => m1 == m2 && m2 == m1
+    case (i1: Iterable[_], i2: Iterable[_]) =>
+      val i1s = i1.toSet
+      val i2s = i2.toSet
+      i1s == i2s && i2s == i1s
+    case _ => t1 == t2 && t2 == t1
+  }
+  
   property("reductions must be equal for assoc. operators") = forAll(collectionPairs) { case (t, coll) =>
     if (t.size != 0) {
       val results = for ((op, ind) <- reduceOperators.zipWithIndex) yield {
-        ("op index: " + ind) |: t.reduceLeft(op) == coll.reduce(op)
+        val tr = t.reduceLeft(op)
+        val cr = coll.reduce(op)
+        if (tr != cr) {
+          println("from: " + t)
+          println("and: " + coll)
+          println("reducing with " + ind)
+          println(tr)
+          println(cr)
+        }
+        ("op index: " + ind) |: tr == cr
       }
       results.reduceLeft(_ && _)
     } else "has size 0" |: true
@@ -99,26 +136,19 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     results.reduceLeft(_ && _)
   }
   
-  def areEqual(t1: Traversable[T], t2: Traversable[T]) = if (hasStrictOrder) {
-    t1 == t2
-  } else (t1, t2) match { // it is slightly delicate what `equal` means if the order is not strict
-    case (m1: Map[_, _], m2: Map[_, _]) => m1 == m2
-    case (i1: Iterable[_], i2: Iterable[_]) => i1.toSet == i2.toSet
-    case _ => t1 == t2
-  }
-  
   property("mappings must be equal") = forAll(collectionPairs) { case (t, coll) =>
     val results = for ((f, ind) <- mapFunctions.zipWithIndex) yield {
       val ms = t.map(f)
       val mp = coll.map(f)
-      if (!areEqual(ms, mp)) {
+      if (!areEqual(ms, mp) || !checkDataStructureInvariants(ms, mp)) {
         println(t)
         println(coll)
         println("mapped to: ")
         println(ms)
         println(mp)
+        println("valid: " + !checkDataStructureInvariants(ms, mp))
       }
-      ("op index: " + ind) |: areEqual(ms, mp)
+      ("op index: " + ind) |: (areEqual(ms, mp) && checkDataStructureInvariants(ms, mp))
     }
     results.reduceLeft(_ && _)
   }
@@ -148,7 +178,7 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     (for ((p, ind) <- filterPredicates.zipWithIndex) yield {
       val tf = t.filter(p)
       val cf = coll.filter(p)
-      if (tf != cf || cf != tf) {
+      if (tf != cf || cf != tf || !checkDataStructureInvariants(tf, cf)) {
         println(t)
         println(coll)
         println("filtered to:")
@@ -157,8 +187,9 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
         println("tf == cf - " + (tf == cf))
         println("cf == tf - " + (cf == tf))
         printDataStructureDebugInfo(cf)
+        println("valid: " + checkDataStructureInvariants(tf, cf))
       }
-      ("op index: " + ind) |: tf == cf && cf == tf
+      ("op index: " + ind) |: tf == cf && cf == tf && checkDataStructureInvariants(tf, cf)
     }).reduceLeft(_ && _)
   }
   
@@ -284,7 +315,7 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     val toadd = colltoadd
     val tr = t ++ toadd.iterator
     val cr = coll ++ toadd.iterator
-    if (areEqual(tr, cr)) {
+    if (!areEqual(tr, cr)) {
       println("from: " + t)
       println("and: " + coll.iterator.toList)
       println("adding: " + toadd)
