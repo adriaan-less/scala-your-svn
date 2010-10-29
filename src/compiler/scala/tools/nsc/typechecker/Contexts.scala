@@ -451,23 +451,27 @@ trait Contexts { self: Analyzer =>
     }
 
     def pushTypeBounds(sym: Symbol) {
+      println("saving type bounds for "+(sym, sym.info))
       savedTypeBounds = (sym, sym.info) :: savedTypeBounds
     }
 
     def restoreTypeBounds(tp: Type): Type = {
-      var current = tp
-      for ((sym, info) <- savedTypeBounds) {
-        if (settings.debug.value) log("resetting " + sym + " to " + info);
+      val from = ListBuffer[Symbol]()
+      val to = ListBuffer[Type]()
+
+      for ((sym, savedInfo) <- savedTypeBounds) {
         sym.info match {
           case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) => 
-            current = current.instantiateTypeParams(List(sym), List(lo))
-//@M TODO: when higher-kinded types are inferred, probably need a case PolyType(_, TypeBounds(...)) if ... =>            
-          case _ =>
+            from += sym
+            to += lo
+          case _ => None
         }
-        sym.setInfo(info)
+        println("resetting "+ sym +" : "+ sym.info +" to "+ savedInfo)
+        sym.setInfo(savedInfo)
       }
       savedTypeBounds = List()
-      current
+      println("substing "+ tp +" solution= "+(from, to))
+      tp.instantiateTypeParams(from.toList, to.toList)
     }
 
     private var implicitsCache: List[List[ImplicitInfo]] = null

@@ -1917,7 +1917,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     /** If type skolem comes from an existential, the tree where it was created */
     override def unpackLocation = origin
 
-    override def typeParams = info.typeParams //@M! (not deSkolemize.typeParams!!), also can't leave superclass definition: use info, not rawInfo
+    //@M! (not deSkolemize.typeParams!!), also can't leave superclass definition: use info, not rawInfo
+    override def typeParams = info.typeParams
 
     override def cloneSymbolImpl(owner: Symbol): Symbol =
       new TypeSkolem(owner, pos, name, origin)

@@ -60,7 +60,7 @@ trait Symbols { self: Universe =>
     /** Set when symbol has a modifier of the form private[X], NoSymbol otherwise.
      */
     def privateWithin: Symbol
-        
+
     final def hasAccessBoundary = (privateWithin != null) && (privateWithin != NoSymbol)
 
     /** The raw info of the type

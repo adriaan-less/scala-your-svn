@@ -12,6 +12,8 @@
 package scala.tools.nsc
 package typechecker
 
+import scala.annotation.tailrec
+
 import scala.collection.mutable.{ HashMap, ListBuffer }
 import scala.tools.nsc.util.BatchSourceFile
 import symtab.Flags._
@@ -1590,10 +1592,9 @@ trait Typers { self: Analyzer =>
               if (sym.owner.isConstructor) sym.owner.owner.info.typeParams
               else sym.owner.tpe.typeParams
             val subst = new SubstTypeMap(tparams, tparams map (_ => WildcardType)) {
+              @tailrec def chaseSkolems(sym: Symbol): Symbol = if (sym.isSkolem) chaseSkolems(sym.deSkolemize) else sym // TODO: is the following ever true? sym.deSkolemize.isSkolem
               override def matches(sym: Symbol, sym1: Symbol) =
-                if (sym.isSkolem) matches(sym.deSkolemize, sym1)
-                else if (sym1.isSkolem) matches(sym, sym1.deSkolemize)
-                else super[SubstTypeMap].matches(sym, sym1) 
+                super[SubstTypeMap].matches(chaseSkolems(sym), chaseSkolems(sym1))
             }
             // allow defaults on by-name parameters
             if (sym hasFlag BYNAMEPARAM)
@@ -2524,85 +2525,28 @@ trait Typers { self: Analyzer =>
         
         case ErrorType =>
           setError(treeCopy.Apply(tree, fun, args))
-        /* --- begin unapply  --- */
 
+/* --- begin unapply  --- */
         case otpe if (mode & PATTERNmode) != 0 && unapplyMember(otpe).exists =>
-          val unapp = unapplyMember(otpe)
-          assert(unapp.exists, tree)
-          val unappType = otpe.memberType(unapp)
-          val argDummyType = pt // was unappArg
-         // @S: do we need to memoize this?
-          val argDummy =  context.owner.newValue(fun.pos, nme.SELECTOR_DUMMY)
-            .setFlag(SYNTHETIC)
-            .setInfo(argDummyType)
+          // assert(unapp.exists, tree)
           if (args.length > MaxTupleArity)
             error(fun.pos, "too many arguments for unapply pattern, maximum = "+MaxTupleArity)
+
+          val argDummyType = pt
+          val argDummy = context.owner.newValue(fun.pos, nme.SELECTOR_DUMMY).setFlag(SYNTHETIC).setInfo(argDummyType)
           val arg = Ident(argDummy) setType argDummyType
-          val oldArgType = arg.tpe
-          if (!isApplicableSafe(List(), unappType, List(arg.tpe), WildcardType)) {
-            //Console.println("UNAPP: need to typetest, arg.tpe = "+arg.tpe+", unappType = "+unappType)
-            def freshArgType(tp: Type): (Type, List[Symbol]) = tp match {
-              case MethodType(params, _) => 
-                (params(0).tpe, List())
-              case PolyType(tparams, restype) => 
-                val tparams1 = cloneSymbols(tparams)
-                (freshArgType(restype)._1.substSym(tparams, tparams1), tparams1)
-              case OverloadedType(_, _) =>
-                error(fun.pos, "cannot resolve overloaded unapply")
-                (ErrorType, List())
-            }
-            val (unappFormal, freeVars) = freshArgType(unappType.skolemizeExistential(context.owner, tree))
-            val context1 = context.makeNewScope(context.tree, context.owner)
-            freeVars foreach context1.scope.enter
-            val typer1 = newTyper(context1)
-            val pattp = typer1.infer.inferTypedPattern(tree.pos, unappFormal, arg.tpe)
-            // turn any unresolved type variables in freevars into existential skolems
-            val skolems = freeVars map { fv =>
-              val skolem = new TypeSkolem(context1.owner, fun.pos, fv.name, fv)
-              skolem.setInfo(fv.info.cloneInfo(skolem))
-                .setFlag(fv.flags | EXISTENTIAL).resetFlag(PARAM)
-              skolem
-            }
-            arg.tpe = pattp.substSym(freeVars, skolems)
+
+          val unapp = unapplyMember(otpe)
+          val unappType = otpe.memberType(unapp)
+          if (!isApplicableSafe(List(), unappType, List(argDummyType), WildcardType)) {
+            arg.tpe = infer.inferExtractorPattern(tree, unappType, argDummyType)
             //todo: replace arg with arg.asInstanceOf[inferTypedPattern(unappFormal, arg.tpe)] instead.
             argDummy.setInfo(arg.tpe) // bq: this line fixed #1281. w.r.t. comment ^^^, maybe good enough?
           }
-/*
-          val funPrefix = fun.tpe.prefix match {
-            case tt @ ThisType(sym) => 
-              //Console.println(" sym="+sym+" "+" .isPackageClass="+sym.isPackageClass+" .isModuleClass="+sym.isModuleClass);
-              //Console.println(" funsymown="+fun.symbol.owner+" .isClass+"+fun.symbol.owner.isClass);
-              //Console.println(" contains?"+sym.tpe.decls.lookup(fun.symbol.name));
-              if(sym != fun.symbol.owner && (sym.isPackageClass||sym.isModuleClass) /*(1)*/ ) { // (1) see 'files/pos/unapplyVal.scala'
-                if(fun.symbol.owner.isClass) {
-                  ThisType(fun.symbol.owner)
-                } else {
-                //Console.println("2 ThisType("+fun.symbol.owner+")")
-                  NoPrefix                                                 // see 'files/run/unapplyComplex.scala'
-                }
-              } else tt
-            case st @ SingleType(pre, sym) => st
-              st
-            case xx                        => xx // cannot happen?
-          }
-          val fun1untyped = fun
-            Apply(
-              Select(
-                gen.mkAttributedRef(funPrefix, fun.symbol) setType null, 
-                // setType null is necessary so that ref will be stabilized; see bug 881
-                unapp), 
-              List(arg))
-          }
-*/
-          val fun1untyped = atPos(fun.pos) { 
-            Apply(
-              Select(
-                fun setType null, // setType null is necessary so that ref will be stabilized; see bug 881
-                unapp),
-              List(arg))
-          }
+          
+          fun setType null // necessary so that ref will be stabilized; see bug 881
+          val fun1 = typedPos(fun.pos) { Apply(Select(fun, unapp), List(arg)) }
 
-          val fun1 = typed(fun1untyped)
           if (fun1.tpe.isErroneous) setError(tree)
           else {
             val formals0 = unapplyTypeList(fun1.symbol, fun1.tpe)
@@ -2610,16 +2554,16 @@ trait Typers { self: Analyzer =>
             if (formals1.length == args.length) {
               val args1 = typedArgs(args, mode, formals0, formals1)
               if (!isFullyDefined(pt)) assert(false, tree+" ==> "+UnApply(fun1, args1)+", pt = "+pt)
-              val itype =  glb(List(pt, arg.tpe))
+              val itype = glb(List(pt, arg.tpe))
               // restore old type (arg is a dummy tree, just needs to pass typechecking)
-              arg.tpe = oldArgType
+              arg.tpe = argDummyType
               UnApply(fun1, args1) setPos tree.pos setType itype
             } else {
               errorTree(tree, "wrong number of arguments for "+treeSymTypeMsg(fun))
             }
           }
-          
 /* --- end unapply  --- */
+
         case _ =>
           errorTree(tree, fun+" of type "+fun.tpe+" does not take parameters")
       }

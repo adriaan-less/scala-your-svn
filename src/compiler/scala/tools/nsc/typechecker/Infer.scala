@@ -1202,108 +1202,6 @@ trait Infer {
         tp
     }
 
-    /** Substitite free type variables <code>undetparams</code> of type constructor
-     *  <code>tree</code> in pattern, given prototype <code>pt</code>.
-     *
-     *  @param tree        ...
-     *  @param undetparams ...
-     *  @param pt          ...
-     */
-    def inferConstructorInstance(tree: Tree, undetparams: List[Symbol], pt0: Type) {
-      val pt = widen(pt0)
-      //println("infer constr inst "+tree+"/"+undetparams+"/"+pt0)
-      var restpe = tree.tpe.finalResultType
-      var tvars = undetparams map freshVar
-
-      /** Compute type arguments for undetermined params and substitute them in given tree.
-       */
-      def computeArgs =
-        try {
-          val targs = solvedTypes(tvars, undetparams, undetparams map varianceInType(restpe), 
-                                  true, lubDepth(List(restpe, pt)))
-//          checkBounds(tree.pos, NoPrefix, NoSymbol, undetparams, targs, "inferred ")
-//          no checkBounds here. If we enable it, test bug602 fails.
-          new TreeTypeSubstituter(undetparams, targs).traverse(tree)
-        } catch {
-          case ex: NoInstance => 
-            errorTree(tree, "constructor of type " + restpe +
-                      " cannot be uniquely instantiated to expected type " + pt +
-                      "\n --- because ---\n" + ex.getMessage())
-        }
-      def instError = {
-        if (settings.debug.value) Console.println("ici " + tree + " " + undetparams + " " + pt)
-        if (settings.explaintypes.value) explainTypes(restpe.instantiateTypeParams(undetparams, tvars), pt)
-        errorTree(tree, "constructor cannot be instantiated to expected type" +
-                  foundReqMsg(restpe, pt))
-      }
-      if (restpe.instantiateTypeParams(undetparams, tvars) <:< pt) {
-        computeArgs
-      } else if (isFullyDefined(pt)) {
-        if (settings.debug.value) log("infer constr " + tree + ":" + restpe + ", pt = " + pt)
-        var ptparams = freeTypeParamsOfTerms.collect(pt)
-        if (settings.debug.value) log("free type params = " + ptparams)
-        val ptWithWildcards = pt.instantiateTypeParams(ptparams, ptparams map (ptparam => WildcardType))
-        tvars = undetparams map freshVar
-        if (restpe.instantiateTypeParams(undetparams, tvars) <:< ptWithWildcards) {
-          computeArgs
-          restpe = skipImplicit(tree.tpe.resultType)
-          if (settings.debug.value) log("new tree = " + tree + ":" + restpe)
-          val ptvars = ptparams map freshVar
-          val pt1 = pt.instantiateTypeParams(ptparams, ptvars)
-          if (isPopulated(restpe, pt1)) {
-            ptvars foreach instantiateTypeVar
-          } else { if (settings.debug.value) Console.println("no instance: "); instError }
-        } else { if (settings.debug.value) Console.println("not a subtype " + restpe.instantiateTypeParams(undetparams, tvars) + " of " + ptWithWildcards); instError }
-      } else { if (settings.debug.value) Console.println("not fully defined: " + pt); instError }
-    }
-
-    def instBounds(tvar: TypeVar): (Type, Type) = {
-      val tparam = tvar.origin.typeSymbol
-      val instType = toOrigin(tvar.constr.inst)
-      val (loBounds, hiBounds) =
-        if (instType != NoType && isFullyDefined(instType)) (List(instType), List(instType))
-        else (tvar.constr.loBounds, tvar.constr.hiBounds)
-      val lo = lub(tparam.info.bounds.lo :: loBounds map toOrigin)
-      val hi = glb(tparam.info.bounds.hi :: hiBounds map toOrigin)
-      (lo, hi)
-    }
-
-    def isInstantiatable(tvars: List[TypeVar]) = {
-      val tvars1 = tvars map (_.cloneInternal)
-      // Note: right now it's not clear that solving is complete, or how it can be made complete!
-      // So we should come back to this and investigate.
-      solve(tvars1, tvars1 map (_.origin.typeSymbol), tvars1 map (x => COVARIANT), false)  
-    }
-
-    // this is quite nasty: it destructively changes the info of the syms of e.g., method type params (see #3692, where the type param T's bounds were set to >: T <: T, so that parts looped)
-    // the changes are rolled back by restoreTypeBounds, but might be unintentially observed in the mean time
-    def instantiateTypeVar(tvar: TypeVar) {
-      val tparam = tvar.origin.typeSymbol
-      if (false && 
-          tvar.constr.inst != NoType && 
-          isFullyDefined(tvar.constr.inst) && 
-          (tparam.info.bounds containsType tvar.constr.inst)) {
-        context.nextEnclosing(_.tree.isInstanceOf[CaseDef]).pushTypeBounds(tparam)
-        tparam setInfo tvar.constr.inst
-        tparam resetFlag DEFERRED
-        if (settings.debug.value) log("new alias of " + tparam + " = " + tparam.info)
-      } else {
-        val (lo, hi) = instBounds(tvar)
-        if (lo <:< hi) {
-          if (!((lo <:< tparam.info.bounds.lo) && (tparam.info.bounds.hi <:< hi)) // bounds were improved
-             && tparam != lo.typeSymbolDirect && tparam != hi.typeSymbolDirect) { // don't create illegal cycles
-            context.nextEnclosing(_.tree.isInstanceOf[CaseDef]).pushTypeBounds(tparam)
-            tparam setInfo TypeBounds(lo, hi)
-            if (settings.debug.value) log("new bounds of " + tparam + " = " + tparam.info)
-          } else {
-            if (settings.debug.value) log("redundant: "+tparam+" "+tparam.info+"/"+lo+" "+hi)
-          }
-        } else {
-          if (settings.debug.value) log("inconsistent: "+tparam+" "+lo+" "+hi)
-        }
-      }
-    }
-
     def checkCheckable(pos: Position, tp: Type, kind: String) {
       def patternWarning(tp0: Type, prefix: String) = {
         context.unit.uncheckedWarning(pos, prefix+tp0+" in type "+kind+tp+" is unchecked since it is eliminated by erasure")
@@ -1353,40 +1251,151 @@ trait Infer {
       }
       check(tp, List())
     }
-     
-    /** Type intersection of simple type tp1 with general type tp2.
-     *  The result eliminates some redundancies.
-     */
-    def intersect(tp1: Type, tp2: Type): Type = {
-      if (tp1 <:< tp2) tp1
-      else if (tp2 <:< tp1) tp2
-      else {
-        val reduced2 = tp2 match {
-          case rtp @ RefinedType(parents2, decls2) =>
-            copyRefinedType(rtp, parents2 filterNot (tp1 <:< _), decls2)
-          case _ =>
-            tp2
-        }
-        intersectionType(List(tp1, reduced2))
-      }
-    }
 
     def inferTypedPattern(pos: Position, pattp: Type, pt0: Type): Type = {
       val pt        = widen(pt0)
       val ptparams  = freeTypeParamsOfTerms.collect(pt)
-      val tpparams  = freeTypeParamsOfTerms.collect(pattp)
 
-      def ptMatchesPattp = pt matchesPattern pattp
-      def pattpMatchesPt = pattp matchesPattern pt
-      
       /** If we can absolutely rule out a match we can fail early.
        *  This is the case if the scrutinee has no unresolved type arguments
        *  and is a "final type", meaning final + invariant in all type parameters.
        */
-      if (pt.isFinalType && ptparams.isEmpty && !ptMatchesPattp)
+      if (pt.isFinalType && ptparams.isEmpty && !(pt matchesPattern pattp))
         error(pos, "scrutinee is incompatible with pattern type" + foundReqMsg(pattp, pt))
       
       checkCheckable(pos, pattp, "pattern ")
+      
+      doInferTypedPattern(pos, pattp, pt, ptparams)
+    }
+
+    // this is quite nasty: it destructively changes the info of the syms of e.g., method type params (see #3692, where the type param T's bounds were set to >: T <: T, so that parts looped)
+    // the changes are rolled back by restoreTypeBounds, but might be unintentially observed in the mean time
+    def instantiateTypeVar(tvar: TypeVar) {
+      def instBounds(tvar: TypeVar): (Type, Type) = {
+        val tparam = tvar.origin.typeSymbol
+        val instType = toOrigin(tvar.constr.inst)
+        val (loBounds, hiBounds) =
+          if (instType != NoType && isFullyDefined(instType)) (List(instType), List(instType))
+          else (tvar.constr.loBounds, tvar.constr.hiBounds)
+        val lo = lub(tparam.info.bounds.lo :: loBounds map toOrigin)
+        val hi = glb(tparam.info.bounds.hi :: hiBounds map toOrigin)
+        (lo, hi)
+      }
+
+      val tparam = tvar.origin.typeSymbol
+      if (false && 
+          tvar.constr.inst != NoType && 
+          isFullyDefined(tvar.constr.inst) && 
+          (tparam.info.bounds containsType tvar.constr.inst)) {
+        context.nextEnclosing(_.tree.isInstanceOf[CaseDef]).pushTypeBounds(tparam)
+        tparam setInfo TypeBounds(tvar.constr.inst, tvar.constr.inst)
+        // tparam setInfo tvar.constr.inst
+        // tparam resetFlag DEFERRED
+        // if (settings.debug.value) log
+        println("new alias of " + tparam + " = " + tparam.info)
+      } else {
+        val (lo, hi) = instBounds(tvar)
+        if (lo <:< hi) {
+          if (!((lo <:< tparam.info.bounds.lo) && (tparam.info.bounds.hi <:< hi)) // bounds were improved
+             && tparam != lo.typeSymbolDirect && tparam != hi.typeSymbolDirect) { // don't create illegal cycles
+            context.nextEnclosing(_.tree.isInstanceOf[CaseDef]).pushTypeBounds(tparam)
+            tparam setInfo TypeBounds(lo, hi)
+            // if (settings.debug.value) log
+            println("new bounds of " + tparam + " = " + tparam.info)
+          } else {
+            // if (settings.debug.value) log
+            println("redundant: "+tparam+" "+tparam.info+"/"+lo+" "+hi)
+          }
+        } else {
+          // if (settings.debug.value) log
+          println("inconsistent: "+tparam+" "+lo+" "+hi)
+        }
+      }
+    }
+
+    /** Substitite free type variables <code>undetparams</code> of type constructor
+     *  <code>tree</code> in pattern, given prototype <code>pt</code>.
+     *
+     *  @param tree        ...
+     *  @param undetparams ...
+     *  @param pt          ...
+     */
+    def inferConstructorInstance(tree: Tree, undetparams: List[Symbol], pt0: Type) {
+      println("infer constr inst "+tree+"/"+undetparams+"/"+pt0)
+      val pt = widen(pt0)
+      var restpe = tree.tpe.finalResultType
+      var tvars = undetparams map freshVar
+
+      /** Compute type arguments for undetermined params and substitute them in given tree.
+       */
+      def computeArgs =
+        try {
+          val targs = solvedTypes(tvars, undetparams, undetparams map varianceInType(restpe), 
+                                  true, lubDepth(List(restpe, pt)))
+//          checkBounds(tree.pos, NoPrefix, NoSymbol, undetparams, targs, "inferred ")
+//          no checkBounds here. If we enable it, test bug602 fails.
+          new TreeTypeSubstituter(undetparams, targs).traverse(tree)
+        } catch {
+          case ex: NoInstance => 
+            errorTree(tree, "constructor of type " + restpe +
+                      " cannot be uniquely instantiated to expected type " + pt +
+                      "\n --- because ---\n" + ex.getMessage())
+        }
+      def instError = {
+        if (settings.debug.value) Console.println("ici " + tree + " " + undetparams + " " + pt)
+        if (settings.explaintypes.value) explainTypes(restpe.instantiateTypeParams(undetparams, tvars), pt)
+        errorTree(tree, "constructor cannot be instantiated to expected type" +
+                  foundReqMsg(restpe, pt))
+      }
+      if (restpe.instantiateTypeParams(undetparams, tvars) <:< pt) {
+        computeArgs
+      } else if (isFullyDefined(pt)) {
+        if (settings.debug.value) log("infer constr " + tree + ":" + restpe + ", pt = " + pt)
+        var ptparams = freeTypeParamsOfTerms.collect(pt)
+        if (settings.debug.value) log("free type params = " + ptparams)
+        val ptWithWildcards = pt.instantiateTypeParams(ptparams, ptparams map (ptparam => WildcardType))
+        tvars = undetparams map freshVar
+        if (restpe.instantiateTypeParams(undetparams, tvars) <:< ptWithWildcards) {
+          computeArgs
+          restpe = skipImplicit(tree.tpe.resultType)
+          if (settings.debug.value) log("new tree = " + tree + ":" + restpe)
+          val ptvars = ptparams map freshVar
+          val pt1 = pt.instantiateTypeParams(ptparams, ptvars)
+          if (isPopulated(restpe, pt1)) {
+            ptvars foreach instantiateTypeVar
+          } else { if (settings.debug.value) Console.println("no instance: "); instError }
+        } else { if (settings.debug.value) Console.println("not a subtype " + restpe.instantiateTypeParams(undetparams, tvars) + " of " + ptWithWildcards); instError }
+      } else { if (settings.debug.value) Console.println("not fully defined: " + pt); instError }
+    }
+
+    def doInferTypedPattern(pos: Position, pattp: Type, pt: Type, ptparams: List[Symbol]): Type = {
+      // println("inferTypedPattern: pos ="+ pos +" pattp = "+ pattp +" pt0 = "+ pt0)
+      val tpparams  = freeTypeParamsOfTerms.collect(pattp)
+      
+      /** Type intersection of simple type tp1 with general type tp2.
+       *  The result eliminates some redundancies.
+       */
+      def intersect(tp1: Type, tp2: Type): Type = {
+        if (tp1 <:< tp2) tp1
+        else if (tp2 <:< tp1) tp2
+        else {
+          val reduced2 = tp2 match {
+            case rtp @ RefinedType(parents2, decls2) =>
+              copyRefinedType(rtp, parents2 filterNot (tp1 <:< _), decls2)
+            case _ =>
+              tp2
+          }
+          intersectionType(List(tp1, reduced2))
+        }
+      }
+
+      def isInstantiatable(tvars: List[TypeVar]) = {
+        val tvars1 = tvars map (_.cloneInternal)
+        // Note: right now it's not clear that solving is complete, or how it can be made complete!
+        // So we should come back to this and investigate.
+        solve(tvars1, tvars1 map (_.origin.typeSymbol), tvars1 map (x => COVARIANT), false)  
+      }
+
       if (pattp <:< pt) ()
       else {
         if (settings.debug.value)
@@ -1407,12 +1416,12 @@ trait Infer {
           val pt1    = pt.instantiateTypeParams(ptparams, ptvars)  
           
           // See ticket #2486 for an example of code which would incorrectly
-          // fail if we didn't allow for pattpMatchesPt.
-          if (isPopulated(tp, pt1) && isInstantiatable(tvars ++ ptvars) || pattpMatchesPt)
+          // fail if we didn't allow for pattp MatchesPattern pt.
+          if (isPopulated(tp, pt1) && isInstantiatable(tvars ++ ptvars) || (pattp matchesPattern pt))
              ptvars foreach instantiateTypeVar
           else {
             error(pos, "pattern type is incompatible with expected type" + foundReqMsg(pattp, pt))
-            return pattp            
+            return pattp
           }
         }
         tvars foreach instantiateTypeVar
@@ -1425,7 +1434,34 @@ trait Infer {
       else intersect(pt, pattp)
     }
 
-    def inferModulePattern(pat: Tree, pt: Type) =
+    def inferExtractorPattern(tree: Tree, unappType: Type, argDummyType: Type): Type = {
+      println("inferExtractorPattern: tree ="+ tree +" argDummyType = "+ argDummyType +", unappType = "+ unappType)
+      def freshArgType(tp: Type): (Type, List[Symbol]) = tp match {
+        case MethodType(params, _) => 
+          (params(0).tpe, List())
+        case PolyType(tparams, restype) => 
+          val tparams1 = cloneSymbols(tparams)
+          (freshArgType(restype)._1.substSym(tparams, tparams1), tparams1)
+        case OverloadedType(_, _) =>
+          error(tree.pos, "cannot resolve overloaded unapply") // was fun.pos
+          (ErrorType, List())
+      }
+      val (unappFormal, freeVars) = freshArgType(unappType.skolemizeExistential(context.owner, tree))
+      val context1 = context.makeNewScope(context.tree, context.owner)
+      freeVars foreach context1.scope.enter
+      val pattp = newTyper(context1).infer.inferTypedPattern(tree.pos, unappFormal, argDummyType)
+      // turn any unresolved type variables in freevars into existential skolems
+      val skolems = freeVars map { fv =>
+        val skolem = new TypeSkolem(context1.owner, tree.pos, fv.name, fv) // was fun.pos
+        skolem.setInfo(fv.info.cloneInfo(skolem))
+          .setFlag(fv.flags | EXISTENTIAL).resetFlag(PARAM)
+        skolem
+      }
+      pattp.substSym(freeVars, skolems)
+    }
+
+    def inferModulePattern(pat: Tree, pt: Type) = {
+      println("inferModulePattern: tree ="+ pat +" pt = "+ pt)
       if (!(pat.tpe <:< pt)) {
         val ptparams = freeTypeParamsOfTerms.collect(pt)
         if (settings.debug.value) log("free type params (2) = " + ptparams)
@@ -1436,6 +1472,7 @@ trait Infer {
         else 
           error(pat.pos, "pattern type is incompatible with expected type"+foundReqMsg(pat.tpe, pt))
       }
+    }
 
     object toOrigin extends TypeMap {
       def apply(tp: Type): Type = tp match {
