@@ -28,9 +28,6 @@ trait Infer {
   private def assertNonCyclic(tvar: TypeVar) =
     assert(tvar.constr.inst != tvar, tvar.origin)
 
-  def isVarArgs(params: List[Symbol]) = !params.isEmpty && isRepeatedParamType(params.last.tpe)
-  def isVarArgTpes(formals: List[Type]) = !formals.isEmpty && isRepeatedParamType(formals.last)
-
   /** The formal parameter types corresponding to <code>formals</code>.
    *  If <code>formals</code> has a repeated last parameter, a list of
    *  (nargs - params.length + 1) copies of its type is returned.
@@ -41,10 +38,10 @@ trait Infer {
    */
   def formalTypes(formals: List[Type], nargs: Int, removeByName: Boolean = true, removeRepeated: Boolean = true): List[Type] = {
     val formals1 = if (removeByName) formals mapConserve {
-      case TypeRef(_, sym, List(arg)) if (sym == ByNameParamClass) => arg
+      case TypeRef(_, ByNameParamClass, List(arg)) => arg
       case formal => formal
     } else formals
-    if (isVarArgTpes(formals1) && (removeRepeated || formals.length != nargs)) {
+    if (isVarArgTypes(formals1) && (removeRepeated || formals.length != nargs)) {
       val ft = formals1.last.normalize.typeArgs.head
       formals1.init ::: (for (i <- List.range(formals1.length - 1, nargs)) yield ft)
     } else formals1
@@ -685,7 +682,7 @@ trait Infer {
         alts exists (alt => hasExactlyNumParams(pre.memberType(alt), n))
       case _ =>
         val len = tp.params.length
-        len == n || isVarArgs(tp.params) && len <= n + 1
+        len == n || isVarArgsList(tp.params) && len <= n + 1
     }
 
     /**
@@ -707,7 +704,7 @@ trait Infer {
       val argtpes1 = argtpes map {
         case NamedType(name, tp) => // a named argument
           var res = tp
-          val pos = params.indexWhere(p => (p.name == name || deprecatedName(p) == Some(name)) && !p.hasFlag(SYNTHETIC))
+          val pos = params.indexWhere(p => (p.name == name || deprecatedName(p) == Some(name)) && !p.isSynthetic)
           if (pos == -1) {
             if (positionalAllowed) { // treat assignment as positional argument
               argPos(index) = index
@@ -738,7 +735,7 @@ trait Infer {
      * tupled and n-ary methods, but thiws is something for a future major revision.
      */
     def isUnitForVarArgs(args: List[AnyRef], params: List[Symbol]): Boolean = 
-      args.length == 0 && params.length == 2 && isVarArgs(params)
+      args.isEmpty && params.length == 2 && isVarArgsList(params)
 
     /** Is there an instantiation of free type variables <code>undetparams</code>
      *  such that function type <code>ftpe</code> is applicable to
@@ -820,13 +817,12 @@ trait Infer {
               case NamedType(name, _) => Some(name)
               case _ => None
             })._1
-            if (missing.exists(!_.hasFlag(DEFAULTPARAM))) tryTupleApply
-            else {
-              val argtpes1 = argtpes0 ::: missing.map {
-                p => NamedType(p.name, p.tpe) // add defaults as named arguments
-              }
+            if (missing forall (_.hasDefaultFlag)) {
+              // add defaults as named arguments
+              val argtpes1 = argtpes0 ::: (missing map (p => NamedType(p.name, p.tpe)))
               isApplicable(undetparams, ftpe, argtpes1, pt)
             }
+            else tryTupleApply
           }
 
         case PolyType(tparams, restpe) =>
@@ -877,7 +873,7 @@ trait Infer {
         isAsSpecific(ftpe1.resultType, ftpe2)
       case MethodType(params @ (x :: xs), _) =>
         var argtpes = params map (_.tpe)
-        if (isVarArgs(params) && isVarArgs(ftpe2.params))
+        if (isVarArgsList(params) && isVarArgsList(ftpe2.params))
           argtpes = argtpes map (argtpe => 
             if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
         isApplicable(List(), ftpe2, argtpes, WildcardType)
@@ -1260,7 +1256,7 @@ trait Infer {
        *  This is the case if the scrutinee has no unresolved type arguments
        *  and is a "final type", meaning final + invariant in all type parameters.
        */
-      if (pt.isFinalType && ptparams.isEmpty && !(pt matchesPattern pattp))
+      if (pt.isFinalType && ptparams.isEmpty && !(pt matchesPattern pattp.widen))
         error(pos, "scrutinee is incompatible with pattern type" + foundReqMsg(pattp, pt))
       
       checkCheckable(pos, pattp, "pattern ")
@@ -1623,7 +1619,7 @@ trait Infer {
           //log("applicable: "+ (allApplicable map pre.memberType))
 
           if (varArgsOnly)
-            allApplicable = allApplicable filter (alt => isVarArgs(alt.tpe.params))
+            allApplicable = allApplicable filter (alt => isVarArgsList(alt.tpe.params))
 
           // if there are multiple, drop those that use a default
           // (keep those that use vararg / tupling conversion)
@@ -1716,7 +1712,7 @@ trait Infer {
             else treeSymTypeMsg(tree) + " does not take type parameters")
           return
         }
-        if (sym0.hasFlag(OVERLOADED)) {
+        if (sym0.isOverloaded) {
           val sym = sym0 filter { alt => isWithinBounds(pre, alt.owner, alt.typeParams, argtypes) }
           if (sym == NoSymbol) {
             if (!(argtypes exists (_.isErroneous))) {
@@ -1728,7 +1724,7 @@ trait Infer {
               return
             }
           }
-          if (sym.hasFlag(OVERLOADED)) {
+          if (sym.isOverloaded) {
             val tparams = new AsSeenFromMap(pre, sym.alternatives.head.owner).mapOver(
               sym.alternatives.head.typeParams)
             val bounds = tparams map (_.tpeHK) // see e.g., #1236

@@ -670,7 +670,7 @@ abstract class ClassfileParser {
           t
       }
       val newParams = method.newSyntheticValueParams(
-        formals.init ::: List(appliedType(definitions.JavaRepeatedParamClass.typeConstructor, List(elemtp))))
+        formals.init :+ appliedType(definitions.JavaRepeatedParamClass.typeConstructor, List(elemtp)))
       MethodType(newParams, rtpe)
     case PolyType(tparams, rtpe) =>
       PolyType(tparams, arrayToRepeated(rtpe))
@@ -756,7 +756,7 @@ abstract class ClassfileParser {
           }
 
           val classSym = classNameToSymbol(subName(c => c == ';' || c == '<'))
-          assert(!classSym.hasFlag(OVERLOADED), classSym.alternatives)
+          assert(!classSym.isOverloaded, classSym.alternatives)
           var tpe = processClassType(processInner(classSym.tpe))
           while (sig(index) == '.') {
             accept('.')

@@ -293,10 +293,8 @@ abstract class TreeGen {
   def mkCachedModuleAccessDef(accessor: Symbol, mvar: Symbol) =
     DefDef(accessor, mkCached(mvar, newModule(accessor, mvar.tpe)))
 
-  // def m: T = new tpe(...)
-  // where (...) are eventual outer accessors
-  def mkModuleAccessDef(accessor: Symbol, tpe: Type) =
-    DefDef(accessor, newModule(accessor, tpe))
+  def mkModuleAccessDef(accessor: Symbol, msym: Symbol) =
+    DefDef(accessor, Select(This(msym.owner), msym))
 
   def newModule(accessor: Symbol, tpe: Type) =
     New(TypeTree(tpe), 
@@ -318,7 +316,7 @@ abstract class TreeGen {
     Apply(Select(monitor, Object_synchronized), List(body))
 
   def wildcardStar(tree: Tree) =
-    atPos(tree.pos) { Typed(tree, Ident(nme.WILDCARD_STAR.toTypeName)) }
+    atPos(tree.pos) { Typed(tree, Ident(nme.WILDCARD_STAR)) }
 
   def paramToArg(vparam: Symbol) = {
     val arg = Ident(vparam)
