@@ -3074,7 +3074,10 @@ trait Typers { self: Analyzer =>
               else 
                 context.owner.newAbstractType(tree.pos, name) setInfo
                   TypeBounds(NothingClass.tpe, AnyClass.tpe)
-          val rawInfo = vble.rawInfo
+                  // #4070: in case m: Foo[c] => ... (given class Foo[C[x]]), 
+                  // these bounds must be wrapped in polyType(List(`x`), ...) for kind correctness...
+                  // unfortunately, we don't know the expected kind here
+          // val rawInfo = vble.rawInfo //AM dead code!?
           vble = if (vble.name == tpnme.WILDCARD) context.scope.enter(vble)
                  else namer.enterInScope(vble)
           tree setSymbol vble setType vble.tpe

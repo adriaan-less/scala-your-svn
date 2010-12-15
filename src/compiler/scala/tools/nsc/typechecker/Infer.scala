@@ -1388,19 +1388,45 @@ trait Infer {
       else {
         if (settings.debug.value)
           log("free type params (1) = " + tpparams)
-          
-        var tvars = tpparams map freshVar
+
+        // #4070
+        // if tparam is a variable bound by a Bind in a pattern, it's always going to have kind *,
+        // since we don't know the expected kind when making Bind nodes. Now we know pattp and pt, we can
+        // infer tparam's expected kind by looking at where tparam occurs in the typeArgs nested in pattp or pt
+        def freshVarAdjustKind(pt: Type)(tparam: Symbol): TypeVar =  {
+          object findKind extends TypeCollector[Option[List[Symbol]]](None) {
+            def traverse(tp: Type) {
+              if (result.isEmpty) {
+                tp match {
+                  case TypeRef(_, sym, args) =>
+                    val idx = args indexWhere (_.typeSymbolDirect == tparam)
+                    if(idx >= 0) {
+                      result = Some(sym.typeParams(idx).typeParams)
+                    }
+                }
+
+                mapOver(tp)
+              }
+            }
+          }
+          findKind.collect(pt) match {
+            case Some(tps) => TypeVar(tparam.tpeHK, new TypeConstraint, List(), tps) // override higher-order type params
+            case None => TypeVar(tparam)
+          }
+        }
+
+        var tvars = tpparams map freshVarAdjustKind(pattp)
         var tp    = pattp.instantiateTypeParams(tpparams, tvars)
         
         if ((tp <:< pt) && isInstantiatable(tvars)) ()
         else {
-          tvars = tpparams map freshVar
+          tvars = tpparams map freshVarAdjustKind(pattp)
           tp    = pattp.instantiateTypeParams(tpparams, tvars)
 
           if (settings.debug.value)
             log("free type params (2) = " + ptparams)
           
-          val ptvars = ptparams map freshVar
+          val ptvars = ptparams map freshVarAdjustKind(pt)
           val pt1    = pt.instantiateTypeParams(ptparams, ptvars)  
           
           // See ticket #2486 for an example of code which would incorrectly

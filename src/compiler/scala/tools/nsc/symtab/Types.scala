@@ -2446,6 +2446,7 @@ A type's typeSymbol should never be inspected directly.
       if  (constr.instValid) constr.inst
       else if (isHigherKinded) {  // get here when checking higher-order subtyping of the typevar by itself (TODO: check whether this ever happens?)
         // @M TODO: should not use PolyType, as that's the type of a polymorphic value -- we really want a type *function*
+        // TODO: make proper anonTypeFun
         PolyType(params, applyArgs(params map (_.typeConstructor)))
       } else {
         super.normalize
