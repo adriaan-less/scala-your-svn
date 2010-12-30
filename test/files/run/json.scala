@@ -34,15 +34,33 @@ object Test extends Application {
       case Some(parsed) => println("Passed parse  : " + sortJSON(parsed))
     }
   }
-   
+
+  // For this one, just parsing should be considered a pass
+  def printJSONValue(given : String) {
+    JSON parseValueRaw given match {
+      case None => println("Parse failed for \"%s\"".format(given))
+      case Some(parsed) => println("Passed parse  : " + sortJSON(parsed))
+    }
+  }
+
   // For this usage, do a raw parse (to JSONObject/JSONArray)
   def printJSON(given : String, expected : JSONType) {
     printJSON(given, JSON.parseRaw, expected)
   }
 
+  // For this usage, do a raw parse (to JSONObject/JSONArray)
+  def printJSONValue(given : String, expected : Any) {
+    printJSON(given, JSON.parseValueRaw, expected)
+  }
+
   // For this usage, do a raw parse (to JSONType and subclasses)
   def printJSONFull(given : String, expected : Any) {
     printJSON(given, JSON.parseFull, expected)
+  }
+
+  // For this usage, do a raw parse (to JSONType and subclasses)
+  def printJSONFullValue(given : String, expected : Any) {
+    printJSON(given, JSON.parseValueFull, expected)
   }
 
   // For this usage, do configurable parsing so that you can do raw if desired
@@ -77,28 +95,46 @@ object Test extends Application {
 
   // The library should differentiate between lower case "l" and number "1" (ticket #136)
   printJSON("{\"name\" : \"value\"}", JSONObject(Map("name" -> "value")))
+  printJSONValue("{\"name\" : \"value\"}", JSONObject(Map("name" -> "value")))
   printJSON("{\"name\" : \"va1ue\"}", JSONObject(Map("name" -> "va1ue")))
+  printJSONValue("{\"name\" : \"va1ue\"}", JSONObject(Map("name" -> "va1ue")))
   printJSON("{\"name\" : { \"name1\" : \"va1ue1\", \"name2\" : \"va1ue2\" } }",
             JSONObject(Map("name" -> JSONObject(Map("name1" -> "va1ue1", "name2" -> "va1ue2")))))
+  printJSONValue("{\"name\" : { \"name1\" : \"va1ue1\", \"name2\" : \"va1ue2\" } }",
+            JSONObject(Map("name" -> JSONObject(Map("name1" -> "va1ue1", "name2" -> "va1ue2")))))
+  printJSONValue("\"value\"", "value")
+  printJSONValue("\"va1ue\"", "va1ue")
 
   // Unicode escapes should be handled properly
   printJSON("{\"name\" : \"\\u0022\"}")
+  printJSONValue("{\"name\" : \"\\u0022\"}")
+  printJSONValue("\"\\u0022\"")
 
   // The library should return a map for JSON objects (ticket #873)
   printJSONFull("{\"function\" : \"add_symbol\"}", Map("function" -> "add_symbol"))
+  printJSONFullValue("{\"function\" : \"add_symbol\"}", Map("function" -> "add_symbol"))
 
   // The library should recurse into arrays to find objects (ticket #2207)
   printJSON("[{\"a\" : \"team\"},{\"b\" : 52}]", JSONArray(List(JSONObject(Map("a" -> "team")), JSONObject(Map("b" -> 52.0)))))
+  printJSONValue("[{\"a\" : \"team\"},{\"b\" : 52}]", JSONArray(List(JSONObject(Map("a" -> "team")), JSONObject(Map("b" -> 52.0)))))
   
   // The library should differentiate between empty maps and lists (ticket #3284)
   printJSONFull("{}", Map()) 
+  printJSONFullValue("{}", Map())
   printJSONFull("[]", List())
+  printJSONFullValue("[]", List())
   
   // Lists should be returned in the same order as specified
   printJSON("[4,1,3,2,6,5,8,7]", JSONArray(List[Double](4,1,3,2,6,5,8,7)))
+  printJSONValue("[4,1,3,2,6,5,8,7]", JSONArray(List[Double](4,1,3,2,6,5,8,7)))
 
   // Additional tests
   printJSON("{\"age\": 0}")
+  printJSONValue("{\"age\": 0}")
+  printJSONValue("1.0e-1", 0.1)
+  printJSONValue("false", false)
+  printJSONValue("true", true)
+  printJSONValue("null", null)
 
   // The library should do a proper toString representation using default and custom renderers (ticket #3605)
   stringDiff("{\"name\" : \"va1ue\"}", JSONObject(Map("name" -> "va1ue")).toString)
@@ -154,6 +190,7 @@ object Test extends Application {
 
   
   printJSONFull(sample1, sample1Obj)
+  printJSONFullValue(sample1, sample1Obj)
   println
 
   // from http://www.developer.com/lang/jscript/article.php/3596836
@@ -183,6 +220,7 @@ object Test extends Application {
 }"""
 
   printJSON(sample2)
+  printJSONValue(sample2)
   println
 
   // from http://json.org/example.html
@@ -279,5 +317,6 @@ object Test extends Application {
 }"""
 
   printJSON(sample3)
+  printJSONValue(sample3)
   println
 }

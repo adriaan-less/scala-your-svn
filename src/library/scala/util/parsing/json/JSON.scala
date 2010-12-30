@@ -35,11 +35,11 @@ import scala.util.parsing.combinator.lexical._
 object JSON extends Parser {
 
   /**
-   * Parse the given JSON string and return a list of elements. If the
+   * Parse the given JSON text and return a list of elements. If the
    * string is a JSON object it will be a list of pairs. If it's a JSON 
-   * array it will be be a list of individual elements.
+   * array it will be a list of individual elements.
    *
-   * @param input the given JSON string.
+   * @param input the given JSON text.
    * @return      an optional list of of elements.
    *
    * @deprecated Use parseFull or parseRaw as needed.
@@ -60,11 +60,11 @@ object JSON extends Parser {
   }
 
   /**
-   * Parse the given JSON string and return a list of elements. If the
+   * Parse the given JSON text and return a list of elements. If the
    * string is a JSON object it will be a JSONObject. If it's a JSON 
-   * array it will be be a JSONArray.
+   * array it will be a JSONArray.
    *
-   * @param input the given JSON string.
+   * @param input the given JSON text.
    * @return      an optional JSONType element.
    */
   def parseRaw(input : String) : Option[JSONType] = 
@@ -74,11 +74,11 @@ object JSON extends Parser {
     }
   
   /**
-   * Parse the given JSON string and return either a <code>List[Any]</code>
+   * Parse the given JSON text and return either a <code>List[Any]</code>
    * if the JSON string specifies an <code>Array</code>, or a
    * <code>Map[String,Any]</code> if the JSON string specifies an object.
    *
-   * @param input the given JSON string.
+   * @param input the given JSON text.
    * @return      an optional list or map.
    */
   def parseFull(input: String): Option[Any] =
@@ -86,6 +86,29 @@ object JSON extends Parser {
       case Some(data) => Some(resolveType(data))
       case None => None
     }
+
+  /**
+   * Parse the given string as a JSON value. If the string is a JSON
+   * object it will be a JSONObject. If it's a JSON array it will be a
+   * JSONArray. Otherwise it will be the parsed value.
+   *
+   * @param input the given JSON string.
+   * @return      an optional value.
+   */
+  def parseValueRaw(input: String): Option[Any] =
+    (opt(phrase(value)))(new lexical.Scanner(input)).get
+
+  /**
+   * Parse the given string as a JSON value and return a <code>List[Any]</code>
+   * if the JSON string specifies an <code>Array</code>, a
+   * <code>Map[String,Any]</code> if the JSON string specifies an object,
+   * otherwise the parsed value.
+   *
+   * @param input the given JSON string.
+   * @return      an optional value.
+   */
+  def parseValueFull(input: String): Option[Any] =
+    parseValueRaw(input) map resolveType
 
   /**
    * A utility method to resolve a parsed JSON list into objects or 
