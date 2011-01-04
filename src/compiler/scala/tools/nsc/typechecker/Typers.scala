@@ -2757,25 +2757,66 @@ trait Typers extends Modes {
         res
       }
 
-    /** convert skolems to existentials */
-    def packedType(tree: Tree, owner: Symbol): Type = {
-      def defines(tree: Tree, sym: Symbol) = 
-        sym.isExistentialSkolem && sym.unpackLocation == tree ||
-        tree.isDef && tree.symbol == sym
-      def isVisibleParameter(sym: Symbol) = 
-        sym.isParameter && (sym.owner == owner) && (sym.isType || !owner.isAnonymousFunction)
-      def containsDef(owner: Symbol, sym: Symbol): Boolean = 
-        (!sym.hasPackageFlag) && {
-          var o = sym.owner
-          while (o != owner && o != NoSymbol && !o.hasPackageFlag) o = o.owner
-          o == owner && !isVisibleParameter(sym)
-        }
-      var localSyms = collection.immutable.Set[Symbol]()
-      var boundSyms = collection.immutable.Set[Symbol]()
+    def packedType(tree: Tree): Type = {
       def isLocal(sym: Symbol): Boolean =
         if (sym == NoSymbol || sym.isRefinementClass || sym.isLocalDummy) false
-        else if (owner == NoSymbol) tree exists (defines(_, sym))
-        else containsDef(owner, sym) || isRawParameter(sym)
+        else {
+          def defines(tree: Tree, sym: Symbol) = 
+            sym.isExistentialSkolem && sym.unpackLocation == tree ||
+            tree.isDef && tree.symbol == sym
+
+          tree exists (defines(_, sym))
+        }
+      
+      packedType0(tree.tpe, tree.pos, isLocal)
+    }
+
+    def packedType(tp: Type, owner: Symbol): Type = {
+      def isLocal(sym: Symbol): Boolean =
+        if (sym == NoSymbol || sym.isRefinementClass || sym.isLocalDummy) false
+        else {
+          def isVisibleParameter(sym: Symbol) = 
+            sym.isParameter && (sym.owner == owner) && (sym.isType || !owner.isAnonymousFunction)
+          def containsDef(owner: Symbol, sym: Symbol): Boolean = 
+            (!sym.hasPackageFlag) && {
+              var o = sym.owner
+              while (o != owner && o != NoSymbol && !o.hasPackageFlag) o = o.owner
+              o == owner && !isVisibleParameter(sym)
+            }
+
+          containsDef(owner, sym) || isRawParameter(sym)
+        }
+      
+      packedType0(tp, owner.pos, isLocal)
+    }
+
+    def packedType(tree: Tree, owner: Symbol): Type = {
+      def isLocal(sym: Symbol): Boolean =
+        if (sym == NoSymbol || sym.isRefinementClass || sym.isLocalDummy) false
+        else if (owner == NoSymbol) {
+          def defines(tree: Tree, sym: Symbol) = 
+            sym.isExistentialSkolem && sym.unpackLocation == tree ||
+            tree.isDef && tree.symbol == sym
+
+          tree exists (defines(_, sym))
+        } else {
+          def isVisibleParameter(sym: Symbol) = 
+            sym.isParameter && (sym.owner == owner) && (sym.isType || !owner.isAnonymousFunction)
+          def containsDef(owner: Symbol, sym: Symbol): Boolean = 
+            (!sym.hasPackageFlag) && {
+              var o = sym.owner
+              while (o != owner && o != NoSymbol && !o.hasPackageFlag) o = o.owner
+              o == owner && !isVisibleParameter(sym)
+            }
+
+          containsDef(owner, sym) || isRawParameter(sym)
+        }
+      
+      packedType0(tree.tpe, tree.pos, isLocal)
+    }
+    
+    /** convert skolems to existentials */
+    private def packedType0(tp: Type, pos: Position, isLocal: Symbol => Boolean): Type = {
       def containsLocal(tp: Type): Boolean = 
         tp exists (t => isLocal(t.typeSymbol) || isLocal(t.termSymbol))
       val normalizeLocals = new TypeMap {
@@ -2784,13 +2825,17 @@ trait Typers extends Modes {
             if (sym.isAliasType && containsLocal(tp)) apply(tp.normalize)
             else {
               if (pre.isVolatile) 
-                context.error(tree.pos, "Inferred type "+tree.tpe+" contains type selection from volatile type "+pre)
+                context.error(pos, "Inferred type "+ tp +" contains type selection from volatile type "+pre)
               mapOver(tp) 
             }
           case _ =>
             mapOver(tp)
         }
       }
+
+      var localSyms = collection.immutable.Set[Symbol]()
+      var boundSyms = collection.immutable.Set[Symbol]()
+
       // add all local symbols of `tp' to `localSyms'
       // TODO: expand higher-kinded types into individual copies for each instance.
       def addLocals(tp: Type) {
@@ -2801,7 +2846,7 @@ trait Typers extends Modes {
               localSyms += sym
               remainingSyms += sym
             } else {
-              unit.error(tree.pos, 
+              unit.error(pos, 
                 "can't existentially abstract over parameterized type " + tp)
             } 
           }
@@ -2832,7 +2877,7 @@ trait Typers extends Modes {
         for (sym <- remainingSyms) addLocals(sym.existentialBound)
       }
 
-      val normalizedTpe = normalizeLocals(tree.tpe)
+      val normalizedTpe = normalizeLocals(tp)
       addLocals(normalizedTpe)
       packSymbols(localSyms.toList, normalizedTpe)
     }
