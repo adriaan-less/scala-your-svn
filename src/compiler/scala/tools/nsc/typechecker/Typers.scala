@@ -2994,7 +2994,7 @@ trait Typers extends Modes {
           if (vble == NoSymbol) 
             vble = 
               if (isFullyDefined(pt))
-                context.owner.newAliasType(tree.pos, name) setInfo pt
+                context.owner.newAliasType(tree.pos, name) setInfo pt // #4070: pt may not be accurate (see typedAppliedTypeTree)
               else 
                 context.owner.newAbstractType(tree.pos, name) setInfo
                   TypeBounds(NothingClass.tpe, AnyClass.tpe)
@@ -3703,7 +3703,7 @@ trait Typers extends Modes {
             // @M: kind-arity checking is done here and in adapt, full kind-checking is in checkKindBounds (in Infer)
             val args1 = 
               if(!tpt1.symbol.rawInfo.isComplete)
-                args mapConserve (typedHigherKindedType(_, mode))
+                args mapConserve (typedHigherKindedType(_, mode)) // TODO: use NoType to indicate the kind is unknown instead of defaulting to kind *? (see e.g. #4070)
                 // if symbol hasn't been fully loaded, can't check kind-arity
               else map2Conserve(args, tparams) { 
                 (arg, tparam) => 

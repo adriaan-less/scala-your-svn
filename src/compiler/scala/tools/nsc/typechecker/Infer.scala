@@ -1380,9 +1380,11 @@ trait Infer {
           log("free type params (1) = " + tpparams)
 
         // #4070
-        // if tparam is a variable bound by a Bind in a pattern, it's always going to have kind *,
-        // since we don't know the expected kind when making Bind nodes. Now we know pattp and pt, we can
-        // infer tparam's expected kind by looking at where tparam occurs in the typeArgs nested in pattp or pt
+        // if tparam is a variable bound by a Bind in a pattern, make sure it has the right kind
+        // its expected type may originally have erroneously indicated kind * if the symbol to which
+        // it is a type argument had not been fully loaded yet (e.g., the pattern was SomeClass[someBoundVar] -- 
+        //    if SomeClass was not initialized, we don't know the expected kind for someBoundVar)
+        // Now we know pattp and pt, we can infer tparam's expected kind by looking at where tparam occurs in the typeArgs nested in pattp or pt
         def freshVarAdjustKind(pt: Type)(tparam: Symbol): TypeVar =  {
           object findKind extends TypeCollector[Option[List[Symbol]]](None) {
             def traverse(tp: Type) {
@@ -1399,10 +1401,15 @@ trait Infer {
               }
             }
           }
-          findKind.collect(pt) match {
-            case Some(tps) => TypeVar(tparam.tpeHK, new TypeConstraint, List(), tps) // override higher-order type params
-            case None => TypeVar(tparam)
-          }
+          
+          if(tparam.typeParams.isEmpty) // we may need to correct the kind if we defaulted to kind *
+            findKind.collect(pt) match {
+              case Some(tps) => // tparam was used in a context where higher-order type params `tps` were expected
+                tparam.info = polyType(cloneSymbols(tps), tparam.info)
+              case _ =>
+            }
+
+          TypeVar(tparam)
         }
 
         var tvars = tpparams map freshVarAdjustKind(pattp)
