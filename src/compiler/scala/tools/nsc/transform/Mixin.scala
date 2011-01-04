@@ -849,14 +849,21 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         stats1
       }
 
-      /** Does this field require an initialized bit? */
+      /** Does this field require an initialized bit?
+       *  Note: fields of classes inheriting DelayedInit are not checked.
+       *        This is because the they are neither initialized in the constructor
+       *        nor do they have a setter (not if they are vals abyway). The usual
+       *        logic for setting bitmaps does therefor not work for such fields.
+       *        That's why they are excluded.
+       */
       def needsInitFlag(sym: Symbol) = {
         val res = (settings.checkInit.value 
            && sym.isGetter 
            && !sym.isInitializedToDefault
            && !sym.hasFlag(PARAMACCESSOR | SPECIALIZED)
            && !sym.accessed.hasFlag(PRESUPER)
-           && !sym.isOuterAccessor)
+           && !sym.isOuterAccessor
+           && !(sym.owner isSubClass DelayedInitClass))
         
 //        if (settings.debug.value) {
 //          log("needsInitFlag(" + sym.fullName + "): " + res)
@@ -903,22 +910,23 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         field.info // ensure that nested objects are tranformed
         // For checkinit consider normal value getters
         // but for lazy values only take into account lazy getters
-          (needsInitFlag(field) || field.hasFlag(LAZY) && field.isMethod) && !field.isDeferred
+        (needsInitFlag(field) || field.isLazy && field.isMethod) && !field.isDeferred
       }
-      
       
       /**
        * Return the number of bits used by superclass fields.
        */
       def usedBits(clazz0: Symbol): Int = {
-          def needsBitmap(field: Symbol) =
-              field.owner != clazz0 &&
-              fieldWithBitmap(field)
-          val fs = for {
-               cl <- clazz0.info.baseClasses.tail.filter(cl => !cl.isTrait && !cl.hasFlag(JAVA))
-               field <- cl.info.decls.iterator.toList if needsBitmap(field) && !localBitmapField(field)
-          } yield field
-          fs.length
+        def needsBitmap(field: Symbol) = field.owner != clazz0 && fieldWithBitmap(field)
+        var bits = 0
+        for {
+          cl <- clazz0.info.baseClasses.tail
+          if !cl.isTrait && !cl.hasFlag(JAVA)
+          field <- cl.info.decls.iterator
+          if needsBitmap(field) && !localBitmapField(field)
+        } bits += 1
+        
+        bits
       }
       
       /** Fill the map from fields to offset numbers.

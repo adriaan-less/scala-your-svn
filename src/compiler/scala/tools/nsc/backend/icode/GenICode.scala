@@ -9,7 +9,7 @@ package backend
 package icode
 
 import scala.collection.{ mutable, immutable }
-import scala.collection.mutable.{ HashMap, ListBuffer, Buffer, HashSet }
+import scala.collection.mutable.{ ListBuffer, Buffer }
 import scala.tools.nsc.symtab._
 import scala.annotation.switch
 import PartialFunction._
@@ -29,7 +29,7 @@ abstract class GenICode extends SubComponent  {
     ArrayClass, ObjectClass, ThrowableClass, StringClass, NothingClass, NullClass, AnyRefClass,
     Object_equals, Object_isInstanceOf, Object_asInstanceOf, ScalaRunTimeModule,
     BoxedNumberClass, BoxedCharacterClass,
-    getMember, getPrimitiveCompanion
+    getMember, runtimeCompanions
   }
   import scalaPrimitives.{
     isArrayOp, isComparisonOp, isLogicalOp,
@@ -1058,10 +1058,11 @@ abstract class GenICode extends SubComponent  {
           generatedType = UNIT
           genStat(tree, ctx)
 
-        case ArrayValue(tpt @ TypeTree(), elems) =>
+        case ArrayValue(tpt @ TypeTree(), _elems) =>
           var ctx1 = ctx
           val elmKind = toTypeKind(tpt.tpe)
           generatedType = ARRAY(elmKind)
+          val elems = _elems.toIndexedSeq
 
           ctx1.bb.emit(CONSTANT(new Constant(elems.length)), tree.pos)
           ctx1.bb.emit(CREATE_ARRAY(elmKind, 1))
@@ -1216,7 +1217,7 @@ abstract class GenICode extends SubComponent  {
       }
 
     private def genLoadModule(ctx: Context, sym: Symbol, pos: Position) {
-      ctx.bb.emit(LOAD_MODULE(getPrimitiveCompanion(sym) getOrElse sym), pos)
+      ctx.bb.emit(LOAD_MODULE(runtimeCompanions.getOrElse(sym, sym)), pos)
     }
 
     def genConversion(from: TypeKind, to: TypeKind, ctx: Context, cast: Boolean) = {
@@ -1757,7 +1758,7 @@ abstract class GenICode extends SubComponent  {
      *  to delay it any more: they will be used at some point.
      */
     class DuplicateLabels(boundLabels: Set[Symbol]) extends Transformer {
-      val labels: mutable.Map[Symbol, Symbol] = new HashMap
+      val labels: mutable.Map[Symbol, Symbol] = new mutable.HashMap
       var method: Symbol = _
       var ctx: Context = _
       
@@ -1821,7 +1822,6 @@ abstract class GenICode extends SubComponent  {
      * in code generation
      */
     class Context {
-
       /** The current package. */
       var packg: Name = _
 
@@ -1835,7 +1835,7 @@ abstract class GenICode extends SubComponent  {
       var bb: BasicBlock = _
 
       /** Map from label symbols to label objects. */
-      var labels: HashMap[Symbol, Label] = new HashMap()
+      var labels = mutable.HashMap[Symbol, Label]()
 
       /** Current method definition. */
       var defdef: DefDef = _
@@ -1939,8 +1939,8 @@ abstract class GenICode extends SubComponent  {
        */
       def enterMethod(m: IMethod, d: DefDef): Context = {
         val ctx1 = new Context(this) setMethod(m)
-        ctx1.labels = new HashMap()
-        ctx1.method.code = new Code(m.symbol.simpleName.toString(), m)
+        ctx1.labels = new mutable.HashMap()
+        ctx1.method.code = new Code(m)
         ctx1.bb = ctx1.method.code.startBlock
         ctx1.defdef = d
         ctx1.scope = EmptyScope
@@ -1953,7 +1953,7 @@ abstract class GenICode extends SubComponent  {
         val block = method.code.newBlock
         handlers foreach (_ addCoveredBlock block)
         currentExceptionHandlers foreach (_ addBlock block)
-        block.varsInScope = new HashSet() ++= scope.varsInScope
+        block.varsInScope = new mutable.HashSet() ++= scope.varsInScope
         new Context(this) setBasicBlock block
       }
 
@@ -1962,7 +1962,7 @@ abstract class GenICode extends SubComponent  {
       }
 
       def exitScope = {
-        if (bb.size > 0) {
+        if (bb.nonEmpty) {
           scope.locals foreach { lv => bb.emit(SCOPE_EXIT(lv)) }
         }
         scope = scope.outer

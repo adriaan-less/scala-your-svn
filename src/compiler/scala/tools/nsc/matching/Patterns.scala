@@ -263,6 +263,7 @@ trait Patterns extends ast.TreeDSL {
   object Pattern {
     // a small tree -> pattern cache
     private val cache = new collection.mutable.HashMap[Tree, Pattern]
+    def clear() = cache.clear()
     
     def unadorn(x: Tree): Tree = x match {
       case Typed(expr, _) => unadorn(expr)
@@ -300,7 +301,7 @@ trait Patterns extends ast.TreeDSL {
       p match {
         case WildcardPattern()  => p
         case _: LiteralPattern  => p
-        case _                  => tracing("Pattern", p)
+        case _                  => tracing("Pattern")(p)
       }
     }
     def unapply(other: Any): Option[(Tree, List[Symbol])] = other match {
@@ -496,7 +497,7 @@ trait Patterns extends ast.TreeDSL {
     }
 
     def equalsCheck =
-      tracing("equalsCheck",
+      tracing("equalsCheck")(
         if (sym.isValue) singleType(NoPrefix, sym)
         else tpe.narrow
       )

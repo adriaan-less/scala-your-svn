@@ -6,7 +6,15 @@ import ScalaSBTBuilder._
  * This class is the entry point for building scala with SBT.
  * @author Grégory Moix
  */
-class ScalaSBTBuilder(val info: ProjectInfo) extends Project with  ReflectiveProject {
+class ScalaSBTBuilder(val info: ProjectInfo) extends Project with ReflectiveProject {
+  /** This secret system property turns off transitive dependencies during change
+   *  detection.  It's a short term measure.  BE AWARE! That means you can no longer
+   *  trust sbt to recompile everything: it's only recompiling changed files.
+   *  (The alternative is that adding a space to TraversableLike incurs a 10+ minute
+   *  incremental build, which means sbt doesn't get used at all, so this is better.)
+   */
+  System.setProperty("sbt.intransitive", "true")
+  
   override def dependencies: Iterable[Project] = info.dependencies  ++ locker.dependencies ++ quick.dependencies ++ strap.dependencies ++ libs.dependencies
   override def shouldCheckOutputDirectories = false
 
@@ -27,7 +35,7 @@ class ScalaSBTBuilder(val info: ProjectInfo) extends Project with  ReflectivePro
   lazy val buildMsil = libs.buildMsil.describedAs(buildMislTaskDescription)
   lazy val newMsil = libs.newMsil.describedAs(newMsilTaskDescription)
   lazy val partest = quick.externalPartest.describedAs(partestTaskDescription)
-  lazy val stabilityTest = strap.stabilityTest.describedAs(stabilityTestTaskDescription) 
+  lazy val stabilityTest = strap.stabilityTest.describedAs(stabilityTestTaskDescription)
   
   // Top level variables
 
@@ -217,7 +225,7 @@ class ScalaSBTBuilder(val info: ProjectInfo) extends Project with  ReflectivePro
 
 
   }
-
+  
 
   /**
    * Definition of what is specific to the strap layer

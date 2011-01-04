@@ -415,8 +415,8 @@ abstract class Constructors extends Transform with ast.TreeDSL {
             val closureParents = List(AbstractFunctionClass(0).tpe, ScalaObjectClass.tpe)
             closureClass.setInfo(new ClassInfoType(closureParents, new Scope, closureClass))
 
-            val outerField = clazz.newValue(impl.pos, nme.OUTER)
-              .setFlag(PRIVATE | LOCAL)
+            val outerField = closureClass.newValue(impl.pos, nme.OUTER)
+              .setFlag(PRIVATE | LOCAL | PARAMACCESSOR)
               .setInfo(clazz.tpe)
 
             val applyMethod = closureClass.newMethod(impl.pos, nme.apply)
@@ -429,17 +429,29 @@ abstract class Constructors extends Transform with ast.TreeDSL {
             val outerFieldDef = ValDef(outerField)
 
             val changeOwner = new ChangeOwnerTraverser(impl.symbol, applyMethod)
+
+            val closureClassTyper = localTyper.atOwner(closureClass)
+            val applyMethodTyper = closureClassTyper.atOwner(applyMethod)
+
             val constrStatTransformer = new Transformer {
               override def transform(tree: Tree): Tree = tree match {
-                case This(`clazz`) => 
-                  localTyper.typed {
+                case This(_) if tree.symbol == clazz => 
+                  applyMethodTyper.typed {
                     atPos(tree.pos) {
                       Select(This(closureClass), outerField)
                     }
                   }
-                case _ => 
-                  changeOwner traverse tree
-                  tree
+                case _ =>
+                  tree match {
+                    case Select(qual, _) =>
+                      val sym = tree.symbol
+                      sym makeNotPrivate sym.owner 
+                    case Assign(lhs @ Select(_, _), _) =>
+                      lhs.symbol setFlag MUTABLE
+                    case _ => 
+                      changeOwner.changeOwner(tree)
+                  }
+                  super.transform(tree)
               }
             }
 
@@ -450,14 +462,14 @@ abstract class Constructors extends Transform with ast.TreeDSL {
               vparamss = List(List()),
               rhs = Block(applyMethodStats, gen.mkAttributedRef(BoxedUnit_UNIT)))
               
-            util.trace("delayedInit: ") { ClassDef(
+            ClassDef(
               sym = closureClass,
               constrMods = Modifiers(0),
               vparamss = List(List(outerFieldDef)),
               argss = List(List()),
-              body = List(outerFieldDef, applyMethodDef),
+              body = List(applyMethodDef),
               superPos = impl.pos)
-          }}
+          }
         }
 
       def delayedInitCall(closure: Tree) = 
@@ -469,20 +481,23 @@ abstract class Constructors extends Transform with ast.TreeDSL {
           }
         }
 
-      /** Return a pair consisting of (all statements up to and icnluding superclass constr call, rest) */
-      def splitAtSuper(stats: List[Tree]) =
-        stats.span(tree => !((tree.symbol ne null) && tree.symbol.isConstructor)) match {
-          case (prefix, supercall :: rest) => (prefix :+ supercall, rest)
-          case p => p
-        }
+      /** Return a pair consisting of (all statements up to and including superclass and trait constr calls, rest) */
+      def splitAtSuper(stats: List[Tree]) = {
+        def isConstr(tree: Tree) = (tree.symbol ne null) && tree.symbol.isConstructor
+        val (pre, rest0) = stats span (!isConstr(_))
+        val (supercalls, rest) = rest0 span (isConstr(_))
+        (pre ::: supercalls, rest)
+      }
 
       var (uptoSuperStats, remainingConstrStats) = splitAtSuper(constrStatBuf.toList)
 
       val needsDelayedInit = 
-        false && (clazz isSubClass DelayedInitClass) && !(defBuf exists isInitDef) && remainingConstrStats.nonEmpty
+        (clazz isSubClass DelayedInitClass) && !(defBuf exists isInitDef) && remainingConstrStats.nonEmpty
 
       if (needsDelayedInit) {
-        remainingConstrStats = List(delayedInitCall(delayedInitClosure(remainingConstrStats)))
+        val dicl = new ConstructorTransformer(unit) transform delayedInitClosure(remainingConstrStats)
+        defBuf += dicl
+        remainingConstrStats = List(delayedInitCall(dicl))
       }
 
       // Assemble final constructor
