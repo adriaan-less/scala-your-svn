@@ -1382,8 +1382,11 @@ trait Infer {
         // #4070
         // if tparam is a variable bound by a Bind in a pattern, make sure it has the right kind
         // its expected type may originally have erroneously indicated kind * if the symbol to which
-        // it is a type argument had not been fully loaded yet (e.g., the pattern was SomeClass[someBoundVar] -- 
-        //    if SomeClass was not initialized, we don't know the expected kind for someBoundVar)
+        // it is a type argument had not been fully loaded yet (e.g., the pattern was SomeClass[someBoundVar] and
+        //    SomeClass had not been initialized yet, thus we didn't know the expected kind for someBoundVar 
+        //    --> we can't force loading the full info of SomeClass as that may lead to spurious cycles
+        //     --> an alternative would be to allow loading approximate info's, enough to determine the kind, but not so much as to cause cycles
+        //         concretely, we would need to know the symbol's type params)
         // Now we know pattp and pt, we can infer tparam's expected kind by looking at where tparam occurs in the typeArgs nested in pattp or pt
         def freshVarAdjustKind(pt: Type)(tparam: Symbol): TypeVar =  {
           object findKind extends TypeCollector[Option[List[Symbol]]](None) {
