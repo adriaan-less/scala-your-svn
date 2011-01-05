@@ -2811,15 +2811,18 @@ trait Typers extends Modes {
 
           containsDef(owner, sym) || isRawParameter(sym)
         }
-      
+
       packedType0(tree.tpe, tree.pos, isLocal)
     }
-    
-    /** convert skolems to existentials */
+
+    /** convert skolems to existentials
+     * isLocal denotes symbols that are defined locally, and (thus) not visible from the outside
+     */
     private def packedType0(tp: Type, pos: Position, isLocal: Symbol => Boolean): Type = {
-      def containsLocal(tp: Type): Boolean = 
-        tp exists (t => isLocal(t.typeSymbol) || isLocal(t.termSymbol))
       val normalizeLocals = new TypeMap {
+        def containsLocal(tp: Type): Boolean =
+          tp exists (t => isLocal(t.typeSymbol) || isLocal(t.termSymbol))
+
         def apply(tp: Type): Type = tp match {
           case TypeRef(pre, sym, args) =>
             if (sym.isAliasType && containsLocal(tp)) apply(tp.normalize)
@@ -2863,7 +2866,7 @@ trait Typers extends Modes {
                     // Check the symbol of an Ident, unless the
                     // Ident's type is already over an existential.
                     // (If the type is already over an existential,
-                    // then remap the type, not the core symbol.)
+                    // then remap the type, not the core symbol.) // XXX I don't see an else branch that does the "remapping"
                     if (!arg.tpe.typeSymbol.hasFlag(EXISTENTIAL))
                       addIfLocal(arg.symbol, arg.tpe)
                   case _ => ()
