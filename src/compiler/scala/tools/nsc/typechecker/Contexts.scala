@@ -114,6 +114,9 @@ trait Contexts { self: Analyzer =>
                                             // after the this constructor call?
     var returnsSeen = false                 // for method context: were returns encountered?
     var inSelfSuperCall = false             // is this a context for a constructor self or super call?
+    // is this context enclosed in a context for a constructor self or super call?
+    lazy val enclInSelfSuperCall = nextEnclosing(_.inSelfSuperCall) ne NoContext
+
     var reportAmbiguousErrors = false
     var reportGeneralErrors = false
     var diagnostic: List[String] = Nil      // these messages are printed when issuing an error
@@ -524,12 +527,12 @@ trait Contexts { self: Analyzer =>
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      val nextOuter = if (owner.isConstructor) outer.outer.outer else outer
+      val nextOuter = if (owner.isConstructor) (if(enclInSelfSuperCall) outer.outer.outer.outer else outer.outer.outer) else outer
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()
         val newImplicits: List[ImplicitInfo] =
-          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !inSelfSuperCall) {
+          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !enclInSelfSuperCall) {
             if (!owner.isInitialized) return nextOuter.implicitss
             // if (settings.debug.value) log("collect member implicits " + owner + ", implicit members = " + owner.thisType.implicitMembers)//DEBUG
             val savedEnclClass = enclClass
@@ -544,8 +547,8 @@ trait Contexts { self: Analyzer =>
             assert(imports.tail == nextOuter.imports)
             collectImplicitImports(imports.head)
           } else if (owner.isPackageClass) { 
- 	    // the corresponding package object may contain implicit members. 
- 	    collectImplicits(owner.tpe.implicitMembers, owner.tpe)
+            // the corresponding package object may contain implicit members. 
+            collectImplicits(owner.tpe.implicitMembers, owner.tpe)
           } else List()
         implicitsCache = if (newImplicits.isEmpty) nextOuter.implicitss
                          else newImplicits :: nextOuter.implicitss
