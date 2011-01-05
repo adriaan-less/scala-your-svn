@@ -1,22 +1,34 @@
-class Dep(meh: Int)(implicit val depWit: String)
+class Dep(x: Int)(implicit val nameClash: String)
 
 object Test extends Application {
-  implicit val depWit: String = "meh"
+  implicit val nameClash: String = "meh"
 
-  def Inner(implicit w: String) = 1
+  def meth(implicit w: String) = 1
 
-  class meh extends Dep(Inner){
-    // when typing the default constructor, meh.this.depWit (inherited from Dep)
-    // shadows Test.depWith, thus, when inferring the argument `w` in the call to Inner,
-    // Test.depWith is not eligible statically (but meh.this.depWith is not yet initialised dynamically)
-    // shouldn't inSelfSuperCall in Context keep  meh.this.depWit out of the implicitss?
+  // when typing Meh's default constructor Meh.this.nameClash (inherited from Dep)
+  // shadows Test.nameClash, thus, when inferring the argument `w` in the call to meth,
+  // Test.nameClash is not eligible statically, Meh.this.nameClash is picked (which then causes the VerifyError)
+  // BUG: Meth.this.nameClash should not be in (the implicit) scope during the super constructor call in the first place
+  class Meh extends Dep(meth)
   /*
-    class meh extends Dep {
+    class Meh extends Dep {
       def this() {
-        this(Test.this.Inner(meh.this.depWit))(Test.this.depWit)
+        this(Test.this.meth(Meh.this.nameClash))(Test.this.nameClash)
       }
     }
   */
-  }
-  new meh
+  
+  new Meh
 }
+
+
+/*
+  {
+    def this(a: String, b: Int) {
+      this()
+    }
+    def this(x: String) {
+      this(Meh.this.nameClash, 1)
+    }
+  }
+*/

@@ -527,7 +527,16 @@ trait Contexts { self: Analyzer =>
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      val nextOuter = if (owner.isConstructor) (if(enclInSelfSuperCall) outer.outer.outer.outer else outer.outer.outer) else outer
+      // nextOuter determines which context is searched next for implicits
+      // in most cases, it is simply the outer context
+      // if we're owned by a constructor, the actual current context and the conceptual context are different when it comes to scoping:
+      // the current conceptual scope is the context enclosing the blocks that represent the constructor body
+      // (TODO: why is there more than one such block in the outer chain?)
+      val scopingCtx =
+        if(owner.isConstructor) nextEnclosing(c => !c.tree.isInstanceOf[Block]) // drop the constructor body blocks
+        else this
+      val nextOuter = scopingCtx.outer
+
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()

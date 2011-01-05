@@ -743,7 +743,6 @@ trait Typers extends Modes {
         }
 
         val typer1 = constrTyperIf(treeInfo.isSelfOrSuperConstrCall(tree))
-        println("apply implicit args self/super: "+ (treeInfo.isSelfOrSuperConstrCall(tree), tree))
         if (original != EmptyTree && pt != WildcardType)
           typer1.silent(tpr => tpr.typed(tpr.applyImplicitArgs(tree), mode, pt)) match {
             case result: Tree => result
