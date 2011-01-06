@@ -777,12 +777,15 @@ abstract class ClassfileParser {
 
           val classSym = classNameToSymbol(subName(c => c == ';' || c == '<'))
           assert(!classSym.isOverloaded, classSym.alternatives)
-          var tpe = processClassType(processInner(classSym.tpe))
+          // if cls denotes a nested class, cls.tpe denotes where it is defined, but that may be another class than where sym is defined
+          // since we're computing sym's signature, type must be relative to its enclosing class, otherwise you get #3943
+          def relativeTpe(cls: Symbol) = if(cls.isNestedClass) sym.enclClass.thisType.memberType(cls) else cls.tpe
+          var tpe = processClassType(processInner(relativeTpe(classSym)))
           while (sig(index) == '.') {
             accept('.')
             val name = subName(c => c == ';' || c == '<' || c == '.').toTypeName
             val clazz = tpe.member(name)
-            tpe = processClassType(processInner(clazz.tpe))
+            tpe = processClassType(processInner(relativeTpe(clazz)))
           }
           accept(';')
           tpe
