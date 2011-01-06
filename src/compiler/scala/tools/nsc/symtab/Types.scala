@@ -4950,16 +4950,15 @@ A type's typeSymbol should never be inspected directly.
   val containsCovariantExistentialCollector = new ContainsVariantExistentialCollector(1)
   val containsContravariantExistentialCollector = new ContainsVariantExistentialCollector(-1)
 
-  def elimAnonymousClass(t: Type) = t match {
-    case TypeRef(pre, clazz, List()) if clazz.isAnonymousClass =>
-      clazz.classBound.asSeenFrom(pre, clazz.owner)
-    case _ =>
-      t
-  }
-
   /** Eliminate from list of types all elements which are a subtype
    *  of some other element of the list. */
   private def elimSub(ts: List[Type], depth: Int): List[Type] = {
+    def elimAnonymousClass(t: Type) = t match {
+      case TypeRef(pre, clazz, List()) if clazz.isAnonymousClass =>
+        clazz.classBound.asSeenFrom(pre, clazz.owner)
+      case _ =>
+        t
+    }
     def elimSub0(ts: List[Type]): List[Type] = ts match {
       case List() => List()
       case t :: ts1 =>

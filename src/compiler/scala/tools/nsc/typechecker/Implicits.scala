@@ -811,9 +811,7 @@ self: Analyzer =>
         implicit def wrapResult(tree: Tree): SearchResult = 
           if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to))
 
-        val tp1 = elimAnonymousClass(tp0).normalize // #4110: replace references to anonymous classes by their class bound, so as to approximate the behaviour of computeType
-        // TODO: re-use packedType here? problem: we don't know the owner here, which is needed to determine which symbols are local in packedType
-
+        val tp1 = tp0.normalize
         tp1 match {
           case ThisType(_) | SingleType(_, _) if !(tp1 exists {tp => tp.typeSymbol.isExistentiallyBound}) => // can't generate a reference to a value that's abstracted over by an existential
             manifestFactoryCall("singleType", tp, gen.mkAttributedQualifier(tp1)) 
