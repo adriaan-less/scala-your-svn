@@ -527,7 +527,7 @@ trait Contexts { self: Analyzer =>
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      // nextOuter determines which context is searched next for implicits
+      // nextOuter determines which context is searched next for implicits (after `this`, which contributes `newImplicits` below)
       // in most cases, it is simply the outer context
       // if we're owned by a constructor, the actual current context and the conceptual context are different when it comes to scoping:
       // the current conceptual scope is the context enclosing the blocks that represent the constructor body
