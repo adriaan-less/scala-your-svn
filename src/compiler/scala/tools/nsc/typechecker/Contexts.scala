@@ -113,9 +113,9 @@ trait Contexts { self: Analyzer =>
     var inConstructorSuffix = false         // are we in a secondary constructor
                                             // after the this constructor call?
     var returnsSeen = false                 // for method context: were returns encountered?
-    var inSelfSuperCall = false             // is this a context for a constructor self or super call?
-    // is this context enclosed in a context for a constructor self or super call?
-    lazy val enclInSelfSuperCall = nextEnclosing(_.inSelfSuperCall) ne NoContext
+    var inSelfSuperCall = false             // is this context (enclosed in) a constructor call?
+    // (the call to the super or self constructor in the first line of a constructor)
+    // in this context the object's fields should not be in scope
 
     var reportAmbiguousErrors = false
     var reportGeneralErrors = false
@@ -187,6 +187,7 @@ trait Contexts { self: Analyzer =>
       c.variance = this.variance
       c.depth = if (scope == this.scope) this.depth else this.depth + 1
       c.imports = imports
+      c.inSelfSuperCall = inSelfSuperCall
       c.reportAmbiguousErrors = this.reportAmbiguousErrors
       c.reportGeneralErrors = this.reportGeneralErrors
       c.diagnostic = this.diagnostic
@@ -533,7 +534,8 @@ trait Contexts { self: Analyzer =>
       // the current conceptual scope is the context enclosing the blocks that represent the constructor body
       // (TODO: why is there more than one such block in the outer chain?)
       val scopingCtx =
-        if(owner.isConstructor) nextEnclosing(c => !c.tree.isInstanceOf[Block]) // drop the constructor body blocks
+        if(owner.isConstructor) nextEnclosing(c => !c.tree.isInstanceOf[Block]) // drop the constructor body blocks (they come in varying numbers depending on whether we are in the ctor call in the first statement or after)
+        // scopingCtx == the constructor definition (if we were after the ctor call) or the class that contains this constructor (if we are in the ctor call)
         else this
       val nextOuter = scopingCtx.outer
 
@@ -541,7 +543,7 @@ trait Contexts { self: Analyzer =>
         implicitsRunId = currentRunId
         implicitsCache = List()
         val newImplicits: List[ImplicitInfo] =
-          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !enclInSelfSuperCall) {
+          if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !inSelfSuperCall) {
             if (!owner.isInitialized) return nextOuter.implicitss
             // if (settings.debug.value) log("collect member implicits " + owner + ", implicit members = " + owner.thisType.implicitMembers)//DEBUG
             val savedEnclClass = enclClass
@@ -556,7 +558,7 @@ trait Contexts { self: Analyzer =>
             assert(imports.tail == nextOuter.imports)
             collectImplicitImports(imports.head)
           } else if (owner.isPackageClass) { 
-            // the corresponding package object may contain implicit members. 
+            // the corresponding package object may contain implicit members.
             collectImplicits(owner.tpe.implicitMembers, owner.tpe)
           } else List()
         implicitsCache = if (newImplicits.isEmpty) nextOuter.implicitss
