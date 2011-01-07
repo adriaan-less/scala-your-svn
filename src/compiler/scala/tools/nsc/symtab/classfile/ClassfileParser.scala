@@ -1265,7 +1265,8 @@ abstract class ClassfileParser {
       }
     }
   }
-  
+
+  // not used?
   class LazyAliasType(alias: Symbol) extends LazyType {
     override def complete(sym: Symbol) {
       alias.initialize
