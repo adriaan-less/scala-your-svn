@@ -723,7 +723,7 @@ abstract class ClassfileParser {
         case VOID_TAG   => definitions.UnitClass.tpe
         case BOOL_TAG   => definitions.BooleanClass.tpe
         case 'L' =>
-          def makeInnerType(site: Symbol, cls: Symbol): Type = {
+          def makeInnerType(cls: Symbol): Type = {
             // Java's notion of nesting is static: prefixes should be widened (no dependent types)
             def widenPrefixes(tp: Type): Type =
               tp match {
@@ -742,7 +742,7 @@ abstract class ClassfileParser {
             // if cls denotes a nested class, cls.tpe denotes where it is defined, but that may be another class than where sym is defined
             // since we're computing sym's signature, type must be relative to its enclosing class, otherwise you get #3943
             
-            widenPrefixes(if(site eq null) cls.tpe else site.enclClass.thisType.memberType(cls)) // cls.tpe
+            widenPrefixes(if(sym eq null) cls.tpe else sym.enclClass.thisType.memberType(cls)) // cls.tpe
           }
           def processClassType(tp: Type): Type = tp match {
             case TypeRef(pre, classSym, args) =>
@@ -792,12 +792,12 @@ abstract class ClassfileParser {
 
           val classSym = classNameToSymbol(subName(c => c == ';' || c == '<'))
           assert(!classSym.isOverloaded, classSym.alternatives)
-          var tpe = processClassType(makeInnerType(sym, classSym))
+          var tpe = processClassType(makeInnerType(classSym))
           while (sig(index) == '.') {
             accept('.')
             val name = subName(c => c == ';' || c == '<' || c == '.').toTypeName
             val clazz = tpe.member(name)
-            tpe = processClassType(makeInnerType(sym, clazz))
+            tpe = processClassType(makeInnerType(clazz))
           }
           accept(';')
           tpe
