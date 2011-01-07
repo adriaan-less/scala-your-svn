@@ -723,6 +723,12 @@ abstract class ClassfileParser {
         case VOID_TAG   => definitions.UnitClass.tpe
         case BOOL_TAG   => definitions.BooleanClass.tpe
         case 'L' =>
+          // #3943
+          // cls.tpe.prefix is the thisType of the enclosing class of cls's definition
+          // since we're computing sym's signature, cls.tpe needs to be re-interpreted in the context of sym.enclClass.thisType
+          // otherwise, cls.tpe may refer to type parameters of its enclosing class, which are not in scope where sym is defined
+          lazy val site = if(sym eq null) null else sym.enclClass.thisType
+          def transformedTpe(cls: Symbol) = if((site eq null) || cls.isStatic) cls.tpe else site.memberType(cls)
           def processInner(tp: Type): Type = tp match {
             case TypeRef(pre, sym, args) if (!sym.isStatic) =>
               typeRef(processInner(pre.widen), sym, args)
@@ -777,12 +783,12 @@ abstract class ClassfileParser {
 
           val classSym = classNameToSymbol(subName(c => c == ';' || c == '<'))
           assert(!classSym.isOverloaded, classSym.alternatives)
-          var tpe = processClassType(processInner(classSym.tpe))
+          var tpe = processClassType(processInner(transformedTpe(classSym)))
           while (sig(index) == '.') {
             accept('.')
             val name = subName(c => c == ';' || c == '<' || c == '.').toTypeName
             val clazz = tpe.member(name)
-            tpe = processClassType(processInner(clazz.tpe))
+            tpe = processClassType(processInner(transformedTpe(clazz)))
           }
           accept(';')
           tpe
