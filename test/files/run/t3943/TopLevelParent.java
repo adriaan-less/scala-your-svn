@@ -1,5 +1,3 @@
-package test;
-
 public abstract class TopLevelParent<T> {
   public class Inner { }
 }
