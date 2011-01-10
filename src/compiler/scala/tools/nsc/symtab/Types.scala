@@ -49,14 +49,13 @@ import scala.annotation.tailrec
   case MethodType(paramtypes, result) =>
     // (paramtypes)result 
     // For instance def m(): T is represented as MethodType(List(), T)
+  case NullaryMethodType(result) => // eliminated by uncurry
+    // an eval-by-name type
+    // For instance def m: T is represented as NullaryMethodType(T)
   case PolyType(tparams, result) =>
-    // [tparams]result where result is a MethodType or ClassInfoType
-    // or
-    // []T  for a eval-by-name type
-    // For instance def m: T is represented as PolyType(List(), T)
+    // [tparams]result where result is a (Nullary)MethodType or ClassInfoType
 
   // The remaining types are not used after phase `typer'. 
-
   case OverloadedType(pre, tparams, alts) =>
     // all alternatives of an overloaded ident
   case AntiPolyType(pre, targs) =>
