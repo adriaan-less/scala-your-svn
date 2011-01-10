@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,12 +13,17 @@ package mutable
 
 import annotation.migration
 
-/** This class should be used as a mixin. It synchronizes the <code>Map</code>
+/** This class should be used as a mixin. It synchronizes the `Map`
  *  functions of the class into which it is mixed in.
- *
+ *  
+ *  @tparam A     type of the keys contained in this map.
+ *  @tparam B     type of the values associated with keys.
+ *  
  *  @author  Matthias Zenger, Martin Odersky
  *  @version 2.0, 31/12/2006
  *  @since   1
+ *  @define Coll SynchronizedMap
+ *  @define coll synchronized map
  */
 trait SynchronizedMap[A, B] extends Map[A, B] {
 
@@ -50,7 +54,7 @@ trait SynchronizedMap[A, B] extends Map[A, B] {
   override def contains(key: A): Boolean = synchronized {super.contains(key) }
   override def isDefinedAt(key: A) = synchronized { super.isDefinedAt(key) }
 
-  @deprecated("See Map.+ for explanation") override def +(kv: (A, B)): this.type = synchronized[this.type] { super.+(kv) }
+  // @deprecated("See Map.+ for explanation") override def +(kv: (A, B)): this.type = synchronized[this.type] { super.+(kv) }
   // can't override -, -- same type!
   // @deprecated override def -(key: A): Self = synchronized { super.-(key) }
 

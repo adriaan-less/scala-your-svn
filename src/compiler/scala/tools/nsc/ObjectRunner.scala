@@ -3,20 +3,20 @@
  * @author  Lex Spoon
  */
 
-// $Id$
 
 package scala.tools.nsc
 
 import java.net.URL
 import util.ScalaClassLoader
+import java.lang.reflect.InvocationTargetException
+import util.Exceptional.unwrap
 
 /** An object that runs another object specified by name.
  *
  *  @author  Lex Spoon
  *  @version 1.1, 2007/7/13
  */
-object ObjectRunner
-{
+object ObjectRunner {
   /** Check whether a class with the specified name
    *  exists on the specified class path. */
   def classExists(urls: List[URL], objectName: String): Boolean =
@@ -26,10 +26,18 @@ object ObjectRunner
    *  specified classpath and argument list.
    *
    *  @throws ClassNotFoundException   
-   *  @throws NoSuchMethodError         
+   *  @throws NoSuchMethodException
    *  @throws InvocationTargetException 
    */  
   def run(urls: List[URL], objectName: String, arguments: Seq[String]) {
     (ScalaClassLoader fromURLs urls).run(objectName, arguments)    
+  }
+  
+  /** Catches exceptions enumerated by run (in the case of InvocationTargetException,
+   *  unwrapping it) and returns it any thrown in Left(x).
+   */
+  def runAndCatch(urls: List[URL], objectName: String, arguments: Seq[String]): Either[Throwable, Boolean] = {
+    try   { run(urls, objectName, arguments) ; Right(true) }
+    catch { case e => Left(unwrap(e)) }
   }
 }

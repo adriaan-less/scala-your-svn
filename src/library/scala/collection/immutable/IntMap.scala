@@ -6,14 +6,21 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package immutable;
 
-/**
- * @author David MacIver
+
+
+import scala.collection.generic.CanBuildFrom
+import scala.collection.mutable.Builder
+import scala.collection.mutable.MapBuilder
+
+
+
+/** Utility class for integer maps.
+ *  @author David MacIver
  */
 private[immutable] object IntMapUtils {
   def zero(i : Int, mask : Int) = (i & mask) == 0;    
@@ -50,10 +57,16 @@ private[immutable] object IntMapUtils {
 
 import IntMapUtils._
 
-/**
- * @since 2.7
+/** A companion object for integer maps.
+ *  @since 2.7
  */
 object IntMap {
+  /** $mapCanBuildFromInfo */
+  implicit def canBuildFrom[A, B] = new CanBuildFrom[IntMap[A], (Int, B), IntMap[B]] {
+    def apply(from: IntMap[A]): Builder[(Int, B), IntMap[B]] = apply()
+    def apply(): Builder[(Int, B), IntMap[B]] = new MapBuilder[Int, B, IntMap[B]](empty[B])
+  }
+  
   def empty[T] : IntMap[T]  = IntMap.Nil;
   def singleton[T](key : Int, value : T) : IntMap[T] = IntMap.Tip(key, value);
   def apply[T](elems : (Int, T)*) : IntMap[T] = 
@@ -128,7 +141,7 @@ private[immutable] abstract class IntMapIterator[V, T](it : IntMap[V]) extends I
       case t@IntMap.Tip(_, _) => valueOf(t);
       // This should never happen. We don't allow IntMap.Nil in subtrees of the IntMap
       // and don't return an IntMapIterator for IntMap.Nil.
-      case IntMap.Nil => error("Empty maps not allowed as subtrees");
+      case IntMap.Nil => system.error("Empty maps not allowed as subtrees");
     }    
 }
 
@@ -146,12 +159,19 @@ private[immutable] class IntMapKeyIterator[V](it : IntMap[V]) extends IntMapIter
 
 import IntMap._
 
-/**
- * Specialised immutable map structure for integer keys, based on 
- * <a href="http://citeseer.ist.psu.edu/okasaki98fast.html">Fast Mergeable Integer Maps</a>
- * by Okasaki and Gill. Essentially a trie based on binary digits of the the integers.
- *
- * @since 2.7
+/** Specialised immutable map structure for integer keys, based on 
+ *  <a href="http://citeseer.ist.psu.edu/okasaki98fast.html">Fast Mergeable Integer Maps</a>
+ *  by Okasaki and Gill. Essentially a trie based on binary digits of the integers.
+ *  
+ *  Note: This class is as of 2.8 largely superseded by HashMap. 
+ *  
+ *  @tparam T    type of the values associated with integer keys.
+ *  
+ *  @since 2.7
+ *  @define Coll immutable.IntMap
+ *  @define coll immutable integer map
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap[T]] {
   override def empty: IntMap[T] = IntMap.Nil;
@@ -164,6 +184,8 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
 
   /**
    * Iterator over key, value pairs of the map in unsigned order of the keys.
+   * 
+   * @return an iterator over pairs of integer keys and corresponding values.
    */
   def iterator : Iterator[(Int, T)] = this match {
     case IntMap.Nil => Iterator.empty;
@@ -255,8 +277,8 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
 
   final override def apply(key : Int) : T = this match {
     case IntMap.Bin(prefix, mask, left, right) => if (zero(key, mask)) left(key) else right(key);
-    case IntMap.Tip(key2, value) => if (key == key2) value else error("Key not found"); 
-    case IntMap.Nil => error("key not found");
+    case IntMap.Tip(key2, value) => if (key == key2) value else system.error("Key not found"); 
+    case IntMap.Nil => system.error("key not found");
   } 
 
   def + [S >: T] (kv: (Int, S)): IntMap[S] = updated(kv._1, kv._2)
@@ -275,15 +297,20 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
 
   /**
    * Updates the map, using the provided function to resolve conflicts if the key is already present.
-   * Equivalent to 
-   * <pre>this.get(key) match { 
-   *         case None => this.update(key, value); 
-   *         case Some(oldvalue) => this.update(key, f(oldvalue, value) }
-   * </pre>
    * 
-   * @param key The key to update
-   * @param value The value to use if there is no conflict
-   * @param f The function used to resolve conflicts.
+   * Equivalent to:
+   * {{{
+   *   this.get(key) match {
+   *     case None => this.update(key, value); 
+   *     case Some(oldvalue) => this.update(key, f(oldvalue, value)
+   *   }
+   * }}}
+   * 
+   * @tparam S     The supertype of values in this `LongMap`.
+   * @param key    The key to update
+   * @param value  The value to use if there is no conflict
+   * @param f      The function used to resolve conflicts.
+   * @return       The updated map.
    */
   def updateWith[S >: T](key : Int, value : S, f : (T, S) => S) : IntMap[S] = this match {
     case IntMap.Bin(prefix, mask, left, right) => if (!hasMatch(key, prefix, mask)) join(key, IntMap.Tip(key, value), prefix, this);
@@ -309,7 +336,9 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
    * A combined transform and filter function. Returns an IntMap such that for each (key, value) mapping
    * in this map, if f(key, value) == None the map contains no mapping for key, and if <code>f(key, value)
    * 
-   * @param f The transforming function.
+   * @tparam S  The type of the values in the resulting `LongMap`.
+   * @param f   The transforming function.
+   * @return    The modified map.
    */
   def modifyOrRemove[S](f : (Int, T) => Option[S]) : IntMap[S] = this match {
       case IntMap.Bin(prefix, mask, left, right) => {
@@ -332,8 +361,10 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
   /**
    * Forms a union map with that map, using the combining function to resolve conflicts.
    * 
-   * @param that the map to form a union with.
-   * @param f the function used to resolve conflicts between two mappings. 
+   * @tparam S      The type of values in `that`, a supertype of values in `this`.
+   * @param that    The map to form a union with.
+   * @param f       The function used to resolve conflicts between two mappings. 
+   * @return        Union of `this` and `that`, with identical key conflicts resolved using the function `f`.
    */ 
   def unionWith[S >: T](that : IntMap[S], f : (Int, S, S) => S) : IntMap[S] = (this, that) match{
     case (IntMap.Bin(p1, m1, l1, r1), that@(IntMap.Bin(p2, m2, l2, r2))) => 
@@ -357,12 +388,15 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
   }
 
   /**
-   * Forms the intersection of these two maps with a combinining function. The resulting map is
+   * Forms the intersection of these two maps with a combining function. The resulting map is
    * a map that has only keys present in both maps and has values produced from the original mappings
    * by combining them with f.
    *
-   * @param that The map to intersect with.
-   * @param f The combining function.
+   * @tparam S      The type of values in `that`.
+   * @tparam R      The type of values in the resulting `LongMap`.
+   * @param that    The map to intersect with.
+   * @param f       The combining function.
+   * @return        Intersection of `this` and `that`, with values for identical keys produced by function `f`.
    */
   def intersectionWith[S, R](that : IntMap[S], f : (Int, T, S) => R) : IntMap[R] = (this, that) match {
     case (IntMap.Bin(p1, m1, l1, r1), that@IntMap.Bin(p2, m2, l2, r2)) => 
@@ -391,7 +425,9 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
    * Left biased intersection. Returns the map that has all the same mappings as this but only for keys
    * which are present in the other map. 
    *
-   * @param that The map to intersect with. 
+   * @tparam R      The type of values in `that`.
+   * @param that    The map to intersect with.
+   * @return        A map with all the keys both in `this` and `that`, mapped to corresponding values from `this`.
    */
   def intersection[R](that : IntMap[R]) : IntMap[T] = this.intersectionWith(that, (key : Int, value : T, value2 : R) => value);
 
@@ -404,7 +440,7 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
   final def firstKey : Int = this match {
     case Bin(_, _, l, r) => l.firstKey;
     case Tip(k, v) => k;
-    case IntMap.Nil => error("Empty set")
+    case IntMap.Nil => system.error("Empty set")
   }
 
   /**
@@ -413,6 +449,6 @@ sealed abstract class IntMap[+T] extends Map[Int, T] with MapLike[Int, T, IntMap
   final def lastKey : Int = this match {
     case Bin(_, _, l, r) => r.lastKey;
     case Tip(k, v) => k;
-    case IntMap.Nil => error("Empty set")
+    case IntMap.Nil => system.error("Empty set")
   }
 }

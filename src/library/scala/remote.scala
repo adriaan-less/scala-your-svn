@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
@@ -14,4 +13,4 @@ package scala
 /**
  * An annotation that designates the class to which it is applied as remotable.
  */
-class remote extends StaticAnnotation {}
+class remote extends annotation.StaticAnnotation {}

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -36,7 +35,7 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
     val res = decl.contentModel.validate(ns);
     Console.println("res = "+res);
     if(!res)
-      //error("invalid!");
+      //system.error("invalid!");
   }
   */
 

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Stephane Micheloud
  */
-//$Id$
 
 package scala.man1
 
@@ -242,9 +241,6 @@ object scalac extends Command {
         Definition(
           MItalic("uncurry"),
           "uncurry function types and applications"),
-        Definition(
-          MItalic("transmatch"),
-          "translate match expressions"),
         Definition(
           MItalic("lambdalift"),
           "lambda lifter"),

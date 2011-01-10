@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -21,8 +20,7 @@ import scala.tools.util.SocketServer
  *  @author Martin Odersky
  *  @version 1.0
  */
-class StandardCompileServer extends SocketServer
-{
+class StandardCompileServer extends SocketServer {
   def compileSocket: CompileSocket = CompileSocket // todo: make this a lazy val
 
   val versionMsg = "Fast Scala compiler " +
@@ -35,12 +33,10 @@ class StandardCompileServer extends SocketServer
 
   private var compiler: Global = null
 
-  private def settingsAreCompatible(s1: Settings, s2: Settings) = s1 == s2
-
   private def exit(code: Int): Nothing = {
     System.err.close()
     System.out.close()
-    Predef.exit(code)
+    system.exit(code)
   }
 
   private val runtime = Runtime.getRuntime()
@@ -70,12 +66,8 @@ class StandardCompileServer extends SocketServer
     (totalMemory - freeMemory).toDouble / maxMemory.toDouble > MaxCharge
   }
 
-  protected def newOfflineCompilerCommand(
-    arguments: List[String],
-    settings: Settings,
-    error: String => Unit, 
-    interactive: Boolean
-  ) = new OfflineCompilerCommand(arguments, settings, error, interactive)
+  protected def newOfflineCompilerCommand(arguments: List[String], settings: Settings) =
+    new OfflineCompilerCommand(arguments, settings)
 
   def session() {
     printMemoryStats()
@@ -98,11 +90,11 @@ class StandardCompileServer extends SocketServer
       return
     }
     
-    def error(msg: String) {
+    def fscError(msg: String) {
       out.println(FakePos("fsc"), msg + "\n  fsc -help  gives more information")
     }
     
-    val command = newOfflineCompilerCommand(args, new Settings(error), error, false)
+    val command = newOfflineCompilerCommand(args, new Settings(fscError))
     
     reporter = new ConsoleReporter(command.settings, in, out) {
       // disable prompts, so that compile server cannot block

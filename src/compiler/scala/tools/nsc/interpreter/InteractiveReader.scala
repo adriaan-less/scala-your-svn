@@ -2,28 +2,35 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Stepan Koltsov
  */
-// $Id$
 
 package scala.tools.nsc
 package interpreter
+
+import java.io.IOException
+import java.nio.channels.ClosedByInterruptException
 import scala.util.control.Exception._
+import InteractiveReader._
 
 /** Reads lines from an input stream */
 trait InteractiveReader {
-  import InteractiveReader._
-  import java.io.IOException
   
   protected def readOneLine(prompt: String): String
   val interactive: Boolean
+  def init(): Unit = ()
+  def reset(): Unit = ()
+  def redrawLine(): Unit = ()
+  def currentLine = ""    // the current buffer contents, if available
   
   def readLine(prompt: String): String = {
     def handler: Catcher[String] = {
-      case e: IOException if restartSystemCall(e) => readLine(prompt)
+      case e: ClosedByInterruptException          => system.error("Reader closed by interrupt.")
+      // Terminal has to be re-initialized after SIGSTP or up arrow etc. stop working.
+      case e: IOException if restartSystemCall(e) => reset() ; readLine(prompt)
     }
     catching(handler) { readOneLine(prompt) }
   }
   
-  // overide if history is available
+  // override if history is available
   def history: Option[History] = None
   def historyList = history map (_.asList) getOrElse Nil
   
@@ -35,11 +42,8 @@ trait InteractiveReader {
     Properties.isMac && (e.getMessage == msgEINTR)
 }
 
-
 object InteractiveReader {
-  val msgEINTR = "Interrupted system call"
-  private val exes = List(classOf[Exception], classOf[NoClassDefFoundError])
-  
+  val msgEINTR = "Interrupted system call"  
   def createDefault(): InteractiveReader = createDefault(null)
   
   /** Create an interactive reader.  Uses <code>JLineReader</code> if the

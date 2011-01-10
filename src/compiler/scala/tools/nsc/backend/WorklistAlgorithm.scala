@@ -3,13 +3,12 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
 
 import scala.tools.nsc.ast._
-import scala.collection.mutable.Stack
+import scala.collection.{ mutable, immutable }
 
 /**
  * Simple implementation of a worklist algorithm. A processing
@@ -27,7 +26,7 @@ import scala.collection.mutable.Stack
  */
 trait WorklistAlgorithm {
   type Elem
-  type WList = Stack[Elem]
+  type WList = mutable.Stack[Elem]
 
   val worklist: WList
 
@@ -41,8 +40,8 @@ trait WorklistAlgorithm {
   def run(initWorklist: => Unit) = {
     initWorklist
 
-    while (!(worklist.length == 0))
-      processElement(dequeue);
+    while (worklist.nonEmpty)
+      processElement(dequeue)
   }
 
   /**

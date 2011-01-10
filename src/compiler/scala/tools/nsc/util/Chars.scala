@@ -7,9 +7,10 @@ package scala.tools.nsc
 package util
 
 import annotation.{ tailrec, switch }
+import java.lang.{ Character => JCharacter }
 
 /** Contains constants and classifier methods for characters */
-object Chars {
+trait Chars {
   // Be very careful touching these.
   // Apparently trivial changes to the way you write these constants 
   // will cause Scanners.scala to go from a nice efficient switch to 
@@ -33,6 +34,17 @@ object Chars {
     else
       -1
   }
+  
+  /** Convert a character to a backslash-u escape */
+  def char2uescape(c: Char): String = {
+    var rest = c.toInt
+    val buf = new StringBuilder
+    for (i <- 1 to 4) {
+      buf ++= (rest % 16).toHexString
+      rest = rest / 16
+    }
+    "\\u" + buf.toString.reverse
+  }
 
   /** Is character a line break? */
   @inline def isLineBreakChar(c: Char) = (c: @switch) match {
@@ -50,22 +62,24 @@ object Chars {
     
   /** Can character start an alphanumeric Scala identifier? */
   def isIdentifierStart(c: Char): Boolean =
-    ('A' <= c && c <= 'Z') ||
-    ('a' <= c && c <= 'a') ||
-    (c == '_') || (c == '$') ||
-    Character.isUnicodeIdentifierStart(c)
-  
+    (c == '_') || (c == '$') || Character.isUnicodeIdentifierStart(c)
+
   /** Can character form part of an alphanumeric Scala identifier? */
   def isIdentifierPart(c: Char) =
-    isIdentifierStart(c) || 
-    ('0' <= c && c <= '9') ||
-    Character.isUnicodeIdentifierPart(c)
+    (c == '$') || Character.isUnicodeIdentifierPart(c)
 
   /** Is character a math or other symbol in Unicode?  */
   def isSpecial(c: Char) = {
     val chtp = Character.getType(c)
     chtp == Character.MATH_SYMBOL.toInt || chtp == Character.OTHER_SYMBOL.toInt
   }
+  
+  private final val otherLetters = Set[Char]('\u0024', '\u005F')  // '$' and '_'
+  private final val letterGroups = {
+    import JCharacter._
+    Set[Byte](LOWERCASE_LETTER, UPPERCASE_LETTER, OTHER_LETTER, TITLECASE_LETTER, LETTER_NUMBER)
+  }
+  def isScalaLetter(ch: Char) = letterGroups(JCharacter.getType(ch).toByte) || otherLetters(ch)
 
   /** Can character form part of a Scala operator name? */
   def isOperatorPart(c : Char) : Boolean = (c: @switch) match {
@@ -77,3 +91,4 @@ object Chars {
   }
 }
 
+object Chars extends Chars { }

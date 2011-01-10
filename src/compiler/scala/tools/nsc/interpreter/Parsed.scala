@@ -6,7 +6,8 @@
 package scala.tools.nsc
 package interpreter
 
-import jline.ArgumentCompletor.{ ArgumentDelimiter, ArgumentList }
+import jline.console.completer.ArgumentCompleter.{ ArgumentDelimiter, ArgumentList }
+import util.returning
 
 /** One instance of a command buffer.
  */
@@ -15,18 +16,23 @@ class Parsed private (
   val cursor: Int,
   val delimited: Char => Boolean
 ) extends Delimited {
-  def isEmpty       = buffer == ""
+  def isEmpty       = args.isEmpty
   def isUnqualified = args.size == 1
   def isQualified   = args.size > 1
   def isAtStart     = cursor <= 0
+  
+  private var _verbosity = 0
+  
+  def verbosity = _verbosity
+  def withVerbosity(v: Int): this.type = returning[this.type](this)(_ => _verbosity = v)
 
   def args = toArgs(buffer take cursor).toList
   def bufferHead = args.head
   def headLength = bufferHead.length + 1
-  def bufferTail = new Parsed(buffer drop headLength, cursor - headLength, delimited)
+  def bufferTail = new Parsed(buffer drop headLength, cursor - headLength, delimited) withVerbosity verbosity
   
-  def prev = new Parsed(buffer, cursor - 1, delimited)
-  def next = new Parsed(buffer, cursor + 1, delimited)
+  def prev = new Parsed(buffer, cursor - 1, delimited) withVerbosity verbosity
+  def next = new Parsed(buffer, cursor + 1, delimited) withVerbosity verbosity
   def currentChar = buffer(cursor)
   def currentArg = args.last
   def position =
@@ -51,8 +57,10 @@ class Parsed private (
 }
 
 object Parsed {
+  private def onull(s: String) = if (s == null) "" else s
+
   def apply(s: String): Parsed = apply(onull(s), onull(s).length)
-  def apply(s: String, cursor: Int): Parsed = apply(onull(s), cursor, "(){},`; \t" contains _)
+  def apply(s: String, cursor: Int): Parsed = apply(onull(s), cursor, "{},`; \t" contains _)
   def apply(s: String, cursor: Int, delimited: Char => Boolean): Parsed =
     new Parsed(onull(s), cursor, delimited)
 

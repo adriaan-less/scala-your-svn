@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 package scala.tools.nsc
 package ast.parser
 
@@ -10,10 +9,29 @@ import scala.tools.nsc.util._
 import Chars._
 import Tokens._
 import scala.annotation.switch
-import scala.collection.mutable.{ListBuffer, ArrayBuffer}
+import scala.collection.mutable.{ ListBuffer, ArrayBuffer }
 import scala.xml.Utility.{ isNameStart }
 
-trait Scanners {
+/** See Parsers.scala / ParsersCommon for some explanation of ScannersCommon.
+ */
+trait ScannersCommon {
+  val global : Global
+  import global._
+
+  trait CommonTokenData {    
+    def token: Int
+    def name: TermName
+  }
+  
+  trait ScannerCommon extends CommonTokenData {
+    // things to fill in, in addition to buf, decodeUni which come from CharArrayReader
+    def warning(off: Int, msg: String): Unit
+    def error  (off: Int, msg: String): Unit
+    def incompleteInputError(off: Int, msg: String): Unit
+  }
+}
+
+trait Scanners extends ScannersCommon {
   val global : Global
   import global._
 
@@ -23,7 +41,7 @@ trait Scanners {
   /** An undefined offset */
   val NoOffset: Offset = -1
 
-  trait TokenData {
+  trait TokenData extends CommonTokenData {
 
     /** the next token */
     var token: Int = EMPTY
@@ -35,7 +53,7 @@ trait Scanners {
     var lastOffset: Offset = 0
 
     /** the name of an identifier */
-    var name: Name = null
+    var name: TermName = null
 
     /** the string value of a literal */
     var strVal: String = null
@@ -53,21 +71,17 @@ trait Scanners {
     }
   }
   
-  abstract class Scanner extends CharArrayReader with TokenData {
+  abstract class Scanner extends CharArrayReader with TokenData with ScannerCommon {
 
     def flush = { charOffset = offset; nextChar(); this }
 
     def resume(lastCode: Int) = {
       token = lastCode
-      assert(next.token == EMPTY)
+      if (next.token != EMPTY && !reporter.hasErrors)
+        syntaxError("unexpected end of input: possible missing '}' in XML block")
+
       nextToken()
     }
-
-    // things to fill in, in addition to buf, decodeUni
-    def warning(off: Offset, msg: String): Unit
-    def error  (off: Offset, msg: String): Unit
-    def incompleteInputError(off: Offset, msg: String): Unit
-    def deprecationWarning(off: Offset, msg: String): Unit
 
     /** the last error offset
      */
@@ -98,7 +112,7 @@ trait Scanners {
     }
 
     /** Should doc comments be built? */
-    def buildDocs: Boolean = onlyPresentation
+    def buildDocs: Boolean = forScaladoc
   
     /** buffer for the documentation comment
      */
@@ -174,6 +188,9 @@ trait Scanners {
       // Read a token or copy it from `next` tokenData
       if (next.token == EMPTY) {
         lastOffset = charOffset - 1
+        if(lastOffset > 0 && buf(lastOffset) == '\n' && buf(lastOffset - 1) == '\r') {
+          lastOffset -= 1
+        }
         fetchToken()
       } else {
         this copyFrom next
@@ -240,7 +257,8 @@ trait Scanners {
 //              println("blank line found at "+lastOffset+":"+(lastOffset to idx).map(buf(_)).toList)
               return true
             }
-          } while (idx < end && ch <= ' ')
+	    if (idx == end) return false
+          } while (ch <= ' ')
         }
         idx += 1; ch = buf(idx)
       }
@@ -781,7 +799,7 @@ trait Scanners {
             
             /** Backquoted idents like 22.`foo`. */
             case '`' =>
-              return setStrVal()  /** Note the early return **/
+              return setStrVal()  /** Note the early return */
 
             /** These letters may be part of a literal, or a method invocation on an Int */
             case 'd' | 'D' | 'f' | 'F' =>
@@ -802,7 +820,7 @@ trait Scanners {
     }
 
     /** Parse character literal if current character is followed by \',
-     *  or follow with given op and return a symol literal token
+     *  or follow with given op and return a symbol literal token
      */
     def charLitOr(op: () => Unit) {
       putChar(ch)
@@ -895,14 +913,14 @@ trait Scanners {
   /** The highest name index of a keyword token */
   private var maxKey = 0
   /** An array of all keyword token names */
-  private var keyName = new Array[Name](128)
+  private var keyName = new Array[TermName](128)
   /** The highest keyword token plus one */
   private var tokenCount = 0 
 
   /** Enter keyword with given name and token id */
-  protected def enterKeyword(n: Name, tokenId: Int) {
+  protected def enterKeyword(n: TermName, tokenId: Int) {
     while (tokenId >= keyName.length) {
-      val newTokName = new Array[Name](keyName.length * 2)
+      val newTokName = new Array[TermName](keyName.length * 2)
       compat.Platform.arraycopy(keyName, 0, newTokName, 0, newTokName.length)
       keyName = newTokName
     }
@@ -1009,17 +1027,29 @@ trait Scanners {
       else "'<" + token + ">'"
   }
 
-  /** A scanner over a given compilation unit
+  class MalformedInput(val offset: Int, val msg: String) extends Exception
+
+  /** A scanner for a given source file not necessarily attached to a compilation unit.
+   *  Useful for looking inside source files that aren not currently compiled to see what's there
    */
-  class UnitScanner(unit: CompilationUnit, patches: List[BracePatch]) extends Scanner {
-    def this(unit: CompilationUnit) = this(unit, List())
-    val buf = unit.source.asInstanceOf[BatchSourceFile].content
+  class SourceFileScanner(val source: SourceFile) extends Scanner {
+    val buf = source.content
     override val decodeUni: Boolean = !settings.nouescape.value
 
-    def warning(off: Offset, msg: String) = unit.warning(unit.position(off), msg)
-    def error  (off: Offset, msg: String) = unit.error(unit.position(off), msg)
-    def incompleteInputError(off: Offset, msg: String) = unit.incompleteInputError(unit.position(off), msg)
-    def deprecationWarning(off: Offset, msg: String) = unit.deprecationWarning(unit.position(off), msg)
+    // suppress warnings, throw exception on errors
+    def warning(off: Offset, msg: String): Unit = {}
+    def error  (off: Offset, msg: String): Unit = throw new MalformedInput(off, msg)
+    def incompleteInputError(off: Offset, msg: String): Unit = throw new MalformedInput(off, msg)
+  }
+
+  /** A scanner over a given compilation unit
+   */
+  class UnitScanner(unit: CompilationUnit, patches: List[BracePatch]) extends SourceFileScanner(unit.source) {
+    def this(unit: CompilationUnit) = this(unit, List())
+
+    override def warning(off: Offset, msg: String) = unit.warning(unit.position(off), msg)
+    override def error  (off: Offset, msg: String) = unit.error(unit.position(off), msg)
+    override def incompleteInputError(off: Offset, msg: String) = unit.incompleteInputError(unit.position(off), msg)
 
     private var bracePatches: List[BracePatch] = patches
 

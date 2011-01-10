@@ -6,14 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.ant
 
 import java.io.{File,PrintWriter,BufferedWriter,FileWriter}
 
 import org.apache.tools.ant.{ BuildException, Project, AntClassLoader }
-import org.apache.tools.ant.taskdefs.{MatchingTask,Java}
+import org.apache.tools.ant.taskdefs.Java
 import org.apache.tools.ant.types.{Path, Reference}
 import org.apache.tools.ant.util.{FileUtils, GlobPatternMapper,
                                   SourceFileScanner}
@@ -69,7 +68,7 @@ import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
  *
  * @author Gilles Dubochet, Stephane Micheloud
  */
-class Scalac extends MatchingTask with ScalacShared {
+class Scalac extends ScalaMatchingTask with ScalacShared {
 
   /** The unique Ant file utilities instance to use in this task. */
   private val fileUtils = FileUtils.getFileUtils()
@@ -92,7 +91,7 @@ class Scalac extends MatchingTask with ScalacShared {
   /** Defines valid values for properties that refer to compiler phases. */
   object CompilerPhase extends PermissibleValue {
     val values = List("namer", "typer", "pickler", "uncurry", "tailcalls",
-                      "transmatch", "explicitouter", "erasure", "lambdalift",
+                      "explicitouter", "erasure", "lambdalift",
                       "flatten", "constructors", "mixin", "icode", "jvm",
                       "terminal")
   }
@@ -174,7 +173,7 @@ class Scalac extends MatchingTask with ScalacShared {
     case None     => Some(arg)
   }
   private def pathAsList(p: Option[Path], name: String): List[File] = p match {
-    case None     => error("Member '" + name + "' is empty.")
+    case None     => buildError("Member '" + name + "' is empty.")
     case Some(x)  => x.list.toList map nameToFile
   }
   private def createNewPath(getter: () => Option[Path], setter: (Option[Path]) => Unit) = {
@@ -297,7 +296,7 @@ class Scalac extends MatchingTask with ScalacShared {
    *  @param input The value for <code>target</code>. */
   def setTarget(input: String): Unit =
     if (Target.isPermissible(input)) backend = Some(input)
-    else error("Unknown target '" + input + "'")
+    else buildError("Unknown target '" + input + "'")
 
   /** Sets the <code>force</code> attribute. Used by Ant.
    *  @param input The value for <code>force</code>. */
@@ -318,7 +317,7 @@ class Scalac extends MatchingTask with ScalacShared {
    *  @param input The value for <code>logging</code>. */
   def setLogging(input: String) {
     if (LoggingLevel.isPermissible(input)) logging = Some(input)
-    else error("Logging level '" + input + "' does not exist.")
+    else buildError("Logging level '" + input + "' does not exist.")
   }
 
   /** Sets the <code>logphase</code> attribute. Used by Ant.
@@ -329,8 +328,7 @@ class Scalac extends MatchingTask with ScalacShared {
       if (CompilerPhase.isPermissible(st))
         (if (input != "") List(st) else Nil)
       else {
-        error("Phase " + st + " in log does not exist.")
-        Nil
+        buildError("Phase " + st + " in log does not exist.")
       }
     }
   }
@@ -346,19 +344,19 @@ class Scalac extends MatchingTask with ScalacShared {
   /** Set the <code>deprecation</code> info attribute.
    *  @param input One of the flags <code>yes/no</code> or <code>on/off</code>. */
   def setDeprecation(input: String) {
-    deprecation = Flag toBoolean input orElse error("Unknown deprecation flag '" + input + "'")
+    deprecation = Flag toBoolean input orElse buildError("Unknown deprecation flag '" + input + "'")
   }
 
   /** Set the <code>optimise</code> info attribute.
    *  @param input One of the flags <code>yes/no</code> or <code>on/off</code>. */
   def setOptimise(input: String) {
-    optimise = Flag toBoolean input orElse error("Unknown optimisation flag '" + input + "'")
+    optimise = Flag toBoolean input orElse buildError("Unknown optimisation flag '" + input + "'")
   }
 
   /** Set the <code>unchecked</code> info attribute.
    *  @param input One of the flags <code>yes/no</code> or <code>on/off</code>. */
   def setUnchecked(input: String) {
-    unchecked = Flag toBoolean input orElse error("Unknown unchecked flag '" + input + "'")
+    unchecked = Flag toBoolean input orElse buildError("Unknown unchecked flag '" + input + "'")
   }
 
   /** Sets the <code>force</code> attribute. Used by Ant.
@@ -392,7 +390,7 @@ class Scalac extends MatchingTask with ScalacShared {
    *  Scala-friendly form.
    *  @return The destination as a file. */
   protected def getDestination: File =
-    if (destination.isEmpty) error("Member 'destination' is empty.")
+    if (destination.isEmpty) buildError("Member 'destination' is empty.")
     else existing(getProject().resolveFile(destination.get.toString))
 
   /** Gets the value of the <code>sourcepath</code> attribute in a
@@ -453,14 +451,6 @@ class Scalac extends MatchingTask with ScalacShared {
   protected def asString(file: File): String =
     file.getAbsolutePath()
 
-  /** Generates a build error. Error location will be the current task in the  
-   *  ant file.
-   *  @param message         A message describing the error.
-   *  @throws BuildException A build error exception thrown in every case. */
-  protected def error(message: String): Nothing =
-    throw new BuildException(message, getLocation())
-
-
 /*============================================================================*\
 **                      Hooks for variants of Scala                           **
 \*============================================================================*/
@@ -481,9 +471,9 @@ class Scalac extends MatchingTask with ScalacShared {
       log("Base directory is `%s`".format(scala.tools.nsc.io.Path("").normalize))
 
     // Tests if all mandatory attributes are set and valid.
-    if (origin.isEmpty) error("Attribute 'srcdir' is not set.")
+    if (origin.isEmpty) buildError("Attribute 'srcdir' is not set.")
     if (!destination.isEmpty && !destination.get.isDirectory())
-      error("Attribute 'destdir' does not refer to an existing directory.")
+      buildError("Attribute 'destdir' does not refer to an existing directory.")
     if (destination.isEmpty) destination = Some(getOrigin.head)
 
     val mapper = new GlobPatternMapper()
@@ -532,7 +522,7 @@ class Scalac extends MatchingTask with ScalacShared {
 
     // Builds-up the compilation settings for Scalac with the existing Ant
     // parameters.
-    val settings = newSettings(error)
+    val settings = newSettings(buildError)
     settings.outdir.value = asString(destination.get)
     if (!classpath.isEmpty)
       settings.classpath.value = asString(getClasspath)
@@ -563,7 +553,7 @@ class Scalac extends MatchingTask with ScalacShared {
     log("Scalac params = '" + addParams + "'", Project.MSG_DEBUG)
 
     // let CompilerCommand processes all params
-    val command = new CompilerCommand(settings.splitParams(addParams), settings, error, false)
+    val command = new CompilerCommand(settings.splitParams(addParams), settings)
 
     // resolve dependenciesFile path from project's basedir, so <ant antfile ...> call from other project works.
     // the dependenciesFile may be relative path to basedir or absolute path, in either case, the following code
@@ -600,7 +590,7 @@ class Scalac extends MatchingTask with ScalacShared {
         if (compilerPath.isDefined) path add compilerPath.get
         else getClass.getClassLoader match {
           case cl: AntClassLoader => path add new Path(getProject, cl.getClasspath)
-          case _                  => error("Cannot determine default classpath for scalac, please specify one!")
+          case _                  => buildError("Cannot determine default classpath for scalac, please specify one!")
         }
         path
       }
@@ -627,7 +617,7 @@ class Scalac extends MatchingTask with ScalacShared {
       }
       val res = execWithArgFiles(java, List(writeSettings.getCanonicalPath))
       if (failonerror && res != 0)
-        error("Compilation failed because of an internal compiler error;"+
+        buildError("Compilation failed because of an internal compiler error;"+
               " see the error output for details.")
   }
   
@@ -641,14 +631,14 @@ class Scalac extends MatchingTask with ScalacShared {
       case ex: Throwable =>
         ex.printStackTrace()
         val msg = if (ex.getMessage == null) "no error message provided" else ex.getMessage
-        error("Compile failed because of an internal compiler error (" + msg + "); see the error output for details.")
+        buildError("Compile failed because of an internal compiler error (" + msg + "); see the error output for details.")
     }
 
     reporter.printSummary()
     if (reporter.hasErrors) {
       val msg = "Compile failed with %d error%s; see the compiler error output for details.".format(
         reporter.ERROR.count, plural(reporter.ERROR.count))
-      if (failonerror) error(msg) else log(msg)
+      if (failonerror) buildError(msg) else log(msg)
     }
     else if (reporter.WARNING.count > 0)
       log("Compile succeeded with %d warning%s; see the compiler output for details.".format(

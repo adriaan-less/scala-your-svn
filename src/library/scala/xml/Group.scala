@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
 
@@ -15,7 +14,6 @@ package scala.xml
  *  @author  Burak Emir
  *  @version 1.0
  */
-@serializable
 final case class Group(val nodes: Seq[Node]) extends Node {
   override def theSeq = nodes
   

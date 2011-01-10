@@ -1,9 +1,7 @@
 package scala.tools.nsc
 package symtab
 
-import ast.Trees
-import scala.tools.nsc.util.{SourceFile, Position, RangePosition, OffsetPosition, NoPosition, WorkScheduler}
-import scala.collection.mutable.ListBuffer
+import scala.tools.nsc.util.{ SourceFile, Position, OffsetPosition, NoPosition }
 
 trait Positions { 
 self: scala.tools.nsc.symtab.SymbolTable =>
@@ -27,7 +25,7 @@ self: scala.tools.nsc.symtab.SymbolTable =>
 
   /** Ensure that given tree has no positions that overlap with
    *  any of the positions of `others`. This is done by
-   *  shortening the range or assinging TransparentPositions
+   *  shortening the range or assigning TransparentPositions
    *  to some of the nodes in `tree`.
    */
   def ensureNonOverlapping(tree: Tree, others: List[Tree]) {}

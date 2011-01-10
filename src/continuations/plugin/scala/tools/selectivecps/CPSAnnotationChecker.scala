@@ -14,6 +14,7 @@ abstract class CPSAnnotationChecker extends CPSUtils {
   import definitions._
 
   //override val verbose = true
+  @inline override final def vprintln(x: =>Any): Unit = if (verbose) println(x)
 
   /** 
    *  Checks whether @cps annotations conform
@@ -52,23 +53,6 @@ abstract class CPSAnnotationChecker extends CPSUtils {
       if ((annots1 corresponds annots2) { _.atp <:< _.atp })
         return true
 
-/*
-      hack no longer needed since introduction of adaptBoundsToAnnotations!
-
-      // special treatment of type parameter bounds
-      if ((tpe2.typeSymbol eq AnyClass)) {
-        // This is an ugly hack to allow instantiating Functions with an @cps
-        // return type. A better way would be to make sure everything goes through adapt,
-        // but that's a bit of work. Alternatively, an explicit hook could be added in
-        // Inferencer.checkBounds
-        val w = new StringWriter()
-        new Exception().printStackTrace(new PrintWriter(w, true))
-        if (w.toString.contains("scala.tools.nsc.typechecker.Infer$Inferencer.checkBounds")) {
-          vprintln("Testing whether " + tpe1 + " <:< " + tpe2 + ". We're inside Inferencer.checkBounds, so we just return true.")
-          return true
-        }
-      }
-*/
       false
     }
     
@@ -128,19 +112,14 @@ abstract class CPSAnnotationChecker extends CPSUtils {
       }
 
 /*
-      //not precise enough
+      // not precise enough -- still relying on addAnnotations to remove things from ValDef symbols
       if ((mode & global.analyzer.TYPEmode) != 0 && (mode & global.analyzer.BYVALmode) != 0) {
-        //println("can adapt pattern annotations? " + tree + " / " + tree.tpe + " / " + Integer.toHexString(mode) + " / " + pt)
         if (!annots1.isEmpty) {
           return true
         }
       }
 */
 
-      if ((mode & global.analyzer.EXPRmode) == 0) {
-        vprintln("only handling EXPRmode")
-        return false
-      }
 /*
       this interferes with overloading resolution
       if ((mode & global.analyzer.BYVALmode) != 0 && tree.tpe <:< pt) {
@@ -161,16 +140,15 @@ abstract class CPSAnnotationChecker extends CPSUtils {
   //          val base = tree.tpe <:< removeAllCPSAnnotations(pt)
   //          val known = global.analyzer.isFullyDefined(pt)
   //          println(same + "/" + base + "/" + known)
-            val same = true//annots2 forall { case AnnotationInfo(atp: TypeRef, _, _) => atp.typeArgs(0) =:= atp.typeArgs(1) }
+            //val same = annots2 forall { case AnnotationInfo(atp: TypeRef, _, _) => atp.typeArgs(0) =:= atp.typeArgs(1) }
             // TBD: use same or not?
-            if (same) {
+            //if (same) {
               vprintln("yes we can!! (unit)")
               return true
-            }
+            //}
           }
         } else if (!annots1.isEmpty && ((mode & global.analyzer.BYVALmode) != 0)) {
-          val adapt = AnnotationInfo(MarkerCPSAdaptMinus.tpe, Nil, Nil)
-          if (!tree.tpe.annotations.contains(adapt)) {
+          if (!tree.tpe.hasAnnotation(MarkerCPSAdaptMinus)) {
             vprintln("yes we can!! (byval)")
             return true
           }
@@ -182,10 +160,6 @@ abstract class CPSAnnotationChecker extends CPSUtils {
     
     override def adaptAnnotations(tree: Tree, mode: Int, pt: Type): Tree = {
       if (!cpsEnabled) return tree
-      
-      // FIXME: there seems to be a problem when mode == 1 (expr, no poly) and
-      // there are wildcards inside an annotation (which we don't resolve yet)
-      // can we just instantiate things? <--- need to check this is still valid
       
       vprintln("adapt annotations " + tree + " / " + tree.tpe + " / " + Integer.toHexString(mode) + " / " + pt)
 
@@ -217,23 +191,21 @@ abstract class CPSAnnotationChecker extends CPSUtils {
           //println("adapt annotations " + tree + " / " + tree.tpe + " / " + Integer.toHexString(mode) + " / " + pt)
         
           val adapt = AnnotationInfo(MarkerCPSAdaptPlus.tpe, Nil, Nil)
-          val same = true//annots2 forall { case AnnotationInfo(atp: TypeRef, _, _) => atp.typeArgs(0) =:= atp.typeArgs(1) }
+          //val same = annots2 forall { case AnnotationInfo(atp: TypeRef, _, _) => atp.typeArgs(0) =:= atp.typeArgs(1) }
           // TBD: use same or not? see infer0.scala/infer1.scala
 
-            // CAVEAT:
-            //  for monomorphic answer types we want to have @plus @cps (for better checking)
-            //  for answer type modification we want to have only @plus (because actual answer type may differ from pt)
-        
-  //        if (tree.tpe <:< removeAllCPSAnnotations(pt)) {
-        
-            //val known = global.analyzer.isFullyDefined(pt)
+          // CAVEAT:
+          //  for monomorphic answer types we want to have @plus @cps (for better checking)
+          //  for answer type modification we want to have only @plus (because actual answer type may differ from pt)
+      
+          //val known = global.analyzer.isFullyDefined(pt)
 
-            if (same && !tree.tpe.annotations.contains(adapt)) {
-              if (true /*known*/)
-                return tree.setType(tree.tpe.withAnnotations(adapt::annots2)) // needed for #1807
-              else
-                return tree.setType(tree.tpe.withAnnotations(adapt::Nil))
-            }
+          if (/*same &&*/ !tree.tpe.annotations.contains(adapt)) {
+            //if (known)
+              return tree.setType(tree.tpe.withAnnotations(adapt::annots2)) // needed for #1807
+            //else
+            //  return tree.setType(tree.tpe.withAnnotations(adapt::Nil))
+          }
           tree
         } else if (!annots1.isEmpty && ((mode & global.analyzer.BYVALmode) != 0)) { // dropping annotation
           // add a marker annotation that will make tree.tpe behave as pt, subtyping wise
@@ -250,8 +222,7 @@ abstract class CPSAnnotationChecker extends CPSUtils {
 
     def updateAttributesFromChildren(tpe: Type, childAnnots: List[AnnotationInfo], byName: List[Tree]): Type = {
       tpe match {
-        // Need to push annots into each alternative of overloaded type
-        
+        // Would need to push annots into each alternative of overloaded type
         // But we can't, since alternatives aren't types but symbols, which we
         // can't change (we'd be affecting symbols globally)
         /*
@@ -332,7 +303,7 @@ abstract class CPSAnnotationChecker extends CPSUtils {
     
       for ((a,tp) <- args.zip(formals ::: List.fill(overshoot)(NoType))) yield {
         tp match {
-          case TypeRef(_, sym, List(elemtp)) if sym == ByNameParamClass =>
+          case TypeRef(_, ByNameParamClass, List(elemtp)) =>
             Nil // TODO: check conformance??
           case _ =>
             List(a)
@@ -355,7 +326,7 @@ abstract class CPSAnnotationChecker extends CPSUtils {
     def single(xs: List[AnnotationInfo]) = xs match {
       case List(x) => x
       case _ =>
-        global.error("not a single cps annotation: " + xs)// FIXME: error message
+        global.globalError("not a single cps annotation: " + xs)// FIXME: error message
         xs(0)
     }
 
@@ -380,14 +351,18 @@ abstract class CPSAnnotationChecker extends CPSUtils {
      *  for a tree.  All this should do is add annotations. */
 
     override def addAnnotations(tree: Tree, tpe: Type): Type = {
-      if (!cpsEnabled) return tpe
+      if (!cpsEnabled) { 
+        if (tpe.annotations.nonEmpty && tpe.hasAnnotation(MarkerCPSTypes))
+          global.reporter.error(tree.pos, "this code must be compiled with the Scala continuations plugin enabled")
+        return tpe 
+      } 
 
 //      if (tree.tpe.hasAnnotation(MarkerCPSAdaptPlus))
 //        println("addAnnotation " + tree + "/" + tpe)
 
       tree match {
 
-        case Apply(fun @ Select(qual, name), args) if (fun.tpe ne null) && !fun.tpe.isErroneous =>
+        case Apply(fun @ Select(qual, name), args) if fun.isTyped =>
 
           // HACK: With overloaded methods, fun will never get annotated. This is because
           // the 'overloaded' type gets annotated, but not the alternatives (among which
@@ -397,7 +372,12 @@ abstract class CPSAnnotationChecker extends CPSUtils {
           
           transChildrenInOrder(tree, tpe, qual::(transArgList(fun, args).flatten), Nil)
 
-        case Apply(fun, args) if (fun.tpe ne null) && !fun.tpe.isErroneous =>
+        case TypeApply(fun @ Select(qual, name), args) if fun.isTyped =>
+          vprintln("[checker] checking select apply " + tree + "/" + tpe)
+
+          transChildrenInOrder(tree, tpe, List(qual, fun), Nil)
+
+        case Apply(fun, args) if fun.isTyped =>
 
           vprintln("[checker] checking unknown apply " + tree + "/" + tpe)
           
@@ -409,20 +389,55 @@ abstract class CPSAnnotationChecker extends CPSUtils {
 
           transChildrenInOrder(tree, tpe, List(fun), Nil)
 
-        case Select(qual, name) =>
+        case Select(qual, name) if qual.isTyped =>
 
           vprintln("[checker] checking select " + tree + "/" + tpe)
 
-          // FIXME: put it back in?? (problem with test cases select.scala and Test2.scala)
-          // transChildrenInOrder(tree, tpe, List(qual))
-          tpe
+          // straightforward way is problematic (see select.scala and Test2.scala)
+          // transChildrenInOrder(tree, tpe, List(qual), Nil)
+
+          // the problem is that qual may be of type OverloadedType (or MethodType) and
+          // we cannot safely annotate these. so we just ignore these cases and
+          // clean up later in the Apply/TypeApply trees.
+          
+          if (qual.tpe.hasAnnotation(MarkerCPSTypes)) {
+            // however there is one special case:
+            // if it's a method without parameters, just apply it. normally done in adapt, but
+            // we have to do it here so we don't lose the cps information (wouldn't trigger our
+            // adapt and there is no Apply/TypeApply created)
+            tpe match {
+              case PolyType(List(), restpe) =>
+                //println("yep: " + restpe + "," + restpe.getClass)
+                transChildrenInOrder(tree, restpe, List(qual), Nil)
+              case _ : PolyType => tpe
+              case _ : MethodType => tpe
+              case _ : OverloadedType => tpe
+              case _ =>
+                transChildrenInOrder(tree, tpe, List(qual), Nil)
+            }
+          } else
+            tpe
 
         case If(cond, thenp, elsep) =>
           transChildrenInOrder(tree, tpe, List(cond), List(thenp, elsep))
 
-
         case Match(select, cases) =>
-          transChildrenInOrder(tree, tpe, List(select), cases:::cases map { case CaseDef(_, _, body) => body })
+          // TODO: can there be cases that are not CaseDefs?? check collect vs map!
+          transChildrenInOrder(tree, tpe, List(select), cases:::(cases collect { case CaseDef(_, _, body) => body }))
+
+        case Try(block, catches, finalizer) =>
+          val tpe1 = transChildrenInOrder(tree, tpe, Nil, block::catches:::(catches collect { case CaseDef(_, _, body) => body }))
+
+          val annots = filterAttribs(tpe1, MarkerCPSTypes)
+          if (annots.nonEmpty) {
+            val ann = single(annots)
+            val atp0::atp1::Nil = ann.atp.normalize.typeArgs
+            if (!(atp0 =:= atp1))
+              throw new TypeError("only simple cps types allowed in try/catch blocks (found: " + tpe1 + ")")
+            if (!finalizer.isEmpty) // no finalizers allowed. see explanation in SelectiveCPSTransform
+              reporter.error(tree.pos, "try/catch blocks that use continuations cannot have finalizers")
+          }
+          tpe1
 
         case Block(stms, expr) =>
           // if any stm has annotation, so does block

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -20,8 +19,10 @@ import java.util.{Timer, TimerTask}
  *  </p>
  *
  *  @author Philipp Haller
+ *
+ *  @define actor `ReplyReactor`
  */
-trait ReplyReactor extends Reactor[Any] with ReplyableReactor {
+trait ReplyReactor extends Reactor[Any] with ReactorCanReply {
 
   /* A list of the current senders. The head of the list is
    * the sender of the message that was received last.
@@ -38,7 +39,7 @@ trait ReplyReactor extends Reactor[Any] with ReplyableReactor {
   private[actors] var onTimeout: Option[TimerTask] = None
 
   /**
-   * Returns the actor which sent the last received message.
+   * Returns the $actor which sent the last received message.
    */
   protected[actors] def sender: OutputChannel[Any] = senders.head
 
@@ -49,16 +50,10 @@ trait ReplyReactor extends Reactor[Any] with ReplyableReactor {
     sender ! msg
   }
 
-  /**
-   * Sends <code>msg</code> to this actor (asynchronous).
-   */
   override def !(msg: Any) {
     send(msg, Actor.rawSelf(scheduler))
   }
 
-  /**
-   * Forwards <code>msg</code> to this actor (asynchronous).
-   */
   override def forward(msg: Any) {
     send(msg, Actor.sender)
   }
@@ -106,8 +101,8 @@ trait ReplyReactor extends Reactor[Any] with ReplyableReactor {
     }
   }
 
-  private[actors] override def makeReaction(fun: () => Unit): Runnable =
-    new ReplyReactorTask(this, fun)
+  private[actors] override def makeReaction(fun: () => Unit, handler: PartialFunction[Any, Any], msg: Any): Runnable =
+    new ReplyReactorTask(this, fun, handler, msg)
 
   protected[actors] override def react(handler: PartialFunction[Any, Unit]): Nothing = {
     assert(Actor.rawSelf(scheduler) == this, "react on channel belonging to other actor")
@@ -115,9 +110,9 @@ trait ReplyReactor extends Reactor[Any] with ReplyableReactor {
   }
 
   /**
-   * Receives a message from this actor's mailbox within a certain
+   * Receives a message from this $actor's mailbox within a certain
    * time span.
-   * <p>
+   *
    * This method never returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *

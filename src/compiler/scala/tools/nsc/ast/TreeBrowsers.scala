@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
@@ -63,18 +62,18 @@ abstract class TreeBrowsers {
       t
     }
 
-    def browse(units: Iterator[CompilationUnit]): Unit =
-      browse(units.toList)
+    def browse(pName: String, units: Iterator[CompilationUnit]): Unit =
+      browse(pName, units.toList)
 
     /** print the whole program */
-    def browse(units: List[CompilationUnit]): Unit = {
+    def browse(pName: String, units: List[CompilationUnit]): Unit = {
       var unitList: List[UnitTree] = Nil
 
       for (i <- units)
         unitList = UnitTree(i) :: unitList
       val tm = new ASTTreeModel(ProgramTree(unitList))
 
-      val frame = new BrowserFrame()
+      val frame = new BrowserFrame(pName)
       frame.setTreeModel(tm)
 
       val lock = new Lock()
@@ -132,8 +131,8 @@ abstract class TreeBrowsers {
    * @author Iulian Dragos
    * @version 1.0
    */
-  class BrowserFrame {
-    val frame = new JFrame("Scala AST")
+  class BrowserFrame(phaseName: String = "unknown") {
+    val frame = new JFrame("Scala AST [" + phaseName + "]")
     val topLeftPane = new JPanel(new BorderLayout())
     val topRightPane = new JPanel(new BorderLayout())
     val bottomPane = new JPanel(new BorderLayout())
@@ -224,8 +223,12 @@ abstract class TreeBrowsers {
               t.symbol.owner.toString
             else 
               "NoSymbol has no owner")
-          if ((t.symbol ne null) && t.symbol.isType)
-            str.append("\ntermSymbol: " + t.symbol.tpe.termSymbol + "\ntypeSymbol: " + t.symbol.tpe.typeSymbol)
+          if ((t.symbol ne null) && t.symbol.isType) {
+            str.append("\ntermSymbol: " + t.symbol.tpe.termSymbol
+                     + "\ntypeSymbol: " + t.symbol.tpe.typeSymbol)
+          if (t.symbol.isTypeSkolem)
+            str.append("\nSkolem of: " + t.symbol.deSkolemize)
+          }
           str.append("\nSymbol tpe: ")
           if (t.symbol ne null) {
             str.append(t.symbol.tpe).append("\n")
@@ -562,7 +565,8 @@ abstract class TreeBrowsers {
       if ((s ne null) && (s != NoSymbol)) {
         var str = flagsToString(s.flags)
         if (s.isStaticMember) str = str + " isStatic ";
-        str + " annotations: " + s.annotations.mkString("", " ", "")
+        (str + " annotations: " + s.annotations.mkString("", " ", "")
+          + (if (s.isTypeSkolem) "\ndeSkolemized annotations: " + s.deSkolemize.annotations.mkString("", " ", "") else "")) 
       } 
       else ""
     }
@@ -680,7 +684,7 @@ abstract class TreeBrowsers {
                         toDocument(thistpe) :/: ", " :/:
                         toDocument(supertpe) ::")"))
       case _ =>
-        Predef.error("Unknown case: " + t.toString() +", "+ t.getClass)
+        system.error("Unknown case: " + t.toString() +", "+ t.getClass)
     }
   }
 

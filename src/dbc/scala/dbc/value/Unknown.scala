@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.dbc
@@ -17,7 +16,7 @@ abstract class Unknown extends Value {
   
   val dataType: datatype.Unknown;
   
-  def sqlString = error ("An 'ANY' value cannot be represented.");
+  def sqlString = system.error("An 'ANY' value cannot be represented.");
   
 }
 

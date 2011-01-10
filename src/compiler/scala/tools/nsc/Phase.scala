@@ -2,11 +2,11 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
 import symtab.Flags
+import util.TableDef
 
 abstract class Phase(val prev: Phase) {
 
@@ -25,7 +25,7 @@ abstract class Phase(val prev: Phase) {
   def flagMask: Long = fmask
 
   private var nx: Phase = this
-  if (prev ne null) prev.nx = this
+  if ((prev ne null) && (prev ne NoPhase)) prev.nx = this
 
   def next: Phase = nx
 
@@ -33,13 +33,53 @@ abstract class Phase(val prev: Phase) {
   def description: String = name
   // Will running with -Ycheck:name work? 
   def checkable: Boolean = true
-  def devirtualized: Boolean = false
+  // def devirtualized: Boolean = false
+  def specialized: Boolean = false
   def erasedTypes: Boolean = false
   def flatClasses: Boolean = false
-  def keepsTypeParams = false
+  def refChecked: Boolean = false
+  def keepsTypeParams = true
   def run: Unit
 
   override def toString() = name
+  override def hashCode = id.## + name.##
+  override def equals(other: Any) = other match {
+    case x: Phase   => id == x.id && name == x.name
+    case _          => false
+  }
 }
 
+object Phase {
+  val MaxPhases = 64
+
+  /** A class for tracking something about each phase.
+   */
+  class Model[T: Manifest] {
+    case class Cell(ph: Phase, value: T) {
+      def name = ph.name
+      def id = ph.id
+    }
+    val values                            = new Array[Cell](MaxPhases + 1)
+    def results                           = values filterNot (_ == null)
+    def apply(ph: Phase): T               = values(ph.id).value
+    def update(ph: Phase, value: T): Unit = values(ph.id) = Cell(ph, value)
+  }
+  /** A class for recording the elapsed time of each phase in the
+   *  interests of generating a classy and informative table.
+   */
+  class TimingModel extends Model[Long] {
+    var total: Long = 0
+    def table() = {
+      total = results map (_.value) sum;
+      new Format.Table(results sortBy (-_.value))
+    }
+    object Format extends TableDef[Cell] {
+      >> ("phase"   -> (_.name)) >+ "  "
+      << ("id"      -> (_.id))  >+ "  "
+      >> ("ms"      -> (_.value)) >+ "  "
+      << ("share"   -> (_.value.toDouble * 100 / total formatted "%.2f"))
+    }
+    def formatted = "" + table()
+  }
+}
 

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package generic
@@ -17,8 +16,8 @@ package generic
  *
  *  @since 2.8
  *
- *  @define $coll collection
- *  @define @Coll Traversable
+ *  @define coll collection
+ *  @define Coll Traversable
  *  @define factoryInfo
  *    This object provides a set of operations to create `$Coll` values.
  *    @author Martin Odersky
@@ -62,6 +61,10 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    */
   def concat[A](xss: Traversable[A]*): CC[A] = {
     val b = newBuilder[A]
+    // At present we're using IndexedSeq as a proxy for "has a cheap size method".
+    if (xss forall (_.isInstanceOf[IndexedSeq[_]]))
+      b.sizeHint(xss map (_.size) sum)
+    
     for (xs <- xss) b ++= xs
     b.result
   }
@@ -73,6 +76,7 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    */
   def fill[A](n: Int)(elem: => A): CC[A] = {
     val b = newBuilder[A]
+    b.sizeHint(n)
     var i = 0
     while (i < n) {
       b += elem
@@ -130,6 +134,7 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    */	
   def tabulate[A](n: Int)(f: Int => A): CC[A] = {
     val b = newBuilder[A]
+    b.sizeHint(n)
     var i = 0
     while (i < n) {
       b += f(i)
@@ -190,7 +195,7 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    *  @param end the end value of the $coll (the first value NOT contained)
    *  @return  a $coll with values `start, start + 1, ..., end - 1`
    */
-  def range(start: Int, end: Int): CC[Int] = range(start, end, 1)
+  def range[T: Integral](start: T, end: T): CC[T] = range(start, end, implicitly[Integral[T]].one)
 
   /** Produces a $coll containing equally spaced values in some integer interval.
    *  @param start the start value of the $coll
@@ -198,11 +203,15 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    *  @param step  the difference between successive elements of the $coll (must be positive or negative)
    *  @return      a $coll with values `start, start + step, ...` up to, but excluding `end`
    */
-  def range(start: Int, end: Int, step: Int): CC[Int] = {
-    if (step == 0) throw new IllegalArgumentException("zero step")
-    val b = newBuilder[Int]
+  def range[T: Integral](start: T, end: T, step: T): CC[T] = {
+    val num = implicitly[Integral[T]]
+    import num._
+    
+    if (step == zero) throw new IllegalArgumentException("zero step")
+    val b = newBuilder[T]
+    b sizeHint immutable.NumericRange.count(start, end, step, false)
     var i = start
-    while (if (step < 0) end < i else i < end) {
+    while (if (step < zero) end < i else i < end) {
       b += i
       i += step
     }
@@ -210,7 +219,7 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
   }
 
   /** Produces a $coll containing repeated applications of a function to a start value.
-   *
+   *  
    *  @param start the start value of the $coll
    *  @param len   the number of elements contained inthe $coll
    *  @param f     the function that's repeatedly applied
@@ -218,12 +227,17 @@ abstract class TraversableFactory[CC[X] <: Traversable[X] with GenericTraversabl
    */
   def iterate[A](start: A, len: Int)(f: A => A): CC[A] = {
     val b = newBuilder[A]
-    var acc = start
-    var i = 0
-    while (i < len) {
+    if (len > 0) {
+      b.sizeHint(len)
+      var acc = start
+      var i = 1
       b += acc
-      acc = f(acc)
-      i += 1
+      
+      while (i < len) {
+        acc = f(acc)
+        i += 1
+        b += acc
+      }
     }
     b.result
   }

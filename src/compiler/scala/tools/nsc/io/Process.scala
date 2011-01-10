@@ -6,6 +6,7 @@ package scala.tools.nsc
 package io
 
 import concurrent.ThreadRunner
+import scala.annotation.tailrec
 import scala.util.Properties.{ isWin, isMac, lineSeparator }
 import scala.util.control.Exception.catching
 import java.lang.{ Process => JProcess, ProcessBuilder => JProcessBuilder }
@@ -46,7 +47,6 @@ object Process
       val p = Process(cmd)
       xs foreach (x => p.stdin println stringify(x))
       p.stdin.close()
-      p.stdin.flush()
       p.stdout.toList
     }
   }
@@ -140,7 +140,7 @@ class Process(processCreator: () => JProcess) extends Iterable[String] {
     
   def waitFor() = process.waitFor()
   def destroy() = process.destroy()
-  def rerun() = new Process(processCreator)
+  def rerun()   = new Process(processCreator)
   
   def slurp()   = _out.slurp()
   def stdout    = iterator
@@ -149,29 +149,40 @@ class Process(processCreator: () => JProcess) extends Iterable[String] {
   lazy val stdin = new PrintWriter(_in, true)
   
   class StreamedConsumer(in: InputStream) extends Thread with Iterable[String] {
-    private val queue = new LinkedBlockingQueue[String]
-    private val reader = new BufferedReader(new InputStreamReader(in))
+    private val queue   = new LinkedBlockingQueue[String]
+    private val reader  = new BufferedReader(new InputStreamReader(in))
+    
+    private def finish() {
+      // make sure this thread is complete
+      join()
+    }
     
     def slurp(): String = {
-      join()
+      finish()
       queue.toArray map (_ + lineSeparator) mkString
     }
 
     def iterator = {
-      join()  // make sure this thread is complete
+      finish()
       new Iterator[String] {
         val it = queue.iterator()
         def hasNext = it.hasNext
         def next = it.next
       }
     }
-    override def run() {
-      reader.readLine match { 
-        case null =>
-        case x    =>
-          queue put x
-          run()
+    override final def run() {
+      @tailrec def loop() {
+        reader.readLine match { 
+          case null =>
+            reader.close()
+          case x    =>
+            queue put x
+            loop()
+        }
       }
+      
+      try loop()
+      catch { case _: IOException => () }
     }
   }
   
@@ -181,6 +192,7 @@ class Process(processCreator: () => JProcess) extends Iterable[String] {
   
   private def createConsumer(in: InputStream) = {
     val t = new StreamedConsumer(in)
+    t setDaemon true
     t.start()
     t
   }

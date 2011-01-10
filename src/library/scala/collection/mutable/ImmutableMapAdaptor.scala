@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,9 +14,9 @@ package mutable
 import annotation.migration
 
 /** This class can be used as an adaptor to create mutable maps from
- *  immutable map implementations. Only method <code>empty</code> has
+ *  immutable map implementations. Only method `empty` has
  *  to be redefined if the immutable map on which this mutable map is
- *  originally based is not empty. <code>empty</code> is supposed to
+ *  originally based is not empty. `empty` is supposed to
  *  return the representation of an empty map.
  *
  *  @author  Matthias Zenger
@@ -25,9 +24,8 @@ import annotation.migration
  *  @version 2.0, 01/01/2007
  *  @since   1
  */
-@serializable
 class ImmutableMapAdaptor[A, B](protected var imap: immutable.Map[A, B])
-extends Map[A, B]
+extends Map[A, B] with Serializable
 {
 
   override def size: Int = imap.size

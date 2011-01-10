@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -24,7 +23,10 @@ object BigInt {
   private val maxCached = 1024
   private val cache = new Array[BigInt](maxCached - minCached + 1)
   
+  @deprecated("Use Long.MinValue")
   val MinLong = BigInt(Long.MinValue)
+  
+  @deprecated("Use Long.MaxValue")
   val MaxLong = BigInt(Long.MaxValue)
 
   /** Constructs a <code>BigInt</code> whose value is equal to that of the
@@ -102,7 +104,7 @@ object BigInt {
    */
   implicit def int2bigInt(i: Int): BigInt = apply(i)
 
-  /** Implicit copnversion from long to BigInt
+  /** Implicit conversion from long to BigInt
    */
   implicit def long2bigInt(l: Long): BigInt = apply(l)
 }
@@ -111,21 +113,21 @@ object BigInt {
  *  @author  Martin Odersky
  *  @version 1.0, 15/07/2003
  */
-@serializable
-class BigInt(val bigInteger: BigInteger) extends ScalaNumber with ScalaNumericConversions
+class BigInt(val bigInteger: BigInteger) extends ScalaNumber with ScalaNumericConversions with Serializable
 {
   /** Returns the hash code for this BigInt. */
   override def hashCode(): Int =
-    if (this >= BigInt.MinLong && this <= BigInt.MaxLong) unifiedPrimitiveHashcode
-    else bigInteger.hashCode
+    if (fitsInLong) unifiedPrimitiveHashcode
+    else bigInteger.##
 
   /** Compares this BigInt with the specified value for equality.
    */
   override def equals(that: Any): Boolean = that match {
     case that: BigInt     => this equals that
     case that: BigDecimal => that.toBigIntExact exists (this equals _)
-    case x                => unifiedPrimitiveEquals(x)
+    case x                => fitsInLong && unifiedPrimitiveEquals(x)
   }
+  private def fitsInLong = this >= Long.MinValue && this <= Long.MaxValue
   
   protected[math] def isWhole = true
   def underlying = bigInteger
@@ -340,9 +342,9 @@ class BigInt(val bigInteger: BigInteger) extends ScalaNumber with ScalaNumericCo
   def floatValue  = this.bigInteger.floatValue
 
   /** Converts this BigInt to a <tt>double</tt>. 
-   *  if this BigInt has too great a magnitude to represent as a float, 
-   *  it will be converted to <code>Float.NEGATIVE_INFINITY</code> or
-   *  <code>Float.POSITIVE_INFINITY</code> as appropriate. 
+   *  if this BigInt has too great a magnitude to represent as a double, 
+   *  it will be converted to <code>Double.NEGATIVE_INFINITY</code> or
+   *  <code>Double.POSITIVE_INFINITY</code> as appropriate. 
    */
   def doubleValue = this.bigInteger.doubleValue
 

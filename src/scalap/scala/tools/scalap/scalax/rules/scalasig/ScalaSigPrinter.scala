@@ -5,7 +5,6 @@
 **
 */
 
-// $Id$
 
 package scala.tools.scalap
 package scalax
@@ -17,6 +16,7 @@ import java.util.regex.Pattern
 
 import scala.tools.scalap.scalax.util.StringUtil
 import reflect.NameTransformer
+import java.lang.String
 
 class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
   import stream._
@@ -120,7 +120,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
   private def refinementClass(c: ClassSymbol) = c.name == "<refinement>"
 
   def printClass(level: Int, c: ClassSymbol) {
-    if (c.name == "<local child>" /*scala.tools.nsc.symtab.StdNames.LOCALCHILD.toString()*/ ) {
+    if (c.name == "<local child>" /*scala.tools.nsc.symtab.StdNames.LOCAL_CHILD.toString()*/ ) {
       print("\n")
     } else {
       printModifiers(c)
@@ -130,6 +130,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
       val it = c.infoType
       val classType = it match {
         case PolyType(typeRef, symbols) => PolyTypeWithCons(typeRef, symbols, defaultConstructor)
+        case ClassInfoType(a, b) if c.isCase => ClassInfoTypeWithCons(a, b, defaultConstructor)
         case _ => it
       }
       printType(classType)
@@ -196,7 +197,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
     if (res.length > 1) StringUtil.decapitalize(res.substring(0, 1)) else res.toLowerCase
   })
 
-  def printMethodType(t: Type, printResult: Boolean)(implicit cont: => Unit): Unit = {
+  def printMethodType(t: Type, printResult: Boolean)(cont: => Unit): Unit = {
 
     def _pmt(mt: Type {def resultType: Type; def paramSymbols: Seq[Symbol]}) = {
 
@@ -205,7 +206,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
         case _ => "^___^"
       })
 
-      // Printe parameter clauses
+      // Print parameter clauses
       print(paramEntries.mkString(
         "(" + (mt match {case _: ImplicitMethodType => "implicit "; case _ => ""})
         , ", ", ")"))
@@ -261,7 +262,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
         val nn = processName(name)
         print(nn)
         printMethodType(m.infoType, true)(
-          {if (!m.isDeferred) print(" = { /* compiled code */ }" /* Print body only for non-abstract metods */ )}
+          {if (!m.isDeferred) print(" = { /* compiled code */ }" /* Print body only for non-abstract methods */ )}
           )
     }
     print("\n")
@@ -287,7 +288,16 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
     buffer.append(toString(attrib.typeRef, "@"))
     if (attrib.value.isDefined) {
       buffer.append("(")
-      buffer.append(valueToString(attrib.value.get))
+      val value = attrib.value.get
+      val stringVal = value.isInstanceOf[String]
+      if (stringVal) buffer.append("\"")
+      val stringValue = valueToString(value)
+      val isMultiline = stringVal && (stringValue.contains("\n")
+              || stringValue.contains("\r"))
+      if (isMultiline) buffer.append("\"\"")
+      buffer.append(valueToString(value))
+      if (isMultiline) buffer.append("\"\"")
+      if (stringVal) buffer.append("\"")
       buffer.append(")")
     }
     if (!attrib.values.isEmpty) {
@@ -359,6 +369,8 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
       }
       case RefinedType(classSym, typeRefs) => sep + typeRefs.map(toString).mkString("", " with ", "")
       case ClassInfoType(symbol, typeRefs) => sep + typeRefs.map(toString).mkString(" extends ", " with ", "")
+      case ClassInfoTypeWithCons(symbol, typeRefs, cons) => sep + typeRefs.map(toString).
+              mkString(cons + " extends ", " with ", "")
 
       case ImplicitMethodType(resultType, _) => toString(resultType, sep)
       case MethodType(resultType, _) => toString(resultType, sep)

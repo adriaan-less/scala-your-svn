@@ -6,9 +6,11 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
-class volatile extends StaticAnnotation
+import annotation.target._
+
+@field
+class volatile extends annotation.StaticAnnotation

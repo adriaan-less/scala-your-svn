@@ -13,7 +13,7 @@ import java.util.logging.Level
 /** An annotation for methods for which invocations might
  *  be removed in the generated code.
  * 
- *  Behavior is influenced by passing -Xelide-level <arg>
+ *  Behavior is influenced by passing -Xelide-below <arg>
  *  to scalac.  Methods marked elidable will be omitted from
  *  generated code if the priority given the annotation is lower
  *  than to the command line argument.  Examples:
@@ -23,11 +23,11 @@ import java.util.logging.Level
  *    @elidable(WARNING) def foo = log("foo")
  *    @elidable(FINE) def bar = log("bar")
  *
- *  scalac -Xelide-methods-below=1000
+ *  scalac -Xelide-below=1000
  *  }}}
  *  @since 2.8
  */
-final class elidable(final val level: Int) extends StaticAnnotation {}
+final class elidable(final val level: Int) extends annotation.StaticAnnotation {}
 
 /** This useless appearing code was necessary to allow people to use
  *  named constants for the elidable annotation.  This is what it takes

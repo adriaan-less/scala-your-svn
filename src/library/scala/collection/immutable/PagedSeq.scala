@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,9 +14,9 @@ package immutable
 import java.io._
 import scala.util.matching.Regex
 
-/** The PagedSeq object defines a lazy implementations of 
+/** The `PagedSeq` object defines a lazy implementations of 
  *  a random access sequence. 
- *
+ *  
  *  @since 2.7
  */  
 object PagedSeq {
@@ -66,11 +65,10 @@ object PagedSeq {
   def fromLines(source: Iterator[String]): PagedSeq[Char] = {
     var isFirst = true
     fromStrings(source map { line =>
-      if (isFirst) line 
-      else { 
+      if (isFirst) {
         isFirst = false
-        "\n"+line
-      }
+        line 
+      } else "\n"+line
     }) 
   }                    
 
@@ -107,9 +105,15 @@ import PagedSeq._
 
 /** An implementation of lazily computed sequences, where elements are stored
  *  in ``pages'', i.e. arrays of fixed size.
- *
- * @author Martin Odersky 
- * @since  2.7
+ *  
+ *  @tparam T     the type of the elements contained in this paged sequence, with a `ClassManifest` context bound.
+ *  
+ *  @author Martin Odersky 
+ *  @since  2.7
+ *  @define Coll PagedSeq
+ *  @define coll paged sequence
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
 class PagedSeq[T: ClassManifest] protected(
   more: (Array[T], Int, Int) => Int, 
@@ -202,7 +206,7 @@ private class Page[T: ClassManifest](val num: Int) {
   /** The next page in the sequence */
   var next  : Page[T] = null
 
-  /** A later page in the sequence, serves a cachae for pointing to last page */
+  /** A later page in the sequence, serves a cache for pointing to last page */
   var later : Page[T] = this
 
   /** The number of characters read into this page */
@@ -218,11 +222,11 @@ private class Page[T: ClassManifest](val num: Int) {
   /** The index of the first character in this page relative to the whole sequence */ 
   final def start = num * PageSize
 
-  /** The index of the character following the last charcater in this page relative 
+  /** The index of the character following the last character in this page relative 
    *  to the whole sequence */ 
   final def end = start + filled
 
-  /** The currently last page in the sequence; might change as more charcaters are appended */
+  /** The currently last page in the sequence; might change as more characters are appended */
   final def latest: Page[T] = {
     if (later.next != null) later = later.next.latest
     later

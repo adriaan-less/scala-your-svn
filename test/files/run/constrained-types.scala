@@ -10,7 +10,7 @@ import scala.Console
 object Test {
 
   val testCode = List(
-    "class Annot(obj: Any) extends Annotation with TypeConstraint",
+    "class Annot(obj: Any) extends annotation.Annotation with annotation.TypeConstraint",
 
     """class A {
       |  val x = "hello"
@@ -45,7 +45,7 @@ object Test {
     "val y = b.y  // should keep the annotation",
 
 
-    "def m(x: String): String @Annot(x) = x     // m should be annotated with a debruijn",
+    "def m(x: String): String @Annot(x) = x",
     "val three = \"three\"",
     "val three2 = m(three:three.type)  // should change x to three",
     "var four = \"four\"",
@@ -54,14 +54,14 @@ object Test {
 
     """val stuff = m("stuff") // should not crash""",
 
-    """class peer extends Annotation // should not crash""", // reported by Manfred Stock
+    """class peer extends annotation.Annotation // should not crash""", // reported by Manfred Stock
     """class NPE[T <: NPE[T] @peer] // should not crash""",  // reported by Manfred Stock
 
     """def m = {
       |  val x = "three"
       |  val y : String @Annot(x) = x
       |  y
-      |} // x should be existentially bound""",
+      |} // x should not escape the local scope with a narrow type""",
 
     """def n(y: String) = {
       |  def m(x: String) : String @Annot(x) = {
@@ -73,13 +73,13 @@ object Test {
       |  m("stuff".stripMargin)
       |} // x should be existentially bound""",
 
-    "class rep extends Annotation",
+    "class rep extends annotation.Annotation",
     """object A { val x = "hello" : String @ rep }""",
     "val y = a.x // should drop the annotation",
 
     "val x = 3 : Int @Annot(e+f+g+h) //should have a graceful error message",  
 
-    "class Where(condition: Boolean) extends Annotation",
+    "class Where(condition: Boolean) extends annotation.Annotation",
     "val x : Int @Where(self > 0 && self < 100) = 3"
     ).map(_.stripMargin)
 

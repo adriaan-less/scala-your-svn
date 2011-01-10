@@ -1,32 +1,32 @@
-package scala.collection.mutable
+package scala.collection
+package mutable
 
 
-
-
-
-
-/**
- * A template trait for mutable maps that allow concurrent access.
- * $concurrentmapinfo
+/** A template trait for mutable maps that allow concurrent access.
+ *  
+ *  $concurrentmapinfo
+ *  
+ *  @since 2.8
  * 
- * @tparam A  the key type of the map
- * @tparam B  the value type of the map
- * 
- * @define concurrentmapinfo
- * This is a base trait for all Scala concurrent map implementations. It
- * provides all of the methods a Map does, with the difference that all the
- * changes are atomic. It also describes methods specific to concurrent maps.
- * Note: The concurrent maps do not accept `null` for keys or values.
- * 
- * @define atomicop
- * This is done atomically.
- * 
- * @since 2.8
+ *  @tparam A  the key type of the map
+ *  @tparam B  the value type of the map
+ *  
+ *  @define Coll ConcurrentMap
+ *  @define coll concurrent map
+ *  @define concurrentmapinfo
+ *  This is a base trait for all Scala concurrent map implementations. It
+ *  provides all of the methods a `Map` does, with the difference that all the
+ *  changes are atomic. It also describes methods specific to concurrent maps.
+ *  Note: The concurrent maps do not accept `null` for keys or values.
+ *  
+ *  @define atomicop
+ *  This is an atomic operation.
  */
 trait ConcurrentMap[A, B] extends Map[A, B] {
   
   /**
    * Associates the given key with a given value, unless the key was already associated with some other value.
+   * 
    * $atomicop
    * 
    * @param k   key with which the specified value is to be associated with
@@ -38,6 +38,7 @@ trait ConcurrentMap[A, B] extends Map[A, B] {
   
   /**
    * Removes the entry for the specified key if its currently mapped to the specified value.
+   * 
    * $atomicop
    * 
    * @param k   key for which the entry should be removed
@@ -48,6 +49,7 @@ trait ConcurrentMap[A, B] extends Map[A, B] {
   
   /**
    * Replaces the entry for the given key only if it was previously mapped to a given value.
+   * 
    * $atomicop
    * 
    * @param k         key for which the entry should be replaced
@@ -59,21 +61,12 @@ trait ConcurrentMap[A, B] extends Map[A, B] {
   
   /**
    * Replaces the entry for the given key only if it was previously mapped to some value.
+   * 
    * $atomicop
    * 
    * @param k   key for which the entry should be replaced
    * @param v   value to be associated with the specified key
    * @return    `Some(v)` if the given key was previously mapped to some value `v`, or `None` otherwise
    */
-  def replace(k: A, v: B): Option[B]
-  
+  def replace(k: A, v: B): Option[B]  
 }
-
-
-
-
-
-
-
-
-

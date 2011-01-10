@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.reflect
 
@@ -16,5 +15,5 @@ package scala.reflect
  *
  *  @author Ross Judson (rjudson@managedobjects.com)
  */
-class BeanDescription(val description: String) extends Annotation
+class BeanDescription(val description: String) extends annotation.Annotation
 

@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -20,10 +19,7 @@ trait Unapplies extends ast.TreeDSL
   import global._
   import definitions._
   import CODE.{ CASE => _, _ }
-  
-  private def isVarargs(vd: ValDef) = treeInfo isRepeatedParamType vd.tpt
-  private def isByName(vd: ValDef)  = treeInfo isByNameParamType vd.tpt
-  private def toIdent(x: DefTree)   = Ident(x.name) setPos x.pos.focus
+  import treeInfo.{ isRepeatedParamType, isByNameParamType }
 
   /** returns type list for return type of the extraction */
   def unapplyTypeList(ufn: Symbol, ufntpe: Type) = {
@@ -67,10 +63,10 @@ trait Unapplies extends ast.TreeDSL
       case OptionClass | SomeClass  =>
         val ts = unapplyTypeListFromReturnType(tp1)
         val last1 = (ts.last baseType SeqClass) match {
-          case TypeRef(pre, seqClass, args) => typeRef(pre, RepeatedParamClass, args) // XXX seqClass or SeqClass?
+          case TypeRef(pre, SeqClass, args) => typeRef(pre, RepeatedParamClass, args)
           case _                            => throw new TypeError("last not seq")
         }
-        ts.init ::: List(last1)
+        ts.init :+ last1
       case _                        =>
         throw new TypeError("result type "+tp+" of unapply not in {Option[_], Some[_]}")
     }
@@ -93,20 +89,21 @@ trait Unapplies extends ast.TreeDSL
     case unapp    => unapp
   }
   /** returns unapply member's parameter type. */
-  def unapplyParameterType(extractor: Symbol) = {
-    val ps = extractor.tpe.params
-    if (ps.length == 1) ps.head.tpe.typeSymbol
-    else NoSymbol
+  def unapplyParameterType(extractor: Symbol) = extractor.tpe.params match {
+    case p :: Nil => p.tpe.typeSymbol
+    case _        => NoSymbol
   }
 
   def copyUntyped[T <: Tree](tree: T): T =
-    returning[T](UnTyper traverse _)(tree.duplicate)
+    returning[T](tree.duplicate)(UnTyper traverse _)
 
-  def copyUntypedInvariant(td: TypeDef): TypeDef =
-    returning[TypeDef](UnTyper traverse _)(
-      treeCopy.TypeDef(td, td.mods &~ (COVARIANT | CONTRAVARIANT), td.name,
-                       td.tparams, td.rhs).duplicate
-    )
+  def copyUntypedInvariant(td: TypeDef): TypeDef = {
+    val copy = treeCopy.TypeDef(td, td.mods &~ (COVARIANT | CONTRAVARIANT), td.name, td.tparams, td.rhs)
+    
+    returning[TypeDef](copy.duplicate)(UnTyper traverse _)
+  }
+  
+  private def toIdent(x: DefTree) = Ident(x.name) setPos x.pos.focus
 
   private def classType(cdef: ClassDef, tparams: List[TypeDef]): Tree = {
     val tycon = REF(cdef.symbol)
@@ -131,21 +128,32 @@ trait Unapplies extends ast.TreeDSL
     }
   }
 
-  /** The module corresponding to a case class; without any member definitions
+  /** The module corresponding to a case class; overrides toString to show the module's name
    */
   def caseModuleDef(cdef: ClassDef): ModuleDef = {
-    def inheritFromFun1 = !(cdef.mods hasFlag ABSTRACT) && cdef.tparams.isEmpty && constrParamss(cdef).length == 1
-    def createFun1      = gen.scalaFunctionConstr(constrParamss(cdef).head map (_.tpt), toIdent(cdef))
-    def parents         = if (inheritFromFun1) List(createFun1) else Nil
-        
-    companionModuleDef(cdef, parents ::: List(gen.scalaScalaObjectConstr))
+    // > MaxFunctionArity is caught in Namers, but for nice error reporting instead of
+    // an abrupt crash we trim the list here.
+    def primaries      = constrParamss(cdef).head take MaxFunctionArity map (_.tpt)
+    def inheritFromFun = !cdef.mods.hasAbstractFlag && cdef.tparams.isEmpty && constrParamss(cdef).length == 1
+    def createFun      = gen.scalaFunctionConstr(primaries, toIdent(cdef), abstractFun = true)
+    def parents        = if (inheritFromFun) List(createFun) else Nil
+    def toString       = DefDef(
+      Modifiers(OVERRIDE | FINAL),
+      nme.toString_,
+      Nil,
+      List(Nil),
+      TypeTree(),
+      Literal(Constant(cdef.name.decode)))
+
+    companionModuleDef(cdef, parents, List(toString))
   }
 
-  def companionModuleDef(cdef: ClassDef, parents: List[Tree]): ModuleDef = atPos(cdef.pos.focus) {
+  def companionModuleDef(cdef: ClassDef, parents: List[Tree] = Nil, body: List[Tree] = Nil): ModuleDef = atPos(cdef.pos.focus) {
+    val allParents = parents :+ gen.scalaScalaObjectConstr
     ModuleDef(
       Modifiers(cdef.mods.flags & AccessFlags | SYNTHETIC, cdef.mods.privateWithin),
       cdef.name.toTermName,
-      Template(parents, emptyValDef, NoMods, Nil, List(Nil), Nil, cdef.impl.pos.focus))
+      Template(allParents, emptyValDef, NoMods, Nil, List(Nil), body, cdef.impl.pos.focus))
   }
 
   private val caseMods = Modifiers(SYNTHETIC | CASE)
@@ -167,11 +175,11 @@ trait Unapplies extends ast.TreeDSL
     val tparams   = cdef.tparams map copyUntypedInvariant
     val paramName = newTermName("x$0")
     val method    = constrParamss(cdef) match {
-      case xs :: _ if !xs.isEmpty && isVarargs(xs.last) => nme.unapplySeq
-      case _                                            => nme.unapply
+      case xs :: _ if xs.nonEmpty && isRepeatedParamType(xs.last.tpt) => nme.unapplySeq
+      case _                                                          => nme.unapply
     }
     val cparams   = List(ValDef(Modifiers(PARAM | SYNTHETIC), paramName, classType(cdef, tparams), EmptyTree))
-    val ifNull    = if (constrParamss(cdef).head.size == 0) FALSE else REF(NoneModule)
+    val ifNull    = if (constrParamss(cdef).head.isEmpty) FALSE else REF(NoneModule)
     val body      = nullSafe({ case Ident(x) => caseClassUnapplyReturnValue(x, cdef.symbol) }, ifNull)(Ident(paramName))
 
     atPos(cdef.pos.focus)(
@@ -180,11 +188,11 @@ trait Unapplies extends ast.TreeDSL
   }
 
   def caseClassCopyMeth(cdef: ClassDef): Option[DefDef] = {    
-    def isDisallowed(vd: ValDef) = isVarargs(vd) || isByName(vd)
+    def isDisallowed(vd: ValDef) = isRepeatedParamType(vd.tpt) || isByNameParamType(vd.tpt)
     val cparamss  = constrParamss(cdef)
     val flat      = cparamss flatten
     
-    if (flat.isEmpty || (cdef.symbol hasFlag ABSTRACT) || (flat exists isDisallowed)) None
+    if (flat.isEmpty || cdef.symbol.hasAbstractFlag || (flat exists isDisallowed)) None
     else {
       val tparams = cdef.tparams map copyUntypedInvariant
       // the parameter types have to be exactly the same as the constructor's parameter types; so it's

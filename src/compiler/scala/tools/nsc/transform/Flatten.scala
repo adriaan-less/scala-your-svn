@@ -2,14 +2,14 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package transform
 
 import symtab._
 import Flags._
-import scala.collection.mutable.{HashMap, ListBuffer}
+import scala.collection.{ mutable, immutable }
+import scala.collection.mutable.ListBuffer
 
 abstract class Flatten extends InfoTransform {
   import global._
@@ -49,7 +49,9 @@ abstract class Flatten extends InfoTransform {
           for (sym <- decls.toList) {
             if (sym.isTerm && !sym.isStaticModule) {
               decls1 enter sym
-              if (sym.isModule) sym.moduleClass setFlag LIFTED
+              if (sym.isModule) sym.moduleClass setFlag LIFTED  // Only top modules
+              // Nested modules (MODULE flag is reset so we access through lazy):
+              if (sym.isModuleVar && sym.isLazy) sym.lazyAccessor.lazyAccessor setFlag LIFTED 
             } else if (sym.isClass) {
               liftClass(sym)
               if (sym.needsImplClass) liftClass(erasure.implClass(sym))
@@ -75,13 +77,13 @@ abstract class Flatten extends InfoTransform {
   class Flattener extends Transformer {
 
     /** Buffers for lifted out classes */ 
-    private val liftedDefs = new HashMap[Symbol, ListBuffer[Tree]]
+    private val liftedDefs = new mutable.HashMap[Symbol, ListBuffer[Tree]]
 
     override def transform(tree: Tree): Tree = {
       tree match {
         case PackageDef(_, _) =>
           liftedDefs(tree.symbol.moduleClass) = new ListBuffer
-        case Template(_, _, _) if (tree.symbol.owner.hasFlag(PACKAGE)) =>
+        case Template(_, _, _) if tree.symbol.owner.hasPackageFlag =>
           liftedDefs(tree.symbol.owner) = new ListBuffer
         case _ =>
       }

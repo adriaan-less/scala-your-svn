@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Alexander Spoon
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -14,6 +13,10 @@ package scala.tools.nsc
 class InterpreterSettings(repl: Interpreter) {
   /** A list of paths where :load should look */
   var loadPath = List(".")
+  
+  /** Set this to true to see repl machinery under -Yrich-exceptions.
+   */
+  var showInternalStackTraces = false
 
   /** The maximum length of toString to use when printing the result
    *  of an evaluation.  0 means no maximum.  If a printout requires

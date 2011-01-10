@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.util.control
@@ -37,6 +36,20 @@ class Breaks {
     } catch {
       case ex: BreakControl => 
         if (ex ne breakException) throw ex
+    }
+  }
+  
+  trait TryBlock {
+    def catchBreak(onBreak: => Unit): Unit
+  }
+  
+  def tryBreakable(op: => Unit) = new TryBlock {
+    def catchBreak(onBreak: => Unit) = try {
+      op
+    } catch {
+      case ex: BreakControl =>
+        if (ex ne breakException) throw ex
+        onBreak
     }
   }
 

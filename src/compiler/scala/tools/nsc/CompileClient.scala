@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -115,7 +114,7 @@ class StandardCompileClient {
   }
 
   def main(args: Array[String]): Unit =
-    exit(try main0(args) catch { case e: Exception => 1 })
+    system.exit(try main0(args) catch { case e: Exception => 1 })
 }
 
 

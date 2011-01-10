@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -14,8 +13,12 @@ package scala.actors
  * The <code>AbstractActor</code> trait.
  *
  * @author Philipp Haller
+ *
+ * @define actor actor
  */
 trait AbstractActor extends OutputChannel[Any] with CanReply[Any, Any] {
+
+  type Future[+R] <: scala.actors.Future[R]
 
   private[actors] def exiting: Boolean = false
 

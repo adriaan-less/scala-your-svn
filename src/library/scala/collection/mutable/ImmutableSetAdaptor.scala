@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,17 +13,16 @@ package mutable
 
 
 /** This class can be used as an adaptor to create mutable sets from
- *  immutable set implementations. Only method <code>empty</code> has
+ *  immutable set implementations. Only method `empty` has
  *  to be redefined if the immutable set on which this mutable set is
- *  originally based is not empty. <code>empty</code> is supposed to
+ *  originally based is not empty. `empty` is supposed to
  *  return the representation of an empty set.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 21/07/2003
  *  @since   1
  */
-@serializable
-class ImmutableSetAdaptor[A](protected var set: immutable.Set[A]) extends Set[A] {
+class ImmutableSetAdaptor[A](protected var set: immutable.Set[A]) extends Set[A] with Serializable {
 
   override def size: Int = set.size
 

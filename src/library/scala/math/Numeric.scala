@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.math
@@ -75,6 +74,21 @@ object Numeric {
   }
   implicit object ByteIsIntegral extends ByteIsIntegral with Ordering.ByteOrdering
   
+  trait CharIsIntegral extends Integral[Char] {
+    def plus(x: Char, y: Char): Char = (x + y).toChar
+    def minus(x: Char, y: Char): Char = (x - y).toChar
+    def times(x: Char, y: Char): Char = (x * y).toChar
+    def quot(x: Char, y: Char): Char = (x / y).toChar
+    def rem(x: Char, y: Char): Char = (x % y).toChar
+    def negate(x: Char): Char = (-x).toChar
+    def fromInt(x: Int): Char = x.toChar
+    def toInt(x: Char): Int = x.toInt
+    def toLong(x: Char): Long = x.toLong
+    def toFloat(x: Char): Float = x.toFloat
+    def toDouble(x: Char): Double = x.toDouble
+  }
+  implicit object CharIsIntegral extends CharIsIntegral with Ordering.CharOrdering
+  
   trait LongIsIntegral extends Integral[Long] {
     def plus(x: Long, y: Long): Long = x + y
     def minus(x: Long, y: Long): Long = x - y
@@ -90,11 +104,10 @@ object Numeric {
   }
   implicit object LongIsIntegral extends LongIsIntegral with Ordering.LongOrdering
   
-  trait FloatIsFractional extends Fractional[Float] {
+  trait FloatIsConflicted extends Numeric[Float] {
     def plus(x: Float, y: Float): Float = x + y
     def minus(x: Float, y: Float): Float = x - y
     def times(x: Float, y: Float): Float = x * y 
-    def div(x: Float, y: Float): Float = x / y
     def negate(x: Float): Float = -x
     def fromInt(x: Int): Float = x
     def toInt(x: Float): Int = x.toInt
@@ -102,7 +115,16 @@ object Numeric {
     def toFloat(x: Float): Float = x
     def toDouble(x: Float): Double = x
   }
+  trait FloatIsFractional extends FloatIsConflicted with Fractional[Float] {
+    def div(x: Float, y: Float): Float = x / y
+  }
+  trait FloatAsIfIntegral extends FloatIsConflicted with Integral[Float] {
+    def quot(x: Float, y: Float): Float = (BigDecimal(x) / BigDecimal(y)).floatValue
+    def rem(x: Float, y: Float): Float = (BigDecimal(x) remainder BigDecimal(y)).floatValue
+  }
   implicit object FloatIsFractional extends FloatIsFractional with Ordering.FloatOrdering
+  object FloatAsIfIntegral extends FloatAsIfIntegral with Ordering.FloatOrdering {
+  }
   
   trait DoubleIsConflicted extends Numeric[Double] {
     def plus(x: Double, y: Double): Double = x + y

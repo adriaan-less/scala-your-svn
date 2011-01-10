@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -350,6 +349,8 @@ object OpCode {
     final val CEE_VOLATILE        : Int = 0x0113
     final val CEE_TAILCALL        : Int = 0x0114
     final val CEE_INITOBJ         : Int = 0x0115
+    final val CEE_CONSTRAINED     : Int = 0xFE16
+    final val CEE_READONLY        : Int = 0xFE1E
     final val CEE_UNUSED68        : Int = 0x0116
     final val CEE_CPBLK           : Int = 0x0117
     final val CEE_INITBLK         : Int = 0x0118
@@ -801,7 +802,19 @@ object OpCode {
 	opcode(Call, CEE_CALL , "call"    , 0xFFFFFF28, POP_SPECIAL, PUSH_SPECIAL, INLINE_METHOD    , FLOW_CALL)
 
     /**
-     * Calls the method indicated on the evaluation stack (as a pointer to an entry point) 
+   * constrained prefix
+   */
+  final val Constrained = new OpCode()
+opcode(Constrained, CEE_CONSTRAINED , "constrained."    , 0xFFFFFE16, POP_NONE, PUSH_NONE, INLINE_NONE    , FLOW_NEXT)
+
+  /**
+   * readonly prefix
+   */
+  final val Readonly = new OpCode()
+opcode(Readonly, CEE_READONLY , "readonly."    , 0xFFFFFE1E, POP_NONE, PUSH_NONE, INLINE_NONE    , FLOW_NEXT)
+
+    /**
+     * Calls the method indicated on the evaluation stack (as a pointer to an entry point)
      * with arguments described by a calling convention. 
      */
     final val Calli = new OpCode()
@@ -1139,7 +1152,7 @@ object OpCode {
 	opcode(Rem_Un, CEE_REM_UN, "rem.un" , 0xFFFFFF5E, POP_1_1, PUSH_1 , INLINE_NONE, FLOW_NEXT)
 
     /**
-     * Computes the bitwise AND of two values and pushes the result onto the evalution stack.
+     * Computes the bitwise AND of two values and pushes the result onto the evaluation stack.
      */
     final val And = new OpCode()
 	opcode(And, CEE_AND, "and"    , 0xFFFFFF5F, POP_1_1, PUSH_1 , INLINE_NONE, FLOW_NEXT)
@@ -1585,7 +1598,7 @@ object OpCode {
 	opcode(Conv_Ovf_I2, CEE_CONV_OVF_I2, "conv.ovf.i2", 0xFFFFFFB5, POP_1, PUSH_I , INLINE_NONE , FLOW_NEXT)
 
     /**
-     * Converts the signed value on top of the sevaluation tack to signed int32, 
+     * Converts the signed value on top of the evaluation stack to signed int32, 
      * throwing OverflowException on overflow. 
      */
     final val Conv_Ovf_I4 = new OpCode()

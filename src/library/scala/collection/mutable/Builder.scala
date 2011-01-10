@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package mutable
@@ -15,7 +14,7 @@ import generic._
 
 /** The base trait of all builders.
  *  A builder lets one construct a collection incrementally, by adding
- *  elements to the builder with += and then converting to the required
+ *  elements to the builder with `+=` and then converting to the required
  *  collection type with `result`.
  *
  *  @tparam  Elem  the type of elements that get added to the builder.
@@ -52,6 +51,42 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
    */
   def sizeHint(size: Int) {}
 
+  /** Gives a hint that one expects the `result` of this builder
+   *  to have the same size as the given collection, plus some delta. This will
+   *  provide a hint only if the collection is known to have a cheap
+   *  `size` method. Currently this is assumed to be the case if and only if
+   *  the collection is of type `IndexedSeqLike`.
+   *  Some builder classes
+   *  will optimize their representation based on the hint. However,
+   *  builder implementations are still required to work correctly even if the hint is
+   *  wrong, i.e. a different number of elements is added.
+   * 
+   *  @param coll  the collection which serves as a hint for the result's size.
+   *  @param delta a correction to add to the `coll.size` to produce the size hint.
+   */
+  def sizeHint(coll: TraversableLike[_, _], delta: Int = 0) {
+    if (coll.isInstanceOf[IndexedSeqLike[_,_]]) {
+      sizeHint(coll.size + delta)
+    }
+  }
+
+  /** Gives a hint how many elements are expected to be added
+   *  when the next `result` is called, together with an upper bound
+   *  given by the size of some other collection. Some builder classes
+   *  will optimize their representation based on the hint. However,
+   *  builder implementations are still required to work correctly even if the hint is
+   *  wrong, i.e. a different number of elements is added.
+   * 
+   *  @param size  the hint how many elements will be added.
+   *  @param boundingColl  the bounding collection. If it is
+   *                       an IndexedSeqLike, then sizes larger 
+   *                       than collection's size are reduced.
+   */
+  def sizeHintBounded(size: Int, boundingColl: TraversableLike[_, _]) {
+    if (boundingColl.isInstanceOf[IndexedSeqLike[_,_]])
+      sizeHint(size min boundingColl.size)
+  }
+
   /** Creates a new builder by applying a transformation function to
    *  the results of this builder.
    *  @param  f     the transformation function.
@@ -64,8 +99,7 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
       val self = Builder.this
       def +=(x: Elem): this.type = { self += x; this }
       def clear() = self.clear()
-      override def ++=(xs: Iterator[Elem]): this.type = { self ++= xs; this }
-      override def ++=(xs:scala.collection.Traversable[Elem]): this.type = { self ++= xs; this }
+      override def ++=(xs: TraversableOnce[Elem]): this.type = { self ++= xs; this }
       def result: NewTo = f(self.result)
     }
 }

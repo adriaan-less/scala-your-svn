@@ -20,16 +20,20 @@ object Test extends Application {
 
 
   // anonymous functions
+  {
+    def doMod(f: Int => Unit) { f(20) }
+    var var1 = 0
+    doMod(var1 = _)
+    println(var1)
+
+    synchronized(var1 = 30)
+    println(var1)
+
+    var var2 = 0
+    def delay(var2: => Int) = { var2 }
+    println(delay(var2 = 40))
+  }
   val f1: (Int, String) => Unit = test1(_, _); f1(6, "~")
-  val f2: Int => Unit = test1(a = _, b = get("+")); f2(get(7))
-  val f3 = test1(b = _: String, a = get(8)); f3(get("+"))
-  val f4: (Int, String) => Unit = test1(_, b = _); f4(9, "?")
-
-  val f5: Int => (String, Int) => Unit = test2(v = get(38), u = _)_
-  f5(get(39))(get("|"), 10)
-
-  val f6: (Double, String) => Unit = test3(get(13), _)(d = _, c = get("x"))
-  f6(get(2.233), get("<"))
 
 
   test4(14)
@@ -151,10 +155,6 @@ object Test extends Application {
   println(c1.print)
   val c2 = C("dflkj", c = Some(209): Option[Int])(None, "!!")
   println(c2.print)
-  val a_f: String => A[String, Nothing] = new A[String, Nothing](b = _)(d = 100)
-  println(a_f("20").print)
-  val c_f: Int => C[Int] = C("dlfkj", c = 10, b = _)(35, e = "dlkf")
-  println(c_f(11).print)
 
 
   // "super" qualifier
@@ -274,6 +274,7 @@ object Test extends Application {
 
   // #2489
   class A2489 { def foo { def bar(a: Int = 1) = a; bar(); val u = 0 } }
+  class A2489x2 { def foo { val v = 10; def bar(a: Int = 1, b: Int = 2) = a; bar(); val u = 0 } }
 
   // a bug reported on the mailing lists, related to #2489
   class Test2489 {
@@ -295,6 +296,94 @@ object Test extends Application {
     class A[T](f: String = "ski!")
     class C extends A
   }
+
+  object t3178 {
+    def foo(x: String) = x
+    def foo(x: Int) = x
+    def bar(foo: Int) = foo
+    bar(foo = 1)
+  }
+
+
+  // #3207
+  trait P3207[T] {
+    class Inner(val f: T => Unit = (x: T) => println(x))
+  }
+
+  object Test3207_1 {
+    val p = new P3207[Int] {}
+    val q = new p.Inner() {
+      def g = 0
+    }
+  }
+
+  object Test3207_2 {
+    val p = new P3207[Int] {
+      val inner = new Inner() {
+        def g = 0
+      }
+    }
+  }
+
+  // #3344
+  def m3344_1 = { case class C(x: Int); C(1).copy(2).x }
+  m3344_1
+  def m3344_2 = { class C(val x: Int = 1); new C().x }
+  m3344_2
+
+  // #3338
+  object t3338 {
+    class Container {
+      class GenericClass[T](arg: String = "")
+    }
+
+    object Container extends Container
+
+    class Test {
+      val a = new Container.GenericClass()
+    }
+  }
+  (new t3338.Test).a
+
+
+  // subclassing and defaults in both class constructors
+  class CBLAH(val x: Int = 1)
+  class DBLAH(val y: String = "2") extends CBLAH()
+  (new DBLAH())
+
+  // deprecated names
+  def deprNam1(@deprecatedName('x) a: Int, @deprecatedName('y) b: Int) = a + b
+  deprNam1(y = 10, a = 1)
+  deprNam1(b = 2, x = 10)
+
+  object deprNam2 {
+    def f(@deprecatedName('s) x: String) = 1
+    def f(s: Object) = 2
+
+    def g(@deprecatedName('x) s: Object) = 3
+    def g(s: String) = 4
+  }
+  println(deprNam2.f(s = "dlf"))
+  println(deprNam2.f(s = new Object))
+  println(deprNam2.g(x = "sljkfd"))
+
+
+  // #3697
+  object t3697 {
+    def a(x: Int*)(s: Int = 3) = s
+    def b(a: Int, b: Int, c: Int*) = a + b
+  }
+  println(t3697.a(Seq(3): _*)())
+  println(t3697.a(3)())
+  println(t3697.a()())
+  println(t3697.a(2,3,1)())
+  println(t3697.b(a = 1, b = 2))
+  println(t3697.b(a = 1, b = 2, 3))
+  println(t3697.b(b = 1, a = 2, c = 3))
+  println(t3697.b(a = 1, b = 2, 3, 4))
+  println(t3697.b(a = 1, b = 2, Seq(3, 4): _*))
+  println(t3697.b(b = 1, a = 2, c = Seq(3, 4): _*))
+
 
   // DEFINITIONS
   def test1(a: Int, b: String) = println(a +": "+ b)

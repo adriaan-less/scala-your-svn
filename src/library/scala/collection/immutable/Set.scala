@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,40 +13,38 @@ package immutable
 
 import generic._
 
-/** <p>
- *    A generic trait for immutable sets. Concrete set implementations have
- *    to provide functionality for the abstract methods in <code>Set</code>:
- *  </p>
- *  <pre>
- *    <b>def</b> contains(elem: A): Boolean
- *    <b>def</b> iterator: Iterator[A]
- *    <b>def</b> + (elem: A): Self
- *    <b>def</b> - (elem: A): Self</pre>
- *  <p>
- *    where <code>Self</code> is the type of the set.
- *  </p>
- *
+/** A generic trait for immutable sets.
+ *  
+ *  $setnote
+ *  
  *  @author Matthias Zenger
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
  */
 trait Set[A] extends Iterable[A] 
                 with scala.collection.Set[A] 
                 with GenericSetTemplate[A, Set]
                 with SetLike[A, Set[A]] { 
   override def companion: GenericCompanion[Set] = Set
+  override def toSet[B >: A]: Set[B] = this.asInstanceOf[Set[B]]
 }
 
-object Set extends SetFactory[Set] {
+/** $factoryInfo
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
+ */
+object Set extends ImmutableSetFactory[Set] {
+  /** $setCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
   override def empty[A]: Set[A] = EmptySet.asInstanceOf[Set[A]]
 
   private val hashSeed = "Set".hashCode 
 
   /** An optimized representation for immutable empty sets */
-  @serializable
-  private object EmptySet extends Set[Any] {
+  private object EmptySet extends Set[Any] with Serializable {
     override def size: Int = 0
     def contains(elem: Any): Boolean = false
     def + (elem: Any): Set[Any] = new Set1(elem)
@@ -56,8 +53,8 @@ object Set extends SetFactory[Set] {
     override def foreach[U](f: Any =>  U): Unit = {}
   }
 
-  @serializable @deprecated("use `Set.empty' instead")
-  class EmptySet[A] extends Set[A] {
+  @deprecated("use `Set.empty' instead")
+  class EmptySet[A] extends Set[A] with Serializable {
     override def size: Int = 0
     def contains(elem: A): Boolean = false
     def + (elem: A): Set[A] = new Set1(elem)
@@ -67,8 +64,8 @@ object Set extends SetFactory[Set] {
   }
   
   /** An optimized representation for immutable sets of size 1 */
-  @serializable @SerialVersionUID(1233385750652442003L)
-  class Set1[A](elem1: A) extends Set[A] {
+  @SerialVersionUID(1233385750652442003L)
+  class Set1[A](elem1: A) extends Set[A] with Serializable {
     override def size: Int = 1
     def contains(elem: A): Boolean = 
       elem == elem1
@@ -86,8 +83,8 @@ object Set extends SetFactory[Set] {
   }
 
   /** An optimized representation for immutable sets of size 2 */
-  @serializable @SerialVersionUID(-6443011234944830092L)
-  class Set2[A](elem1: A, elem2: A) extends Set[A] {
+  @SerialVersionUID(-6443011234944830092L)
+  class Set2[A](elem1: A, elem2: A) extends Set[A] with Serializable {
     override def size: Int = 2
     def contains(elem: A): Boolean = 
       elem == elem1 || elem == elem2
@@ -106,8 +103,8 @@ object Set extends SetFactory[Set] {
   }
 
   /** An optimized representation for immutable sets of size 3 */
-  @serializable @SerialVersionUID(-3590273538119220064L)
-  class Set3[A](elem1: A, elem2: A, elem3: A) extends Set[A] {
+  @SerialVersionUID(-3590273538119220064L)
+  class Set3[A](elem1: A, elem2: A, elem3: A) extends Set[A] with Serializable {
     override def size: Int = 3
     def contains(elem: A): Boolean = 
       elem == elem1 || elem == elem2 || elem == elem3
@@ -127,8 +124,8 @@ object Set extends SetFactory[Set] {
   }
 
   /** An optimized representation for immutable sets of size 4 */
-  @serializable @SerialVersionUID(-3622399588156184395L)
-  class Set4[A](elem1: A, elem2: A, elem3: A, elem4: A) extends Set[A] {
+  @SerialVersionUID(-3622399588156184395L)
+  class Set4[A](elem1: A, elem2: A, elem3: A, elem4: A) extends Set[A] with Serializable {
     override def size: Int = 4
     def contains(elem: A): Boolean = 
       elem == elem1 || elem == elem2 || elem == elem3 || elem == elem4

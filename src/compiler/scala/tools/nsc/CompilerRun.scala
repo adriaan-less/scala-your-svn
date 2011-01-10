@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -12,7 +11,7 @@ class CompilerRun {
   def namerPhase: Phase = NoPhase
   def typerPhase: Phase = NoPhase
   def refchecksPhase: Phase = NoPhase
-  def explicitOuterPhase: Phase = NoPhase
+  def explicitouterPhase: Phase = NoPhase
   def erasurePhase: Phase = NoPhase
   def flattenPhase: Phase = NoPhase
   def mixinPhase: Phase = NoPhase

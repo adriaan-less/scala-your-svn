@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package util
@@ -15,7 +14,11 @@ abstract class Set[T <: AnyRef] {
 
   def addEntry(x: T): Unit
 
-  def iterator: Iterator[T]	
+  def iterator: Iterator[T]
+  
+  def foreach[U](f: T => U): Unit = iterator foreach f
+  
+  def apply(x: T): Boolean = contains(x)
   
   @deprecated("use `iterator' instead") def elements = iterator
 

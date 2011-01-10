@@ -6,28 +6,28 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 
 import generic._
-import mutable.{Builder, AddingBuilder}
-import PartialFunction._
+import mutable.{ Builder, SetBuilder }
+import scala.annotation.migration
 
-/** A template trait for sets of type `Set[A]`.
+/** A template trait for sets.
  *
- * This trait provides most of the operations of a `Set` independently of its representation.
- * It is typically inherited by concrete implementations of sets.
+ *  $setNote
+ *  $setTags
+ *  @since 2.8
  *
- * $setnote
+ *  @define setNote
  *
- *  @tparam A    the type of the elements of the set
- *  @tparam This the type of the set itself.
+ *  A set is a collection that contains no duplicate elements.
+ *  
+ *    '''Implementation note:'''
+ *    This trait provides most of the operations of a `Set` independently of its representation.
+ *    It is typically inherited by concrete implementations of sets.
  *
- *  @author  Martin Odersky
- *  @version 2.8
- *  @define setnote 
- *    To implement a concrete set, you need  to provide implementations of the
+ *    To implement a concrete set, you need to provide implementations of the
  *    following methods:
  *    {{{
  *       def contains(key: A): Boolean
@@ -42,18 +42,25 @@ import PartialFunction._
  *    }}}
  *    It is also good idea to override methods `foreach` and
  *    `size` for efficiency.
- *   @define coll set
- *   @define Coll Set
- *   @define willNotTerminateInf
- *   @define mayNotTerminateInf
+ * 
+ * @define setTags
+ *  @tparam A    the type of the elements of the set
+ *  @tparam This the type of the set itself.
+ *
+ *  @author  Martin Odersky
+ *  @version 2.8
+ * 
+ *  @define coll set
+ *  @define Coll Set
+ *  @define willNotTerminateInf
+ *  @define mayNotTerminateInf
  */
 trait SetLike[A, +This <: SetLike[A, This] with Set[A]] 
 extends IterableLike[A, This] 
-   with Addable[A, This] 
    with Subtractable[A, This] { 
 self =>
 
-  /* The empty set of the same type as this set
+  /** The empty set of the same type as this set
    * @return  an empty set of type `This`.
    */
   def empty: This
@@ -63,7 +70,21 @@ self =>
    *  <a href="mutable/SetLike.html" target="ContentFrame">
    *  `mutable.SetLike`</a>.
    */
-  override protected[this] def newBuilder: Builder[A, This] = new AddingBuilder[A, This](empty)
+  override protected[this] def newBuilder: Builder[A, This] = new SetBuilder[A, This](empty)
+  
+  /** Overridden for efficiency. */
+  override def toSeq: Seq[A] = toBuffer[A]
+  override def toBuffer[A1 >: A]: mutable.Buffer[A1] = {
+    val result = new mutable.ArrayBuffer[A1](size)
+    copyToBuffer(result)
+    result
+  }
+
+  // note: this is only overridden here to add the migration annotation,
+  // which I hope to turn into an Xlint style warning as the migration aspect
+  // is not central to its importance.
+  @migration(2, 8, "Set.map now returns a Set, so it will discard duplicate values.")
+  override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[This, B, That]): That = super.map(f)(bf)
 
   /** Tests if some element is contained in this set.
    *
@@ -80,6 +101,25 @@ self =>
    *          contains `elem`.
    */
   def + (elem: A): This
+  
+  /** Creates a new $coll with additional elements. 
+   *
+   *  This method takes two or more elements to be added. Another overloaded
+   *  variant of this method handles the case where a single element is added.
+   *
+   *  @param elem1 the first element to add.
+   *  @param elem2 the second element to add.
+   *  @param elems the remaining elements to add.
+   *  @return   a new $coll with the given elements added.
+   */
+  def + (elem1: A, elem2: A, elems: A*): This = this + elem1 + elem2 ++ elems
+  
+  /** Creates a new $coll by adding all elements contained in another collection to this $coll.
+   *
+   *  @param elems     the collection containing the added elements.
+   *  @return a new $coll with the given elements added.
+   */
+  def ++ (elems: TraversableOnce[A]): This = newBuilder ++= this ++= elems result
 
   /** Creates a new set with a given element removed from this set.
    *
@@ -113,10 +153,10 @@ self =>
 
   /** Computes the intersection between this set and another set.
    *
+   *  '''Note:'''  Same as `intersect`.
    *  @param   that  the set to intersect with.
    *  @return  a new set consisting of all elements that are both in this
    *  set and in the given set `that`. 
-   *  @note  Same as `intersect`.
    */
   def &(that: Set[A]): This = intersect(that)
 
@@ -138,10 +178,10 @@ self =>
 
   /** Computes the union between this set and another set.
    *
+   *  '''Note:'''  Same as `union`.
    *  @param   that  the set to form the union with.
    *  @return  a new set consisting of all elements that are in this
    *  set or in the given set `that`. 
-   *  @note       Same as `union`.
    */
   def | (that: Set[A]): This = union(that)
 
@@ -155,10 +195,10 @@ self =>
 
   /** The difference of this set and another set.
    *
+   *  '''Note:'''  Same as `diff`.
    *  @param that the set of elements to exclude.
    *  @return     a set containing those elements of this
    *              set that are not also contained in the given set `that`.
-   *  @note       Same as `diff`.
    */
   def &~(that: Set[A]): This = diff(that)
 
@@ -175,19 +215,23 @@ self =>
    *           Unless overridden this is simply `"Set"`.
    */
   override def stringPrefix: String = "Set"
-
   override def toString = super[IterableLike].toString
-  override def hashCode() = this map (_.hashCode) sum
+
+  // Careful! Don't write a Set's hashCode like:
+  //    override def hashCode() = this map (_.hashCode) sum
+  // Calling map on a set drops duplicates: any hashcode collisions would
+  // then be dropped before they can be added.
+  override def hashCode() = this.foldLeft(0)(_ + _.hashCode)
   
   /** Compares this set with another object for equality.
    *
+   *  '''Note:''' This operation contains an unchecked cast: if `that`
+   *        is a set, it will assume with an unchecked cast
+   *        that it has the same element type as this set.
+   *        Any subsequent ClassCastException is treated as a `false` result.
    *  @param that the other object
    *  @return     `true` if `that` is a set which contains the same elements
    *              as this set.
-   *  @note This operation contains an unchecked cast: if `that`
-   *        is a set, it will assume with an unchecked cast
-   *        that it has the same element type as this set.
-   *        Any subsequuent ClassCastException is treated as a `false` result.
    */
   override def equals(that: Any): Boolean = that match {
     case that: Set[_] =>

@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  *
  */
-// $Id$
 
 package scala.tools.nsc
 package util
@@ -133,7 +132,7 @@ trait Position {
   def focusEnd = this
   
   /** Does this position include the given position `pos`.
-   *  This holds this is a range position and its range [start..end] 
+   *  This holds if this is a range position and its range [start..end] 
    *  is the same or covers the range of the given position.
    */
   def includes(pos: Position) = false
@@ -154,8 +153,8 @@ trait Position {
   /** Does this position properly precede the given position `pos` ("properly" meaning their ranges
    *  do not share a common point).
    */
-  def properlyPrecedes(pos: Position) = 
-    isDefined && pos.isDefined && startOrPoint < pos.endOrPoint
+  def properlyPrecedes(pos: Position) =
+    isDefined && pos.isDefined && endOrPoint < pos.startOrPoint
 
   /** Does this position overlap with that position?
    *  This holds if both positions are ranges and there is an interval of

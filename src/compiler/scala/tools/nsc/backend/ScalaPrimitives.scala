@@ -3,14 +3,12 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
 
 import scala.tools.nsc.backend.icode._
-
-import scala.collection.mutable.{Map, HashMap}
+import scala.collection.{ mutable, immutable }
 
 /**
  * Scala primitive operations are represented as methods in Any and
@@ -204,13 +202,11 @@ abstract class ScalaPrimitives {
   final val D2F = 265                          // RunTime.d2f(x)
   final val D2D = 266                          // RunTime.d2d(x)
 
-
-  private var primitives: Map[Symbol, Int] = _
+  private val primitives: mutable.Map[Symbol, Int] = new mutable.HashMap()
 
   /** Initialize the primitive map */
   def init {
-    primitives = new HashMap()
-
+    primitives.clear()
     // scala.Any
     addPrimitive(Any_==, EQ)
     addPrimitive(Any_!=, NE)
@@ -562,9 +558,9 @@ abstract class ScalaPrimitives {
   
   def isPrimitive(sym: Symbol): Boolean = primitives contains sym
 
-  /** Return the code for the givem symbol. */
+  /** Return the code for the given symbol. */
   def getPrimitive(sym: Symbol): Int = {
-    assert(isPrimitive(sym), "Unkown primitive " + sym)
+    assert(isPrimitive(sym), "Unknown primitive " + sym)
     primitives(sym)
   }
 
@@ -581,17 +577,17 @@ abstract class ScalaPrimitives {
     import definitions._
     val code = getPrimitive(fun)
 
-    var elem: Type = null
-    tpe match {
-      case TypeRef(_, sym, _elem :: Nil)
-           if (sym == ArrayClass) => elem = _elem
-      case _ => ()
+    def elementType = atPhase(currentRun.typerPhase) {
+      val arrayParent = tpe :: tpe.parents collectFirst {
+        case TypeRef(_, ArrayClass, elem :: Nil) => elem
+      }
+      arrayParent getOrElse system.error(fun.fullName + " : " + (tpe :: tpe.baseTypeSeq.toList).mkString(", "))
     }
 
     code match {
 
       case APPLY =>
-        toTypeKind(elem) match {
+        toTypeKind(elementType) match {
           case BOOL    => ZARRAY_GET
           case BYTE    => BARRAY_GET
           case SHORT   => SARRAY_GET
@@ -602,11 +598,11 @@ abstract class ScalaPrimitives {
           case DOUBLE  => DARRAY_GET
           case REFERENCE(_) | ARRAY(_) => OARRAY_GET
           case _ =>
-            abort("Unexpected array element type: " + elem)
+            abort("Unexpected array element type: " + elementType)
         }
 
       case UPDATE =>
-        toTypeKind(elem) match {
+        toTypeKind(elementType) match {
           case BOOL    => ZARRAY_SET
           case BYTE    => BARRAY_SET
           case SHORT   => SARRAY_SET
@@ -617,12 +613,11 @@ abstract class ScalaPrimitives {
           case DOUBLE  => DARRAY_SET
           case REFERENCE(_) | ARRAY(_) => OARRAY_SET
           case _ =>
-            abort("Unexpected array element type: " + elem)
+            abort("Unexpected array element type: " + elementType)
         }
 
       case LENGTH =>
-        assert(elem != null)
-        toTypeKind(elem) match {
+        toTypeKind(elementType) match {
           case BOOL    => ZARRAY_LENGTH
           case BYTE    => BARRAY_LENGTH
           case SHORT   => SARRAY_LENGTH
@@ -633,7 +628,7 @@ abstract class ScalaPrimitives {
           case DOUBLE  => DARRAY_LENGTH
           case REFERENCE(_) | ARRAY(_) => OARRAY_LENGTH
           case _ =>
-            abort("Unexpected array element type: " + elem)
+            abort("Unexpected array element type: " + elementType)
         }
 
       case _ =>

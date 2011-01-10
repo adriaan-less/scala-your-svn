@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,36 +14,42 @@ package mutable
 import generic._
 import immutable.{List, Nil}
 
-/** <p>
- *    This class is used internally to represent mutable lists. It is the
- *     basis for the implementation of the classes
- *     <code>Stack</code>, and <code>Queue</code>.
- *  </p>
- *  !!! todo: convert to LinkedListBuffer?
- *
+// !!! todo: convert to LinkedListBuffer?
+/** 
+ *  This class is used internally to represent mutable lists. It is the
+ *  basis for the implementation of the classes
+ *  `Stack`, and `Queue`.
+ *  
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
  */
-@serializable @SerialVersionUID(5938451523372603072L)
-class MutableList[A] extends LinearSeq[A]
-                        with LinearSeqLike[A, MutableList[A]]
-                        with Builder[A, MutableList[A]] {
-
-  override protected[this] def newBuilder = new MutableList[A]
+@SerialVersionUID(5938451523372603072L)
+class MutableList[A]
+extends LinearSeq[A]
+   with LinearSeqOptimized[A, MutableList[A]]
+   with GenericTraversableTemplate[A, MutableList]
+   with Builder[A, MutableList[A]]
+   with Serializable
+{
+  override def companion: GenericCompanion[MutableList] = MutableList
+  
+  override protected[this] def newBuilder: Builder[A, MutableList[A]] = new MutableList[A]
 
   protected var first0: LinkedList[A] = new LinkedList[A]
-  protected var last0: LinkedList[A] = _ // undefined if first0.isEmpty 
+  protected var last0: LinkedList[A] = first0
   protected var len: Int = 0
-
+  
+  def toQueue = new Queue(first0, last0, len)
+  
   /** Is the list empty?
    */
   override def isEmpty = len == 0
 
   /** Returns the first element in this list
    */
-  override def head: A = first0.head
+  override def head: A = if (nonEmpty) first0.head else throw new NoSuchElementException
 
   /** Returns the rest of this list
    */
@@ -56,6 +61,13 @@ class MutableList[A] extends LinearSeq[A]
     tl.len = len - 1
     tl
   }
+
+  /** Prepends a single element to this list. This operation takes constant
+   *  time.
+   *  @param elem  the element to prepend.
+   *  @return   this $coll.
+   */
+  def +=: (elem: A): this.type = { prependElem(elem); this }
 
   /** Returns the length of this list.
    */
@@ -129,3 +141,14 @@ class MutableList[A] extends LinearSeq[A]
 
   def result = this
 }
+
+
+object MutableList extends SeqFactory[MutableList] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, MutableList[A]] = new GenericCanBuildFrom[A]
+  
+  def newBuilder[A]: Builder[A, MutableList[A]] = new MutableList[A]
+}
+
+
+
+

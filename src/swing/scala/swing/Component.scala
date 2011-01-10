@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -79,6 +78,9 @@ abstract class Component extends UIElement {
     }
   }
   
+  def name: String = peer.getName
+  def name_=(s: String) = peer.setName(s)
+  
   /**
    * Used by certain layout managers, e.g., BoxLayout or OverlayLayout to 
    * align components relative to each other.
@@ -100,12 +102,12 @@ abstract class Component extends UIElement {
   def tooltip: String = peer.getToolTipText
   def tooltip_=(t: String) = peer.setToolTipText(t)
   
-  def inputVerifier: this.type => Boolean = { a =>
-    peer.getInputVerifier().verify(a.peer)
+  def inputVerifier: Component => Boolean = { a =>
+    peer.getInputVerifier.verify(a.peer)
   }
-  def inputVerifier_=(v: this.type => Boolean) { 
+  def inputVerifier_=(v: Component => Boolean) { 
     peer.setInputVerifier(new javax.swing.InputVerifier {
-      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper(c))
+      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper[Component](c))
     })
   }
 
@@ -114,7 +116,7 @@ abstract class Component extends UIElement {
   }
   def verifyOnTraversal_=(v: (Component, Component) => Boolean) { 
     peer.setInputVerifier(new javax.swing.InputVerifier {
-      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper(c))
+      def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper[Component](c))
     })
   }*/
   
@@ -203,22 +205,22 @@ abstract class Component extends UIElement {
     // TODO: deprecated, remove after 2.8
     peer.addComponentListener(new java.awt.event.ComponentListener {
       def componentHidden(e: java.awt.event.ComponentEvent) { 
-        publish(ComponentHidden(Component.this)) 
+        publish(UIElementHidden(Component.this)) 
       }
       def componentShown(e: java.awt.event.ComponentEvent) { 
-        publish(ComponentShown(Component.this)) 
+        publish(UIElementShown(Component.this)) 
       }
       def componentMoved(e: java.awt.event.ComponentEvent) { 
-        publish(ComponentMoved(Component.this)) 
+        publish(UIElementMoved(Component.this)) 
       }
       def componentResized(e: java.awt.event.ComponentEvent) { 
-        publish(ComponentResized(Component.this)) 
+        publish(UIElementResized(Component.this)) 
       }
     })
 
     peer.addFocusListener(new java.awt.event.FocusListener {
       def other(e: java.awt.event.FocusEvent) = e.getOppositeComponent match {
-        case c: JComponent => Some(UIElement.cachedWrapper(c))
+        case c: JComponent => Some(UIElement.cachedWrapper[Component](c))
         case _ => None
       }
     

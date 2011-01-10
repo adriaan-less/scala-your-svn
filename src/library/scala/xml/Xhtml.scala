@@ -1,4 +1,3 @@
-// $Id$
 
 package scala.xml
 
@@ -14,7 +13,7 @@ object Xhtml
    * 
    * @param node      the node
    */
-  def toXhtml(node: Node): String = sbToString(toXhtml(x = node, sb = _))
+  def toXhtml(node: Node): String = sbToString(sb => toXhtml(x = node, sb = sb))
   
   /**
    * Convenience function: amounts to calling toXhtml(node) on each
@@ -22,7 +21,7 @@ object Xhtml
    * 
    * @param nodeSeq   the node sequence
    */  
-  def toXhtml(nodeSeq: NodeSeq): String = sbToString(sequenceToXML(nodeSeq: Seq[Node], sb = _))    
+  def toXhtml(nodeSeq: NodeSeq): String = sbToString(sb => sequenceToXML(nodeSeq: Seq[Node], sb = sb))    
    
   /** Elements which we believe are safe to minimize if minimizeTags is true.
    *  See http://www.w3.org/TR/xhtml1/guidelines.html#C_3 
@@ -49,11 +48,11 @@ object Xhtml
       (minimizableElements contains x.label)
     
     x match {
-      case c: Comment if !stripComments     => c buildString sb
+      case c: Comment                       => if (!stripComments) c buildString sb
       case er: EntityRef if decodeEntities  => decode(er)
       case x: SpecialNode                   => x buildString sb
       case g: Group                         =>
-        g.nodes foreach { toXhtml(_, x.scope, sb) }
+        g.nodes foreach { toXhtml(_, x.scope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags) }
 
       case _  =>
         sb.append('<')
@@ -64,7 +63,7 @@ object Xhtml
         if (shortForm) sb.append(" />")
         else {
           sb.append('>')
-          sequenceToXML(x.child, x.scope, sb)
+          sequenceToXML(x.child, x.scope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)
           sb.append("</")
           x.nameToString(sb)
           sb.append('>')
@@ -89,9 +88,9 @@ object Xhtml
       
     val doSpaces = children forall isAtomAndNotText // interleave spaces
     for (c <- children.take(children.length - 1)) {
-      toXhtml(c, pscope, sb)
+      toXhtml(c, pscope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)
       if (doSpaces) sb append ' '
     }
-    toXhtml(children.last, pscope, sb)
+    toXhtml(children.last, pscope, sb, stripComments, decodeEntities, preserveWhitespace, minimizeTags)
   }
 }

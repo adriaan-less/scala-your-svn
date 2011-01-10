@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,19 +13,25 @@ package mutable
 
 import generic._
 
-/** This trait represents mutable maps.
- *  All implementations od mutable maps inherit from it.
- *
- *  @tparam A    the type of the keys of the map.
- *  @tparam B    the type of associated values. 
+/** A base trait for maps that can be mutated.
+ *  $mapNote
+ *  $mapTags
+ *  @since 1.0
+ *  @author  Matthias Zenger
  */
 trait Map[A, B] 
   extends Iterable[(A, B)]
      with scala.collection.Map[A, B] 
      with MapLike[A, B, Map[A, B]] {
-
+  
   override def empty: Map[A, B] = Map.empty
-
+  
+  /** The same map with a given default function */
+  def withDefault(d: A => B): mutable.Map[A, B] = new Map.WithDefault[A, B](this, d)
+  
+  /** The same map with a given default value */
+  def withDefaultValue(d: B): mutable.Map[A, B] = new Map.WithDefault[A, B](this, x => d)
+  
   /** Return a read-only projection of this map.  !!! or just use an (immutable) MapProxy? 
   def readOnly : scala.collection.Map[A, B] = new scala.collection.Map[A, B] {
     override def size = self.size
@@ -40,11 +45,29 @@ trait Map[A, B]
   */
 }
 
-/* The standard factory for mutable maps.
- * Currently this uses `HashMap` as the implementation class.
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `HashMap`.
+ *  @define coll mutable map
+ *  @define Coll mutable.Map
  */
 object Map extends MutableMapFactory[Map] {
+  /** $canBuildFromInfo */
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), Map[A, B]] = new MapCanBuildFrom[A, B]
+  
   def empty[A, B]: Map[A, B] = new HashMap[A, B]
-}
 
+  class WithDefault[A, B](underlying: Map[A, B], d: A => B) extends collection.Map.WithDefault(underlying, d) with Map[A, B] {
+    override def += (kv: (A, B)) = {underlying += kv; this}
+    def -= (key: A) = {underlying -= key; this}
+    override def empty = new WithDefault(underlying.empty, d)
+    override def updated[B1 >: B](key: A, value: B1): WithDefault[A, B1] = new WithDefault[A, B1](underlying.updated[B1](key, value), d)
+    override def + [B1 >: B](kv: (A, B1)): WithDefault[A, B1] = updated(kv._1, kv._2)
+    override def - (key: A): WithDefault[A, B] = new WithDefault(underlying - key, d)
+
+    /** If these methods aren't overridden to thread through the underlying map,
+     *  successive calls to withDefault* have no effect.
+     */
+    override def withDefault(d: A => B): mutable.Map[A, B] = new WithDefault[A, B](underlying, d)
+    override def withDefaultValue(d: B): mutable.Map[A, B] = new WithDefault[A, B](underlying, x => d)
+  } 
+}

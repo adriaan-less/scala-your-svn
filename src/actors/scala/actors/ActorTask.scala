@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.actors
@@ -17,19 +16,39 @@ package scala.actors
  *
  *  @author Philipp Haller
  */
-private[actors] class ActorTask(actor: Actor, fun: () => Unit) extends ReplyReactorTask[Actor](actor, fun) {
+private[actors] class ActorTask(actor: Actor,
+                                fun: () => Unit,
+                                handler: PartialFunction[Any, Any],
+                                msg: Any)
+  extends ReplyReactorTask(actor, fun, handler, msg) {
 
   protected override def beginExecution() {
     super.beginExecution()
-    if (actor.shouldExit)
-      actor.exit()
+    actor.synchronized { // shouldExit guarded by actor
+      if (actor.shouldExit)
+        actor.exit()
+    }
   }
 
-  protected override def terminateExecution(e: Exception) {
-    actor.synchronized {
-      if (!actor.links.isEmpty)
-        actor.exitLinked(e)
+  protected override def terminateExecution(e: Throwable) {
+    val senderInfo = try { Some(actor.sender) } catch {
+      case _: Exception => None
     }
+    val uncaught = UncaughtException(actor,
+                                     if (msg != null) Some(msg) else None,
+                                     senderInfo,
+                                     Thread.currentThread,
+                                     e)
+
+    val todo = actor.synchronized {
+      if (!actor.links.isEmpty)
+        actor.exitLinked(uncaught)
+      else {
+        super.terminateExecution(e)
+        () => {}
+      }
+    }
+    todo()
   }
 
 }

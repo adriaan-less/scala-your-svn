@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -17,11 +16,16 @@ import mutable.Builder
 import annotation.unchecked.uncheckedVariance
 
 /** A map whose keys are sorted.
- *
+ *  
+ *  @tparam A     the type of the keys contained in this sorted map.
+ *  @tparam B     the type of the values associated with the keys.
+ *  
  *  @author Sean McDirmid
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   2.4
+ *  @define Coll immutable.SortedMap
+ *  @define coll immutable sorted map
  */
 trait SortedMap[A, +B] extends Map[A, B] 
                          with scala.collection.SortedMap[A, B] 
@@ -31,11 +35,12 @@ trait SortedMap[A, +B] extends Map[A, B]
   override protected[this] def newBuilder : Builder[(A, B), SortedMap[A, B]] = 
     SortedMap.newBuilder[A, B]
 
+  override def empty: SortedMap[A, B] = SortedMap.empty
   override def updated [B1 >: B](key: A, value: B1): SortedMap[A, B1] = this + ((key, value))
+  override def keySet: immutable.SortedSet[A] = SortedSet.empty ++ (this map (_._1))
 
   /** Add a key/value pair to this map. 
-   *  @param    key the key
-   *  @param    value the value
+   *  @param    kv the key/value pair
    *  @return   A new map with the new binding added to this map
    *  @note     needs to be overridden in subclasses
    */
@@ -54,24 +59,18 @@ trait SortedMap[A, +B] extends Map[A, B]
   /** Adds a number of elements provided by a traversable object
    *  and returns a new collection with the added elements.
    *
-   *  @param elems     the traversable object.
+   *  @param xs     the traversable object.
    */
-  override def ++[B1 >: B](elems: scala.collection.Traversable[(A, B1)]): SortedMap[A, B1] = 
-    ((repr: SortedMap[A, B1]) /: elems) (_ + _)
-
-  /** Adds a number of elements provided by an iterator
-   *  and returns a new collection with the added elements.
-   *
-   *  @param iter   the iterator
-   */
-  override def ++[B1 >: B] (iter: Iterator[(A, B1)]): SortedMap[A, B1] = 
-    ((repr: SortedMap[A, B1]) /: iter) (_ + _)
+  override def ++[B1 >: B](xs: TraversableOnce[(A, B1)]): SortedMap[A, B1] = 
+    ((repr: SortedMap[A, B1]) /: xs) (_ + _)
 }
 
-/**
- * @since 2.4
+/** $factoryInfo
+ *  @define Coll immutable.SortedMap
+ *  @define coll immutable sorted map
  */
 object SortedMap extends ImmutableSortedMapFactory[SortedMap] {
+  /** $sortedMapCanBuildFromInfo */
   implicit def canBuildFrom[A, B](implicit ord: Ordering[A]): CanBuildFrom[Coll, (A, B), SortedMap[A, B]] = new SortedMapCanBuildFrom[A, B]
   def empty[A, B](implicit ord: Ordering[A]): SortedMap[A, B] = TreeMap.empty[A, B]
 }

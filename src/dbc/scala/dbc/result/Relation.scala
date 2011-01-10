@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.dbc
@@ -76,7 +75,7 @@ abstract class Relation extends AnyRef with Iterable[Tuple] {
         resultNext = result.next()
         newTuple
       }
-      else error("next on empty iterator")
+      else system.error("next on empty iterator")
     }
   }	
 

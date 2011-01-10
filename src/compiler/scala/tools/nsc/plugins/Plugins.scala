@@ -3,7 +3,6 @@
  * @author Lex Spoon
  * Updated by Anders Bach Nielsen
  */
-// $Id$
 
 package scala.tools.nsc
 package plugins
@@ -16,8 +15,7 @@ import io.{ File, Path }
  *  @version 1.1, 2009/1/2
  *  Updated 2009/1/2 by Anders Bach Nielsen: Added features to implement SIP 00002
  */
-trait Plugins
-{
+trait Plugins {
   self: Global =>
 
   /** Load a rough list of the plugins.  For speed, it
@@ -30,10 +28,10 @@ trait Plugins
     val dirs = (settings.pluginsDir.value split File.pathSeparator).toList map Path.apply
     val classes = Plugin.loadAllFrom(jars, dirs, settings.disable.value)
     
-    classes foreach (c => Plugin.instantiate(c, this))
-
-    for (plugClass <- Plugin.loadAllFrom(jars, dirs, settings.disable.value))
-    yield Plugin.instantiate(plugClass, this)
+    // Lach plugin must only be instantiated once. A common pattern
+    // is to register annotation checkers during object construction, so
+    // creating multiple plugin instances will leave behind stale checkers.
+    classes map (Plugin.instantiate(_, this))
   }
 
   protected lazy val roughPluginsList: List[Plugin] = loadRoughPluginsList
@@ -76,7 +74,7 @@ trait Plugins
     
     /** Verify requirements are present. */
     for (req <- settings.require.value ; if !(plugs exists (_.name == req)))
-      error("Missing required plugin: " + req)
+      globalError("Missing required plugin: " + req)
 
     /** Process plugin options. */
     def namec(plug: Plugin) = plug.name + ":"
@@ -87,12 +85,12 @@ trait Plugins
     for (p <- plugs) {
       val opts = doOpts(p)
       if (!opts.isEmpty)
-        p.processOptions(opts, error)
+        p.processOptions(opts, globalError)
     }
       
     /** Verify no non-existent plugin given with -P */      
     for (opt <- settings.pluginOptions.value ; if plugs forall (p => optList(List(opt), p).isEmpty))
-      error("bad option: -P:" + opt)
+      globalError("bad option: -P:" + opt)
 
     plugs
   }
@@ -107,8 +105,12 @@ trait Plugins
    * Extract all phases supplied by plugins and add them to the phasesSet.
    * @see phasesSet
    */
-  protected def computePluginPhases(): Unit =
-    phasesSet ++= (plugins flatMap (_.components))
+  protected def computePluginPhases(): Unit = {
+    // For reasons not yet apparent to me, plugins started appearing
+    // as null when I added phaseTimings to global.
+    if (plugins != null)
+      phasesSet ++= (plugins flatMap (_.components))
+  }
 
   /** Summary of the options for all loaded plugins */
   def pluginOptionsHelp: String =

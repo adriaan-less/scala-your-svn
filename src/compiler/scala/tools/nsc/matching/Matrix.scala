@@ -8,6 +8,7 @@ package matching
 
 import transform.ExplicitOuter
 import symtab.Flags
+import scala.collection.mutable
 
 trait Matrix extends MatrixAdditions {
   self: ExplicitOuter with ParallelMatching =>
@@ -16,7 +17,9 @@ trait Matrix extends MatrixAdditions {
   import analyzer.Typer
   import CODE._
   import Debug._
-  import Flags.{ TRANS_FLAG }
+  import Flags.{ SYNTHETIC, MUTABLE }
+
+  private[matching] val NO_EXHAUSTIVE = Flags.TRANS_FLAG
 
   /** Translation of match expressions.
    *
@@ -49,7 +52,7 @@ trait Matrix extends MatrixAdditions {
   The is the real work-horse of the algorithm. There is some column whose top-most pattern is a 
   constructor. (Forsimplicity, itisdepicted above asthe left-most column, but anycolumn will do.) 
   The goal is to build a test state with the variablevand some outgoing arcs (one for each construc- 
-  tor and possibly a default arc). Foreach constructorcin the selected column, its arc is deﬁned as 
+  tor and possibly a default arc). Foreach constructor in the selected column, its arc is deﬁned as 
   follows: 
 
   Let {i1,...,ij} be the rows-indices of the patterns in the column that match c. Since the pat- 
@@ -75,8 +78,37 @@ trait Matrix extends MatrixAdditions {
   matrix and the ﬁnal states, and the state is the result of applying match to the new matrix and 
   states. Otherwise,the error state is used after its reference count has been incremented. 
   **/
+  
+  /** Handles all translation of pattern matching.
+   */
+  def handlePattern(
+    selector: Tree,         // tree being matched upon (called scrutinee after this)
+    cases: List[CaseDef],   // list of cases in the match
+    isChecked: Boolean,     // whether exhaustiveness checking is enabled (disabled with @unchecked)
+    context: MatrixContext): Tree =
+  {
+    import context._
+    // log("handlePattern: selector.tpe = " + selector.tpe)
+
+    // sets up top level match
+    val matrixInit: MatrixInit = {
+      val v = copyVar(selector, isChecked, selector.tpe, "temp")
+      MatrixInit(List(v), cases, atPos(selector.pos)(MATCHERROR(v.ident)))
+    }
+    
+    val matrix  = new MatchMatrix(context) { lazy val data = matrixInit }
+    val rep     = matrix.expansion                            // expands casedefs and assigns name
+    val mch     = typer typed rep.toTree                      // executes algorithm, converts tree to DFA
+    val dfatree = typer typed Block(matrixInit.valDefs, mch)  // packages into a code block
+
+    // redundancy check
+    matrix.targets filter (_.isNotReached) foreach (cs => cunit.error(cs.body.pos, "unreachable code"))
+    // optimize performs squeezing and resets any remaining NO_EXHAUSTIVE
+    tracing("handlePattern")(matrix optimize dfatree)
+  }
 
   case class MatrixContext(
+    cunit: CompilationUnit,       // current unit
     handleOuter: Tree => Tree,    // for outer pointer
     typer: Typer,                 // a local typer
     owner: Symbol,                // the current owner
@@ -85,8 +117,21 @@ trait Matrix extends MatrixAdditions {
   {
     private def ifNull[T](x: T, alt: T) = if (x == null) alt else x
     
-    // TRANS_FLAG communicates there should be no exhaustiveness checking
-    private def flags(checked: Boolean) = if (checked) Nil else List(TRANS_FLAG)
+    // NO_EXHAUSTIVE communicates there should be no exhaustiveness checking
+    private def flags(checked: Boolean) = if (checked) Nil else List(NO_EXHAUSTIVE)
+    
+    // Recording the symbols of the synthetics we create so we don't go clearing
+    // anyone else's mutable flags.
+    private val _syntheticSyms = mutable.HashSet[Symbol]()
+    def clearSyntheticSyms() = {
+      _syntheticSyms foreach (_ resetFlag (NO_EXHAUSTIVE|MUTABLE))
+      log("Cleared NO_EXHAUSTIVE/MUTABLE on " + _syntheticSyms.size + " synthetic symbols.")
+      _syntheticSyms.clear()
+    }
+    def recordSyntheticSym(sym: Symbol): Symbol = {
+      _syntheticSyms += sym
+      sym
+    }
 
     case class MatrixInit(
       roots: List[PatternVar],
@@ -114,7 +159,7 @@ trait Matrix extends MatrixAdditions {
         
         val xs =
           for (Binding(lhs, rhs) <- info) yield
-            new PatternVar(lhs, Ident(rhs) setType lhs.tpe, !(rhs hasFlag TRANS_FLAG))
+            new PatternVar(lhs, Ident(rhs) setType lhs.tpe, !(rhs hasFlag NO_EXHAUSTIVE))
         
         new PatternVarGroup(xs)
       }
@@ -155,12 +200,13 @@ trait Matrix extends MatrixAdditions {
       // XXX how will valsym.tpe differ from sym.tpe ?
       def tpe = valsym.tpe
 
-      lazy val ident  = ID(lhs)
-      lazy val valDef = tracing("typedVal", typer typedValDef (VAL(lhs) === rhs) setPos lhs.pos)
+      // See #1427 for an example of a crash which occurs unless we retype:
+      // in that instance there is an existential in the pattern.
+      lazy val ident  = typer typed { ID(lhs) setType null }
+      lazy val valDef = typer typed { (VAL(lhs) withType ident.tpe) === rhs }
 
       override def toString() = "%s: %s = %s".format(lhs, lhs.info, rhs)
     }
-    // val NoPatternVar = PatternVar(NoSymbol, EmptyTree, false)
     
     /** Sets the rhs to EmptyTree, which makes the valDef ignored in Scrutinee.
      */
@@ -177,10 +223,10 @@ trait Matrix extends MatrixAdditions {
       label: String = "temp"): PatternVar =
     {
       val tpe   = ifNull(_tpe, root.tpe)
-      val name  = newName(root.pos, label)
+      val name  = cunit.freshTermName(label)
       val sym   = newVar(root.pos, tpe, flags(checked), name)
 
-      tracing("copy", new PatternVar(sym, root, checked))
+      tracing("copy")(new PatternVar(sym, root, checked))
     }
     
     /** Creates a new synthetic variable of the specified type and
@@ -190,21 +236,21 @@ trait Matrix extends MatrixAdditions {
       val lhs = newVar(owner.pos, tpe, flags(checked))
       val rhs = f(lhs)
       
-      tracing("create", new PatternVar(lhs, rhs, checked))
+      tracing("create")(new PatternVar(lhs, rhs, checked))
     }      
 
     private def newVar(
       pos: Position,
       tpe: Type,
       flags: List[Long] = Nil,
-      name: Name = null): Symbol =
+      name: TermName = null): Symbol =
     {
-      val n: Name = if (name == null) newName(pos, "temp") else name
+      val n = if (name == null) cunit.freshTermName("temp") else name
       // careful: pos has special meaning 
-      owner.newVariable(pos, n) setInfo tpe setFlag (0L /: flags)(_|_)
+      recordSyntheticSym(owner.newVariable(pos, n) setInfo tpe setFlag (SYNTHETIC.toLong /: flags)(_|_))
     }
     
     def typedValDef(x: Symbol, rhs: Tree) =
-      tracing("typedVal", typer typedValDef (VAL(x) === rhs))
+      tracing("typedVal")(typer typedValDef (VAL(x) === rhs))
   }
 }

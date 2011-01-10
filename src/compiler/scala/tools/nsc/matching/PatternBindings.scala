@@ -74,7 +74,7 @@ trait PatternBindings extends ast.TreeDSL
     def boundTree = if (_boundTree == null) tree else _boundTree
     def withBoundTree(x: Bind): this.type = {
       _boundTree = x
-      tracing[this.type]("Bound", this)
+      tracing[this.type]("Bound")(this)
     }
     
     // If a tree has bindings, boundTree looks something like
@@ -119,23 +119,16 @@ trait PatternBindings extends ast.TreeDSL
       case _                => Nil
     }
     private def deepstrip(t: Tree): List[Symbol] =
-      t filter { case _: Bind => true ; case _ => false } map (_.symbol)
+      treeCollect(t, { case x: Bind => x.symbol })
   }
 
   case class Binding(pvar: Symbol, tvar: Symbol) {
-    // see bug #1843 for the consequences of not setting info.
-    // there is surely a better way to do this, especially since
-    // this looks to be the only usage of containsTp anywhere
-    // in the compiler, but it suffices for now.
-    if (tvar.info containsTp WildcardType)
-      tvar setInfo pvar.info
-
     override def toString() = pp(pvar -> tvar)
   }
 
   class Bindings(private val vlist: List[Binding]) {
-    if (!vlist.isEmpty)
-      traceCategory("Bindings", this.toString)
+    // if (!vlist.isEmpty)
+    //   traceCategory("Bindings", this.toString)
 
     def get() = vlist
     

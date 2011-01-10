@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.util.parsing.combinator
 
@@ -138,7 +137,7 @@ trait Parsers {
     def flatMapWithNext[U](f: Nothing => Input => ParseResult[U]): ParseResult[U] 
       = this
 
-    def get: Nothing = error("No result when parsing failed")
+    def get: Nothing = system.error("No result when parsing failed")
   }
   /** An extractor so NoSuccess(msg, next) can be used in matches.
    */
@@ -288,7 +287,7 @@ trait Parsers {
      *          characters accepts.</p>
      * 
      * @param q a parser that accepts if p consumes less characters.
-     * @return a `Parser' that returns the result of the parser consuming the most characteres (out of `p' and `q').
+     * @return a `Parser' that returns the result of the parser consuming the most characters (out of `p' and `q').
      */
     def ||| [U >: T](q: => Parser[U]): Parser[U] = new Parser[U] {
       def apply(in: Input) = {
@@ -348,7 +347,7 @@ trait Parsers {
     def ^? [U](f: PartialFunction[T, U]): Parser[U] = ^?(f, r => "Constructor function not defined at "+r)
     
        
-    /** A parser combinator that parameterises a subsequent parser with the result of this one
+    /** A parser combinator that parameterizes a subsequent parser with the result of this one
      *
      *<p>
      * Use this combinator when a parser depends on the result of a previous parser. `p' should be
@@ -397,20 +396,6 @@ trait Parsers {
      */       
     def ? = opt(this)
   }
-
-  // TODO: can this implemented in ParseResult, like map?
-  /** A helper method for sequential composition of (unit-)parsers
-  */
-  private def seq[T, U, V](p: => Input => ParseResult[T], q: => Input => ParseResult[U])
-                          (compose: (T, U) => V)
-                          (in: Input): ParseResult[V] 
-    = p(in) match {
-      case Success(x, next1) => q(next1) match {
-          case Success(y, next2) => Success(compose(x, y), next2)
-          case ns: NoSuccess => ns
-        }
-      case ns: NoSuccess => ns
-    }
   
   /** Wrap a parser so that its failures become errors (the | combinator will give up as soon as 
    *  it encounters an error, on failure it simply tries the next alternative) 
@@ -662,7 +647,7 @@ trait Parsers {
         
   /** A parser generator that generalises the rep1sep generator so that `q', which parses the separator,
    * produces a right-associative function that combines the elements it separates. Additionally,
-   * The right-most (last) element and the left-most combinating function have to be supplied.
+   * The right-most (last) element and the left-most combining function have to be supplied.
    * 
    * rep1sep(p: Parser[T], q) corresponds to chainr1(p, q ^^ cons, cons, Nil) (where val cons = (x: T, y: List[T]) => x :: y)
    *

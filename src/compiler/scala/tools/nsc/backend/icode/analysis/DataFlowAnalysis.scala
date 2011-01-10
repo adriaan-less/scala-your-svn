@@ -3,25 +3,23 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
 
-import scala.collection.mutable.{Map, HashMap, Set, HashSet, LinkedHashSet}
+import scala.collection.{ mutable, immutable }
 
 /** A generic framework for data flow analysis.
  */
-trait DataFlowAnalysis[L <: CompleteLattice] {
+trait DataFlowAnalysis[L <: SemiLattice] {
   /** A type for program points. */
   type P <: ProgramPoint[P]
   val  lattice: L
 
-  val worklist: Set[P] = new LinkedHashSet
-
-  val in:  Map[P, lattice.Elem] = new HashMap
-  val out: Map[P, lattice.Elem] = new HashMap
-  val visited: HashSet[P] = new HashSet
+  val worklist: mutable.Set[P]          = new mutable.LinkedHashSet
+  val in:  mutable.Map[P, lattice.Elem] = new mutable.HashMap
+  val out: mutable.Map[P, lattice.Elem] = new mutable.HashMap
+  val visited: mutable.HashSet[P]       = new mutable.HashSet
 
   /** collect statistics? */
   var stat = true
@@ -68,13 +66,13 @@ trait DataFlowAnalysis[L <: CompleteLattice] {
         out(point) = output
         val succs = point.successors
         succs foreach { p =>
-          if (!worklist.contains(p))
+          if (!worklist(p))
             worklist += p;
             if (!in.isDefinedAt(p))
               assert(false, "Invalid successor for: " + point + " successor " + p + " does not exist")
 //          if (!p.exceptionHandlerHeader) {
 //            println("lubbing " + p.predecessors + " outs: " + p.predecessors.map(out.apply).mkString("\n", "\n", ""))
-            in(p) = lattice.lub(/*in(p) :: */(p.predecessors map out.apply), p.exceptionHandlerStart)
+            in(p) = lattice.lub(in(p) :: (p.predecessors map out.apply), p.exceptionHandlerStart)
 //          }
         }
       }
@@ -84,7 +82,7 @@ trait DataFlowAnalysis[L <: CompleteLattice] {
       Console.println("in: " + in.mkString("", "\n", ""))
       Console.println("out: " + out.mkString("", "\n", ""))
       e.printStackTrace
-      Predef.error("Could not find element " + e.getMessage)
+      system.error("Could not find element " + e.getMessage)
   }
 
   /** ...
@@ -92,19 +90,17 @@ trait DataFlowAnalysis[L <: CompleteLattice] {
    *  @param f ...
    */
   def backwardAnalysis(f: (P, lattice.Elem) => lattice.Elem): Unit =
-    while (!worklist.isEmpty) {
+    while (worklist.nonEmpty) {
       if (stat) iterations += 1
-      val point = worklist.iterator.next; worklist -= point
+      val point = worklist.head
+      worklist -= point
 
       out(point) = lattice.lub(point.successors map in.apply, false) // TODO check for exception handlers
       val input = f(point, out(point))
 
       if ((lattice.bottom == in(point)) || input != in(point)) {
         in(point) = input
-        point.predecessors foreach { p =>
-          if (!worklist.contains(p))
-            worklist += p;
-        }
+        worklist ++= point.predecessors
       }
     }
 

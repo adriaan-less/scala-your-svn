@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,7 +14,12 @@ package immutable
 import generic._
 import mutable.{ ArrayBuffer, Builder }
 
+/** $factoryInfo
+ *  @define Coll immutable.Stack
+ *  @define coll immutable stack
+ */
 object Stack extends SeqFactory[Stack] {
+  /** $genericCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Stack[A]] = new GenericCanBuildFrom[A]
   def newBuilder[A]: Builder[A, Stack[A]] = new ArrayBuffer[A] mapResult (buf => new Stack(buf.toList))
   
@@ -26,18 +30,28 @@ object Stack extends SeqFactory[Stack] {
 /** This class implements immutable stacks using a list-based data
  *  structure.
  *
- *  @note    This class exists only for historical reason and as an
- *           analogue of mutable stacks
+ *  '''Note:''' This class exists only for historical reason and as an
+ *           analogue of mutable stacks.
  *           Instead of an immutable stack you can just use a list.
- *
+ *  
+ *  @tparam A    the type of the elements contained in this stack.
+ *  
  *  @author  Matthias Zenger
  *  @version 1.0, 10/07/2003
  *  @since   1
+ *  @define Coll immutable.Stack
+ *  @define coll immutable stack
+ *  @define orderDependent
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-@serializable @SerialVersionUID(1976480595012942526L)
-class Stack[+A] protected (protected val elems: List[A]) extends LinearSeq[A] 
+@SerialVersionUID(1976480595012942526L)
+class Stack[+A] protected (protected val elems: List[A])
+                    extends LinearSeq[A] 
                     with GenericTraversableTemplate[A, Stack]
-                    with LinearSeqLike[A, Stack[A]] {
+                    with LinearSeqOptimized[A, Stack[A]]
+                    with Serializable {
   override def companion: GenericCompanion[Stack] = Stack
 
   def this() = this(Nil)
@@ -67,25 +81,15 @@ class Stack[+A] protected (protected val elems: List[A]) extends LinearSeq[A]
   def push[B >: A](elem1: B, elem2: B, elems: B*): Stack[B] = 
     this.push(elem1).push(elem2).pushAll(elems)
    
-  /** Push all elements provided by the given iterator object onto
-   *  the stack. The last element returned by the iterable object
+  /** Push all elements provided by the given traversable object onto
+   *  the stack. The last element returned by the traversable object
    *  will be on top of the new stack.
    *
    *  @param   elems      the iterator object.
    *  @return the stack with the new elements on top.
    */
-  def pushAll[B >: A](elems: Iterator[B]): Stack[B] =
-    ((this: Stack[B]) /: elems)(_ push _)
-  
-  /** Push all elements provided by the given traversable object onto
-   *  the stack. The last element returned by the iterable object
-   *  will be on top of the new stack.
-   *
-   *  @param   elems      the iterable object.
-   *  @return the stack with the new elements on top.
-   */
-  def pushAll[B >: A](elems: scala.collection.Traversable[B]): Stack[B] =
-    ((this: Stack[B]) /: elems)(_ push _)
+  def pushAll[B >: A](xs: TraversableOnce[B]): Stack[B] =
+    ((this: Stack[B]) /: xs.toIterator)(_ push _)
 
   /** Returns the top element of the stack. An error is signaled if
    *  there is no element on the stack.

@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -236,7 +235,17 @@ object OpCodes {
      final val Call = OpCode.Call
 
     /**
-     * Calls the method indicated on the evaluation stack (as a pointer to an entry point) 
+     * constrained. prefix
+     */
+     final val Constrained = OpCode.Constrained
+
+    /**
+     * readonly. prefix
+     */
+     final val Readonly = OpCode.Readonly
+
+    /**
+     * Calls the method indicated on the evaluation stack (as a pointer to an entry point)
      * with arguments described by a calling convention. 
      */
      final val Calli = OpCode.Calli
@@ -521,7 +530,7 @@ object OpCodes {
      final val Rem_Un = OpCode.Rem_Un
 
     /**
-     * Computes the bitwise AND of two values and pushes the result onto the evalution stack.
+     * Computes the bitwise AND of two values and pushes the result onto the evaluation stack.
      */
      final val And = OpCode.And
 
@@ -899,7 +908,7 @@ object OpCodes {
      final val Conv_Ovf_I2 = OpCode.Conv_Ovf_I2
 
     /**
-     * Converts the signed value on top of the sevaluation tack to signed int32, 
+     * Converts the signed value on top of the evaluation stack to signed int32, 
      * throwing OverflowException on overflow. 
      */
      final val Conv_Ovf_I4 = OpCode.Conv_Ovf_I4

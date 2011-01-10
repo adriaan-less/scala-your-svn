@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package remote
@@ -16,11 +15,10 @@ import scala.collection.mutable.HashMap
 /**
  * @author Philipp Haller
  */
-@serializable
-private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: NetKernel) extends AbstractActor {
+private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: NetKernel) extends AbstractActor with Serializable {
   import java.io.{IOException, ObjectOutputStream, ObjectInputStream}
-
-  type Future[+R] = scala.actors.Future[R]
+  
+  type Future[+P] = scala.actors.Future[P]
 
   @transient
   private[remote] var del: Actor = null
@@ -44,7 +42,7 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   }
 
   private def setupKernel() {
-    kernel = RemoteActor.someKernel
+    kernel = RemoteActor.someNetKernel
     kernel.registerProxy(node, name, this)
   }
 
@@ -66,10 +64,10 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   def !?(msec: Long, msg: Any): Option[Any] =
     del !? (msec, msg)
 
-  override def !!(msg: Any): Future[Any] =
+  def !!(msg: Any): Future[Any] =
     del !! msg
 
-  override def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] =
+  def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] =
     del !! (msg, f)
 
   def linkTo(to: AbstractActor): Unit =
@@ -85,8 +83,7 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
     name+"@"+node
 }
 
-@serializable
-class LinkToFun extends Function2[AbstractActor, Proxy, Unit] {
+class LinkToFun extends Function2[AbstractActor, Proxy, Unit] with Serializable {
   def apply(target: AbstractActor, creator: Proxy) {
     target.linkTo(creator)
   }
@@ -94,8 +91,7 @@ class LinkToFun extends Function2[AbstractActor, Proxy, Unit] {
     "<LinkToFun>"
 }
 
-@serializable
-class UnlinkFromFun extends Function2[AbstractActor, Proxy, Unit] {
+class UnlinkFromFun extends Function2[AbstractActor, Proxy, Unit] with Serializable {
   def apply(target: AbstractActor, creator: Proxy) {
     target.unlinkFrom(creator)
   }
@@ -103,8 +99,7 @@ class UnlinkFromFun extends Function2[AbstractActor, Proxy, Unit] {
     "<UnlinkFromFun>"
 }
 
-@serializable
-class ExitFun(reason: AnyRef) extends Function2[AbstractActor, Proxy, Unit] {
+class ExitFun(reason: AnyRef) extends Function2[AbstractActor, Proxy, Unit] with Serializable {
   def apply(target: AbstractActor, creator: Proxy) {
     target.exit(creator, reason)
   }

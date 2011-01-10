@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.ant.sabbus
 
@@ -15,8 +14,8 @@ import org.apache.tools.ant.Task
 
 class Make extends Task with TaskArgs {
   override def execute {
-    if (id.isEmpty) error("Mandatory attribute 'id' is not set.")
-    if (compilerPath.isEmpty) error("Mandatory attribute 'compilerpath' is not set.")
+    if (id.isEmpty) system.error("Mandatory attribute 'id' is not set.")
+    if (compilerPath.isEmpty) system.error("Mandatory attribute 'compilerpath' is not set.")
     val settings = new Settings
     if (!destinationDir.isEmpty) settings.d = destinationDir.get
     if (!compTarget.isEmpty) settings.target = compTarget.get

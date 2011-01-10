@@ -26,8 +26,6 @@ abstract class SimpleCompiler {
   def compile(out: Option[File], files: List[File], kind: String, log: File): Boolean
 }
 
-class TestSettings(fileMan: FileManager) extends Settings(_ => ()) { }
-
 class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
   def newGlobal(settings: Settings, reporter: Reporter): Global =
     new Global(settings, reporter)
@@ -39,12 +37,12 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
   }
 
   def newSettings(out: Option[String]) = {
-    val settings = new TestSettings(fileManager)
+    val settings = new Settings(_ => ())
     settings.deprecation.value = true
     settings.nowarnings.value = false
     settings.encoding.value = "ISO-8859-1"    // XXX why?
 
-    val classpathElements = settings.classpath.value :: fileManager.LATEST_LIB :: out.toList
+    val classpathElements = fileManager.LATEST_LIB :: out.toList
     settings.classpath.value = ClassPath.join(classpathElements: _*)
     out foreach (settings.outdir.value = _)
         
@@ -80,7 +78,7 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
     
     NestUI.verbose("scalac options: "+allOpts)
     
-    val command = new CompilerCommand(args, testSettings, _ => (), false)
+    val command = new CompilerCommand(args, testSettings)
     val global = newGlobal(command.settings, logWriter)
     val testRep: ExtConsoleReporter = global.reporter.asInstanceOf[ExtConsoleReporter]
     
@@ -108,11 +106,6 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
       testRep.printSummary
       testRep.writer.flush
       testRep.writer.close
-    }
-    catch {
-      case e =>
-        e.printStackTrace()
-        return false
     }
     finally logWriter.close()
     

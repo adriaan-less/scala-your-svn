@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,21 +14,38 @@ package mutable
 import generic._
 import immutable.{List, Nil, ::}
 
-/** A Buffer implementation back up by a list. It provides constant time
+/** A `Buffer` implementation back up by a list. It provides constant time
  *  prepend and append. Most other operations are linear.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  
+ *  @tparam A    the type of this list buffer's elements.
+ *  
+ *  @define Coll ListBuffer
+ *  @define coll list buffer
+ *  @define thatinfo the class of the returned collection. In the standard library configuration,
+ *    `That` is always `ListBuffer[B]` because an implicit of type `CanBuildFrom[ListBuffer, B, ListBuffer[B]]`
+ *    is defined in object `ListBuffer`.
+ *  @define $bfinfo an implicit value of class `CanBuildFrom` which determines the
+ *    result class `That` from the current representation type `Repr`
+ *    and the new element type `B`. This is usually the `canBuildFrom` value
+ *    defined in object `ListBuffer`.
+ *  @define orderDependent 
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-@serializable @SerialVersionUID(3419063961353022661L)
+@SerialVersionUID(3419063961353022661L)
 final class ListBuffer[A] 
       extends Buffer[A] 
          with GenericTraversableTemplate[A, ListBuffer]
          with BufferLike[A, ListBuffer[A]]
          with Builder[A, List[A]] 
-         with SeqForwarder[A] 
+         with SeqForwarder[A]
+         with Serializable
 { 
   override def companion: GenericCompanion[ListBuffer] = ListBuffer
 
@@ -42,7 +58,9 @@ final class ListBuffer[A]
 
   protected def underlying: immutable.Seq[A] = start
  
-  /** The current length of the buffer
+  /** The current length of the buffer.
+   *  
+   *  This operation takes constant time.
    */
   override def length = len
   
@@ -52,13 +70,13 @@ final class ListBuffer[A]
     if (n < 0 || n >= len) throw new IndexOutOfBoundsException(n.toString())
     else super.apply(n)
 
-  /** Replaces element at index <code>n</code> with the new element
-   *  <code>newelem</code>. Takes time linear in the buffer size. (except the
+  /** Replaces element at index `n` with the new element
+   *  `newelem`. Takes time linear in the buffer size. (except the
    *  first element, which is updated in constant time).
    *
    *  @param n  the index of the element to replace.
    *  @param x  the new element.
-   *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
+   *  @throws Predef.IndexOutOfBoundsException if `n` is out of bounds.
    */
   def update(n: Int, x: A) {
     try {
@@ -90,6 +108,7 @@ final class ListBuffer[A]
   /** Appends a single element to this buffer. This operation takes constant time.
    *
    *  @param x  the element to append.
+   *  @return   this $coll.
    */
   def += (x: A): this.type = {
     if (exported) copy()
@@ -104,8 +123,12 @@ final class ListBuffer[A]
     len += 1
     this
   }
-  
-  override def ++=(elems: Traversable[A]): this.type = if (elems ne this) super.++=(elems) else super.++=(elems.toList)
+
+  override def ++=(xs: TraversableOnce[A]): this.type =
+    if (xs eq this) ++= (this take size) else super.++=(xs)
+
+  override def ++=:(xs: TraversableOnce[A]): this.type =
+    if (xs eq this) ++=: (this take size) else super.++=:(xs)
 
   /** Clears the buffer contents.
    */
@@ -119,7 +142,7 @@ final class ListBuffer[A]
    *  time.
    *
    *  @param x  the element to prepend.
-   *  @return   this buffer.
+   *  @return   this $coll.
    */
   def +=: (x: A): this.type = {
     if (exported) copy()
@@ -130,13 +153,13 @@ final class ListBuffer[A]
     this
   }
   
-  /** Inserts new elements at the index <code>n</code>. Opposed to method
-   *  <code>update</code>, this method will not replace an element with a new
-   *  one. Instead, it will insert a new element at index <code>n</code>.
+  /** Inserts new elements at the index `n`. Opposed to method
+   *  `update`, this method will not replace an element with a new
+   *  one. Instead, it will insert a new element at index `n`.
    *
    *  @param  n     the index where a new element will be inserted.
    *  @param  iter  the iterable object providing all elements to insert.
-   *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
+   *  @throws Predef.IndexOutOfBoundsException if `n` is out of bounds.
    */
   def insertAll(n: Int, seq: Traversable[A]) {
     try {
@@ -229,12 +252,12 @@ final class ListBuffer[A]
 // Overrides of methods in Buffer
 
   /** Removes the element on a given index position. May take time linear in
-   *  the buffer size 
+   *  the buffer size.
    *
    *  @param  n  the index which refers to the element to delete.
-   *  @return n  the element that was formerly at position <code>n</code>.
-   *  @note      an element must exists at position <code>n</code>
-   *  @throws Predef.IndexOutOfBoundsException if <code>n</code> is out of bounds.
+   *  @return n  the element that was formerly at position `n`.
+   *  @note      an element must exists at position `n`.
+   *  @throws Predef.IndexOutOfBoundsException if `n` is out of bounds.
    */
   def remove(n: Int): A = {
     if (n < 0 || n >= len) throw new IndexOutOfBoundsException(n.toString())
@@ -261,6 +284,7 @@ final class ListBuffer[A]
    *  buffer size.
    *
    *  @param x  the element to remove.
+   *  @return   this $coll.
    */
   override def -= (elem: A): this.type = {
     if (exported) copy()
@@ -330,12 +354,11 @@ final class ListBuffer[A]
   override def stringPrefix: String = "ListBuffer"
 }
 
-/** Factory object for <code>ListBuffer</code> class.
- *
- *  @author  Martin Odersky
- *  @version 2.8
+/** $factoryInfo
+ *  @define Coll ListBuffer
+ *  @define coll list buffer
  */
 object ListBuffer extends SeqFactory[ListBuffer] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ListBuffer[A]] = new GenericCanBuildFrom[A]
-  def newBuilder[A]: Builder[A, ListBuffer[A]] = new AddingBuilder(new ListBuffer[A])
+  def newBuilder[A]: Builder[A, ListBuffer[A]] = new GrowingBuilder(new ListBuffer[A])
 }

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.reflect
 
@@ -16,4 +15,4 @@ package scala.reflect
  *
  *  @author Ross Judson (rjudson@managedobjects.com)
  */
-class BeanInfoSkip extends Annotation
+class BeanInfoSkip extends annotation.Annotation

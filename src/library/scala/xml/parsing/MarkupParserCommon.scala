@@ -24,7 +24,7 @@ import MarkupParserCommon._
  *  All members should be accessed through those.
  */
 private[scala] trait MarkupParserCommon extends TokenTests {
-  protected def unreachable = Predef.error("Cannot be reached.")
+  protected def unreachable = system.error("Cannot be reached.")
   
   // type HandleType       // MarkupHandler, SymbolicXMLBuilder
   type InputType        // Source, CharArrayReader
@@ -85,7 +85,7 @@ private[scala] trait MarkupParserCommon extends TokenTests {
       case `end`  => return buf.toString
       case ch     => buf append ch
     }
-    error("Expected '%s'".format(end))
+    system.error("Expected '%s'".format(end))
   }
 
   /** [42]  '<' xmlEndTag ::=  '<' '/' Name S? '>'
@@ -218,7 +218,7 @@ private[scala] trait MarkupParserCommon extends TokenTests {
   def returning[T](x: T)(f: T => Unit): T = { f(x) ; x }
  
   /** Execute body with a variable saved and restored after execution */
-  def saving[A,B](getter: A, setter: (A) => Unit)(body: => B): B = {
+  def saving[A, B](getter: A, setter: A => Unit)(body: => B): B = {
     val saved = getter
     try body
     finally setter(saved)
@@ -234,8 +234,8 @@ private[scala] trait MarkupParserCommon extends TokenTests {
     until: String): T =
   {
     val sb = new StringBuilder
-    val head = until charAt 0
-    val rest = until drop 1
+    val head = until.head
+    val rest = until.tail
     
     while (true) {
       if (ch == head && peek(rest))

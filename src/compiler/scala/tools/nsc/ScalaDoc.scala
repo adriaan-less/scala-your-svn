@@ -3,7 +3,6 @@
  * @author  Martin Odersky
  * @author  Geoffrey Washburn
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -26,19 +25,21 @@ object ScalaDoc {
 
   var reporter: ConsoleReporter = _
   
-  def error(msg: String): Unit = {
+  private def scalacError(msg: String): Unit = {
     reporter.error(FakePos("scalac"), msg + "\n  scalac -help  gives more information")
   }
 
   def process(args: Array[String]): Unit = {
     
     val docSettings: doc.Settings =
-      new doc.Settings(error)
+      new doc.Settings(scalacError)
     
-    reporter = new ConsoleReporter(docSettings)
+    reporter = new ConsoleReporter(docSettings) {
+      override def hasErrors = false // need to do this so that the Global instance doesn't trash all the symbols just because there was an error
+    }
     
     val command =
-      new CompilerCommand(args.toList, docSettings, error, false)
+      new CompilerCommand(args.toList, docSettings)
       
     if (!reporter.hasErrors) { // No need to continue if reading the command generated errors
       
@@ -78,7 +79,6 @@ object ScalaDoc {
 
   def main(args: Array[String]): Unit = {
     process(args)
-    exit(if (reporter.hasErrors) 1 else 0)
+    system.exit(if (reporter.hasErrors) 1 else 0)
   }
-  
 }

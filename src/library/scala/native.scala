@@ -6,21 +6,18 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala
 
-/**
- * Marker for native methods.
- * <p>
- *   <code>@native def f(x: Int, y: List[Long]): String = ..</code>
- * </p>
- * <p>
- *   Method body is not generated if method is marked with <code>@native</code>,
- *   but it is type checked when present.
- * </p>
- *
- * @since 2.6
- */
-class native extends StaticAnnotation {}
+/** Marker for native methods.
+  *
+  * {{{
+  * @native def f(x: Int, y: List[Long]): String = ...
+  * }}}
+  *
+  * Method body is not generated if method is marked with `@native`,
+  * but it is type checked when present.
+  *
+  * @since 2.6 */
+class native extends annotation.StaticAnnotation {}

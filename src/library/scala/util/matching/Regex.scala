@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.util.matching
@@ -32,9 +31,8 @@ import collection.{Iterator, Seq}
  *  @param regex      A string representing a regular expression
  *  @param groupNames A mapping from names to indices in capture groups
  */
-@serializable
 @SerialVersionUID(-2094783597747625537L)
-class Regex(regex: String, groupNames: String*) {
+class Regex(regex: String, groupNames: String*) extends  Serializable {
 
   import Regex._
   
@@ -253,7 +251,7 @@ object Regex {
 
   }
  
-  /** A case class for a succesful match.
+  /** A case class for a successful match.
    */
   class Match(val source: java.lang.CharSequence, 
               matcher: Matcher, 

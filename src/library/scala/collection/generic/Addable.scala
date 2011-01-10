@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package generic
@@ -22,6 +21,7 @@ package generic
  *  @define  $coll collection
  *  @define  $Coll Addable
  */
+@deprecated("Will be removed after scala 2.9")
 trait Addable[A, +Repr <: Addable[A, Repr]] { self => 
 
   /** The representation object of type `Repr` which contains the collection's elements
@@ -52,16 +52,5 @@ trait Addable[A, +Repr <: Addable[A, Repr]] { self =>
    *  @param elems     the collection containing the added elements.
    *  @return a new $coll with the given elements added.
    */
-  def ++ (elems: Traversable[A]): Repr = (repr /: elems) (_ + _)
-
-  /** Creates a new $coll by adding all elements produced by an iterator to this $coll.
-   *
-   *  @param iter     the iterator producing the added elements.
-   *  @return a new $coll with the given elements added.
-   */
-  def ++ (iter: Iterator[A]): Repr = (repr /: iter) (_ + _)
+  def ++ (xs: TraversableOnce[A]): Repr = (repr /: xs) (_ + _)
 }
-  
-
-  
-

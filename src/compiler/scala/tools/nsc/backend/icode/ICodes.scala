@@ -7,17 +7,15 @@
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend
 package icode
 
 import java.io.PrintWriter
-
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 import scala.tools.nsc.symtab._
-import analysis.{Liveness, ReachingDefinitions}
+import analysis.{ Liveness, ReachingDefinitions }
 import scala.tools.nsc.symtab.classfile.ICodeReader
 
 /** Glue together ICode parts.
@@ -37,29 +35,48 @@ abstract class ICodes extends AnyRef
                                  with Repository
 {
   val global: Global
+  import global.{ definitions, settings }
 
   /** The ICode representation of classes */
-  var classes: HashMap[global.Symbol, IClass] = new HashMap()
+  val classes = new mutable.HashMap[global.Symbol, IClass]
+  
+  /** Debugging flag */  
+  def shouldCheckIcode = settings.check contains global.genicode.phaseName
+  def checkerDebug(msg: String) = if (shouldCheckIcode && global.opt.debug) println(msg)
 
   /** The ICode linearizer. */
-  val linearizer: Linearizer = 
-    if (global.settings.Xlinearizer.value == "rpo")
-      new ReversePostOrderLinearizer()
-    else if (global.settings.Xlinearizer.value == "dfs")
-      new DepthFirstLinerizer()
-    else if (global.settings.Xlinearizer.value == "normal")
-      new NormalLinearizer();
-    else if (global.settings.Xlinearizer.value == "dump")
-      new DumpLinearizer()
-    else
-      global.abort("Unknown linearizer: " + global.settings.Xlinearizer.value)
-
+  val linearizer: Linearizer = settings.Xlinearizer.value match {
+    case "rpo"    => new ReversePostOrderLinearizer()
+    case "dfs"    => new DepthFirstLinerizer()
+    case "normal" => new NormalLinearizer()
+    case "dump"   => new DumpLinearizer()
+    case x        => global.abort("Unknown linearizer: " + x)    
+  }
+    
+  /** Have to be careful because dump calls around, possibly
+   *  re-entering methods which initiated the dump (like foreach
+   *  in BasicBlocks) which leads to the icode output olympics.
+   */
+  private var alreadyDumping = false
+  
   /** Print all classes and basic blocks. Used for debugging. */
+  
   def dump {
+    if (alreadyDumping) return
+    else alreadyDumping = true
+    
     val printer = new TextPrinter(new PrintWriter(Console.out, true),
                                   new DumpLinearizer)
 
     classes.values foreach printer.printClass
+  }
+
+  def checkValid(m: IMethod) {
+    for (b <- m.code.blocks)
+      if (!b.closed) {
+        m.dump
+        global.abort("Open block: " + b + " " + b.flagsString)
+      }
   }
 
   object liveness extends Liveness {
@@ -70,7 +87,13 @@ abstract class ICodes extends AnyRef
     val global: ICodes.this.global.type = ICodes.this.global
   }
 
-  lazy val AnyRefReference: TypeKind = REFERENCE(global.definitions.ObjectClass)
+  lazy val AnyRefReference: TypeKind    = REFERENCE(definitions.AnyRefClass)
+  lazy val BoxedUnitReference: TypeKind = REFERENCE(definitions.BoxedUnitClass)
+  lazy val NothingReference: TypeKind   = REFERENCE(definitions.NothingClass)
+  lazy val NullReference: TypeKind      = REFERENCE(definitions.NullClass)
+  lazy val ObjectReference: TypeKind    = REFERENCE(definitions.ObjectClass)
+  lazy val StringReference: TypeKind    = REFERENCE(definitions.StringClass)
+  lazy val ThrowableReference: TypeKind = REFERENCE(definitions.ThrowableClass)
 
   object icodeReader extends ICodeReader {
     lazy val global: ICodes.this.global.type = ICodes.this.global
@@ -79,11 +102,9 @@ abstract class ICodes extends AnyRef
   /** A phase which works on icode. */
   abstract class ICodePhase(prev: Phase) extends global.GlobalPhase(prev) {
     override def erasedTypes = true
-
-    override def apply(unit: global.CompilationUnit) {
-      unit.icode foreach { c => apply(c) }
-    }
-    
+    override def apply(unit: global.CompilationUnit): Unit =
+      unit.icode foreach apply
+        
     def apply(cls: global.icodes.IClass): Unit
   }
 }

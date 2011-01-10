@@ -6,31 +6,35 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package immutable
 
 import generic._
-import annotation.unchecked.uncheckedVariance
+import collection.parallel.immutable.ParHashSet
 
-/** <p>
- *    This class implements immutable sets using a hash trie.
- *  </p>
- *
- * @note the builder of a hash set returns specialized representations EmptySet,Set1,..., Set4
- * for sets of size <= 4.
- *
+/** This class implements immutable sets using a hash trie.
+ *  
+ *  '''Note:''' the builder of a hash set returns specialized representations `EmptySet`,`Set1`,..., `Set4`
+ *  for sets of `size <= 4`.
+ *  
+ *  @tparam A      the type of the elements contained in this hash set.
+ *  
  *  @author  Martin Odersky
  *  @author  Tiark Rompf
  *  @version 2.8
  *  @since   2.3
+ *  @define Coll immutable.HashSet
+ *  @define coll immutable hash set
  */
-@serializable @SerialVersionUID(2L)
+@SerialVersionUID(2L)
 class HashSet[A] extends Set[A] 
                     with GenericSetTemplate[A, HashSet]
-                    with SetLike[A, HashSet[A]] {
+                    with SetLike[A, HashSet[A]] 
+                    with Parallelizable[ParHashSet[A]]
+                    with Serializable
+{
   override def companion: GenericCompanion[HashSet] = HashSet
 
   //class HashSet[A] extends Set[A] with SetLike[A, HashSet[A]] {
@@ -53,8 +57,10 @@ class HashSet[A] extends Set[A]
 
   def - (e: A): HashSet[A] =
     removed0(e, computeHash(e), 0)
-
-  protected def elemHashCode(key: A) = if (key == null) 0 else key.hashCode()
+  
+  def par = ParHashSet.fromTrie(this)
+  
+  protected def elemHashCode(key: A) = if (key == null) 0 else key.##
 
   protected final def improve(hcode: Int) = {
     var h: Int = hcode + ~(hcode << 9)
@@ -63,35 +69,56 @@ class HashSet[A] extends Set[A]
     h ^ (h >>> 10)
   }
   
-  protected def computeHash(key: A) = improve(elemHashCode(key))
+  private[collection] def computeHash(key: A) = improve(elemHashCode(key))
 
   protected def get0(key: A, hash: Int, level: Int): Boolean = false
 
-  protected def updated0(key: A, hash: Int, level: Int): HashSet[A] = 
+  def updated0(key: A, hash: Int, level: Int): HashSet[A] = 
     new HashSet.HashSet1(key, hash)
-
-
 
   protected def removed0(key: A, hash: Int, level: Int): HashSet[A] = this
   
+  protected def writeReplace(): AnyRef = new HashSet.SerializationProxy(this)
+  override def toParIterable = par
+  override def toParSet[B >: A] = par.asInstanceOf[ParHashSet[B]]
 }
 
-/*
-object HashSet extends SetFactory[HashSet] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, HashSet[A]] = setCanBuildFrom[A]
-  override def empty[A]: HashSet[A] = new HashSet
-}
-*/
-
-
-/** A factory object for immutable HashSets.
+/** $factoryInfo
+ *  @define Coll immutable.HashSet
+ *  @define coll immutable hash set
  *
- *  @author  Martin Odersky
  *  @author  Tiark Rompf
- *  @version 2.8
  *  @since   2.3
+ *  @define Coll immutable.HashSet
+ *  @define coll immutable hash set
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-object HashSet extends SetFactory[HashSet] {
+object HashSet extends ImmutableSetFactory[HashSet] {
+  
+  class TrieIterator[A](elems: Array[HashSet[A]]) extends TrieIteratorBase[A, HashSet[A]](elems) {
+    import TrieIteratorBase._
+    
+    type This = TrieIterator[A]
+    
+    private[immutable] def recreateIterator() = new TrieIterator(elems)
+    private[immutable] type ContainerType = HashSet1[A]
+    private[immutable] type TrieType      = HashTrieSet[A]
+    private[immutable] type CollisionType = HashSetCollision1[A]
+    private[immutable] def determineType(x: HashSet[A]) = x match {
+      case _: HashSet1[_]          => CONTAINER_TYPE
+      case _: HashTrieSet[_]       => TRIE_TYPE
+      case _: HashSetCollision1[_] => COLLISION_TYPE
+    }
+    private[immutable] def getElem(cc: ContainerType): A      = cc.key
+    private[immutable] def getElems(t: TrieType)     = t.elems
+    private[immutable] def collisionToArray(c: CollisionType) = c.ks map (x => HashSet(x)) toArray
+    private[immutable] def newThisType(xs: Array[HashSet[A]]) = new TrieIterator(xs)
+    private[immutable] def newDeepArray(size: Int)            = new Array[Array[HashSet[A]]](size)
+    private[immutable] def newSingleArray(el: HashSet[A])     = Array(el)
+  }
+  
+  /** $setCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, HashSet[A]] = setCanBuildFrom[A]
   override def empty[A]: HashSet[A] = EmptyHashSet.asInstanceOf[HashSet[A]]
   
@@ -115,14 +142,7 @@ object HashSet extends SetFactory[HashSet] {
           m.updated0(this.key, this.hash, level).updated0(key, hash, level)
         } else {
           // 32-bit hash collision (rare, but not impossible)
-          // wrap this in a HashTrieSet if called with level == 0 (otherwise serialization won't work)
-          if (level == 0) {
-            val elems = new Array[HashSet[A]](1)
-            elems(0) = new HashSetCollision1(hash, ListSet.empty + this.key + key)
-            new HashTrieSet[A](1 << ((hash >>> level) & 0x1f), elems, 2)
-          } else {
-            new HashSetCollision1(hash, ListSet.empty + this.key + key)
-          }
+          new HashSetCollision1(hash, ListSet.empty + this.key + key)
         }
       }
       
@@ -131,19 +151,9 @@ object HashSet extends SetFactory[HashSet] {
 
     override def iterator: Iterator[A] = Iterator(key)
     override def foreach[U](f: A => U): Unit = f(key)
-
-    private def writeObject(out: java.io.ObjectOutputStream) {
-      out.writeObject(key)
-    }
-
-    private def readObject(in: java.io.ObjectInputStream) {
-      key = in.readObject().asInstanceOf[A]
-      hash = computeHash(key)
-    }
-
   }
 
-  private class HashSetCollision1[A](private[HashSet] var hash: Int, var ks: ListSet[A]) extends HashSet[A] {
+  private[immutable] class HashSetCollision1[A](private[HashSet] var hash: Int, var ks: ListSet[A]) extends HashSet[A] {
     override def size = ks.size
 
     override def get0(key: A, hash: Int, level: Int): Boolean = 
@@ -176,12 +186,12 @@ object HashSet extends SetFactory[HashSet] {
       // hash codes and remove the collision. however this is never called
       // because no references to this class are ever handed out to client code
       // and HashTrieSet serialization takes care of the situation
-      error("cannot serialize an immutable.HashSet where all items have the same 32-bit hash code")
+      system.error("cannot serialize an immutable.HashSet where all items have the same 32-bit hash code")
       //out.writeObject(kvs)
     }
 
     private def readObject(in: java.io.ObjectInputStream) {
-      error("cannot deserialize an immutable.HashSet where all items have the same 32-bit hash code")
+      system.error("cannot deserialize an immutable.HashSet where all items have the same 32-bit hash code")
       //kvs = in.readObject().asInstanceOf[ListSet[A]]
       //hash = computeHash(kvs.)
     }
@@ -189,11 +199,11 @@ object HashSet extends SetFactory[HashSet] {
   }
 
 
-  class HashTrieSet[A](private var bitmap: Int, private var elems: Array[HashSet[A]],
+  class HashTrieSet[A](private var bitmap: Int, private[HashSet] var elems: Array[HashSet[A]],
       private var size0: Int) extends HashSet[A] {
-
+    
     override def size = size0
-
+    
     override def get0(key: A, hash: Int, level: Int): Boolean = {
       val index = (hash >>> level) & 0x1f
       val mask = (1 << index)
@@ -206,7 +216,7 @@ object HashSet extends SetFactory[HashSet] {
       } else
         false
     }
-
+    
     override def updated0(key: A, hash: Int, level: Int): HashSet[A] = {
       val index = (hash >>> level) & 0x1f
       val mask = (1 << index)
@@ -228,86 +238,41 @@ object HashSet extends SetFactory[HashSet] {
         new HashTrieSet(bitmapNew, elemsNew, size + 1)
       }
     }
-
+    
     override def removed0(key: A, hash: Int, level: Int): HashSet[A] = {
       val index = (hash >>> level) & 0x1f
       val mask = (1 << index)
       val offset = Integer.bitCount(bitmap & (mask-1))
-      if (((bitmap >>> index) & 1) == 1) {
-        val elemsNew = new Array[HashSet[A]](elems.length)
-        Array.copy(elems, 0, elemsNew, 0, elems.length)
+      if ((bitmap & mask) != 0) {
         val sub = elems(offset)
-        // TODO: might be worth checking if sub is HashTrieSet (-> monomorphic call site)
+        // TODO: might be worth checking if sub is HashTrieMap (-> monomorphic call site)
         val subNew = sub.removed0(key, hash, level + 5)
-        elemsNew(offset) = subNew
-        // TODO: handle shrinking
-        val sizeNew = size + (subNew.size - sub.size)
-        if (sizeNew > 0)
-          new HashTrieSet(bitmap, elemsNew, size + (subNew.size - sub.size))
-        else
-          HashSet.empty[A]
+        if (subNew.isEmpty) {
+          val bitmapNew = bitmap ^ mask
+          if (bitmapNew != 0) {
+            val elemsNew = new Array[HashSet[A]](elems.length - 1)
+            Array.copy(elems, 0, elemsNew, 0, offset)
+            Array.copy(elems, offset + 1, elemsNew, offset, elems.length - offset - 1)
+            val sizeNew = size - sub.size
+            new HashTrieSet(bitmapNew, elemsNew, sizeNew)
+          } else
+            HashSet.empty[A]
+        } else {
+          val elemsNew = new Array[HashSet[A]](elems.length)
+          Array.copy(elems, 0, elemsNew, 0, elems.length)
+          elemsNew(offset) = subNew
+          val sizeNew = size + (subNew.size - sub.size)
+          new HashTrieSet(bitmap, elemsNew, sizeNew)
+        }
       } else {
         this
       }
     }
-
-    override def iterator = new Iterator[A] {
-      private[this] var depth = 0
-      private[this] var arrayStack = new Array[Array[HashSet[A]]](6)
-      private[this] var posStack = new Array[Int](6)
-
-      private[this] var arrayD = elems
-      private[this] var posD = 0
-
-      private[this] var subIter: Iterator[A] = null // to traverse collision nodes
-
-      def hasNext = (subIter ne null) || depth >= 0
-      
-      def next: A = {
-        if (subIter ne null) {
-          val el = subIter.next
-          if (!subIter.hasNext)
-            subIter = null
-          el
-        } else
-          next0(arrayD, posD)
-      }
-      
-      @scala.annotation.tailrec private[this] def next0(elems: Array[HashSet[A]], i: Int): A = {
-        if (i == elems.length-1) { // reached end of level, pop stack
-          depth -= 1
-          if (depth >= 0) {
-            arrayD = arrayStack(depth)
-            posD = posStack(depth)
-            arrayStack(depth) = null
-          } else {
-            arrayD = null
-            posD = 0
-          }
-        } else
-          posD += 1
-
-        elems(i) match {
-          case m: HashTrieSet[A] => // push current pos onto stack and descend
-            if (depth >= 0) {
-              arrayStack(depth) = arrayD
-              posStack(depth) = posD
-            }
-            depth += 1
-            arrayD = m.elems
-            posD = 0
-            next0(m.elems, 0)
-          case m: HashSet1[A] => m.key
-          case m =>
-            subIter = m.iterator
-            subIter.next
-        }
-      }
-    }
-
+    
+    override def iterator = new TrieIterator[A](elems)
+    
 /*
 
-import collection.immutable._
 def time(block: =>Unit) = { val t0 = System.nanoTime; block; println("elapsed: " + (System.nanoTime - t0)/1000000.0) }
 var mOld = OldHashSet.empty[Int]
 var mNew = HashSet.empty[Int]
@@ -325,8 +290,6 @@ time { mNew.iterator.foreach( p => ()) }
 time { mNew.iterator.foreach( p => ()) }
 
 */
-
-
     override def foreach[U](f: A =>  U): Unit = {
       var i = 0;
       while (i < elems.length) {
@@ -334,32 +297,28 @@ time { mNew.iterator.foreach( p => ()) }
         i += 1
       }
     }
-
-
+  }
+  
+  @SerialVersionUID(2L) private class SerializationProxy[A,B](@transient private var orig: HashSet[A]) extends Serializable {
     private def writeObject(out: java.io.ObjectOutputStream) {
-      // no out.defaultWriteObject()
-      out.writeInt(size)
-      foreach { e =>
+      val s = orig.size
+      out.writeInt(s)
+      for (e <- orig) {
         out.writeObject(e)
       }
     }
 
     private def readObject(in: java.io.ObjectInputStream) {
-      val size = in.readInt
-      var index = 0
-      var m = HashSet.empty[A]
-      while (index < size) {
-        // TODO: optimize (use unsafe mutable update)
-        m = m + in.readObject.asInstanceOf[A]
-        index += 1
+      orig = empty
+      val s = in.readInt()
+      for (i <- 0 until s) {
+        val e = in.readObject().asInstanceOf[A]
+        orig = orig + e
       }
-      var tm = m.asInstanceOf[HashTrieSet[A]]
-      bitmap = tm.bitmap
-      elems = tm.elems
-      size0 = tm.size0
     }
-
+    
+    private def readResolve(): AnyRef = orig
   }
-  
+
 }
 

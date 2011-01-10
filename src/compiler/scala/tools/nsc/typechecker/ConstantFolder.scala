@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -34,7 +33,7 @@ abstract class ConstantFolder {
    *  @param tree ...
    *  @param pt ...
    */
-  def apply(tree: Tree, pt: Type): Tree = fold(tree, tree.tpe match {
+  def apply(tree: Tree, pt: Type): Tree = fold(apply(tree), tree.tpe match {
     case ConstantType(x) => x convertTo pt
     case _ => null
   })

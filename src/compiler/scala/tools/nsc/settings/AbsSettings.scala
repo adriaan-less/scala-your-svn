@@ -69,9 +69,12 @@ trait AbsSettings {
      *  In immutable, of course they will return a new object, which means
      *  we can't use "this.type", at least not in a non-casty manner, which
      *  is unfortunate because we lose type information without it.
+     *
+     *  ...but now they're this.type because of #3462.  The immutable
+     *  side doesn't exist yet anyway.
      */
-    def withAbbreviation(name: String): Setting
-    def withHelpSyntax(help: String): Setting
+    def withAbbreviation(name: String): this.type
+    def withHelpSyntax(help: String): this.type
 
     def helpSyntax: String = name
     def abbreviations: List[String] = Nil
@@ -107,10 +110,13 @@ trait AbsSettings {
      */
     def tryToSetFromPropertyValue(s: String): Unit = tryToSet(s :: Nil)
 
-    def isCategory:    Boolean = List("-X", "-Y", "-P") contains name
-    def isAdvanced:    Boolean = (name startsWith "-X") && name != "-X"
-    def isPrivate:     Boolean = (name startsWith "-Y") && name != "-Y"
-    def isStandard:    Boolean = !isAdvanced && !isPrivate && !isCategory
+    /** These categorizations are so the help output shows -X and -P among
+     *  the standard options and -Y among the advanced options.
+     */
+    def isAdvanced  = name match { case "-Y" => true ; case "-X" => false ; case _  => name startsWith "-X" }
+    def isPrivate   = name match { case "-Y" => false ; case _  => name startsWith "-Y" }
+    def isStandard  = !isAdvanced && !isPrivate
+    def isForDebug  = isPrivate && (name contains ("-debug")) // by convention, i.e. -Ytyper-debug
 
     def compare(that: Setting): Int = name compare that.name
 

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,10 +14,8 @@ import generic._
 import mutable.{Builder, Buffer, ArrayBuffer, ListBuffer}
 import scala.util.control.Breaks
 
-/** A template trait for traversable collections.
- *  $traversableinfo
- * 
- *  @tparam A    The element type of the collection
+/** A trait for traversable collections.
+ *  $traversableInfo
  */
 trait Traversable[+A] extends TraversableLike[A, Traversable[A]] 
                          with GenericTraversableTemplate[A, Traversable] {
@@ -29,10 +26,9 @@ trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
   override def isEmpty: Boolean
   override def size: Int
   override def hasDefiniteSize
-  override def ++[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
-  override def ++[B >: A, That](that: Iterator[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def ++[B >: A, That](xs: TraversableOnce[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
   override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
-  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def flatMap[B, That](f: A => TraversableOnce[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
   override def filter(p: A => Boolean): Traversable[A]
   override def remove(p: A => Boolean): Traversable[A]
   override def partition(p: A => Boolean): (Traversable[A], Traversable[A])
@@ -85,7 +81,9 @@ trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
   */
 }
 
-/** $factoryInfo */
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ */
 object Traversable extends TraversableFactory[Traversable] { self =>
 
   /** Provides break functionality separate from client code */

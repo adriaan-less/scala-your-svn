@@ -2,19 +2,15 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author Iulian Dragos
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
 package classfile
 
-import java.io.IOException
-
-import scala.collection.mutable._
-import scala.tools.nsc._
-import scala.tools.nsc.backend.icode._
-import scala.tools.nsc.io._
-
+import scala.collection.{ mutable, immutable }
+import mutable.ListBuffer
+import backend.icode._
+import io.AbstractFile
 import ClassfileConstants._
 import Flags._
 
@@ -32,7 +28,6 @@ abstract class ICodeReader extends ClassfileParser {
   var staticCode:   IClass = null          // the ICode class static members
   var method: IMethod = _                  // the current IMethod
 
-  val OBJECT: TypeKind = REFERENCE(definitions.ObjectClass)
   val nothingName = newTermName(SCALA_NOTHING)
   val nullName    = newTermName(SCALA_NULL)
   var isScalaModule = false
@@ -46,13 +41,13 @@ abstract class ICodeReader extends ClassfileParser {
     var sym = cls
     sym.info // ensure accurate type information
     
-    isScalaModule = cls.isModule && !cls.hasFlag(JAVA)
+    isScalaModule = cls.isModule && !cls.isJavaDefined
     log("Reading class: " + cls + " isScalaModule?: " + isScalaModule)
     val name = cls.fullName('.') + (if (sym.hasFlag(MODULE)) "$" else "")
     
     classPath.findSourceFile(name) match {
       case Some(classFile)  => parse(classFile, sym)
-      case _                => log("Could not find: " + cls)
+      case _                => throw new MissingRequirementError("Could not find bytecode for " + cls)
     }
 
     (staticCode, instanceCode)
@@ -93,32 +88,39 @@ abstract class ICodeReader extends ClassfileParser {
   }
 
   private def parseMember(field: Boolean): (Int, Symbol) = {
-    val jflags = in.nextChar
-    val name = pool.getName(in.nextChar)
+    val jflags   = in.nextChar
+    val name     = pool.getName(in.nextChar)
+    val owner    = getOwner(jflags)
+    val dummySym = owner.newMethod(owner.pos, name) setFlag javaToScalaFlags(jflags)
 
-    val owner = getOwner(jflags)
-    val dummySym = owner.newMethod(owner.pos, name).setFlag(javaToScalaFlags(jflags))
+    try {
+      val ch = in.nextChar
+      var tpe  = pool.getType(dummySym, ch)
 
-    var tpe  = pool.getType(dummySym, in.nextChar)
-
-    if ("<clinit>" == name.toString) 
-      (jflags, NoSymbol)
-    else {
-      val owner = getOwner(jflags)
-      var sym = owner.info.member(name).suchThat(old => sameType(old.tpe, tpe));
-      if (sym == NoSymbol)
-        sym = owner.info.member(newTermName(name.toString + nme.LOCAL_SUFFIX)).suchThat(old => old.tpe =:= tpe);
-      if (sym == NoSymbol) {
-        log("Could not find symbol for " + name + ": " + tpe + " in " + owner.info.decls)
-        log(owner.info.member(name).tpe + " : " + tpe)
-        if (field)
-          sym = owner.newValue(owner.pos, name).setInfo(tpe).setFlag(MUTABLE | javaToScalaFlags(jflags))
-        else
-          sym = dummySym.setInfo(tpe)
-        owner.info.decls.enter(sym)
-        log("added " + sym + ": " + sym.tpe)
+      if ("<clinit>" == name.toString)
+        (jflags, NoSymbol)
+      else {
+        val owner = getOwner(jflags)
+        var sym = owner.info.member(name).suchThat(old => sameType(old.tpe, tpe));
+        if (sym == NoSymbol)
+          sym = owner.info.member(newTermName(name + nme.LOCAL_SUFFIX_STRING)).suchThat(old => old.tpe =:= tpe);
+        if (sym == NoSymbol) {
+          log("Could not find symbol for " + name + ": " + tpe)
+          log(owner.info.member(name).tpe + " : " + tpe)
+          if (name.toString() == "toMap")
+            tpe = pool.getType(dummySym, ch)
+          if (field)
+            sym = owner.newValue(owner.pos, name).setInfo(tpe).setFlag(MUTABLE | javaToScalaFlags(jflags))
+          else
+            sym = dummySym.setInfo(tpe)
+          owner.info.decls.enter(sym)
+          log("added " + sym + ": " + sym.tpe)
+        }
+        (jflags, sym)
       }
-      (jflags, sym)
+    } catch {
+      case e: MissingRequirementError =>
+        (jflags, NoSymbol)
     }
   }
 
@@ -135,7 +137,7 @@ abstract class ICodeReader extends ClassfileParser {
     res
   }
   
-  /** Checks if tp1 is the same type as tp2, modulo implict methods.
+  /** Checks if tp1 is the same type as tp2, modulo implicit methods.
    *  We don't care about the distinction between implicit and explicit
    *  methods as this point, and we can't get back the information from
    *  bytecode anyway.
@@ -149,26 +151,32 @@ abstract class ICodeReader extends ClassfileParser {
   
   override def parseMethod() {
     val (jflags, sym) = parseMember(false)
-    if (sym != NoSymbol) {
-      log("Parsing method " + sym.fullName + ": " + sym.tpe);
-      this.method = new IMethod(sym);
-      this.method.returnType = toTypeKind(sym.tpe.resultType)
-      getCode(jflags).addMethod(this.method)
-      if ((jflags & JAVA_ACC_NATIVE) != 0)
-        this.method.native = true
-      val attributeCount = in.nextChar
-      for (i <- 0 until attributeCount) parseAttribute()
-    } else {
-      if (settings.debug.value) log("Skipping non-existent method.");
-      skipAttributes();
+    var beginning = in.bp
+    try {
+      if (sym != NoSymbol) {
+        this.method = new IMethod(sym);
+        this.method.returnType = toTypeKind(sym.tpe.resultType)
+        getCode(jflags).addMethod(this.method)
+        if ((jflags & JAVA_ACC_NATIVE) != 0)
+          this.method.native = true
+        val attributeCount = in.nextChar
+        for (i <- 0 until attributeCount) parseAttribute()
+      } else {
+        if (settings.debug.value) log("Skipping non-existent method.");
+        skipAttributes();
+      }
+    } catch {
+      case e: MissingRequirementError =>
+        in.bp = beginning; skipAttributes
+        if (settings.debug.value) log("Skipping non-existent method. " + e.msg);
     }
   }
 
   def parseAttribute() {
-    val attrName = pool.getName(in.nextChar)
+    val attrName = pool.getName(in.nextChar).toTypeName
     val attrLen = in.nextInt
     attrName match {
-      case nme.CodeATTR =>
+      case tpnme.CodeATTR =>
         parseByteCode()
       case _ =>
         in.skip(attrLen)
@@ -180,19 +188,22 @@ abstract class ICodeReader extends ClassfileParser {
       definitions.NothingClass
     else if (name == nullName)
       definitions.NullClass
-    else if (name.endsWith("$class")) {
-      val iface = definitions.getClass(name.subName(0, name.length - "$class".length))
+    else if (nme.isImplClassName(name)) {
+      val iface = definitions.getClass(nme.interfaceName(name))
       log("forcing " + iface.owner + " at phase: " + phase + " impl: " + iface.implClass)
       iface.owner.info // force the mixin type-transformer
       definitions.getClass(name)
     } else if (name.endsWith("$")) {
       val sym = forceMangledName(name.subName(0, name.length -1).decode, true)
+//      println("classNameToSymbol: " + name + " sym: " + sym)
+      if (name.toString == "scala.collection.immutable.Stream$$hash$colon$colon$")
+        print("")
       if (sym == NoSymbol)
         definitions.getModule(name.subName(0, name.length - 1))
       else sym
     } else {
       forceMangledName(name, false)
-      definitions.getClass(name)
+      atPhase(currentRun.flattenPhase.next)(definitions.getClass(name))
     }
     if (sym.isModule)
       sym.moduleClass
@@ -272,7 +283,7 @@ abstract class ICodeReader extends ClassfileParser {
           if (local == 0 && !method.isStatic)
             code.emit(THIS(method.symbol.owner));
           else
-            code.emit(LOAD_LOCAL(code.getLocal(local, OBJECT)));
+            code.emit(LOAD_LOCAL(code.getLocal(local, ObjectReference)));
 	
         case JVM.iload_0     => code.emit(LOAD_LOCAL(code.getLocal(0, INT)))
         case JVM.iload_1     => code.emit(LOAD_LOCAL(code.getLocal(1, INT)))
@@ -294,16 +305,16 @@ abstract class ICodeReader extends ClassfileParser {
           if (!method.isStatic)
             code.emit(THIS(method.symbol.owner));
           else
-            code.emit(LOAD_LOCAL(code.getLocal(0, OBJECT)));
-        case JVM.aload_1     => code.emit(LOAD_LOCAL(code.getLocal(1, OBJECT)))
-        case JVM.aload_2     => code.emit(LOAD_LOCAL(code.getLocal(2, OBJECT)))
-        case JVM.aload_3     => code.emit(LOAD_LOCAL(code.getLocal(3, OBJECT)))
+            code.emit(LOAD_LOCAL(code.getLocal(0, ObjectReference)));
+        case JVM.aload_1     => code.emit(LOAD_LOCAL(code.getLocal(1, ObjectReference)))
+        case JVM.aload_2     => code.emit(LOAD_LOCAL(code.getLocal(2, ObjectReference)))
+        case JVM.aload_3     => code.emit(LOAD_LOCAL(code.getLocal(3, ObjectReference)))
 
         case JVM.iaload      => code.emit(LOAD_ARRAY_ITEM(INT))
         case JVM.laload      => code.emit(LOAD_ARRAY_ITEM(LONG))
         case JVM.faload      => code.emit(LOAD_ARRAY_ITEM(FLOAT))
         case JVM.daload      => code.emit(LOAD_ARRAY_ITEM(DOUBLE))
-        case JVM.aaload      => code.emit(LOAD_ARRAY_ITEM(OBJECT))
+        case JVM.aaload      => code.emit(LOAD_ARRAY_ITEM(ObjectReference))
         case JVM.baload      => code.emit(LOAD_ARRAY_ITEM(BYTE))
         case JVM.caload      => code.emit(LOAD_ARRAY_ITEM(CHAR))
         case JVM.saload      => code.emit(LOAD_ARRAY_ITEM(SHORT))
@@ -312,7 +323,7 @@ abstract class ICodeReader extends ClassfileParser {
         case JVM.lstore      => code.emit(STORE_LOCAL(code.getLocal(in.nextByte, LONG)));   size += 1
         case JVM.fstore      => code.emit(STORE_LOCAL(code.getLocal(in.nextByte, FLOAT)));  size += 1
         case JVM.dstore      => code.emit(STORE_LOCAL(code.getLocal(in.nextByte, DOUBLE))); size += 1
-        case JVM.astore      => code.emit(STORE_LOCAL(code.getLocal(in.nextByte, OBJECT))); size += 1
+        case JVM.astore      => code.emit(STORE_LOCAL(code.getLocal(in.nextByte, ObjectReference))); size += 1
         case JVM.istore_0    => code.emit(STORE_LOCAL(code.getLocal(0, INT)))
         case JVM.istore_1    => code.emit(STORE_LOCAL(code.getLocal(1, INT)))
         case JVM.istore_2    => code.emit(STORE_LOCAL(code.getLocal(2, INT)))
@@ -331,30 +342,30 @@ abstract class ICodeReader extends ClassfileParser {
         case JVM.dstore_3    => code.emit(STORE_LOCAL(code.getLocal(3, DOUBLE)))
         case JVM.astore_0    =>
           if (method.isStatic)
-            code.emit(STORE_LOCAL(code.getLocal(0, OBJECT)))
+            code.emit(STORE_LOCAL(code.getLocal(0, ObjectReference)))
           else
-            code.emit(STORE_THIS(OBJECT))
-        case JVM.astore_1    => code.emit(STORE_LOCAL(code.getLocal(1, OBJECT)))
-        case JVM.astore_2    => code.emit(STORE_LOCAL(code.getLocal(2, OBJECT)))
-        case JVM.astore_3    => code.emit(STORE_LOCAL(code.getLocal(3, OBJECT)))
+            code.emit(STORE_THIS(ObjectReference))
+        case JVM.astore_1    => code.emit(STORE_LOCAL(code.getLocal(1, ObjectReference)))
+        case JVM.astore_2    => code.emit(STORE_LOCAL(code.getLocal(2, ObjectReference)))
+        case JVM.astore_3    => code.emit(STORE_LOCAL(code.getLocal(3, ObjectReference)))
         case JVM.iastore     => code.emit(STORE_ARRAY_ITEM(INT))
         case JVM.lastore     => code.emit(STORE_ARRAY_ITEM(LONG))
         case JVM.fastore     => code.emit(STORE_ARRAY_ITEM(FLOAT))
         case JVM.dastore     => code.emit(STORE_ARRAY_ITEM(DOUBLE))
-        case JVM.aastore     => code.emit(STORE_ARRAY_ITEM(OBJECT))
+        case JVM.aastore     => code.emit(STORE_ARRAY_ITEM(ObjectReference))
         case JVM.bastore     => code.emit(STORE_ARRAY_ITEM(BYTE))
         case JVM.castore     => code.emit(STORE_ARRAY_ITEM(CHAR))
         case JVM.sastore     => code.emit(STORE_ARRAY_ITEM(SHORT))
         
         case JVM.pop         => code.emit(DROP(INT))   // any 1-word type would do
         case JVM.pop2        => code.emit(DROP(LONG))  // any 2-word type would do
-        case JVM.dup         => code.emit(DUP(OBJECT)) // TODO: Is the kind inside DUP ever needed?
-        case JVM.dup_x1      => code.emit(DUP_X1)      // Predef.error("Unsupported JVM bytecode: dup_x1")
-        case JVM.dup_x2      => code.emit(DUP_X2)      // Predef.error("Unsupported JVM bytecode: dup_x2")
+        case JVM.dup         => code.emit(DUP(ObjectReference)) // TODO: Is the kind inside DUP ever needed?
+        case JVM.dup_x1      => code.emit(DUP_X1)      // system.error("Unsupported JVM bytecode: dup_x1")
+        case JVM.dup_x2      => code.emit(DUP_X2)      // system.error("Unsupported JVM bytecode: dup_x2")
         case JVM.dup2        => code.emit(DUP(LONG))   // TODO: Is the kind inside DUP ever needed?
-        case JVM.dup2_x1     => code.emit(DUP2_X1)     // Predef.error("Unsupported JVM bytecode: dup2_x1")
-        case JVM.dup2_x2     => code.emit(DUP2_X2)     // Predef.error("Unsupported JVM bytecode: dup2_x2")
-        case JVM.swap        => Predef.error("Unsupported JVM bytecode: swap")
+        case JVM.dup2_x1     => code.emit(DUP2_X1)     // system.error("Unsupported JVM bytecode: dup2_x1")
+        case JVM.dup2_x2     => code.emit(DUP2_X2)     // system.error("Unsupported JVM bytecode: dup2_x2")
+        case JVM.swap        => system.error("Unsupported JVM bytecode: swap")
 
         case JVM.iadd        => code.emit(CALL_PRIMITIVE(Arithmetic(ADD, INT)))
         case JVM.ladd        => code.emit(CALL_PRIMITIVE(Arithmetic(ADD, LONG)))
@@ -437,12 +448,12 @@ abstract class ICodeReader extends ClassfileParser {
         case JVM.if_icmpge   => code.emit(LCJUMP(parseJumpTarget, pc + size, GE, INT))
         case JVM.if_icmpgt   => code.emit(LCJUMP(parseJumpTarget, pc + size, GT, INT))
         case JVM.if_icmple   => code.emit(LCJUMP(parseJumpTarget, pc + size, LE, INT))
-        case JVM.if_acmpeq   => code.emit(LCJUMP(parseJumpTarget, pc + size, EQ, OBJECT))
-        case JVM.if_acmpne   => code.emit(LCJUMP(parseJumpTarget, pc + size, NE, OBJECT))
+        case JVM.if_acmpeq   => code.emit(LCJUMP(parseJumpTarget, pc + size, EQ, ObjectReference))
+        case JVM.if_acmpne   => code.emit(LCJUMP(parseJumpTarget, pc + size, NE, ObjectReference))
 
         case JVM.goto        => emit(LJUMP(parseJumpTarget))
-        case JVM.jsr         => Predef.error("Cannot handle jsr/ret")
-        case JVM.ret         => Predef.error("Cannot handle jsr/ret")
+        case JVM.jsr         => system.error("Cannot handle jsr/ret")
+        case JVM.ret         => system.error("Cannot handle jsr/ret")
         case JVM.tableswitch =>
           val padding = if ((pc + size) % 4 != 0) 4 - ((pc + size) % 4) else 0
           size += padding
@@ -485,12 +496,12 @@ abstract class ICodeReader extends ClassfileParser {
         case JVM.lreturn     => code.emit(RETURN(LONG))
         case JVM.freturn     => code.emit(RETURN(FLOAT))
         case JVM.dreturn     => code.emit(RETURN(DOUBLE))
-        case JVM.areturn     => code.emit(RETURN(OBJECT))
+        case JVM.areturn     => code.emit(RETURN(ObjectReference))
         case JVM.return_     => code.emit(RETURN(UNIT))
 
         case JVM.getstatic    =>
           val field = pool.getMemberSymbol(in.nextChar, true); size += 2
-          if (field.hasFlag(Flags.MODULE))
+          if (field.hasModuleFlag)
             code.emit(LOAD_MODULE(field))
           else
             code.emit(LOAD_FIELD(field, true))
@@ -513,7 +524,7 @@ abstract class ICodeReader extends ClassfileParser {
           code.emit(CALL_METHOD(m, Dynamic))
         case JVM.invokespecial   =>
           val m = pool.getMemberSymbol(in.nextChar, false); size += 2
-          val style = if (m.name == nme.CONSTRUCTOR || m.hasFlag(Flags.PRIVATE)) Static(true) 
+          val style = if (m.name == nme.CONSTRUCTOR || m.isPrivate) Static(true)
                       else SuperCall(m.owner.name);
           code.emit(CALL_METHOD(m, style))
         case JVM.invokestatic    =>
@@ -546,8 +557,8 @@ abstract class ICodeReader extends ClassfileParser {
           val tpe = pool.getClassOrArrayType(in.nextChar); size += 2
           code.emit(CREATE_ARRAY(toTypeKind(tpe), 1))
 
-        case JVM.arraylength   => code.emit(CALL_PRIMITIVE(ArrayLength(OBJECT))); // the kind does not matter
-        case JVM.athrow        => code.emit(THROW());
+        case JVM.arraylength   => code.emit(CALL_PRIMITIVE(ArrayLength(ObjectReference))); // the kind does not matter
+        case JVM.athrow        => code.emit(THROW(definitions.ThrowableClass))
         case JVM.checkcast     =>
           code.emit(CHECK_CAST(toTypeKind(pool.getClassOrArrayType(in.nextChar)))); size += 2
         case JVM.instanceof    =>
@@ -561,20 +572,20 @@ abstract class ICodeReader extends ClassfileParser {
             case JVM.lload  => code.emit(LOAD_LOCAL(code.getLocal(in.nextChar, LONG)));   size += 2
             case JVM.fload  => code.emit(LOAD_LOCAL(code.getLocal(in.nextChar, FLOAT)));  size += 2
             case JVM.dload  => code.emit(LOAD_LOCAL(code.getLocal(in.nextChar, DOUBLE))); size += 2
-            case JVM.aload  => code.emit(LOAD_LOCAL(code.getLocal(in.nextChar, OBJECT))); size += 2
+            case JVM.aload  => code.emit(LOAD_LOCAL(code.getLocal(in.nextChar, ObjectReference))); size += 2
             case JVM.istore => code.emit(STORE_LOCAL(code.getLocal(in.nextChar, INT)));    size += 2
             case JVM.lstore => code.emit(STORE_LOCAL(code.getLocal(in.nextChar, LONG)));   size += 2
             case JVM.fstore => code.emit(STORE_LOCAL(code.getLocal(in.nextChar, FLOAT)));  size += 2
             case JVM.dstore => code.emit(STORE_LOCAL(code.getLocal(in.nextChar, DOUBLE))); size += 2
-            case JVM.astore => code.emit(STORE_LOCAL(code.getLocal(in.nextChar, OBJECT))); size += 2
-            case JVM.ret => Predef.error("Cannot handle jsr/ret")
+            case JVM.astore => code.emit(STORE_LOCAL(code.getLocal(in.nextChar, ObjectReference))); size += 2
+            case JVM.ret => system.error("Cannot handle jsr/ret")
             case JVM.iinc =>
               size += 4
               val local = code.getLocal(in.nextChar, INT)
               code.emit(CONSTANT(Constant(in.nextChar)))
               code.emit(CALL_PRIMITIVE(Arithmetic(ADD, INT)))
               code.emit(STORE_LOCAL(local))
-            case _ => Predef.error("Invalid 'wide' operand")
+            case _ => system.error("Invalid 'wide' operand")
           }
 
         case JVM.multianewarray =>
@@ -584,12 +595,12 @@ abstract class ICodeReader extends ClassfileParser {
 //          assert(dim == 1, "Cannot handle multidimensional arrays yet.")
           code.emit(CREATE_ARRAY(tpe, dim))
 
-        case JVM.ifnull    => code.emit(LCZJUMP(parseJumpTarget, pc + size, EQ, OBJECT))
-        case JVM.ifnonnull => code.emit(LCZJUMP(parseJumpTarget, pc + size, NE, OBJECT))
+        case JVM.ifnull    => code.emit(LCZJUMP(parseJumpTarget, pc + size, EQ, ObjectReference))
+        case JVM.ifnonnull => code.emit(LCZJUMP(parseJumpTarget, pc + size, NE, ObjectReference))
         case JVM.goto_w    => code.emit(LJUMP(parseJumpTargetW))
-        case JVM.jsr_w     => Predef.error("Cannot handle jsr/ret")
+        case JVM.jsr_w     => system.error("Cannot handle jsr/ret")
 
-//        case _ => Predef.error("Unknown bytecode")
+//        case _ => system.error("Unknown bytecode")
       }
       pc += size
     }
@@ -597,8 +608,10 @@ abstract class ICodeReader extends ClassfileParser {
     // add parameters
     var idx = if (method.isStatic) 0 else 1
     for (t <- method.symbol.tpe.paramTypes) {
-      this.method.addParam(code.enterParam(idx, toTypeKind(t)))
-      idx += 1
+      val kind = toTypeKind(t)
+      this.method addParam code.enterParam(idx, kind)
+      val width = if (kind.isWideType) 2 else 1      
+      idx += width
     }
     
     pc = 0
@@ -651,8 +664,8 @@ abstract class ICodeReader extends ClassfileParser {
 
   class LinearCode {
     var instrs: ListBuffer[(Int, Instruction)] = new ListBuffer
-    var jmpTargets: Set[Int] = new HashSet[Int]
-    var locals: Map[Int, List[(Local, TypeKind)]] = new HashMap()
+    var jmpTargets: mutable.Set[Int] = new mutable.HashSet[Int]
+    var locals: mutable.Map[Int, List[(Local, TypeKind)]] = new mutable.HashMap()
 
     var containsDUPX = false
     var containsNEW  = false
@@ -671,15 +684,12 @@ abstract class ICodeReader extends ClassfileParser {
     def toBasicBlock: Code = {
       import opcodes._
       
-      val code = new Code(method.symbol.name.toString, method);
+      val code = new Code(method)
       method.setCode(code)
       var bb = code.startBlock
 
-      def makeBasicBlocks: Map[Int, BasicBlock] = {
-        val block: Map[Int, BasicBlock] = new HashMap
-        for (pc <- jmpTargets) block += (pc -> code.newBlock)
-        block
-      }
+      def makeBasicBlocks: mutable.Map[Int, BasicBlock] =
+        mutable.Map(jmpTargets.toSeq map (_ -> code.newBlock): _*)
 
       val blocks = makeBasicBlocks
       var otherBlock: BasicBlock = null
@@ -687,7 +697,7 @@ abstract class ICodeReader extends ClassfileParser {
       
       for ((pc, instr) <- instrs.iterator) {
 //        Console.println("> " + pc + ": " + instr);
-        if (jmpTargets contains pc) {
+        if (jmpTargets(pc)) {
           otherBlock = blocks(pc)
           if (!bb.closed && otherBlock != bb) {
             bb.emit(JUMP(otherBlock))
@@ -700,39 +710,33 @@ abstract class ICodeReader extends ClassfileParser {
         instr match {
           case LJUMP(target) => 
             otherBlock = blocks(target)
-            bb.emit(JUMP(otherBlock))
-            bb.close
+            bb.emitOnly(JUMP(otherBlock))
 
           case LCJUMP(success, failure, cond, kind) => 
             otherBlock = blocks(success)
             val failBlock = blocks(failure)
-            bb.emit(CJUMP(otherBlock, failBlock, cond, kind))
-            bb.close
+            bb.emitOnly(CJUMP(otherBlock, failBlock, cond, kind))
 
           case LCZJUMP(success, failure, cond, kind) => 
             otherBlock = blocks(success)
             val failBlock = blocks(failure)
-            bb.emit(CZJUMP(otherBlock, failBlock, cond, kind))
-            bb.close
+            bb.emitOnly(CZJUMP(otherBlock, failBlock, cond, kind))
 
           case LSWITCH(tags, targets) =>
-            bb.emit(SWITCH(tags, targets map blocks))
-            bb.close
+            bb.emitOnly(SWITCH(tags, targets map blocks))
    
           case RETURN(_) =>
-            bb.emit(instr)
-            bb.close
+            bb.emitOnly(instr)
 
-          case THROW() =>
-            bb.emit(instr)
-            bb.close
+          case THROW(clasz) =>
+            bb.emitOnly(instr)
             
           case _ =>
             bb.emit(instr)
         }
       }
       
-      code
+      method.code
     }
     
     def resolveDups {
@@ -921,7 +925,7 @@ abstract class ICodeReader extends ClassfileParser {
     def resolveNEWs {
       import opcodes._
       
-      val rdef = new reachingDefinitions.ReachingDefinitionsAnalysis;
+      val rdef = new reachingDefinitions.ReachingDefinitionsAnalysis
       rdef.init(method)
       rdef.run
       
@@ -955,13 +959,13 @@ abstract class ICodeReader extends ClassfileParser {
 
       def checkValidIndex {
         locals.get(idx - 1) match {
-          case Some(others) if ((others find { x => x._1 == LONG || x._1 == DOUBLE}) != None) =>
-            error("Illegal index: " + idx + " points in the middle of another local")
+          case Some(others) if others exists (_._2.isWideType) =>
+            global.globalError("Illegal index: " + idx + " points in the middle of another local")
           case _ => ()
         }
         kind match {
           case LONG | DOUBLE if (locals.isDefinedAt(idx + 1)) =>
-            error("Illegal index: " + idx + " overlaps " + locals(idx + 1))
+            global.globalError("Illegal index: " + idx + " overlaps " + locals(idx + 1) + "\nlocals: " + locals)
           case _ => ()
         }
       }
@@ -1040,7 +1044,7 @@ abstract class ICodeReader extends ClassfileParser {
     case class LSWITCH(tags: List[List[Int]], targets: List[Int]) extends LazyJump(targets.head) {
       override def toString(): String ="LSWITCH (tags: " + tags + ") targets: " + targets;
 
-      targets.tail.foreach(t => jmpTargets += t)
+      jmpTargets ++= targets.tail
     }
     
     /** Duplicate and exchange pseudo-instruction. Should be later 

@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.util
 
@@ -54,6 +53,7 @@ private[scala] trait PropertiesTrait
   def clearProp(name: String)                   = System.clearProperty(name)
 
   def envOrElse(name: String, alt: String)      = Option(System getenv name) getOrElse alt
+  def envOrNone(name: String)                   = Option(System getenv name)
   
   // for values based on propFilename
   def scalaPropOrElse(name: String, alt: String): String  = scalaProps.getProperty(name, alt)
@@ -69,6 +69,7 @@ private[scala] trait PropertiesTrait
    *  Note that it uses "prop" i.e. looks in the scala jar, not the system properties.
    */
   def sourceEncoding        = scalaPropOrElse("file.encoding", "UTF-8")
+  def sourceReader          = scalaPropOrElse("source.reader", "scala.tools.nsc.io.SourceReader")
   
   /** This is the default text encoding, overridden (unreliably) with
    *  JAVA_OPTS="-Dfile.encoding=Foo"

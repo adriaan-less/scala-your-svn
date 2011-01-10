@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
@@ -48,7 +47,7 @@ trait Scopes {
 
     var elems: ScopeEntry = initElems
 
-    /** The number of times this scope is neted in another
+    /** The number of times this scope is nested in another
      */
     private var nestinglevel = 0
 
@@ -218,7 +217,7 @@ trait Scopes {
       if (e eq null) NoSymbol else e.sym
     }
 
-    /** Returns an iterator eidling every symbol with given name in this scope.
+    /** Returns an iterator yielding every symbol with given name in this scope.
      */
     def lookupAll(name: Name): Iterator[Symbol] = new Iterator[Symbol] {
       var e = lookupEntry(name)
@@ -279,7 +278,7 @@ trait Scopes {
      *  was nested in another */
     def nestingLevel = nestinglevel
 
-    /** Return all symbols as an interator in the order they were entered in this scope.
+    /** Return all symbols as an iterator in the order they were entered in this scope.
      */
     def iterator: Iterator[Symbol] = toList.iterator
     

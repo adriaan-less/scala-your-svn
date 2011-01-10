@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.dbc
@@ -22,7 +21,7 @@ object Factory {
   final val java_lang_Integer_SIZE = 32;
   final val java_lang_Long_SIZE    = 64;
 
-  /** Returns a mullable property formated as a boolean option */
+  /** Returns a nullable property formatted as a boolean option */
   def isNullable (metadata:java.sql.ResultSetMetaData, index:Int): Option[scala.Boolean] =
     metadata.isNullable(index) match {
       case java.sql.ResultSetMetaData.columnNoNulls => Some(false);
@@ -235,17 +234,17 @@ object Factory {
       }
       /* Unsupported data types. */
       case REF | ARRAY | STRUCT =>
-        error ("I don't support composite data types yet.");
+        system.error ("I don't support composite data types yet.");
       case DATALINK | DISTINCT | JAVA_OBJECT | NULL =>
-        error ("I won't support strange data types.");
+        system.error ("I won't support strange data types.");
       /* Unsupported binary string data types. */
       case BINARY | BLOB | LONGVARBINARY | VARBINARY =>
-        error ("I don't support binary string data types yet.");
+        system.error ("I don't support binary string data types yet.");
       /* Unsupported date and time data types. */
       case DATE | TIME | TIMESTAMP =>
-        error ("I don't support date and time data types yet.");
+        system.error ("I don't support date and time data types yet.");
       /* Default case */
-      case x => error ("I don't know about this ("+metadata.getColumnTypeName(index)+") JDBC type.")
+      case x => system.error ("I don't know about this ("+metadata.getColumnTypeName(index)+") JDBC type.")
     }
   }
 }

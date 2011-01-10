@@ -2,7 +2,6 @@
  * Copyright 2005-2010 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id: Unapplies.scala 19206 2009-10-21 20:57:27Z extempore $
 
 package scala.tools.nsc
 package ast
@@ -20,56 +19,75 @@ import scala.collection.mutable.{HashMap, ListBuffer, StringBuilder}
 trait DocComments { self: SymbolTable =>
 
   /** The raw doc comment map */
-  val docComments = new HashMap[Symbol, DocComment] 
+  val docComments = new HashMap[Symbol, DocComment]
+
+  /** Associate comment with symbol `sym` at position `pos`. */
+  def docComment(sym: Symbol, docStr: String, pos: Position = NoPosition) =
+    if ((sym ne null) && (sym ne NoSymbol))
+      docComments += (sym -> DocComment(docStr, pos))
 
   /** The raw doc comment of symbol `sym`, as it appears in the source text, "" if missing.
    */
-  def rawDocComment(sym: Symbol): String = 
+  def rawDocComment(sym: Symbol): String =
     docComments get sym map (_.raw) getOrElse ""
 
   /** The position of the raw doc comment of symbol `sym`, or NoPosition if missing
    *  If a symbol does not have a doc comment but some overridden version of it does,
-   *  the posititon of the doc comment of the overridden version is returned instead.
+   *  the position of the doc comment of the overridden version is returned instead.
    */
-  def docCommentPos(sym: Symbol): Position = 
+  def docCommentPos(sym: Symbol): Position =
     getDocComment(sym) map (_.pos) getOrElse NoPosition
+    
+  /** A version which doesn't consider self types, as a temporary measure:
+   *  an infinite loop has broken out between superComment and cookedDocComment
+   *  since r23926.
+   */
+  private def allInheritedOverriddenSymbols(sym: Symbol): List[Symbol] = {
+    if (!sym.owner.isClass) Nil
+    else sym.owner.ancestors map (sym overriddenSymbol _) filter (_ != NoSymbol)
+  }
 
   /** The raw doc comment of symbol `sym`, minus @usecase and @define sections, augmented by
    *  missing sections of an inherited doc comment.
    *  If a symbol does not have a doc comment but some overridden version of it does,
    *  the doc comment of the overridden version is copied instead.
    */
-  def cookedDocComment(sym: Symbol): String = {
-    val ownComment = docComments get sym map (_.template) getOrElse ""
+  def cookedDocComment(sym: Symbol, docStr: String = ""): String = {
+    val ownComment = if (docStr.length == 0) docComments get sym map (_.template) getOrElse ""
+                     else DocComment(docStr).template
     superComment(sym) match {
       case None =>
         ownComment
       case Some(sc) =>
-        if (ownComment == "") sc 
+        if (ownComment == "") sc
         else merge(sc, ownComment, sym)
     }
   }
 
   /** The cooked doc comment of symbol `sym` after variable expansion, or "" if missing.
-   * 
+   *
    *  @param sym  The symbol for which doc comment is returned
    *  @param site The class for which doc comments are generated
    *  @throws ExpansionLimitExceeded  when more than 10 successive expansions
    *                                  of the same string are done, which is
    *                                  interpreted as a recursive variable definition.
    */
-  def expandedDocComment(sym: Symbol, site: Symbol): String =    
-    expandVariables(cookedDocComment(sym), sym, site)
-    
+  def expandedDocComment(sym: Symbol, site: Symbol, docStr: String = ""): String = {
+    // when parsing a top level class or module, use the (module-)class itself to look up variable definitions
+    val site1 = if ((sym.isModule || sym.isClass) && site.hasPackageFlag) sym
+                else site
+    expandVariables(cookedDocComment(sym, docStr), sym, site1)
+  }
+
   /** The cooked doc comment of symbol `sym` after variable expansion, or "" if missing.
    *  @param sym  The symbol for which doc comment is returned (site is always the containing class)
    */
-  def expandedDocComment(sym: Symbol): String = expandedDocComment(sym, sym)
+  def expandedDocComment(sym: Symbol): String = expandedDocComment(sym, sym.enclClass)
 
   /** The list of use cases of doc comment of symbol `sym` seen as a member of class
    *  `site`. Each use case consists of a synthetic symbol (which is entered nowhere else),
    *  of an expanded doc comment string, and of its position.
-   * 
+   *
    *  @param sym  The symbol for which use cases are returned
    *  @param site The class for which doc comments are generated
    *  @throws ExpansionLimitExceeded  when more than 10 successive expansions
@@ -79,21 +97,21 @@ trait DocComments { self: SymbolTable =>
   def useCases(sym: Symbol, site: Symbol): List[(Symbol, String, Position)] = {
     def getUseCases(dc: DocComment) = {
       for (uc <- dc.useCases; defn <- uc.expandedDefs(site)) yield
-        (defn, 
+        (defn,
          expandVariables(merge(cookedDocComment(sym), uc.comment.raw, defn, copyFirstPara = true), sym, site),
          uc.pos)
     }
     getDocComment(sym) map getUseCases getOrElse List()
   }
-    
-  def useCases(sym: Symbol): List[(Symbol, String, Position)] = useCases(sym, sym)
+
+  def useCases(sym: Symbol): List[(Symbol, String, Position)] = useCases(sym, sym.enclClass)
 
   /** Returns the javadoc format of doc comment string `s`, including wiki expansion
    */
   def toJavaDoc(s: String): String = expandWiki(s)
-                 
+
   private val wikiReplacements = List(
-    ("""(\n\s*\*?)(\s*\n)"""    .r, """$1 <p>$2"""),         
+    ("""(\n\s*\*?)(\s*\n)"""    .r, """$1 <p>$2"""),
     ("""<([^\w/])"""            .r, """&lt;$1"""),
     ("""([^\w/])>"""            .r, """$1&gt;"""),
     ("""\{\{\{(.*(?:\n.*)*)\}\}\}""".r, """<pre>$1</pre>"""),
@@ -102,7 +120,7 @@ trait DocComments { self: SymbolTable =>
     ("""''([^']*)''"""          .r, """<i>$1</i>"""),
     ("""'''([^']*)'''"""        .r, """<b>$1</b>"""),
     ("""\^([^^]*)\^"""          .r, """<sup>$1</sup>"""),
-    (""",,([^,]*),,"""          .r, """<sub>$1</sub>""")) 
+    (""",,([^,]*),,"""          .r, """<sub>$1</sub>"""))
 
   /** Returns just the wiki expansion (this would correspond to
    *  a comment in the input format of the JavaDoc tool, modulo differences
@@ -112,29 +130,21 @@ trait DocComments { self: SymbolTable =>
     (str /: wikiReplacements) { (str1, regexRepl) => regexRepl._1 replaceAllIn(str1, regexRepl._2) }
 
 
-  private def getDocComment(sym: Symbol): Option[DocComment] = docComments get sym match {
-    case None => mapFind(sym.allOverriddenSymbols)(docComments get)
-    case some => some
-  }
+  private def getDocComment(sym: Symbol): Option[DocComment] =
+    mapFind(sym :: allInheritedOverriddenSymbols(sym))(docComments get _)
 
   /** The cooked doc comment of an overridden symbol */
-  private def superComment(sym: Symbol): Option[String] = 
-    sym.allOverriddenSymbols.view map cookedDocComment find ("" !=)
+  protected def superComment(sym: Symbol): Option[String] =
+    allInheritedOverriddenSymbols(sym).iterator map (x => cookedDocComment(x)) find (_ != "")
 
-  private def mapFind[A, B](xs: Iterable[A])(f: A => Option[B]): Option[B] = {
-    var res: Option[B] = None
-    val it = xs.iterator
-    while (res.isEmpty && it.hasNext) {
-      res = f(it.next())
-    }
-    res
-  }
+  private def mapFind[A, B](xs: Iterable[A])(f: A => Option[B]): Option[B] =
+    xs collectFirst f.unlift
 
-  private def isMovable(str: String, sec: (Int, Int)): Boolean = 
+  private def isMovable(str: String, sec: (Int, Int)): Boolean =
     startsWithTag(str, sec, "@param") ||
     startsWithTag(str, sec, "@tparam") ||
     startsWithTag(str, sec, "@return")
-    
+
   /** Merge elements of doccomment `src` into doc comment `dst` for symbol `sym`.
    *  In detail:
    *  1. If `copyFirstPara` is true, copy first paragraph
@@ -152,12 +162,12 @@ trait DocComments { self: SymbolTable =>
     val out = new StringBuilder
     var copied = 0
     var tocopy = startTag(dst, dstSections dropWhile (!isMovable(dst, _)))
-    
+
     if (copyFirstPara) {
       val eop = // end of comment body (first para), which is delimited by blank line, or tag, or end of comment
         (findNext(src, 0)(src.charAt(_) == '\n')) min startTag(src, srcSections)
       out append src.substring(0, eop).trim
-      copied = 3 
+      copied = 3
       tocopy = 3
     }
 
@@ -194,33 +204,40 @@ trait DocComments { self: SymbolTable =>
     override def default(key: Symbol) = Map()
   }
 
-  /** Lookup definition of variable. 
-   * 
+  /** Lookup definition of variable.
+   *
    *  @param vble  The variable for which a definition is searched
    *  @param owner The current owner in which variable definitions are searched.
    *  @param site  The class for which doc comments are generated
    */
   def lookupVariable(vble: String, site: Symbol): Option[String] =
-    if (site == NoSymbol) 
+    if (site == NoSymbol)
       None
-    else 
-      mapFind(site.info.baseClasses)(defs(_).get(vble)) match {
+    else {
+      def lookInBaseClasses = mapFind(site.info.baseClasses)(defs(_).get(vble)) match {
         case None => lookupVariable(vble, site.owner)
         case someStr => someStr
       }
+      if (site.isModule)
+        defs(site).get(vble) match {
+          case Some(str) => return Some(str)
+          case None => lookInBaseClasses
+        }
+      else lookInBaseClasses
+    }
 
   private var expandCount = 0
   private final val expandLimit = 10
 
   /** Expand variable occurrences in string `str', until a fix point is reached or
    *  a expandLimit is exceeded.
-   * 
+   *
    *  @param str   The string to be expanded
    *  @param sym   The symbol for which doc comments are generated
    *  @param site  The class for which doc comments are generated
    *  @return      Expanded string
    */
-  private def expandVariables(str: String, sym: Symbol, site: Symbol): String = 
+  protected def expandVariables(str: String, sym: Symbol, site: Symbol): String =
     if (expandCount < expandLimit) {
       try {
         val out = new StringBuilder
@@ -267,13 +284,13 @@ trait DocComments { self: SymbolTable =>
   // !!! todo: inherit from Comment?
   case class DocComment(raw: String, pos: Position = NoPosition) {
 
-    /** Returns: 
+    /** Returns:
      *   template: the doc comment minus all @define and @usecase sections
      *   defines : all define sections (as strings)
      *   useCases: all usecase sections (as instances of class UseCase)
      */
     lazy val (template, defines, useCases) = {
-      val sections = tagIndex(raw, idx => 
+      val sections = tagIndex(raw, idx =>
         startsWithTag(raw, idx, "@define") || startsWithTag(raw, idx, "@usecase"))
       val (defines, usecases) = sections partition (startsWithTag(raw, _, "@define"))
       val end = startTag(raw, sections)
@@ -289,7 +306,7 @@ trait DocComments { self: SymbolTable =>
        defines map { case (start, end) => raw.substring(start, end) },
        usecases map { case (start, end) => decomposeUseCase(start, end) })
     }
-        
+
     private def decomposeUseCase(start: Int, end: Int): UseCase = {
       val codeStart = skipWhitespace(raw, start + "@usecase".length)
       val codeEnd = skipToEol(raw, codeStart)
@@ -301,8 +318,8 @@ trait DocComments { self: SymbolTable =>
       UseCase(DocComment(comment, commentPos), code, codePos)
     }
 
-    private def subPos(start: Int, end: Int) = 
-      if (pos == NoPosition) NoPosition 
+    private def subPos(start: Int, end: Int) =
+      if (pos == NoPosition) NoPosition
       else {
         val start1 = pos.start + start
         val end1 = pos.end + end
@@ -326,12 +343,12 @@ trait DocComments { self: SymbolTable =>
   case class UseCase(comment: DocComment, body: String, pos: Position) {
     var defined: List[Symbol] = List() // initialized by Typer
     var aliases: List[Symbol] = List() // initialized by Typer
-    
+
     def expandedDefs(site: Symbol): List[Symbol] = {
 
       def select(site: Type, name: Name, orElse: => Type): Type = {
         val member = site.nonPrivateMember(name)
-        if (member.isTerm) SingleType(site, member)
+        if (member.isTerm) singleType(site, member)
         else if (member.isType) site.memberType(member)
         else orElse
       }
@@ -357,32 +374,32 @@ trait DocComments { self: SymbolTable =>
         val parts = getParts(0)
         assert(parts.length > 0, "parts is empty '" + str + "' in site " + site)
         val partnames = (parts.init map newTermName) ::: List(newTypeName(parts.last))
-        val (start, rest) = 
-          if (parts.head == "this") 
+        val (start, rest) =
+          if (parts.head == "this")
             (site.thisType, partnames.tail)
           else if (parts.tail.nonEmpty && parts(1) == "this")
             site.ownerChain.find(_.name.toString == parts.head) match {
               case Some(clazz) => (clazz.thisType, partnames.drop(2))
               case None => (NoType, List())
             }
-          else 
+          else
             (getSite(partnames.head), partnames.tail)
         (start /: rest)(select(_, _, NoType))
       }
 
-      val aliasExpansions: List[Type] = 
-        for (alias <- aliases) yield 
+      val aliasExpansions: List[Type] =
+        for (alias <- aliases) yield
           lookupVariable(alias.name.toString.substring(1), site) match {
-            case Some(repl) => 
+            case Some(repl) =>
               val tpe = getType(repl.trim)
               if (tpe != NoType) tpe
               else {
                 val alias1 = alias.cloneSymbol(definitions.RootClass)
                 alias1.name = repl.toTypeName
-                TypeRef(NoPrefix, alias1, List())
+                typeRef(NoPrefix, alias1, Nil)
               }
             case None =>
-              TypeRef(NoPrefix, alias, List())
+              typeRef(NoPrefix, alias, Nil)
           }
 
       def subst(sym: Symbol, from: List[Symbol], to: List[Type]): Type =
@@ -395,7 +412,7 @@ trait DocComments { self: SymbolTable =>
           case tp1 @ TypeRef(pre, sym, args) if (sym.name.length > 1 && sym.name(0) == '$') =>
             subst(sym, aliases, aliasExpansions) match {
               case TypeRef(pre1, sym1, _) =>
-                TypeRef(pre1, sym1, args)
+                typeRef(pre1, sym1, args)
               case _ =>
                 tp1
             }
@@ -405,7 +422,7 @@ trait DocComments { self: SymbolTable =>
       }
 
       for (defn <- defined) yield {
-        defn.cloneSymbol(site).setFlag(Flags.SYNTHETIC).setInfo(
+        defn.cloneSymbol.setFlag(Flags.SYNTHETIC).setInfo(
           substAliases(defn.info).asSeenFrom(site.thisType, defn.owner))
       }
     }

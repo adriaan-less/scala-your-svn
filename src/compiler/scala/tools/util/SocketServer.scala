@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.util
 
@@ -43,7 +42,7 @@ abstract class SocketServer
 
   def fatal(msg: String): Nothing = {
     System.err.println(msg)
-    exit(1)
+    system.exit(1)
   }
 
   private def warn(msg: String) {
