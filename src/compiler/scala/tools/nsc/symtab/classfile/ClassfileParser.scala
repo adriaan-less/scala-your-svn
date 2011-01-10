@@ -859,7 +859,7 @@ abstract class ClassfileParser {
         }
         ClassInfoType(parents.toList, instanceDefs, sym)
       }
-    typeFun(ownTypeParams, tpe)
+    polyType(ownTypeParams, tpe)
   } // sigToType
 
   class TypeParamsType(override val typeParams: List[Symbol]) extends LazyType {

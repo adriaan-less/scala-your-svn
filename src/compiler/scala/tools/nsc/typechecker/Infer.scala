@@ -312,6 +312,8 @@ trait Infer {
      *  seems likely the methods are intended to be even more similar than
      *  they are: perhaps someone more familiar with the intentional distinctions
      *  can examine the now much smaller concrete implementations below.
+     *
+     * TODO_NMT: deal with NullaryMethodTypes?
      */
     abstract class CompatibilityChecker {
       def resultTypeCheck(restpe: Type, arg: Type): Boolean
@@ -367,7 +369,7 @@ trait Infer {
       def lastChanceCheck(tp: Type, pt: Type)      = tp <:< pt
       
       override def apply(tp: Type, pt: Type): Boolean = tp match {
-        case PolyType(tparams, restpe) => tparams.isEmpty && normSubType(restpe, pt)
+        case NullaryMethodType(restpe) => normSubType(restpe, pt)
         case ExistentialType(_, _)     => normalize(tp) <:< pt
         case _                         => super.apply(tp, pt)
       }
@@ -816,6 +818,8 @@ trait Infer {
             else tryTupleApply
           }
 
+        case NullaryMethodType(restpe) =>
+          isApplicable(undetparams, restpe, argtpes0, pt)
         case PolyType(tparams, restpe) =>
           val tparams1 = cloneSymbols(tparams)
           isApplicable(tparams1 ::: undetparams, restpe.substSym(tparams, tparams1), argtpes0, pt)
@@ -862,7 +866,7 @@ trait Infer {
         //et.withTypeVars(isAsSpecific(_, ftpe2)) 
       case mt: MethodType if mt.isImplicit =>
         isAsSpecific(ftpe1.resultType, ftpe2)
-      case MethodType(params @ (x :: xs), _) =>
+      case MethodType(params, _) if params nonEmpty =>
         var argtpes = params map (_.tpe)
         if (isVarArgsList(params) && isVarArgsList(ftpe2.params))
           argtpes = argtpes map (argtpe => 
@@ -870,8 +874,10 @@ trait Infer {
         isApplicable(List(), ftpe2, argtpes, WildcardType)
       case PolyType(tparams, mt: MethodType) if mt.isImplicit =>
         isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
-      case PolyType(_, MethodType(params @ (x :: xs), _)) =>
+      case PolyType(_, MethodType(params, _)) if params nonEmpty =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
+      case NullaryMethodType(res) =>
+        isAsSpecific(res, ftpe2)
       case ErrorType =>
         true
       case _ =>
@@ -882,6 +888,8 @@ trait Infer {
             et.withTypeVars(isAsSpecific(ftpe1, _))
           case mt: MethodType =>
             !mt.isImplicit || isAsSpecific(ftpe1, mt.resultType)
+          case NullaryMethodType(res) =>
+            isAsSpecific(ftpe1, res)
           case PolyType(tparams, mt: MethodType) =>
             !mt.isImplicit || isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
           case _ =>

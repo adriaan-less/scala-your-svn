@@ -365,7 +365,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     final def isAnonymousClass    = isClass && (name containsName tpnme.ANON_CLASS_NAME)
     final def isAnonymousFunction = isSynthetic && (name containsName tpnme.ANON_FUN_NAME)
     final def isAnonOrRefinementClass = isAnonymousClass || isRefinementClass
-    final def isAnonymousTypeFunction = hasFlag(SYNTHETIC) && (name containsName nme.ANON_TYPE_FUN_NAME)
+    final def isAnonymousTypeFunction = hasFlag(SYNTHETIC) && (name containsName tpnme.ANON_TYPE_FUN_NAME)
 
     final def isPackageObject = isModule && name == nme.PACKAGEkw && owner.isPackageClass
     final def isPackageObjectClass = isModuleClass && name.toTermName == nme.PACKAGEkw && owner.isPackageClass

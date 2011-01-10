@@ -156,7 +156,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
     else null
   }
 
-  import compiler.{ Traverser, CompilationUnit, Symbol, Name, TermName, TypeName, Type, TypeRef, PolyType }
+  import compiler.{ Traverser, CompilationUnit, Symbol, Name, TermName, TypeName, Type, TypeRef, NullaryMethodType }
   import compiler.{ 
     Tree, TermTree, ValOrDefDef, ValDef, DefDef, Assign, ClassDef,
     ModuleDef, Ident, BackQuotedIdent, Select, TypeDef, Import, MemberDef, DocDef,

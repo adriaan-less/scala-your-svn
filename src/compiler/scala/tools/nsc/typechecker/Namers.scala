@@ -775,7 +775,7 @@ trait Namers { self: Analyzer =>
     }
 
     private def classSig(tparams: List[TypeDef], impl: Template): Type = 
-      typeFun(typer.reenterTypeParams(tparams), templateSig(impl))
+      polyType(typer.reenterTypeParams(tparams), templateSig(impl))
 
     private def methodSig(mods: Modifiers, tparams: List[TypeDef],
                           vparamss: List[List[ValDef]], tpt: Tree, rhs: Tree): Type = {

@@ -889,7 +889,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
         if (settings.debug.value) log("transformInfo (poly) " + clazz + " with parents1: " + parents + " ph: " + phase)
 //        if (clazz.name.toString == "$colon$colon")
 //          (new Throwable).printStackTrace
-        typeFun(targs, ClassInfoType(parents,
+        polyType(targs, ClassInfoType(parents,
           new Scope(specializeClass(clazz, typeEnv(clazz)) ::: specialOverrides(clazz)),
           clazz))
 

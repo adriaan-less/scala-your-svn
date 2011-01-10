@@ -40,6 +40,6 @@ trait StdNames {
   trait LibraryTypeNames extends LibraryCommonNames {
     val REFINE_CLASS_NAME: NameType  = "<refinement>"
     val ANON_CLASS_NAME: NameType    = "$anon"
-    val ANON_TYPE_FUN_NAME = "$anontpfun"
+    val ANON_TYPE_FUN_NAME: NameType = "$anontpfun"
   }
 }

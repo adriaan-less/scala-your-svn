@@ -753,6 +753,8 @@ abstract class RefChecks extends InfoTransform {
             validateVariance(hi, variance)
           case MethodType(formals, result) =>
             validateVariance(result, variance)
+          case NullaryMethodType(result) =>
+            validateVariance(result, variance)
           case PolyType(tparams, result) =>
             // type parameters will be validated separately, because they are defined explicitly.
             validateVariance(result, variance)

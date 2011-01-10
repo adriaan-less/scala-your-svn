@@ -224,7 +224,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     )
     lazy val EqualsPatternClass = {
       val clazz = newClass(ScalaPackageClass, tpnme.EQUALS_PATTERN_NAME, Nil)
-      clazz setInfo typeFun(List(newTypeParam(clazz, 0)), ClassInfoType(anyparam, new Scope, clazz))
+      clazz setInfo polyType(List(newTypeParam(clazz, 0)), ClassInfoType(anyparam, new Scope, clazz))
     }
 
     // collections classes
@@ -583,7 +583,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
                     else*/ List(p)
       println("creating " + name + " with parents " + parents) */
       clazz.setInfo(
-        typeFun(
+        polyType(
           List(tparam),
           ClassInfoType(List(AnyRefClass.tpe, p), new Scope, clazz)))
     }

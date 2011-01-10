@@ -132,6 +132,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
       def resultTpe(tpe: Type): Type = tpe match { // similar to finalResultType, except that it leaves singleton types alone
         case PolyType(_, res) => resultTpe(res)
         case MethodType(_, res) => resultTpe(res)
+        case NullaryMethodType(res) => resultTpe(res)
         case _ => tpe
       }
       makeType(resultTpe(sym.tpe), inTemplate, sym)
