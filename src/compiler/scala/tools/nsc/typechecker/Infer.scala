@@ -312,8 +312,6 @@ trait Infer {
      *  seems likely the methods are intended to be even more similar than
      *  they are: perhaps someone more familiar with the intentional distinctions
      *  can examine the now much smaller concrete implementations below.
-     *
-     * TODO_NMT: deal with NullaryMethodTypes?
      */
     abstract class CompatibilityChecker {
       def resultTypeCheck(restpe: Type, arg: Type): Boolean
@@ -352,6 +350,7 @@ trait Infer {
             case tr: TypeRef  => mtcheck(mt, tr)
             case _            => lastChanceCheck(tp, pt)
           }
+        case NullaryMethodType(restpe)  => resultTypeCheck(restpe, pt)
         case PolyType(_, restpe)        => apply(restpe, pt)
         case ExistentialType(_, qtpe)   => apply(qtpe, pt)
         case _                          => argumentCheck(tp, pt)
@@ -369,7 +368,6 @@ trait Infer {
       def lastChanceCheck(tp: Type, pt: Type)      = tp <:< pt
       
       override def apply(tp: Type, pt: Type): Boolean = tp match {
-        case NullaryMethodType(restpe) => normSubType(restpe, pt)
         case ExistentialType(_, _)     => normalize(tp) <:< pt
         case _                         => super.apply(tp, pt)
       }

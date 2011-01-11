@@ -4260,7 +4260,18 @@ A type's typeSymbol should never be inspected directly.
             return isSameTypes(mt1.paramTypes, mt2.paramTypes) &&
               mt1.resultType =:= mt2.resultType &&
               mt1.isImplicit == mt2.isImplicit
-          // TODO_NMT: nullary?
+          case NullaryMethodType(restpe) =>
+            return mt1.params.isEmpty && 
+              mt1.resultType =:= restpe
+          case _ =>
+        }
+      case NullaryMethodType(restpe1) =>
+        tp2 match {
+          case mt2: MethodType =>
+            return mt2.params.isEmpty && 
+              restpe1 =:= mt2.resultType
+          case NullaryMethodType(restpe2) =>
+            return restpe1 =:= restpe2
           case _ =>
         }
       case PolyType(tparams1, res1) =>
@@ -4273,7 +4284,6 @@ A type's typeSymbol should never be inspected directly.
                 (tparams1 corresponds tparams2)(_.info =:= _.info.substSym(tparams2, tparams1)) && 
                 res1 =:= res2.substSym(tparams2, tparams1)
               )
-          // TODO_NMT: nullary?
           case _ =>
         }
       case ExistentialType(tparams1, res1) =>
@@ -4744,7 +4754,7 @@ A type's typeSymbol should never be inspected directly.
         }
       case mt1 @ NullaryMethodType(res1) =>
         tp2 match {
-          case mt2 @ MethodType(Nil, res2) if !mt2.isImplicit => // could never match if params nonEmpty
+          case mt2 @ MethodType(Nil, res2)  => // could never match if params nonEmpty, and !mt2.isImplicit is implied by empty param list
             matchesType(res1, res2, alwaysMatchSimple)
           case NullaryMethodType(res2) => 
             matchesType(res1, res2, alwaysMatchSimple)
@@ -4757,8 +4767,8 @@ A type's typeSymbol should never be inspected directly.
         tp2 match {
           case PolyType(tparams2, res2) =>
             matchesQuantified(tparams1, tparams2, res1, res2)
-          case MethodType(List(), res2) if (tparams1.isEmpty) =>
-            matchesType(res1, res2, alwaysMatchSimple)
+          // case MethodType(List(), res2) if (tparams1.isEmpty) => // cannot happen
+          //   matchesType(res1, res2, alwaysMatchSimple)
           case ExistentialType(_, res2) =>
             alwaysMatchSimple && matchesType(tp1, res2, true)
           case _ =>
