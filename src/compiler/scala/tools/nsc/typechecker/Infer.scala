@@ -350,7 +350,7 @@ trait Infer {
             case tr: TypeRef  => mtcheck(mt, tr)
             case _            => lastChanceCheck(tp, pt)
           }
-        case NullaryMethodType(restpe)  => resultTypeCheck(restpe, pt)
+        case NullaryMethodType(restpe)  => apply(restpe, pt)
         case PolyType(_, restpe)        => apply(restpe, pt)
         case ExistentialType(_, qtpe)   => apply(qtpe, pt)
         case _                          => argumentCheck(tp, pt)
@@ -816,7 +816,7 @@ trait Infer {
             else tryTupleApply
           }
 
-        case NullaryMethodType(restpe) =>
+        case NullaryMethodType(restpe) => // strip nullary method type, which used to be done by the polytype case below
           isApplicable(undetparams, restpe, argtpes0, pt)
         case PolyType(tparams, restpe) =>
           val tparams1 = cloneSymbols(tparams)
@@ -862,6 +862,8 @@ trait Infer {
       case et: ExistentialType =>
         isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
         //et.withTypeVars(isAsSpecific(_, ftpe2)) 
+      case NullaryMethodType(res) =>
+        isAsSpecific(res, ftpe2)
       case mt: MethodType if mt.isImplicit =>
         isAsSpecific(ftpe1.resultType, ftpe2)
       case MethodType(params, _) if params nonEmpty =>
@@ -870,12 +872,14 @@ trait Infer {
           argtpes = argtpes map (argtpe => 
             if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
         isApplicable(List(), ftpe2, argtpes, WildcardType)
+      case PolyType(tparams, NullaryMethodType(res)) =>
+        isAsSpecific(PolyType(tparams, res), ftpe2)
       case PolyType(tparams, mt: MethodType) if mt.isImplicit =>
         isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
       case PolyType(_, MethodType(params, _)) if params nonEmpty =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
-      case NullaryMethodType(res) =>
-        isAsSpecific(res, ftpe2)
+      // case NullaryMethodType(res) =>
+      //   isAsSpecific(res, ftpe2)
       case ErrorType =>
         true
       case _ =>
@@ -888,12 +892,23 @@ trait Infer {
             !mt.isImplicit || isAsSpecific(ftpe1, mt.resultType)
           case NullaryMethodType(res) =>
             isAsSpecific(ftpe1, res)
+          case PolyType(tparams, NullaryMethodType(res)) =>
+            isAsSpecific(ftpe1, PolyType(tparams, res))
           case PolyType(tparams, mt: MethodType) =>
             !mt.isImplicit || isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
           case _ =>
             isAsSpecificValueType(ftpe1, ftpe2, List(), List())
         }
     }
+    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = (tpe1, tpe2) match {
+      case (PolyType(tparams1, rtpe1), _) =>
+        isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
+      case (_, PolyType(tparams2, rtpe2)) =>
+        isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
+      case _ =>
+        existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
+    }
+
 
 /*
     def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type): Boolean =
@@ -926,8 +941,8 @@ trait Infer {
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
         val subClassCount = (if (isInProperSubClassOrObject(sym1, sym2)) 1 else 0) -
                             (if (isInProperSubClassOrObject(sym2, sym1)) 1 else 0)
-//        println("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
-//                specificCount+"/"+subClassCount)
+       // println("is more specific? "+sym1+":"+ftpe1+sym1.locationString+"/"+sym2+":"+ftpe2+sym2.locationString+":"+
+       //         specificCount+"/"+subClassCount)
         specificCount + subClassCount > 0
       }
     }
@@ -949,16 +964,6 @@ trait Infer {
       case _ =>
         false
     }
-
-    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = (tpe1, tpe2) match {
-      case (PolyType(tparams1, rtpe1), _) =>
-        isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
-      case (_, PolyType(tparams2, rtpe2)) =>
-        isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
-      case _ =>
-        existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
-    }
-
 /*
     /** Is type `tpe1' a strictly better expression alternative than type `tpe2'?
      */

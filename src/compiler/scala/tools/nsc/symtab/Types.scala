@@ -2754,8 +2754,7 @@ A type's typeSymbol should never be inspected directly.
     // symbol that represents an anonymous type function
     // owner of its type params -- similar to value-level anonymous functions ANON_FUN_NAME
     val outer = body.typeSymbol.owner.enclClass
-    val nextId = outer.info.members.filter{sym => sym.name startsWith tpnme.ANON_TYPE_FUN_NAME}.length // TODO: expensive!
-    val synthOwner = outer.newAliasType(newTypeName(tpnme.ANON_TYPE_FUN_NAME+"$$"+nextId)).setFlag(SYNTHETIC).setInfo(NoType)
+    val synthOwner = outer.newAliasType(freshAnonTpFunName).setFlag(SYNTHETIC).setInfo(NoType)
     outer.info.decls.enter(synthOwner)
 
     val tps1 = cloneSymbols(tps, synthOwner)

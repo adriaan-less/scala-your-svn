@@ -36,6 +36,12 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     nextexid += 1
     newTypeName("_" + nextexid + suffix)
   }
+
+  private var nextanontpfunid = 0
+  private[symtab] def freshAnonTpFunName = {
+    nextanontpfunid += 1
+    newTypeName(tpnme.ANON_TYPE_FUN_NAME+"$$"+nextanontpfunid)
+  }
   
   /** The original owner of a class. Used by the backend to generate
    *  EnclosingMethod attributes.

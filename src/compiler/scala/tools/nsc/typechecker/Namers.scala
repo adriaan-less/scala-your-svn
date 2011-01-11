@@ -1264,22 +1264,8 @@ trait Namers { self: Analyzer =>
         }
       result match {
         case PolyType(tparams @ (tp :: _), _) if tp.owner.isTerm =>
-            // ||
-            // Adriaan: The added condition below is quite a hack. It seems that HK type parameters is relying
-            // on a pass that forces all infos in the type to get everything right.
-            // The problem is that the same pass causes cyclic reference errors in
-            // test pos/cyclics.scala. It turned out that deSkolemize is run way more often than necessary,
-            // running it only when needed fixes the cyclic reference errors.
-            // But correcting deSkolemize broke HK types, because we don't do the traversal anymore.
-            // For the moment I made a special hack to do the traversal if we have HK type parameters.
-            // Maybe it's not a hack, then we need to document it better. But ideally, we should find
-            // a way to deal with HK types that's not dependent on accidental side
-            // effects like this.
-            // tparams.exists(!_.typeParams.isEmpty)) =>
           new DeSkolemizeMap(tparams) mapOver result
         case _ => 
-//          println("not skolemizing "+result+" in "+context.owner)
-//          new DeSkolemizeMap(List()) mapOver result
           result
       }
     }
