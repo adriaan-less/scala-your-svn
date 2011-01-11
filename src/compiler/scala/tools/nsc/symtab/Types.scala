@@ -7,6 +7,7 @@ package scala.tools.nsc
 package symtab
 
 import scala.collection.{ mutable, immutable }
+import scala.ref.WeakReference
 import scala.collection.mutable.ListBuffer
 import ast.TreeGen
 import util.{ Position, NoPosition }
@@ -149,7 +150,7 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
    *  It makes use of the fact that these two operations depend only on the parents,
    *  not on the refinement.
    */
-  val intersectionWitness = new mutable.WeakHashMap[List[Type], Type]
+  val intersectionWitness = new mutable.WeakHashMap[List[Type], WeakReference[Type]]
 
   private object gen extends {
     val global : Types.this.type = Types.this
@@ -1332,14 +1333,29 @@ trait Types extends reflect.generic.Types { self: SymbolTable =>
       baseClassesCache
     }
 
-    def memo[A](op1: => A)(op2: Type => A) = intersectionWitness get parents match {
-      case Some(w) =>
-        if (w eq this) op1 else op2(w)
-      case none => 
-        intersectionWitness(parents) = this
+    /** The slightly less idiomatic use of Options is due to 
+     *  performance considerations. A version using for comprehensions
+     *  might be too slow (this is deemed a hotspot of the type checker).
+     *  
+     *  See with Martin before changing this method.
+     */
+    def memo[A](op1: => A)(op2: Type => A): A = {
+      def updateCache(): A = {
+        intersectionWitness(parents) = new WeakReference(this)
         op1
+      }
+      
+      intersectionWitness get parents match {
+        case Some(ref) =>
+          ref.get match {
+            case Some(w) => if (w eq this) op1 else op2(w)
+            case None => updateCache()
+          }
+        case None => updateCache() 
+      }
+     
     }
-
+ 
     override def baseType(sym: Symbol): Type = {
       val index = baseTypeIndex(sym)
       if (index >= 0) baseTypeSeq(index) else NoType

@@ -39,6 +39,7 @@ self =>
     else NullLogger
 
   import log.logreplay
+  debugLog("logger: " + log.getClass + " writing to " + (new java.io.File(logName)).getAbsolutePath)
 
   /** Print msg only when debugIDE is true. */
   @inline final def debugLog(msg: => String) = 
@@ -70,7 +71,7 @@ self =>
   /** Is a background compiler run needed?
    *  Note: outOfDate is true as long as there is a background compile scheduled or going on.
    */
-  private var outOfDate = false
+  protected[interactive] var outOfDate = false
 
   /** Units compiled by a run with id >= minRunId are considered up-to-date  */
   private[interactive] var minRunId = 1
@@ -113,7 +114,7 @@ self =>
       while(true) 
         try {
           try {
-            pollForWork()
+            pollForWork(old.pos)
 	  } catch {
             case ex : Throwable =>
 	      if (context.unit != null) integrateNew()
@@ -175,7 +176,7 @@ self =>
    *  Then, poll for exceptions and execute them. 
    *  Then, poll for work reload/typedTreeAt/doFirst commands during background checking.
    */
-  def pollForWork() {
+  def pollForWork(pos: Position) {
     scheduler.pollInterrupt() match {
       case Some(ir) =>
 	try {
@@ -184,7 +185,7 @@ self =>
 	} finally {
 	  activeLocks -= 1
 	}
-        pollForWork()
+        pollForWork(pos)
       case _ =>
     }
     
@@ -218,7 +219,7 @@ self =>
       logreplay("workitem", scheduler.nextWorkItem()) match {
         case Some(action) =>
           try {
-            debugLog("picked up work item: "+action)
+            debugLog("picked up work item at "+pos+": "+action)
             action()
             debugLog("done with work item: "+action)
           } finally {
@@ -268,53 +269,22 @@ self =>
   // ----------------- The Background Runner Thread -----------------------
 
   /** The current presentation compiler runner */
-  @volatile protected var compileRunner = newRunnerThread
-  compileRunner.start()
+  @volatile protected[interactive] var compileRunner = newRunnerThread()
 
-  private var threadId = 1
+  private var threadId = 0
 
   /** Create a new presentation compiler runner.
    */
-  def newRunnerThread: Thread = new Thread("Scala Presentation Compiler V"+threadId) {
-    override def run() {
-      debugLog("starting new runner thread")
-      try {
-        while (true) {
-          logreplay("wait for more work", { scheduler.waitForMoreWork(); true })
-          pollForWork()
-          debugLog("got more work")
-          while (outOfDate) {
-            try {
-              backgroundCompile()
-              outOfDate = false
-            } catch {
-              case FreshRunReq => 
-            }
-            log.flush()
-          }
-        }
-      } catch {
-        case ex @ ShutdownReq => 
-          debugLog("exiting presentation compiler")
-          log.close()
-        case ex =>
-          log.flush()
-          outOfDate = false
-          compileRunner = newRunnerThread
-          compileRunner.start()
-          ex match {
-            case FreshRunReq =>   // This shouldn't be reported
-            case _ : ValidateException => // This will have been reported elsewhere
-            case _ => ex.printStackTrace(); informIDE("Fatal Error: "+ex)
-          }
-      }
-    }
+  def newRunnerThread(): Thread = {
     threadId += 1
+    compileRunner = new PresentationCompilerThread(this, threadId)
+    compileRunner.start()
+    compileRunner
   }
 
   /** Compile all loaded source files in the order given by `allSources`.
    */ 
-  private def backgroundCompile() {
+  protected[interactive] def backgroundCompile() {
     informIDE("Starting new presentation compiler type checking pass")
     reporter.reset()
     // remove any files in first that are no longer maintained by presentation compiler (i.e. closed)
@@ -358,7 +328,7 @@ self =>
    */
   def typeCheck(unit: RichCompilationUnit) {
     debugLog("type checking: "+unit)
-    if (currentlyChecked == Some(unit) || unit.status > JustParsed) reset(unit)
+    //if (currentlyChecked == Some(unit) || unit.status > JustParsed) reset(unit) // not deeded for idempotent type checker phase
     if (unit.status == NotLoaded) parse(unit)
     currentlyChecked = Some(unit)
     currentTyperRun.typeCheck(unit)
@@ -411,9 +381,11 @@ self =>
     } catch {
       case CancelException =>
         ;
+/* Commented out. Typing should always cancel requests 
       case ex @ FreshRunReq =>
         scheduler.postWorkItem(() => respondGradually(response)(op))
         throw ex
+*/
       case ex =>
         response raise ex
         throw ex
@@ -458,7 +430,7 @@ self =>
       unit.targetPos = pos
       try {
         debugLog("starting targeted type check")
-        newTyperRun()
+        //newTyperRun()   // not deeded for idempotent type checker phase
         typeCheck(unit)
         println("tree not found at "+pos)
         EmptyTree
@@ -476,7 +448,7 @@ self =>
     val unit = unitOf(source)
     if (forceReload) reset(unit)
     if (unit.status <= JustParsed) {
-      newTyperRun()
+      //newTyperRun()   // not deeded for idempotent type checker phase
       typeCheck(unit)
     }
     unit.body
@@ -677,10 +649,10 @@ self =>
   class TyperRun extends Run {
     // units is always empty
 
-    /** canRedefine is used to detect double declarations in multiple source files.
+    /** canRedefine is used to detect double declarations of classes and objects
+     *  in multiple source files.
      *  Since the IDE rechecks units several times in the same run, these tests
      *  are disabled by always returning true here.
-     *  (I think we don't need that anymore)
      */
     override def canRedefine(sym: Symbol) = true
 
