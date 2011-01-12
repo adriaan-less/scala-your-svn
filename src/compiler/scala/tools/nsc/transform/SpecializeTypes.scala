@@ -327,6 +327,8 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     case PolyType(tparams, resTpe) =>
       specializedTypeVars(tparams map (_.info)) ++ specializedTypeVars(resTpe)
 
+    case NullaryMethodType(resTpe) => // since this method may be run at phase typer (before uncurry, where NMTs are eliminated)
+      specializedTypeVars(resTpe)
     case MethodType(argSyms, resTpe) =>
       specializedTypeVars(argSyms map (_.tpe)) ++ specializedTypeVars(resTpe)
 
