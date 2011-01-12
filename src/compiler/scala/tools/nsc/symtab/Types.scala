@@ -2098,8 +2098,7 @@ A type's typeSymbol should never be inspected directly.
     override def isHigherKinded = !typeParams.isEmpty
     
     override def safeToString: String =
-      (if (typeParams.isEmpty) "=> "
-       else (typeParams map (_.defString) mkString ("[", ",", "]")))+resultType
+      (typeParams map (_.defString) mkString ("[", ",", "]"))+ resultType
 
     override def cloneInfo(owner: Symbol) = {
       val tparams = cloneSymbols(typeParams, owner)
@@ -2749,19 +2748,27 @@ A type's typeSymbol should never be inspected directly.
     else tpe // it's okay to be forgiving here
 
   /** A creator for anonymous type functions, where the symbol for the type function still needs to be created 
+   * TODO_NMT:
+   *  - can we avoid this whole synthetic owner business? harden ASF instead to deal with orphan type params
+   *  - orthogonally: try to recycle the class symbol in the common case type C[X] = Class[X]  (where appliedType(this, dummyArgs) =:= appliedType(sym.info, dummyArgs))
    */
   def typeFunAnon(tps: List[Symbol], body: Type): Type = {
     // symbol that represents an anonymous type function
     // owner of its type params -- similar to value-level anonymous functions ANON_FUN_NAME
-    val outer = body.typeSymbol.owner.enclClass
-    val synthOwner = outer.newAliasType(freshAnonTpFunName).setFlag(SYNTHETIC).setInfo(NoType)
-    outer.info.decls.enter(synthOwner)
+    body.typeSymbolDirect.owner.ownersIterator find { sym => sym.lockOK && sym.isClass /*&& sym.isPublic ?*/ } map { outer =>
+      // println("picked "+ outer + " from "+ owner.ownerChain + " for "+ debugString(body) + " with "+ (tps map (_.ownerChain)))
+      val synthOwner = outer.newAliasType(freshAnonTpFunName).setFlag(SYNTHETIC).setInfo(NoType)
+      outer.info.decls.enter(synthOwner)
 
-    val tps1 = cloneSymbols(tps, synthOwner)
+      val tps1 = cloneSymbols(tps, synthOwner)
 
-    val tpfun = typeFun(tps1, body substSym (tps, tps1))
-    synthOwner.setInfo(tpfun)
-    tpfun
+      val tpfun = typeFun(tps1, body substSym (tps, tps1))
+      synthOwner.setInfo(tpfun)
+      tpfun
+    } getOrElse {
+      // println("danger! danger! typeFunAnon could not create a synthetic owner in "+ owner.ownerChain)
+      typeFun(tps, body)
+    }
   }
   
   /** A creator for a type functions, assuming the type parameters tps already have the right owner 
@@ -4275,16 +4282,16 @@ A type's typeSymbol should never be inspected directly.
             return isSameTypes(mt1.paramTypes, mt2.paramTypes) &&
               mt1.resultType =:= mt2.resultType &&
               mt1.isImplicit == mt2.isImplicit
-          case NullaryMethodType(restpe) =>
-            return mt1.params.isEmpty && 
-              mt1.resultType =:= restpe
+          // case NullaryMethodType(restpe) => // wasn't done for polytypes before
+          //   return mt1.params.isEmpty && 
+          //     mt1.resultType =:= restpe
           case _ =>
         }
       case NullaryMethodType(restpe1) =>
         tp2 match {
-          case mt2: MethodType =>
-            return mt2.params.isEmpty && 
-              restpe1 =:= mt2.resultType
+          // case mt2: MethodType => // wasn't done for polytypes before
+          //   return mt2.params.isEmpty && 
+          //     restpe1 =:= mt2.resultType
           case NullaryMethodType(restpe2) =>
             return restpe1 =:= restpe2
           case _ =>

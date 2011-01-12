@@ -1612,8 +1612,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         tp match {
           case PolyType(tparams, res) =>
             typeParamsString + infoString(res)
+          case NullaryMethodType(res) =>
+            infoString(res)
           case MethodType(params, res) =>
-           params.map(_.defString).mkString("(", ",", ")") + infoString(res)
+            params.map(_.defString).mkString("(", ",", ")") + infoString(res)
           case _ =>
             ": " + tp
         }

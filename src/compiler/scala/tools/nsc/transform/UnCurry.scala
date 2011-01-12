@@ -68,8 +68,6 @@ abstract class UnCurry extends InfoTransform with TypingTransformers with ast.Tr
           apply(MethodType(h.cloneSymbol.resetFlag(IMPLICIT) :: t, restpe))
         case NullaryMethodType(restpe) =>
           apply(MethodType(List(), restpe))
-        case PolyType(tparams, restpe) => // TODO: case needed? mapOver should do this (modulo binding??)
-          typeFun(tparams, apply(restpe))
         case TypeRef(pre, ByNameParamClass, List(arg)) =>
           apply(functionType(List(), arg))
         case TypeRef(pre, RepeatedParamClass, args) =>
@@ -617,10 +615,10 @@ abstract class UnCurry extends InfoTransform with TypingTransformers with ast.Tr
 
     def postTransform(tree: Tree): Tree = atPhase(phase.next) {
       def applyUnary(): Tree = {
-        def needsParens = tree.symbol.isMethod && (!tree.tpe.isInstanceOf[PolyType] || tree.tpe.typeParams.isEmpty)
+        def needsParens = tree.symbol.isMethod && !tree.tpe.isInstanceOf[PolyType]
         def repair = {
-          if (!tree.tpe.isInstanceOf[MethodType])
-            tree.tpe = MethodType(Nil, tree.tpe)
+          if (!tree.tpe.isInstanceOf[MethodType]) // i.e., it's a NullaryMethodType
+            tree.tpe = MethodType(Nil, tree.tpe.resultType) // TODO_NMT: I think thw tree.tpe was wrong before, since that would set the method type's resulttype to PolyType(Nil, restp) instead of restp
           
           atPos(tree.pos)(Apply(tree, Nil) setType tree.tpe.resultType)
         }
