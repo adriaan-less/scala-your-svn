@@ -568,6 +568,7 @@ trait Typers extends Modes {
       case ExistentialType(_, tpe1) => isNarrowable(tpe1)
       case AnnotatedType(_, tpe1, _) => isNarrowable(tpe1)
       case PolyType(_, tpe1) => isNarrowable(tpe1)
+      case NullaryMethodType(tpe1) => isNarrowable(tpe1) // TODO_NMT
       case _ => !phase.erasedTypes
     } 
 
@@ -583,7 +584,7 @@ trait Typers extends Modes {
         case Select(qual, _) => qual.tpe
         case _ => NoPrefix
       }
-      if (tree.tpe.isInstanceOf[MethodType] && pre.isStable && sym.tpe.params.isEmpty &&
+      if ((tree.tpe.isInstanceOf[MethodType] || tree.tpe.isInstanceOf[NullaryMethodType]) && pre.isStable && sym.tpe.params.isEmpty &&
           (isStableContext(tree, mode, pt) || sym.isModule))
         tree.setType(MethodType(List(), singleType(pre, sym)))
       else tree
@@ -852,6 +853,7 @@ trait Typers extends Modes {
           }
         } else if (inAllModes(mode, EXPRmode | FUNmode) && 
                    !tree.tpe.isInstanceOf[MethodType] && 
+                   !tree.tpe.isInstanceOf[NullaryMethodType] && // TODO_NMT: necessary?
                    !tree.tpe.isInstanceOf[OverloadedType] && 
                    applyPossible) {
           assert(!inHKMode(mode)) //@M

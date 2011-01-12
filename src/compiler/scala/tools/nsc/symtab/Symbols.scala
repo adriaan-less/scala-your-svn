@@ -517,6 +517,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         case ConstantType(_) => true
         case PolyType(_, ConstantType(_)) => true
         case MethodType(_, ConstantType(_)) => true
+        case NullaryMethodType(ConstantType(_)) => true
         case _ => false
       })
 
