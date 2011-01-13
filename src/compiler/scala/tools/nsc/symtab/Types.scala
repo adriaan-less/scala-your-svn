@@ -2755,7 +2755,7 @@ A type's typeSymbol should never be inspected directly.
    *  - can we avoid this whole synthetic owner business? harden ASF instead to deal with orphan type params
    *  - orthogonally: try to recycle the class symbol in the common case type C[X] = Class[X]  (where appliedType(this, dummyArgs) =:= appliedType(sym.info, dummyArgs))
    */
-  def typeFunAnon(tps: List[Symbol], body: Type): Type = {
+  def typeFunAnon(tps: List[Symbol], body: Type): Type = typeFun(tps, body) /*{ // TODO_NMT
     // symbol that represents an anonymous type function
     // owner of its type params -- similar to value-level anonymous functions ANON_FUN_NAME
     body.typeSymbolDirect.owner.ownersIterator find { sym => sym.lockOK && sym.isClass /*&& sym.isPublic ?*/ } map { outer =>
@@ -2772,7 +2772,7 @@ A type's typeSymbol should never be inspected directly.
       // println("danger! danger! typeFunAnon could not create a synthetic owner in "+ owner.ownerChain)
       typeFun(tps, body)
     }
-  }
+  }*/
   
   /** A creator for a type functions, assuming the type parameters tps already have the right owner 
    */
