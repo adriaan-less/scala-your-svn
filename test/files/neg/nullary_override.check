@@ -1,0 +1,21 @@
+nullary_override.scala:5: error: overriding method g in class Foo of type [T]=> Int;
+ method g has incompatible type
+class F3 extends Foo { override def g[T]() = 1} // error??
+                                    ^
+nullary_override.scala:7: error: overriding method g0 in class Foo of type [T]()Int;
+ method g0 has incompatible type
+class F7 extends Foo { override def g0[T] = 1} // error??
+                                    ^
+nullary_override.scala:10: error: method f overrides nothing
+class F1 extends Foo { override def f[T]() = 1} // error
+                                    ^
+nullary_override.scala:11: error: method g overrides nothing
+class F2 extends Foo { override def g() = 1} // error
+                                    ^
+nullary_override.scala:12: error: method f0 overrides nothing
+class F5 extends Foo { override def f0[T] = 1} // error
+                                    ^
+nullary_override.scala:13: error: method g0 overrides nothing
+class F6 extends Foo { override def g0 = 1} // error
+                                    ^
+6 errors found
