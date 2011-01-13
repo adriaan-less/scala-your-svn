@@ -2497,6 +2497,9 @@ A type's typeSymbol should never be inspected directly.
 
     override protected def rewrap(tp: Type) = AnnotatedType(annotations, tp, selfsym)
 
+    override def isTrivial: Boolean = isTrivial0
+    private lazy val isTrivial0 = underlying.isTrivial && (annotations forall (_.isTrivial))
+
     override def safeToString: String = {
       val attString =
         if (annotations.isEmpty)
@@ -3055,7 +3058,6 @@ A type's typeSymbol should never be inspected directly.
         if (result1 eq result) tp
         else NullaryMethodType(result1)
       case ConstantType(_) => tp
-      // case DeBruijnIndex(_, _) => tp
       case SuperType(thistp, supertp) =>
         val thistp1 = this(thistp)
         val supertp1 = this(supertp)
@@ -3294,13 +3296,13 @@ A type's typeSymbol should never be inspected directly.
 
     override def mapOver(tree: Tree, giveup: ()=>Nothing): Tree = {
       object annotationArgRewriter extends TypeMapTransformer {
-        /** Rewrite "this" trees as needed for asSeenFrom */
+        /** Rewrite `This` trees in annotation argument trees */
         def rewriteThis(tree: Tree): Tree =
           tree match {
             case This(_)
             if (tree.symbol isNonBottomSubClass clazz) &&
                (pre.widen.typeSymbol isNonBottomSubClass tree.symbol) =>
-              if (pre.isStable) {
+              if (pre.isStable) { // XXX why is this in this method? pull it out and guard the call `annotationArgRewriter.transform(tree)`?
                 val termSym =
                   pre.typeSymbol.owner.newValue(
                     pre.typeSymbol.pos,
