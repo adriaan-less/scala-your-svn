@@ -1131,7 +1131,7 @@ trait Infer {
       if (targs eq null) {
         if (!tree.tpe.isErroneous && !pt.isErroneous)
           error(tree.pos, "polymorphic expression cannot be instantiated to expected type" + 
-                foundReqMsg(PolyType(undetparams, skipImplicit(tree.tpe)), pt))
+                foundReqMsg(polyType(undetparams, skipImplicit(tree.tpe)), pt))
       } else {
         new TreeTypeSubstituter(undetparams, targs).traverse(tree)
       }
