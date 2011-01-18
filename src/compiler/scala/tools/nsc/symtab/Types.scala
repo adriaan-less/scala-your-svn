@@ -1990,6 +1990,7 @@ A type's typeSymbol should never be inspected directly.
 
     override def boundSyms = immutable.Set[Symbol](params ++ resultType.boundSyms: _*)
     
+    // AM to TR: #dropNonContraintAnnotations
     // this is needed for plugins to work correctly, only TypeConstraint annotations are supposed to be carried over
     // TODO: this should probably be handled in a more structured way in adapt -- remove this map in resultType and watch the continuations tests fail
     object dropNonContraintAnnotations extends TypeMap {
@@ -2042,7 +2043,11 @@ A type's typeSymbol should never be inspected directly.
   }
   
   case class NullaryMethodType(override val resultType: Type) extends Type {
-    override def isTrivial: Boolean = resultType.isTrivial
+    // AM to TR: #dropNonContraintAnnotations
+    // change isTrivial to the commented version and watch continuations-run/t3225.scala fail
+    // isTrivial implies asSeenFrom is bypassed, since it's supposed to be the identity map
+    // it's not really the identity due to dropNonContraintAnnotations
+    override def isTrivial: Boolean = false //resultType.isTrivial -- `false` to make continuations plugin work (so that asSeenFromMap drops non-constrain annotations even when type doesn't change otherwise)
     override def prefix: Type = resultType.prefix
     override def narrow: Type = resultType.narrow
     override def finalResultType: Type = resultType.finalResultType
@@ -2063,6 +2068,16 @@ A type's typeSymbol should never be inspected directly.
   object NullaryMethodType extends NullaryMethodTypeExtractor 
 
   /** A type function or the type of a polymorphic value (and thus of kind *).
+   *
+   * Before the introduction of NullaryMethodType, a polymorphic nullary method (e.g, def isInstanceOf[T]: Boolean) 
+   * used to be typed as PolyType(tps, restpe), and a monomorphic one as PolyType(Nil, restpe)
+   * This is now: PolyType(tps, NullaryMethodType(restpe)) and NullaryMethodType(restpe)
+   * by symmetry to MethodTypes: PolyType(tps, MethodType(params, restpe)) and MethodType(params, restpe)
+   *
+   * Thus, a PolyType(tps, TypeRef(...)) unambiguously indicates a type function (which results from eta-expanding a type constructor alias).
+   * Similarly, PolyType(tps, ClassInfoType(...)) is a type constructor.
+   * 
+   * A polytype is of kind * iff its resultType is a (nullary) method type.
    */
   case class PolyType(override val typeParams: List[Symbol], override val resultType: Type)
        extends Type {
