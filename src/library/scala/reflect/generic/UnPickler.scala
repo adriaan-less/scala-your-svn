@@ -346,9 +346,17 @@ abstract class UnPickler {
         case POLYtpe =>
           val restpe = readTypeRef()
           val typeParams = until(end, readSymbolRef)
-          if(typeParams nonEmpty)
-            PolyType(typeParams, restpe) // when reading old class files, could actually be a PolyType(typeParams, NullaryMethodType(restpe))
-            // unfortunately, there's no way to know... do we need a lenient transition period?
+          if(typeParams nonEmpty) {
+            // NMT_TRANSITION: old class files denoted a polymorphic nullary method as PolyType(tps, restpe), we now require PolyType(tps, NullaryMethodType(restpe))
+            // when a type of kind * is expected (forceProperType is true), we know restpe should be wrapped in a NullaryMethodType (if it wasn't suitably wrapped yet)
+            def transitionNMT(restpe: Type) = {
+              val resTpeCls = restpe.getClass.toString // what's uglier than isInstanceOf? right! -- isInstanceOf does not work since the concrete types are defined in the compiler (not in scope here)
+              if(forceProperType /*&& pickleformat < 2.9 */ && !(resTpeCls.endsWith("MethodType"))) { assert(!resTpeCls.contains("ClassInfoType"))
+                  NullaryMethodType(restpe) } 
+                else restpe
+            }
+            PolyType(typeParams, transitionNMT(restpe))
+          }
           else
             NullaryMethodType(restpe)
         case EXISTENTIALtpe =>
