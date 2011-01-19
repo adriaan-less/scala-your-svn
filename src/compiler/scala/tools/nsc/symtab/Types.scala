@@ -4270,12 +4270,16 @@ A type's typeSymbol should never be inspected directly.
             return isSameTypes(mt1.paramTypes, mt2.paramTypes) &&
               mt1.resultType =:= mt2.resultType &&
               mt1.isImplicit == mt2.isImplicit
-          // note: no case NullaryMethodType(restpe) => return mt1.params.isEmpty && mt1.resultType =:= restpe
+          // case NullaryMethodType(restpe) => // wasn't done for polytypes before
+          //   return mt1.params.isEmpty && 
+          //     mt1.resultType =:= restpe
           case _ =>
         }
       case NullaryMethodType(restpe1) =>
         tp2 match {
-          // note: no case mt2: MethodType => return mt2.params.isEmpty && restpe  =:= mt2.resultType
+          // case mt2: MethodType => // wasn't done for polytypes before
+          //   return mt2.params.isEmpty && 
+          //     restpe1 =:= mt2.resultType
           case NullaryMethodType(restpe2) =>
             return restpe1 =:= restpe2
           case _ =>
