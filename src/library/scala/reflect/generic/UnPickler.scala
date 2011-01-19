@@ -341,7 +341,11 @@ abstract class UnPickler {
         case POLYtpe =>
           val restpe = readTypeRef()
           val typeParams = until(end, readSymbolRef)
-          PolyType(typeParams, restpe)
+          if(typeParams nonEmpty)
+            PolyType(typeParams, restpe) // when reading old class files, could actually be a PolyType(typeParams, NullaryMethodType(restpe))
+            // unfortunately, there's no way to know... do we need a lenient transition period?
+          else
+            NullaryMethodType(restpe)
         case EXISTENTIALtpe =>
           val restpe = readTypeRef()
           ExistentialType(until(end, readSymbolRef), restpe)
