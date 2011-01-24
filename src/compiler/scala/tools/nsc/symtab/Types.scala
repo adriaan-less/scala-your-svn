@@ -3363,17 +3363,18 @@ A type's typeSymbol should never be inspected directly.
             else pre1.memberType(sym).resultType //todo: this should be rolled into existential abstraction
           }
         case TypeRef(prefix, sym, args) if (sym.isTypeParameter) =>
+          // walk the owner chain of `clazz` (the original argument to asSeenFrom) until we find the type param's owner (while rewriting pre as we crawl up the chain)
+          // once we're at the owner, extract the information that pre encodes about the type param,
+          // by minimally subsuming pre to the type instance of the class that owns the type param,
+          // the type we're looking for is the type instance's type argument at the position corresponding to the type parameter
           def toInstance(pre: Type, clazz: Symbol): Type =
-            if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) 
-            //@M! see test pos/tcpoly_return_overriding.scala why mapOver is necessary
+            if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) //@M! mapOver motivation: pos/tcpoly_return_overriding.scala
             else {
               def throwError = abort("" + tp + sym.locationString + " cannot be instantiated from " + pre.widen)
                                     
               def instParam(ps: List[Symbol], as: List[Type]): Type = 
                 if (ps.isEmpty) throwError
-                else if (sym eq ps.head)  
-                  // @M! don't just replace the whole thing, might be followed by type application
-                  appliedType(as.head, args mapConserve (this)) // @M: was as.head   
+                else if (sym eq ps.head) appliedType(as.head, args mapConserve (this))
                 else instParam(ps.tail, as.tail);
               val symclazz = sym.owner
               if (symclazz == clazz && !pre.isInstanceOf[TypeVar] && (pre.widen.typeSymbol isNonBottomSubClass symclazz)) {
