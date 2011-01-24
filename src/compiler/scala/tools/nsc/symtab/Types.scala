@@ -2755,11 +2755,13 @@ A type's typeSymbol should never be inspected directly.
 
   /** A creator for anonymous type functions, where the symbol for the type function still needs to be created 
    * TODO_NMT:
-   *  - can we avoid this whole synthetic owner business? harden ASF instead to deal with orphan type params
-   *  - orthogonally: try to recycle the class symbol in the common case type C[X] = Class[X]  (where appliedType(this, dummyArgs) =:= appliedType(sym.info, dummyArgs))
+   *  - recycle the class symbol in the common case type C[X] = Class[X]  (where appliedType(this, dummyArgs) =:= appliedType(sym.info, dummyArgs))
    */
-  def typeFunAnon(tps: List[Symbol], body: Type): Type = typeFun(tps, body)
-  
+  def typeFunAnon(tps: List[Symbol], body: Type): Type = {
+    val tps1 = cloneSymbols(tps, NoSymbol)
+    typeFun(tps1, body substSym (tps, tps1))
+  }
+
   /** A creator for a type functions, assuming the type parameters tps already have the right owner 
    */
   def typeFun(tps: List[Symbol], body: Type): Type = PolyType(tps, body)
