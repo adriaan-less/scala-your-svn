@@ -373,7 +373,6 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
     final def needsFlatClasses: Boolean = phase.flatClasses && rawowner != NoSymbol && !rawowner.isPackageClass
 
     // not printed as prefixes
-    final def isRootOrEmpty       = (this == EmptyPackageClass) || (this == RootClass)
     final def isPredefModule      = this == PredefModule
     final def isScalaPackage      = (this == ScalaPackage) || (isPackageObject && owner == ScalaPackageClass)
     final def isScalaPackageClass = skipPackageObject == ScalaPackageClass
@@ -386,7 +385,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *  unpleasantries like Predef.String, $iw.$iw.Foo and <empty>.Bippy.
      */
     final def printWithoutPrefix = !settings.debug.value && (
-      isScalaPackageClass || isPredefModule || isRootOrEmpty || isAnonOrRefinementClass || isInterpreterWrapper
+      isScalaPackageClass || isPredefModule || isEffectiveRoot || isAnonOrRefinementClass || isInterpreterWrapper
     )
     
     /** Is symbol a monomorphic type?
@@ -511,6 +510,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         case ConstantType(_) => true
         case PolyType(_, ConstantType(_)) => true
         case MethodType(_, ConstantType(_)) => true
+        case NullaryMethodType(ConstantType(_)) => true
         case _ => false
       })
 
@@ -947,11 +947,11 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      */
     def existentialBound: Type = 
       if (this.isClass) 
-         polyType(this.typeParams, TypeBounds(NothingClass.tpe, this.classBound))
+         polyType(this.typeParams, TypeBounds.upper(this.classBound))
       else if (this.isAbstractType) 
          this.info
       else if (this.isTerm) 
-         TypeBounds(NothingClass.tpe, intersectionType(List(this.tpe, SingletonClass.tpe)))
+         TypeBounds.upper(intersectionType(List(this.tpe, SingletonClass.tpe)))
       else 
         abort("unexpected alias type: "+this)
 
@@ -1383,7 +1383,7 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     final def allOverriddenSymbols: List[Symbol] =
       if (!owner.isClass) Nil
-      else owner.ancestors map overriddenSymbol filter (_ != NoSymbol)
+      else owner.thisSym.ancestors map overriddenSymbol filter (_ != NoSymbol)
 
     /** The symbol accessed by a super in the definition of this symbol when
      *  seen from class `base'. This symbol is always concrete.
@@ -1605,8 +1605,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         tp match {
           case PolyType(tparams, res) =>
             typeParamsString + infoString(res)
+          case NullaryMethodType(res) =>
+            infoString(res)
           case MethodType(params, res) =>
-           params.map(_.defString).mkString("(", ",", ")") + infoString(res)
+            params.map(_.defString).mkString("(", ",", ")") + infoString(res)
           case _ =>
             ": " + tp
         }

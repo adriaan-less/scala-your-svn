@@ -1,12 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
  
 package scala.tools.nsc
 package interpreter
 
-import jline.console.completer.ArgumentCompleter.{ ArgumentDelimiter, ArgumentList }
+import scala.tools.jline.console.completer.ArgumentCompleter.{ ArgumentDelimiter, ArgumentList }
 import util.returning
 
 /** One instance of a command buffer.

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -22,7 +22,7 @@ import scala.collection.mutable.{ ArrayBuilder, WrappedArray }
   * </p>
   */
 trait Manifest[T] extends ClassManifest[T] with Equals {
-  override def typeArguments: List[Manifest[_]] = List()
+  override def typeArguments: List[Manifest[_]] = Nil
 
   override def arrayManifest: Manifest[Array[T]] = 
     Manifest.classType[Array[T]](arrayClass[T](erasure))
@@ -31,9 +31,12 @@ trait Manifest[T] extends ClassManifest[T] with Equals {
     case _: Manifest[_]   => true
     case _                => false
   }
+  /** Note: testing for erasure here is important, as it is many times
+   *  faster than <:< and rules out most comparisons.
+   */
   override def equals(that: Any): Boolean = that match {
-    case m: Manifest[_] if m canEqual this  => (this <:< m) && (m <:< this)
-    case _                                  => false
+    case m: Manifest[_] => (m canEqual this) && (this.erasure == m.erasure) && (this <:< m) && (m <:< this)
+    case _              => false
   }
   override def hashCode = this.erasure.##  
 }

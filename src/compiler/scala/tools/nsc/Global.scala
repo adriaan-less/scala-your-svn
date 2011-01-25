@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -158,7 +158,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
   def logThrowable(t: Throwable): Unit = globalError(throwableAsString(t))
   def throwableAsString(t: Throwable): String =
     if (opt.richExes) Exceptional(t).force().context()
-    else util.stringFromWriter(t printStackTrace _)
+    else util.stackTraceString(t)
 
 // ------------ File interface -----------------------------------------
 
@@ -236,7 +236,7 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
 
     // XXX: short term, but I can't bear to add another option.
     // scalac -Dscala.timings will make this true.
-    def timings       = system.props contains "scala.timings"
+    def timings       = sys.props contains "scala.timings"
     
     def debug           = settings.debug.value
     def deprecation     = settings.deprecation.value
@@ -1149,10 +1149,18 @@ class Global(var settings: Settings, var reporter: Reporter) extends SymbolTable
       }
     })
   }
-
+  // In order to not outright break code which overrides onlyPresentation (like sbt 0.7.5.RC0)
+  // I restored and deprecated it.  That would be enough to avoid the compilation
+  // failure, but the override wouldn't accomplish anything.  So now forInteractive
+  // and forScaladoc default to onlyPresentation, which is the same as defaulting
+  // to false except in old code.  The downside is that this leaves us calling a
+  // deprecated method: but I see no simple way out, so I leave it for now.
   def forJVM           = opt.jvm
   def forMSIL          = opt.msil
-  def forInteractive   = false
-  def forScaladoc      = false
+  def forInteractive   = onlyPresentation
+  def forScaladoc      = onlyPresentation
   def createJavadoc    = false
+  
+  @deprecated("Use forInteractive or forScaladoc, depending on what you're after")
+  def onlyPresentation = false
 }

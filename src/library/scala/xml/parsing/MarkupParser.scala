@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -866,7 +866,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       new PublicID(pubID, sysID);
     } else {
       reportSyntaxError("PUBLIC or SYSTEM expected");
-      system.error("died parsing notationdecl")
+      sys.error("died parsing notationdecl")
     }
     xSpaceOpt
     xToken('>')

@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -10,6 +10,7 @@ package nest
 
 import java.io.{ File => JFile }
 import scala.tools.nsc.Settings
+import scala.tools.nsc.util.ClassPath
 import scala.tools.nsc.io._
 
 abstract class TestFile(kind: String) {  
@@ -47,3 +48,11 @@ case class ShootoutTestFile(file: JFile, fileManager: FileManager) extends TestF
 case class ScalapTestFile(file: JFile, fileManager: FileManager) extends TestFile("scalap") {
   override def setOutDirTo = file.parent
 }
+case class SpecializedTestFile(file: JFile, fileManager: FileManager) extends TestFile("specialized") {
+  override def defineSettings(settings: Settings, setOutDir: Boolean) = {
+    super.defineSettings(settings, setOutDir)
+    // add the instrumented library version to classpath
+    settings.classpath.value = ClassPath.join(PathSettings.srcSpecLib.toString, settings.classpath.value)
+  }
+}
+case class PresentationTestFile(file: JFile, fileManager: FileManager) extends TestFile("presentation")

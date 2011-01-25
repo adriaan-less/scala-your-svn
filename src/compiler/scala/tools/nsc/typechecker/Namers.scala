@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -27,7 +27,7 @@ trait Namers { self: Analyzer =>
       case TypeRef(pre, sym, args) 
       if (sym.isTypeSkolem && (tparams contains sym.deSkolemize)) =>
 //        println("DESKOLEMIZING "+sym+" in "+sym.owner)
-        mapOver(TypeRef(NoPrefix, sym.deSkolemize, args))
+        mapOver(typeRef(NoPrefix, sym.deSkolemize, args))
 /*
       case PolyType(tparams1, restpe) =>
         new DeSkolemizeMap(tparams1 ::: tparams).mapOver(tp)
@@ -173,10 +173,10 @@ trait Namers { self: Analyzer =>
       if (!(sym.isSourceMethod && sym.owner.isClass && !sym.owner.isPackageClass)) {
         var prev = scope.lookupEntry(sym.name)
         if ((prev ne null) && prev.owner == scope && conflict(sym, prev.sym)) {
-           doubleDefError(sym.pos, prev.sym)
-           sym setInfo ErrorType
-           scope unlink prev.sym // let them co-exist...
-           scope enter sym
+          doubleDefError(sym.pos, prev.sym)
+          sym setInfo ErrorType
+          scope unlink prev.sym // let them co-exist...
+          scope enter sym
         } else scope enter sym
       } else scope enter sym
     }
@@ -338,13 +338,32 @@ trait Namers { self: Analyzer =>
       } else setInfo(sym)(ltype)
     }
 
+    def enterIfNotThere(sym: Symbol) {
+      val scope = context.scope
+      var e = scope.lookupEntry(sym.name)
+      while ((e ne null) && (e.owner eq scope) && (e.sym ne sym)) e = e.tail
+      if (!((e ne null) && (e.owner eq scope))) context.scope.enter(sym)
+    }
+    
     def enterSym(tree: Tree): Context = {
       def finishWith(tparams: List[TypeDef]) { enterSymFinishWith(tree, tparams) }
       def finish = finishWith(Nil)
       def sym = tree.symbol
-      if (sym != NoSymbol)
+      if (sym != NoSymbol) {
+        if (forInteractive && sym != null && sym.owner.isTerm) {
+          // this logic is needed in case typer was interrupted half way through and then comes
+          // back to do the tree again. In that case the definitions that were already 
+          // attributed as well as any default parameters of such methods need to be 
+          // re-entered in the current scope.
+          enterIfNotThere(sym)
+          if (sym.isLazy) {
+            val acc = sym.lazyAccessor
+            if (acc != NoSymbol) enterIfNotThere(acc)
+          }
+          defaultParametersOfMethod(sym) foreach enterIfNotThere
+        }
         return this.context
-      
+      }
       try { 
         val owner = context.owner
         tree match {
@@ -559,7 +578,7 @@ trait Namers { self: Analyzer =>
     def getterTypeCompleter(vd: ValDef) = mkTypeCompleter(vd) { sym =>
       if (settings.debug.value) log("defining " + sym)
       val tp = typeSig(vd)
-      sym.setInfo(PolyType(List(), tp))
+      sym.setInfo(NullaryMethodType(tp))
       if (settings.debug.value) log("defined " + sym)
       validate(sym)
     }
@@ -771,6 +790,14 @@ trait Namers { self: Analyzer =>
         classAndNamerOfModule(module) = (cdef, templateNamer)
       }
 
+      if (opt.verbose) {
+        log(
+          "ClassInfoType(\n%s,\n%s,\n%s)".format(
+            "  " + (parents map (_.typeSymbol) mkString ", "),
+            if (global.opt.debug) decls.toList map (">> " + _) mkString("\n", "\n", "") else "  <decls>",
+            "  " + clazz)
+        )
+      }
       ClassInfoType(parents, decls, clazz)
     }
 
@@ -843,7 +870,7 @@ trait Namers { self: Analyzer =>
 
         polyType(
           tparamSyms, // deSkolemized symbols  -- TODO: check that their infos don't refer to method args?
-          if (vparamSymss.isEmpty) PolyType(List(), restpe) // nullary method type
+          if (vparamSymss.isEmpty) NullaryMethodType(restpe)
           // vparamss refer (if they do) to skolemized tparams
           else (vparamSymss :\ restpe) (makeMethodType))
       }
@@ -851,7 +878,7 @@ trait Namers { self: Analyzer =>
       var resultPt = if (tpt.isEmpty) WildcardType else typer.typedType(tpt).tpe
       val site = meth.owner.thisType
 
-      def overriddenSymbol = intersectionType(meth.owner.info.parents).member(meth.name).filter(sym => {
+      def overriddenSymbol = intersectionType(meth.owner.info.parents).nonPrivateMember(meth.name).filter(sym => {
         // luc: added .substSym from skolemized to deSkolemized
         // site.memberType(sym): PolyType(tparams, MethodType(..., ...)) ==> all references to tparams are deSkolemized
         // thisMethodType: tparams in PolyType are deSkolemized, the references in the MethodTypes are skolemized. ==> the two didn't match
@@ -888,7 +915,7 @@ trait Namers { self: Analyzer =>
             resultPt = resultPt.resultType
           }
           resultPt match {
-            case PolyType(List(), rtpe) => resultPt = rtpe
+            case NullaryMethodType(rtpe) => resultPt = rtpe
             case MethodType(List(), rtpe) => resultPt = rtpe
             case _ => 
           }
@@ -1036,6 +1063,13 @@ trait Namers { self: Analyzer =>
             if (!isConstr)
               meth.owner.resetFlag(INTERFACE) // there's a concrete member now
             val default = parentNamer.enterSyntheticSym(defaultTree)
+            if (forInteractive && default.owner.isTerm) {
+              // enter into map from method symbols to default arguments.
+              // if compiling the same local block several times (which can happen in interactive mode)
+              // we might otherwise not find the default symbol, because the second time it the
+              // method symbol will be re-entered in the scope but the default parameter will not.
+              defaultParametersOfMethod(meth) += default
+            }
           } else if (baseHasDefault) {
             // the parameter does not have a default itself, but the corresponding parameter
             // in the base class does.
@@ -1054,7 +1088,7 @@ trait Namers { self: Analyzer =>
       val tparamSyms = typer.reenterTypeParams(tparams) //@M make tparams available in scope (just for this abstypedef)
       val tp = typer.typedType(rhs).tpe match {
         case TypeBounds(lt, rt) if (lt.isError || rt.isError) =>
-          TypeBounds(NothingClass.tpe, AnyClass.tpe)
+          TypeBounds.empty
         case tp @ TypeBounds(lt, rt) if (tpsym hasFlag JAVA) =>
           TypeBounds(lt, objToAny(rt))
         case tp => 
@@ -1238,22 +1272,8 @@ trait Namers { self: Analyzer =>
         }
       result match {
         case PolyType(tparams @ (tp :: _), _) if tp.owner.isTerm =>
-            // ||
-            // Adriaan: The added condition below is quite a hack. It seems that HK type parameters is relying
-            // on a pass that forces all infos in the type to get everything right.
-            // The problem is that the same pass causes cyclic reference errors in
-            // test pos/cyclics.scala. It turned out that deSkolemize is run way more often than necessary,
-            // running it only when needed fixes the cyclic reference errors.
-            // But correcting deSkolemize broke HK types, because we don't do the traversal anymore.
-            // For the moment I made a special hack to do the traversal if we have HK type parameters.
-            // Maybe it's not a hack, then we need to document it better. But ideally, we should find
-            // a way to deal with HK types that's not dependent on accidental side
-            // effects like this.
-            // tparams.exists(!_.typeParams.isEmpty)) =>
           new DeSkolemizeMap(tparams) mapOver result
         case _ => 
-//          println("not skolemizing "+result+" in "+context.owner)
-//          new DeSkolemizeMap(List()) mapOver result
           result
       }
     }
@@ -1312,9 +1332,9 @@ trait Namers { self: Analyzer =>
       checkNoConflict(DEFERRED, PRIVATE)
       checkNoConflict(FINAL, SEALED)
       checkNoConflict(PRIVATE, PROTECTED)
-      checkNoConflict(PRIVATE, OVERRIDE)
-      /* checkNoConflict(PRIVATE, FINAL) // can't do this because FINAL also means compile-time constant */
-      checkNoConflict(ABSTRACT, FINAL)  // bug #1833
+      // checkNoConflict(PRIVATE, OVERRIDE) // this one leads to bad error messages like #4174, so catch in refchecks
+      // checkNoConflict(PRIVATE, FINAL)    // can't do this because FINAL also means compile-time constant
+      checkNoConflict(ABSTRACT, FINAL)
       checkNoConflict(DEFERRED, FINAL)
       
       // @PP: I added this as a sanity check because these flags are supposed to be
@@ -1364,7 +1384,7 @@ trait Namers { self: Analyzer =>
    * Finds the companion module of a class symbol. Calling .companionModule
    * does not work for classes defined inside methods.
    */
-  def companionModuleOf(clazz: Symbol, context: Context) =
+  def companionModuleOf(clazz: Symbol, context: Context): Symbol = {
     try {
       var res = clazz.companionModule
       if (res == NoSymbol)
@@ -1376,8 +1396,9 @@ trait Namers { self: Analyzer =>
         context.error(clazz.pos, e.getMessage)
         NoSymbol
     }
+  }
 
-  def companionClassOf(module: Symbol, context: Context) =
+  def companionClassOf(module: Symbol, context: Context): Symbol = {
     try {
       var res = module.companionClass
       if (res == NoSymbol)
@@ -1388,6 +1409,7 @@ trait Namers { self: Analyzer =>
         context.error(module.pos, e.getMessage)
         NoSymbol
     }
+  }
   
   def companionSymbolOf(sym: Symbol, context: Context) =
     if (sym.isTerm) companionClassOf(sym, context)

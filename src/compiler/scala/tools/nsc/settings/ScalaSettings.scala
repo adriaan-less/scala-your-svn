@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -46,8 +46,8 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val sourcedir     = StringSetting     ("-Xsourcedir", "directory", "(Requires -target:msil) Mirror source folder structure in output directory.", ".").dependsOn(target, "msil")
   val checkInit     = BooleanSetting    ("-Xcheckinit", "Wrap field accessors to throw an exception on uninitialized access.")
   val noassertions  = BooleanSetting    ("-Xdisable-assertions", "Generate no assertions or assumptions.")
-  val elidebelow    = IntSetting        ("-Xelide-below", "Generate calls to @elidable-marked methods only if method priority is greater than argument.",
-                                                elidable.ASSERTION, None, elidable.byName.get(_))
+  val elidebelow    = IntSetting        ("-Xelide-below", "Calls to @elidable methods are omitted if method priority is lower than argument",
+                                                elidable.MINIMUM, None, elidable.byName get _)
   val noForwarders  = BooleanSetting    ("-Xno-forwarders", "Do not generate static forwarders in mirror classes.")
   val future        = BooleanSetting    ("-Xfuture", "Turn on future language features.")
   val genPhaseGraph = StringSetting     ("-Xgenerate-phase-graph", "file", "Generate the phase graphs (outputs .dot files) to fileX.dot.", "")
@@ -108,7 +108,7 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val log           = PhasesSetting     ("-Ylog", "Log operations during")
   val Ylogcp        = BooleanSetting    ("-Ylog-classpath", "Output information about what classpath is being applied.")
   val Ynogenericsig = BooleanSetting    ("-Yno-generic-signatures", "Suppress generation of generic signatures for Java.")
-  val Yverifysigs   = BooleanSetting    ("-Yverify-generics", "Validated generated generic signatures.")
+  val Yverifysigs   = BooleanSetting    ("-Yverify-generics", "Output a message when an invalid generic signature is suppressed.")
   val noimports     = BooleanSetting    ("-Yno-imports", "Compile without any implicit imports.")
   // Not actually doing anything, so disabled.
   // val nopredefs     = BooleanSetting    ("-Yno-predefs", "Compile without any implicit predefined values.")
@@ -156,8 +156,8 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val YpresentationVerbose = BooleanSetting("-Ypresentation-verbose", "Print information about presentation compiler tasks.")
   val YpresentationDebug   = BooleanSetting("-Ypresentation-debug",  "Enable debugging output for the presentation compiler.")
   
-  val YpresentationLog     = StringSetting("-Ypresentation-log", "file", "Log presentation comnpiler events into file", "")
-  val YpresentationReplay  = StringSetting("-Ypresentation-replay", "file", "Replay presentation comnpiler events from file", "")
+  val YpresentationLog     = StringSetting("-Ypresentation-log", "file", "Log presentation compiler events into file", "")
+  val YpresentationReplay  = StringSetting("-Ypresentation-replay", "file", "Replay presentation compiler events from file", "")
   /**
    * "fsc-specific" settings.
    */

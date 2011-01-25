@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -97,7 +97,7 @@ abstract class TreeInfo {
   }
 
   def mayBeVarGetter(sym: Symbol) = sym.info match {
-    case PolyType(Nil, _)      => sym.owner.isClass && !sym.isStable
+    case NullaryMethodType(_)  => sym.owner.isClass && !sym.isStable
     case mt @ MethodType(_, _) => mt.isImplicit && sym.owner.isClass && !sym.isStable
     case _                     => false
   }

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -37,6 +37,15 @@ trait DocComments { self: SymbolTable =>
    */
   def docCommentPos(sym: Symbol): Position =
     getDocComment(sym) map (_.pos) getOrElse NoPosition
+    
+  /** A version which doesn't consider self types, as a temporary measure:
+   *  an infinite loop has broken out between superComment and cookedDocComment
+   *  since r23926.
+   */
+  private def allInheritedOverriddenSymbols(sym: Symbol): List[Symbol] = {
+    if (!sym.owner.isClass) Nil
+    else sym.owner.ancestors map (sym overriddenSymbol _) filter (_ != NoSymbol)
+  }
 
   /** The raw doc comment of symbol `sym`, minus @usecase and @define sections, augmented by
    *  missing sections of an inherited doc comment.
@@ -121,23 +130,15 @@ trait DocComments { self: SymbolTable =>
     (str /: wikiReplacements) { (str1, regexRepl) => regexRepl._1 replaceAllIn(str1, regexRepl._2) }
 
 
-  private def getDocComment(sym: Symbol): Option[DocComment] = docComments get sym match {
-    case None => mapFind(sym.allOverriddenSymbols)(docComments get)
-    case some => some
-  }
+  private def getDocComment(sym: Symbol): Option[DocComment] =
+    mapFind(sym :: allInheritedOverriddenSymbols(sym))(docComments get _)
 
   /** The cooked doc comment of an overridden symbol */
   protected def superComment(sym: Symbol): Option[String] =
-    sym.allOverriddenSymbols.view map { cookedDocComment(_) } find ("" !=)
+    allInheritedOverriddenSymbols(sym).iterator map (x => cookedDocComment(x)) find (_ != "")
 
-  private def mapFind[A, B](xs: Iterable[A])(f: A => Option[B]): Option[B] = {
-    var res: Option[B] = None
-    val it = xs.iterator
-    while (res.isEmpty && it.hasNext) {
-      res = f(it.next())
-    }
-    res
-  }
+  private def mapFind[A, B](xs: Iterable[A])(f: A => Option[B]): Option[B] =
+    xs collectFirst f.unlift
 
   private def isMovable(str: String, sec: (Int, Int)): Boolean =
     startsWithTag(str, sec, "@param") ||
@@ -347,7 +348,7 @@ trait DocComments { self: SymbolTable =>
 
       def select(site: Type, name: Name, orElse: => Type): Type = {
         val member = site.nonPrivateMember(name)
-        if (member.isTerm) SingleType(site, member)
+        if (member.isTerm) singleType(site, member)
         else if (member.isType) site.memberType(member)
         else orElse
       }
@@ -395,10 +396,10 @@ trait DocComments { self: SymbolTable =>
               else {
                 val alias1 = alias.cloneSymbol(definitions.RootClass)
                 alias1.name = repl.toTypeName
-                TypeRef(NoPrefix, alias1, List())
+                typeRef(NoPrefix, alias1, Nil)
               }
             case None =>
-              TypeRef(NoPrefix, alias, List())
+              typeRef(NoPrefix, alias, Nil)
           }
 
       def subst(sym: Symbol, from: List[Symbol], to: List[Type]): Type =
@@ -411,7 +412,7 @@ trait DocComments { self: SymbolTable =>
           case tp1 @ TypeRef(pre, sym, args) if (sym.name.length > 1 && sym.name(0) == '$') =>
             subst(sym, aliases, aliasExpansions) match {
               case TypeRef(pre1, sym1, _) =>
-                TypeRef(pre1, sym1, args)
+                typeRef(pre1, sym1, args)
               case _ =>
                 tp1
             }

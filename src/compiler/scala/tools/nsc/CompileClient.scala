@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -114,7 +114,7 @@ class StandardCompileClient {
   }
 
   def main(args: Array[String]): Unit =
-    system.exit(try main0(args) catch { case e: Exception => 1 })
+    sys.exit(try main0(args) catch { case e: Exception => 1 })
 }
 
 

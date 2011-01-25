@@ -1,6 +1,6 @@
 /*     ___ ____ ___   __   ___   ___
 **    / _// __// _ | / /  / _ | / _ \    Scala classfile decoder
-**  __\ \/ /__/ __ |/ /__/ __ |/ ___/    (c) 2003-2010, LAMP/EPFL
+**  __\ \/ /__/ __ |/ /__/ __ |/ ___/    (c) 2003-2011, LAMP/EPFL
 ** /____/\___/_/ |_/____/_/ |_/_/        http://scala-lang.org/
 **
 */
@@ -253,7 +253,8 @@ object ScalaSigEntryParsers extends RulesWithState with MemoisableRules {
       18 -~ classSymRef ~ (typeRef*) ^~^ RefinedType,
       19 -~ symbolRef ~ (typeRef*) ^~^ ClassInfoType,
       20 -~ typeRef ~ (symbolRef*) ^~^ MethodType,
-      21 -~ typeRef ~ (refTo(typeSymbol)*) ^~^ PolyType,
+      21 -~ typeRef ~ (refTo(typeSymbol)+) ^~^ PolyType, // TODO: make future safe for past by doing the same transformation as in the full unpickler in case we're reading pre-2.9 classfiles
+      21 -~ typeRef ^~^ NullaryMethodType,
       22 -~ typeRef ~ (symbolRef*) ^~^ ImplicitMethodType,
       42 -~ typeRef ~ (attribTreeRef*) ^~^ AnnotatedType,
       51 -~ typeRef ~ symbolRef ~ (attribTreeRef*) ^~~^ AnnotatedWithSelfType,

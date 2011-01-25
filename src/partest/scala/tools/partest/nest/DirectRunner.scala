@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -13,7 +13,7 @@ import java.util.StringTokenizer
 import scala.util.Properties.{ setProp }
 import scala.tools.util.Signallable
 import scala.tools.nsc.util.ScalaClassLoader
-import scala.tools.nsc.io.Directory
+import scala.tools.nsc.io.Path
 import scala.collection.{ mutable, immutable }
 import scala.actors.Actor._
 import scala.actors.TIMEOUT
@@ -35,33 +35,9 @@ trait DirectRunner {
       setProp("actors.corePoolSize", "16")
     }
   }
-  
-  /** These things, formerly inside runTestsForFiles, have been promoted
-   *  into private fields so I can inspect them via signal when partest shows
-   *  signs of dementia.
-   */
-  private var workers: List[Worker]       = Nil
-  private var logsToDelete: List[LogFile] = Nil
-  private var outdirsToDelete: List[File] = Nil
-  private val results                     = new mutable.HashMap[String, Int]()
-  private def addResults(kvs: Traversable[(String, Int)]) = synchronized { results ++= kvs }
-  private val signallable = Signallable("HUP", "Make partest dump its state.")(dumpState())
-  
-  def dumpState() {
-    println("Dumping partest internals.")
-    println("results.size = " + results.size + ", " + workers.size + " workers.")
-    workers foreach println
-    workers filter (_.currentFileElapsed > 60) foreach { w =>
-      val elapsed = w.currentFileElapsed
-      println("A worker requires euthanasia! At least so it seems, since I received")
-      println("a signal and this one has been in la-la land for " + elapsed + " seconds.")
-      println("Attempting to force test timeout.")
-      w.forceTimeout()
-    }
-  }
 
   def runTestsForFiles(_kindFiles: List[File], kind: String): immutable.Map[String, Int] = {
-    /** NO DUPLICATES, or partest will blow the count and hang forever. **/
+    /** NO DUPLICATES, or partest will blow the count and hang forever. */
     val kindFiles = _kindFiles.distinct
     val groupSize = (kindFiles.length / numActors) + 1
 
@@ -73,36 +49,21 @@ trait DirectRunner {
     )
     Output.init
     
-    this.workers = kindFiles.grouped(groupSize).toList map { toTest =>
+    val workers = kindFiles.grouped(groupSize).toList map { toTest =>
       val worker = new Worker(fileManager, TestRunParams(scalaCheckParentClassLoader))
       worker.start()
       worker ! RunTests(kind, toTest)
       worker
     }
-
-    workers foreach { w =>
+    
+    workers map { w =>
       receiveWithin(3600 * 1000) {
-        case Results(res, logs, outdirs) =>
-          logsToDelete ++= (logs filter (_.toDelete))
-          outdirsToDelete ++= outdirs
-          addResults(res)
+        case Results(testResults) => testResults
         case TIMEOUT =>
           // add at least one failure
           NestUI.verbose("worker timed out; adding failed test")
-          addResults(Seq(("worker timed out; adding failed test" -> 2)))
+          Map("worker timed out; adding failed test" -> 2)
       }
-    }
-    
-    if (isPartestDebug)
-      fileManager.showTestTimings()
-    else {
-      for (x <- logsToDelete ++ outdirsToDelete) {
-        NestUI.verbose("deleting "+x)
-        Directory(x).deleteRecursively()
-      }
-    }
-    
-    results.toMap
+    } reduceLeft (_ ++ _)
   }
-
 }

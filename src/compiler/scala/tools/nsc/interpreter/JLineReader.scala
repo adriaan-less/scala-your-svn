@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Stepan Koltsov
  */
 
@@ -7,22 +7,14 @@ package scala.tools.nsc
 package interpreter
 
 import java.io.File
-import jline.console.ConsoleReader
-import jline.console.completer._
-import jline.console.history.{ History => JHistory }
+import scala.tools.jline.console.ConsoleReader
+import scala.tools.jline.console.completer._
 
 /** Reads from the console using JLine */
 class JLineReader(interpreter: Interpreter) extends InteractiveReader {
   def this() = this(null)
   
-  override lazy val history    = {
-    val h = History()
-    system addShutdownHook {
-      repldbg("Flushing history")
-      h.flush()
-    }
-    Some(h)
-  }
+  override lazy val history    = Some(History())
   override lazy val completion = Option(interpreter) map (x => new Completion(x))
   override def reset()         = consoleReader.getTerminal().reset()
   override def init()          = consoleReader.getTerminal().init()

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -463,7 +463,7 @@ trait Contexts { self: Analyzer =>
     }
 
     def pushTypeBounds(sym: Symbol) {
-      savedTypeBounds = (sym, sym.info) :: savedTypeBounds
+      savedTypeBounds ::= ((sym, sym.info))
     }
 
     def restoreTypeBounds(tp: Type): Type = {
@@ -471,7 +471,7 @@ trait Contexts { self: Analyzer =>
       for ((sym, info) <- savedTypeBounds) {
         if (settings.debug.value) log("resetting " + sym + " to " + info);
         sym.info match {
-          case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) => 
+          case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) =>
             current = current.instantiateTypeParams(List(sym), List(lo))
 //@M TODO: when higher-kinded types are inferred, probably need a case PolyType(_, TypeBounds(...)) if ... =>            
           case _ =>
