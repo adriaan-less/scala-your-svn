@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -16,7 +16,7 @@ abstract class Unknown extends Value {
   
   val dataType: datatype.Unknown;
   
-  def sqlString = system.error("An 'ANY' value cannot be represented.");
+  def sqlString = sys.error("An 'ANY' value cannot be represented.");
   
 }
 

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -70,8 +70,14 @@ import Interpreter._
  * @author Lex Spoon
  */
 class Interpreter(val settings: Settings, out: PrintWriter) {
-  repl =>
+  repl =>  
   
+  /** whether to print out result lines */
+  private[nsc] var printResults: Boolean = true
+  
+  /** whether to print errors */
+  private[nsc] var totalSilence: Boolean = false
+
   private val RESULT_OBJECT_PREFIX = "RequestResult$"
 
   def println(x: Any) = {
@@ -89,6 +95,9 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
   /** reporter */
   object reporter extends ConsoleReporter(settings, null, out) {
     override def printMessage(msg: String) {
+      if (totalSilence)
+        return
+        
       out println (
         if (truncationOK) clean(msg)
         else cleanNoTruncate(msg)
@@ -156,7 +165,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
     else null
   }
 
-  import compiler.{ Traverser, CompilationUnit, Symbol, Name, TermName, TypeName, Type, TypeRef, PolyType }
+  import compiler.{ Traverser, CompilationUnit, Symbol, Name, TermName, TypeName, Type, TypeRef, NullaryMethodType }
   import compiler.{ 
     Tree, TermTree, ValOrDefDef, ValDef, DefDef, Assign, ClassDef,
     ModuleDef, Ident, BackQuotedIdent, Select, TypeDef, Import, MemberDef, DocDef,
@@ -170,9 +179,6 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
   import compiler.definitions
   import definitions.{ EmptyPackage, getMember }
 
-  /** whether to print out result lines */
-  private[nsc] var printResults: Boolean = true
-
   /** Temporarily be quiet */
   def beQuietDuring[T](operation: => T): T = {    
     val wasPrinting = printResults    
@@ -180,6 +186,12 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
       printResults = false
       operation
     }
+  }
+  def beSilentDuring[T](operation: => T): T = {
+    val saved = totalSilence
+    totalSilence = true
+    try operation
+    finally totalSilence = saved
   }
 
   /** whether to bind the lastException variable */
@@ -527,6 +539,14 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
       if (reporter.hasErrors)   Some(Nil)  // the result did not parse, so stop
       else if (justNeedsMore)   None
       else                      Some(trees)
+    }
+  }
+  def isParseable(line: String): Boolean = {
+    beSilentDuring {
+      parse(line) match {
+        case Some(xs) => xs.nonEmpty
+        case _        => false
+      }
     }
   }
 
@@ -1008,7 +1028,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
       def toType(name: Name): T = {
         // the types are all =>T; remove the =>
         val tp1 = afterTyper(resObjSym.info.nonPrivateDecl(name).tpe match {
-          case PolyType(Nil, tp)  => tp
+          case NullaryMethodType(tp)  => tp
           case tp                 => tp
         })
         // normalize non-public types so we don't see protected aliases like Self
@@ -1041,7 +1061,7 @@ class Interpreter(val settings: Settings, out: PrintWriter) {
     }
     private def bindUnexceptionally(t: Throwable) = {
       quietBind("lastException", classOf[Throwable], t)
-      stringFromWriter(t printStackTrace _)
+      stackTraceString(t)
     }
 
     /** load and run the code using reflection */
@@ -1367,7 +1387,7 @@ object Interpreter {
     intLoop.createInterpreter
     intLoop.in = InteractiveReader.createDefault(intLoop.interpreter)
     
-    // rebind exit so people don't accidentally call system.exit by way of predef
+    // rebind exit so people don't accidentally call sys.exit by way of predef
     intLoop.interpreter.beQuietDuring {
       intLoop.interpreter.interpret("""def exit = println("Type :quit to resume program execution.")""")
       for (p <- args) {

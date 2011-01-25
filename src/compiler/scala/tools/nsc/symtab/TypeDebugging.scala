@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -14,7 +14,7 @@ trait TypeDebugging {
   // @M toString that is safe during debugging (does not normalize, ...)
   object TypeDebugStrings {
     object str {
-      def brackets(xs: List[_]): String        = xs.mkString("[", ", ", "]")
+      def brackets(xs: List[_]): String        = if (xs.isEmpty) "" else xs.mkString("[", ", ", "]")
       def tparams(tparams: List[Type]): String = brackets(tparams map debug)
       def parents(ps: List[Type]): String      = (ps map debug).mkString(" with ")
       def refine(defs: Scope): String          = defs.toList.mkString("{", " ;\n ", "}")      

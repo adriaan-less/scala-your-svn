@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -8,7 +8,8 @@ package typechecker
 
 import symtab.Flags._
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ListBuffer, WeakHashMap}
+import scala.collection.immutable.Set
 
 /**
  *  @author Lukas Rytz
@@ -18,6 +19,10 @@ trait NamesDefaults { self: Analyzer =>
 
   import global._
   import definitions._
+
+  val defaultParametersOfMethod = new WeakHashMap[Symbol, Set[Symbol]] {
+    override def default(key: Symbol) = Set()
+  }
 
   case class NamedApplyInfo(qual: Option[Tree], targs: List[Tree],
                             vargss: List[List[Tree]], blockTyper: Typer)
@@ -29,7 +34,6 @@ trait NamesDefaults { self: Analyzer =>
   }
   def isNamed(arg: Tree) = nameOf(arg).isDefined
 
-  
   /** @param pos maps indicies from old to new */ 
   def reorderArgs[T: ClassManifest](args: List[T], pos: Int => Int): List[T] = {
     val res = new Array[T](args.length)
@@ -365,34 +369,23 @@ trait NamesDefaults { self: Analyzer =>
     if (givenArgs.length < params.length) {
       val (missing, positional) = missingParams(givenArgs, params)
       if (missing forall (_.hasDefaultFlag)) {
-        val defaultArgs = missing map (p => {
-          var default1 = qual match {
-            case Some(q) => gen.mkAttributedSelect(q.duplicate, defaultGetter(p, context))
-            case None =>    
-              val dgetter = defaultGetter(p, context)
-              if (dgetter == NoSymbol) {
-                println("no getter for "+p+" in "+p.owner)
-                println(p.owner.paramss)
-                var ctx = context
-                while (ctx.owner != p.owner.owner) {
-                  println("inner scope: "+ctx.scope+ctx.scope.hashCode+" "+ctx.owner)
-                  ctx = ctx.outer
-                }
-                while (ctx.owner == p.owner.owner) {
-                  println("this scope: "+ctx.scope+ctx.scope.hashCode+" "+ctx.owner)
-                  ctx = ctx.outer
-                }
-              }
-              gen.mkAttributedRef(dgetter)
-              
-          }
-          default1 = if (targs.isEmpty) default1
-                     else TypeApply(default1, targs.map(_.duplicate))
-          val default2 = (default1 /: previousArgss)((tree, args) =>
-            Apply(tree, args.map(_.duplicate)))
-          atPos(pos) {
-            if (positional) default2
-            else AssignOrNamedArg(Ident(p.name), default2)
+        val defaultArgs = missing flatMap (p => {
+          val defGetter = defaultGetter(p, context)
+          if (defGetter == NoSymbol) None // prevent crash in erroneous trees, #3649
+          else {
+            var default1 = qual match {
+              case Some(q) => gen.mkAttributedSelect(q.duplicate, defGetter)
+              case None    => gen.mkAttributedRef(defGetter)
+
+            }
+            default1 = if (targs.isEmpty) default1
+                       else TypeApply(default1, targs.map(_.duplicate))
+            val default2 = (default1 /: previousArgss)((tree, args) =>
+              Apply(tree, args.map(_.duplicate)))
+            Some(atPos(pos) {
+              if (positional) default2
+              else AssignOrNamedArg(Ident(p.name), default2)
+            })
           }
         })
         (givenArgs ::: defaultArgs, Nil)

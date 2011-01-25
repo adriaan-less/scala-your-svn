@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -45,7 +45,7 @@ object Scheduler extends DelegatingScheduler {
     if (sched.isInstanceOf[ForkJoinScheduler]) {
       sched.asInstanceOf[ForkJoinScheduler].snapshot()
     } else
-      system.error("scheduler does not implement snapshot")
+      sys.error("scheduler does not implement snapshot")
   }
 
   /* Only <code>ForkJoinScheduler</code> implements this method.
@@ -55,7 +55,7 @@ object Scheduler extends DelegatingScheduler {
     if (sched.isInstanceOf[ForkJoinScheduler]) {
       sched.asInstanceOf[ForkJoinScheduler].restart()
     } else
-      system.error("scheduler does not implement restart")
+      sys.error("scheduler does not implement restart")
   }
 
 }

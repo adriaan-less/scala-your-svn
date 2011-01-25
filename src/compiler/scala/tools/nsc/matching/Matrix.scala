@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * Author: Paul Phillips
  */
 
@@ -125,7 +125,8 @@ trait Matrix extends MatrixAdditions {
     private val _syntheticSyms = mutable.HashSet[Symbol]()
     def clearSyntheticSyms() = {
       _syntheticSyms foreach (_ resetFlag (NO_EXHAUSTIVE|MUTABLE))
-      log("Cleared NO_EXHAUSTIVE/MUTABLE on " + _syntheticSyms.size + " synthetic symbols.")
+      if (settings.debug.value)
+        log("Cleared NO_EXHAUSTIVE/MUTABLE on " + _syntheticSyms.size + " synthetic symbols.")
       _syntheticSyms.clear()
     }
     def recordSyntheticSym(sym: Symbol): Symbol = {

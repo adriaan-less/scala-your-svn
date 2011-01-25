@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyrights 2005-2010 LAMP/EPFL
+ * Copyrights 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
@@ -31,9 +31,6 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
     //private val symbolStaticFields = new HashMap[String, (Symbol, Tree, Tree)]
 
     private var localTyper: analyzer.Typer = null
-
-    private lazy val serialVersionUIDAnnotation =
-      AnnotationInfo(SerialVersionUIDAttr.tpe, List(Literal(Constant(0))), List())
 
     private object MethodDispatchType extends scala.Enumeration {
       val NO_CACHE, MONO_CACHE, POLY_CACHE = Value
@@ -598,6 +595,16 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
         val ntree = typedWithPos(symapp.pos)(REF(staticFieldSym))
         
         super.transform(ntree)
+
+      // This transform replaces Array(Predef.wrapArray(Array(...)), <manifest>)
+      // with just Array(...)
+      case Apply(appMeth, List(Apply(wrapRefArrayMeth, List(array)), _)) 
+      if (wrapRefArrayMeth.symbol == Predef_wrapRefArray &&
+          appMeth.symbol == ArrayModule_overloadedApply.suchThat {
+            _.tpe.resultType.dealias.typeSymbol == ObjectClass 
+          }) =>
+        super.transform(array)
+
       case _ =>
         super.transform(tree)
     }

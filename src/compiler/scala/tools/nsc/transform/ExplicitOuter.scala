@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
@@ -450,7 +450,7 @@ abstract class ExplicitOuter extends InfoTransform
           if (sym.isClassConstructor) {
             rhs match {
               case Literal(_) =>
-                system.error("unexpected case") //todo: remove
+                sys.error("unexpected case") //todo: remove
               case _ =>
                 val clazz = sym.owner
                 val vparamss1 =

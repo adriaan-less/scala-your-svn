@@ -153,7 +153,7 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
     changes foreach (_.deleteAll())
     otherTest() 
     def errorCount() = compiler.ask(() => reporter.ERROR.count)
-    println("\nhalf test round: "+errorCount())
+//    println("\nhalf test round: "+errorCount())
     changes.view.reverse foreach (_.insertAll())
     otherTest()
     println("done test round: "+errorCount())
@@ -199,6 +199,6 @@ object Tester {
     println("filenames = "+filenames)
     val files = filenames.toArray map (str => new BatchSourceFile(AbstractFile.getFile(str)): SourceFile)
     new Tester(args(0).toInt, files, settings).run()
-    system.exit(0)
+    sys.exit(0)
   }
 } 

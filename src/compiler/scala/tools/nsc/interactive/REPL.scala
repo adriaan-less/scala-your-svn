@@ -56,7 +56,7 @@ object REPL {
 
   def main(args: Array[String]) {
     process(args)
-    system.exit(if (reporter.hasErrors) 1 else 0)
+    sys.exit(if (reporter.hasErrors) 1 else 0)
   }
 
   def loop(action: (String) => Unit) {
@@ -124,7 +124,8 @@ object REPL {
         case List("complete", file, off1) =>
           doComplete(makePos(file, off1, off1))
         case List("quit") =>
-          system.exit(1)
+          comp.askShutdown()
+          sys.exit(1)
         case _ =>
           println("unrecongized command")
       }

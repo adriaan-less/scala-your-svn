@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
@@ -86,12 +86,12 @@ trait SyntheticMethods extends ast.TreeDSL {
     import CODE._
 
     def productPrefixMethod: Tree = typer.typed {
-      val method = syntheticMethod(nme.productPrefix, 0, sym => PolyType(Nil, StringClass.tpe))
+      val method = syntheticMethod(nme.productPrefix, 0, sym => NullaryMethodType(StringClass.tpe))
       DEF(method) === LIT(clazz.name.decode)
     }
 
     def productArityMethod(nargs: Int): Tree = {
-      val method = syntheticMethod(nme.productArity, 0, sym => PolyType(Nil, IntClass.tpe))
+      val method = syntheticMethod(nme.productArity, 0, sym => NullaryMethodType(IntClass.tpe))
       typer typed { DEF(method) === LIT(nargs) }
     }
 

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -22,6 +22,9 @@ trait StdNames extends reflect.generic.StdNames with NameManglers {
     final val Long: NameType    = "Long"
     final val Short: NameType   = "Short"
     final val Unit: NameType    = "Unit"
+    
+    final val ScalaValueNames: scala.List[NameType] =
+      scala.List(Byte, Char, Short, Int, Long, Float, Double, Boolean, Unit)
     
     // types whose companions we utilize
     final val Array: NameType  = "Array"
@@ -192,6 +195,7 @@ trait StdNames extends reflect.generic.StdNames with NameManglers {
     val head: NameType             = "head"
     val identity: NameType         = "identity"
     val inlinedEquals: NameType    = "inlinedEquals"
+    val invokeDynamic: NameType    = "invokeDynamic"
     val isArray: NameType          = "isArray"
     val isDefinedAt: NameType      = "isDefinedAt"
     val isEmpty: NameType          = "isEmpty"
@@ -235,6 +239,7 @@ trait StdNames extends reflect.generic.StdNames with NameManglers {
     val view_ : NameType           = "view"
     val wait_ : NameType           = "wait"
     val withFilter: NameType       = "withFilter"
+    val wrapRefArray: NameType     = "wrapRefArray"
     val zip: NameType              = "zip"
 
     // unencoded operators
@@ -328,10 +333,16 @@ trait StdNames extends reflect.generic.StdNames with NameManglers {
     def bitmapName(n: Int): TermName = bitmapName(n, "")
 
     /** The name of bitmaps for initialized transient lazy vals. */
-    def bitmapNameForTransitive(n: Int): TermName = bitmapName(n, "trans$")
+    def bitmapNameForTransient(n: Int): TermName = bitmapName(n, "trans$")
 
     /** The name of bitmaps for initialized private lazy vals. */
     def bitmapNameForPrivate(n: Int): TermName = bitmapName(n, "priv$")
+
+    /** The name of bitmaps for checkinit values */
+    def bitmapNameForCheckinit(n: Int): TermName = bitmapName(n, "init$")
+   
+    /** The name of bitmaps for checkinit values that have transient flag*/
+    def bitmapNameForCheckinitTransient(n: Int): TermName = bitmapName(n, "inittrans$")
     
     /** Base strings from which synthetic names are derived. */
     val BITMAP_PREFIX               = "bitmap$"
