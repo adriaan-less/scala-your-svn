@@ -2457,7 +2457,7 @@ A type's typeSymbol should never be inspected directly.
     override def normalize: Type =
       if  (constr.instValid) constr.inst
       else if (isHigherKinded) {  // get here when checking higher-order subtyping of the typevar by itself (TODO: check whether this ever happens?)
-        typeFun(params, applyArgs(params map (_.typeConstructor)))
+        typeFunAnon(params, applyArgs(params map (_.typeConstructor)))
       } else {
         super.normalize
       }
@@ -2758,7 +2758,8 @@ A type's typeSymbol should never be inspected directly.
    *  - recycle the class symbol in the common case type C[X] = Class[X]  (where appliedType(this, dummyArgs) =:= appliedType(sym.info, dummyArgs))
    */
   def typeFunAnon(tps: List[Symbol], body: Type): Type = {
-    val tps1 = cloneSymbols(tps, NoSymbol)
+    val tps1 = cloneSymbols(tps)
+    tps foreach {p => p.setFlag(SYNTHETIC)} // #2741
     typeFun(tps1, body substSym (tps, tps1))
   }
 
@@ -3364,7 +3365,7 @@ A type's typeSymbol should never be inspected directly.
             else if (pre1.isStable) singleType(pre1, sym) 
             else pre1.memberType(sym).resultType //todo: this should be rolled into existential abstraction
           }
-        case TypeRef(prefix, sym, args) if (sym.isTypeParameter) =>
+        case TypeRef(prefix, sym, args) if (sym.isTypeParameter && !sym.hasFlag(SYNTHETIC)) => // #2741
           // walk the owner chain of `clazz` (the original argument to asSeenFrom) until we find the type param's owner (while rewriting pre as we crawl up the chain)
           // once we're at the owner, extract the information that pre encodes about the type param,
           // by minimally subsuming pre to the type instance of the class that owns the type param,
