@@ -723,6 +723,7 @@ trait Typers extends Modes {
           // -- are we sure we want to expand aliases this early?
           // -- what caused this change in behaviour??
         val tparams1 = cloneSymbols(tparams)
+        tparams1 foreach {_.resetFlag(SYNTHETIC)}
         val tree1 = if (tree.isType) tree 
                     else TypeApply(tree, tparams1 map (tparam => 
                       TypeTree(tparam.tpeHK) setPos tree.pos.focus)) setPos tree.pos //@M/tcpolyinfer: changed tparam.tpe to tparam.tpeHK
@@ -3121,6 +3122,7 @@ trait Typers extends Modes {
           checkClassType(tpt0, false, true)
           if (tpt0.hasSymbol && !tpt0.symbol.typeParams.isEmpty) {
             context.undetparams = cloneSymbols(tpt0.symbol.typeParams)
+            context.undetparams foreach (_.resetFlag(SYNTHETIC))
             TypeTree().setOriginal(tpt0)
                       .setType(appliedType(tpt0.tpe, context.undetparams map (_.tpe)))
           } else tpt0

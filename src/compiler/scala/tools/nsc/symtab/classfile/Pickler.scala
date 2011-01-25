@@ -74,8 +74,9 @@ abstract class Pickler extends SubComponent {
      *  Question: Should this be done for refinement class symbols as well?
      */
     private def localizedOwner(sym: Symbol) = 
-      if (isLocal(sym) && !isRootSym(sym) && !isLocal(sym.owner)) root 
-      else sym.owner
+      if (isLocal(sym) && !isRootSym(sym) && !isLocal(sym.owner)) {
+        if(sym.isTypeParameter) NoSymbol else root
+      } else sym.owner
 
     /** Is root in symbol.owner*, or should it be treated as a local symbol
      *  anyway? This is the case if symbol is a refinement class,

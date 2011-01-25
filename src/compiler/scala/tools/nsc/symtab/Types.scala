@@ -1801,7 +1801,10 @@ A type's typeSymbol should never be inspected directly.
     // @M: initialize (by sym.info call) needed (see test/files/pos/ticket0137.scala)
     @inline private def etaExpand: Type = {
       val tpars = sym.info.typeParams // must go through sym.info for typeParams to initialise symbol
-      typeFunAnon(tpars, typeRef(pre, sym, tpars map (_.tpeHK))) // todo: also beta-reduce?
+      if(sym.isAliasType)
+        typeFunAnon(tpars, typeRef(pre, sym, tpars map (_.tpeHK))) // todo: also beta-reduce?
+      else
+        typeFun(tpars, typeRef(pre, sym, tpars map (_.tpeHK)))
     }
 
     override def dealias: Type = 
@@ -3365,13 +3368,16 @@ A type's typeSymbol should never be inspected directly.
             else if (pre1.isStable) singleType(pre1, sym) 
             else pre1.memberType(sym).resultType //todo: this should be rolled into existential abstraction
           }
-        case TypeRef(prefix, sym, args) if (sym.isTypeParameter && !sym.hasFlag(SYNTHETIC)) => // #2741
+        case TypeRef(prefix, sym, args) if  sym.isTypeParameter =>
           // walk the owner chain of `clazz` (the original argument to asSeenFrom) until we find the type param's owner (while rewriting pre as we crawl up the chain)
           // once we're at the owner, extract the information that pre encodes about the type param,
           // by minimally subsuming pre to the type instance of the class that owns the type param,
           // the type we're looking for is the type instance's type argument at the position corresponding to the type parameter
           def toInstance(pre: Type, clazz: Symbol): Type =
-            if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass) mapOver(tp) //@M! mapOver motivation: pos/tcpoly_return_overriding.scala
+            if ((pre eq NoType) || (pre eq NoPrefix) || !clazz.isClass || sym.hasFlag(SYNTHETIC)) {
+              if(sym.hasFlag(SYNTHETIC)) println("skipping: "+ (pre, clazz, sym))
+              mapOver(tp) //@M! mapOver motivation: pos/tcpoly_return_overriding.scala, SYNTHETIC: #2741
+            }
             else {
               def throwError = abort("" + tp + sym.locationString + " cannot be instantiated from " + pre.widen)
                                     
@@ -4472,7 +4478,6 @@ A type's typeSymbol should never be inspected directly.
           } else { // normalized higher-kinded type
             //@M for an example of why we need to generate fresh symbols, see neg/tcpoly_ticket2101.scala
             val tpsFresh = cloneSymbols(tparams1)
-
             (tparams1 corresponds tparams2)((p1, p2) =>
               p2.info.substSym(tparams2, tpsFresh) <:< p1.info.substSym(tparams1, tpsFresh)) &&
             res1.substSym(tparams1, tpsFresh) <:< res2.substSym(tparams2, tpsFresh)
