@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -28,4 +28,19 @@ trait SeqLike[A, +This <: SeqLike[A, This] with Seq[A]]
    *  @throws   IndexOutofBoundsException if the index is not valid.
    */
   def update(idx: Int, elem: A)
+  
+  /** Applies a transformation function to all values contained in this sequence.
+   *  The transformation function produces new values from existing elements.
+   * 
+   * @param f  the transformation to apply
+   * @return   the sequence itself.
+   */
+  def transform(f: A => A): this.type = {
+    var i = 0
+    iterator foreach { el =>
+      update(i, f(el))
+      i += 1
+    }
+    this
+  }
 }

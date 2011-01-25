@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -55,3 +55,4 @@ case class SpecializedTestFile(file: JFile, fileManager: FileManager) extends Te
     settings.classpath.value = ClassPath.join(PathSettings.srcSpecLib.toString, settings.classpath.value)
   }
 }
+case class PresentationTestFile(file: JFile, fileManager: FileManager) extends TestFile("presentation")

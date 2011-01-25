@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -15,7 +15,7 @@ import RunnerUtils._
 import scala.tools.nsc.Properties.{ versionMsg, setProp }
 import scala.tools.nsc.util.CommandLineParser
 import scala.tools.nsc.io
-import io.{ Path, Process }
+import io.{ Path }
 
 class ConsoleRunner extends DirectRunner {
   import PathSettings.{ srcDir, testRoot }
@@ -36,7 +36,8 @@ class ConsoleRunner extends DirectRunner {
       TestSet("script", pathFilter, "Testing script tests"),
       TestSet("scalacheck", x => pathFilter(x) || x.isDirectory, "Testing ScalaCheck tests"),
       TestSet("scalap", _.isDirectory, "Run scalap decompiler tests"),
-      TestSet("specialized", pathFilter, "Testing specialized tests")
+      TestSet("specialized", pathFilter, "Testing specialized tests"),
+      TestSet("presentation", _.isDirectory, "Testing presentation compiler tests.")
     )
   }
 
@@ -57,7 +58,7 @@ class ConsoleRunner extends DirectRunner {
   
   private val unaryArgs = List(
     "--pack", "--all", "--verbose", "--show-diff", "--show-log",
-    "--failed", "--update-check", "--version", "--ansi", "--debug"
+    "--failed", "--update-check", "--version", "--ansi", "--debug", "--help"
   ) ::: testSetArgs
   
   private val binaryArgs = List(
@@ -71,6 +72,7 @@ class ConsoleRunner extends DirectRunner {
     /** Early return on no args, version, or invalid args */
     if (argstr == "") return NestUI.usage()
     if (parsed isSet "--version") return printVersion
+    if (parsed isSet "--help") return NestUI.usage()
     if (args exists (x => !denotesTestPath(x))) {
       val invalid = (args filterNot denotesTestPath).head
       NestUI.failure("Invalid argument '%s'\n" format invalid)

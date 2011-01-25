@@ -17,13 +17,13 @@ class PresentationCompilerThread(var compiler: Global, threadId: Int) extends Th
       while (true) {
         compiler.log.logreplay("wait for more work", { compiler.scheduler.waitForMoreWork(); true })
         compiler.pollForWork(compiler.NoPosition)
-        compiler.debugLog("got more work")
         while (compiler.outOfDate) {
           try {
             compiler.backgroundCompile()
             compiler.outOfDate = false
           } catch {
-            case FreshRunReq => 
+            case FreshRunReq =>
+              compiler.debugLog("fresh run req caught, starting new pass")
           }
           compiler.log.flush()
         }
@@ -41,8 +41,10 @@ class PresentationCompilerThread(var compiler: Global, threadId: Int) extends Th
         compiler.newRunnerThread()
         
         ex match {
-          case FreshRunReq =>   // This shouldn't be reported
+          case FreshRunReq =>   
+            compiler.debugLog("fresh run req caught outside presentation compiler loop; ignored") // This shouldn't be reported
           case _ : Global#ValidateException => // This will have been reported elsewhere
+            compiler.debugLog("validate exception caught outside presentation compiler loop; ignored") 
           case _ => ex.printStackTrace(); compiler.informIDE("Fatal Error: "+ex)
         }
         

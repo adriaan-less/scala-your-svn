@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -219,13 +219,8 @@ self =>
     else
       throw new NumberFormatException("For input string: \"null\"")
 
-  /* !!! causes crash?
-  def toArray: Array[Char] = {
-    val result = new Array[Char](length)
-    toString.getChars(0, length, result, 0)
-    result
-  }
-  */
+  override def toArray[B >: Char : ClassManifest]: Array[B] =
+    toString.toCharArray.asInstanceOf[Array[B]]
 
   private def unwrapArg(arg: Any): AnyRef = arg match {
     case x: ScalaNumber => x.underlying

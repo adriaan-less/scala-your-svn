@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -366,7 +366,7 @@ trait Implicits {
              // println("  "*context.openImplicits.length+"typed implicit "+info+" for "+pt) //@MDEBUG
              typedImplicit0(info, ptChecked)
            } catch {
-             case DivergentImplicit => 
+             case ex: DivergentImplicit => 
                // println("DivergentImplicit for pt:"+ pt +", open implicits:"+context.openImplicits) //@MDEBUG
                if (context.openImplicits.tail.isEmpty) {
                  if (!(pt.isErroneous))
@@ -911,8 +911,8 @@ trait Implicits {
           case SearchFailure if sym == OptManifestClass => wrapResult(gen.mkAttributedRef(NoManifest))
           case result                                   => result
         }
-      case TypeRef(_, sym, _) if sym.isAbstractType =>
-        implicitManifestOrOfExpectedType(pt.bounds.lo)
+      case tp@TypeRef(_, sym, _) if sym.isAbstractType =>
+        implicitManifestOrOfExpectedType(tp.bounds.lo) // #3977: use tp (==pt.dealias), not pt (if pt is a type alias, pt.bounds.lo == pt)
       case _ =>
         searchImplicit(implicitsOfExpectedType, false)
         // shouldn't we pass `pt` to `implicitsOfExpectedType`, or is the recursive case
@@ -959,7 +959,7 @@ trait Implicits {
 
     def allImplicits: List[SearchResult] = {
       def search(iss: Infoss, isLocal: Boolean) = applicableInfos(iss, isLocal).values
-      search(context.implicitss, true) ++ search(implicitsOfExpectedType, false) toList
+      (search(context.implicitss, true) ++ search(implicitsOfExpectedType, false)).toList.filter(_.tree ne EmptyTree)
     }
   }
 
@@ -1005,5 +1005,6 @@ trait Implicits {
     }
   }
 
-  private val DivergentImplicit = new Exception()
+  private class DivergentImplicit extends Exception()
+  private def DivergentImplicit = new DivergentImplicit
 }

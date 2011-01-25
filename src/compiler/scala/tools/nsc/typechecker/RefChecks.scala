@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -376,7 +376,7 @@ abstract class RefChecks extends InfoTransform {
             //  overrideError("may not override parameterized type");
             // @M: substSym
 
-            if (!(self.memberType(member).substSym(member.typeParams, other.typeParams) =:= self.memberType(other))) // (1.6)
+            if( !(sameLength(member.typeParams, other.typeParams) && (self.memberType(member).substSym(member.typeParams, other.typeParams) =:= self.memberType(other))) ) // (1.6)
               overrideTypeError();
           } else if (other.isAbstractType) {
             //if (!member.typeParams.isEmpty) // (1.7)  @MAT

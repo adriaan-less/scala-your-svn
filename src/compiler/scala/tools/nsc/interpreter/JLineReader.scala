@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Stepan Koltsov
  */
 
@@ -7,8 +7,8 @@ package scala.tools.nsc
 package interpreter
 
 import java.io.File
-import jline.console.ConsoleReader
-import jline.console.completer._
+import scala.tools.jline.console.ConsoleReader
+import scala.tools.jline.console.completer._
 
 /** Reads from the console using JLine */
 class JLineReader(interpreter: Interpreter) extends InteractiveReader {

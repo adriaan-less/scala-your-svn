@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
 
@@ -7,8 +7,8 @@
 package scala.tools.nsc
 package interpreter
 
-import jline._
-import jline.console.completer._
+import scala.tools.jline._
+import scala.tools.jline.console.completer._
 import java.util.{ List => JList }
 import util.returning
 
@@ -19,6 +19,9 @@ object Completion {
     && !(code == ".")
     && !(code startsWith "./")
     && !(code startsWith "..")
+  )
+  def looksLikePath(code: String) = (code != null) && (code.length >= 2) && (
+    Set("/", "\\", "./", "../", "~/") exists (code startsWith _)
   )
   
   object Forwarder {
@@ -348,7 +351,9 @@ class Completion(val repl: Interpreter) extends CompletionOutput {
         else tryCompletion(Parsed.dotted(buf drop 1, cursor), lastResultFor)
 
       def regularCompletion = tryCompletion(mkDotted, topLevelFor)
-      def fileCompletion    = tryCompletion(mkUndelimited, FileCompletion completionsFor _.buffer)
+      def fileCompletion    = 
+        if (!looksLikePath(buf)) None
+        else tryCompletion(mkUndelimited, FileCompletion completionsFor _.buffer)
       
       /** This is the kickoff point for all manner of theoretically possible compiler
        *  unhappiness - fault may be here or elsewhere, but we don't want to crash the

@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -14,6 +14,7 @@ import java.io.{File, FilenameFilter, IOException, StringWriter,
 import java.net.URI
 import scala.tools.nsc.io.{ Path, Directory, File => SFile }
 import scala.collection.mutable.HashMap
+import sys.process._
 
 trait FileManager {  
   /**
@@ -96,7 +97,7 @@ trait FileManager {
     }
   }
 
-  def mapFile(file: File, suffix: String, dir: File, replace: String => String) {
+  def mapFile(file: File, replace: String => String) {
     val f = SFile(file)
     
     f.printlnAll(f.lines.toList map replace: _*)

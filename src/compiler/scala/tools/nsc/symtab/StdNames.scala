@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -22,6 +22,9 @@ trait StdNames extends reflect.generic.StdNames with NameManglers {
     final val Long: NameType    = "Long"
     final val Short: NameType   = "Short"
     final val Unit: NameType    = "Unit"
+    
+    final val ScalaValueNames: scala.List[NameType] =
+      scala.List(Byte, Char, Short, Int, Long, Float, Double, Boolean, Unit)
     
     // types whose companions we utilize
     final val Array: NameType  = "Array"
