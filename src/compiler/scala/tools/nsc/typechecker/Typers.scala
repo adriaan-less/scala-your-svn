@@ -708,6 +708,8 @@ trait Typers extends Modes {
       case TypeRef(_, ByNameParamClass, List(arg))
       if ((mode & EXPRmode) != 0)   => // (2)
         adapt(tree setType arg, mode, pt, original)
+      case tp if isRepeatedParamType(tp) && ((mode & EXPRmode) != 0) => // (XXX)
+        adapt(tree setType uncurry.xformRepeatedParamType(tp), mode, pt, original)
       case tr @ TypeRef(_, sym, _) 
       if sym.isAliasType && tr.normalize.isInstanceOf[ExistentialType] &&
         ((mode & (EXPRmode | LHSmode)) == EXPRmode) =>

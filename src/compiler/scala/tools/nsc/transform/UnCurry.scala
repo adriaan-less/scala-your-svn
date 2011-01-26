@@ -49,12 +49,28 @@ abstract class UnCurry extends InfoTransform with TypingTransformers with ast.Tr
 // uncurry and uncurryType expand type aliases
   private def expandAlias(tp: Type): Type = if (!tp.isHigherKinded) tp.normalize else tp
 
-  private def isUnboundedGeneric(tp: Type) = tp match {
-    case t @ TypeRef(_, sym, _) => sym.isAbstractType && !(t <:< AnyRefClass.tpe) 
-    case _ => false
+  trait XformRepeatedParamType {
+    def mapOver(tp: Type): Type
+    def apply(tp: Type): Type = {
+      tp match {
+        case TypeRef(pre, RepeatedParamClass, args) =>
+          apply(appliedType(SeqClass.typeConstructor, args))
+        case TypeRef(pre, JavaRepeatedParamClass, args) =>
+          apply(arrayType(
+            if (isUnboundedGeneric(args.head)) ObjectClass.tpe else args.head))
+        case _ =>
+          mapOver(tp)
+      }
+    }
+    private def isUnboundedGeneric(tp: Type) = tp match {
+      case t @ TypeRef(_, sym, _) => sym.isAbstractType && !(t <:< AnyRefClass.tpe) 
+      case _ => false
+    }
   }
-  
+  object xformRepeatedParamType extends TypeMap with XformRepeatedParamType
+
   private val uncurry: TypeMap = new TypeMap {
+    object xformRepeatedParamTypeOnce extends XformRepeatedParamType {def mapOver(tp: Type) = tp}
     def apply(tp0: Type): Type = {
       // tp0.typeSymbolDirect.initialize
       val tp = expandAlias(tp0)
@@ -70,13 +86,8 @@ abstract class UnCurry extends InfoTransform with TypingTransformers with ast.Tr
           apply(MethodType(List(), restpe))
         case TypeRef(pre, ByNameParamClass, List(arg)) =>
           apply(functionType(List(), arg))
-        case TypeRef(pre, RepeatedParamClass, args) =>
-          apply(appliedType(SeqClass.typeConstructor, args))
-        case TypeRef(pre, JavaRepeatedParamClass, args) =>
-          apply(arrayType(
-            if (isUnboundedGeneric(args.head)) ObjectClass.tpe else args.head))
         case _ =>
-          expandAlias(mapOver(tp))
+          expandAlias(mapOver(xformRepeatedParamTypeOnce(tp)))
       }
     }
   }
