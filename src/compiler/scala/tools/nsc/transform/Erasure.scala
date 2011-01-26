@@ -436,20 +436,10 @@ abstract class Erasure extends AddInterfaces with typechecker.Analyzer with ast.
     }
 
   val deconstMap = new TypeMap {
-   def apply(tp: Type): Type = tp match {
-     case PolyType(_, _) => mapOver(tp)
-     case MethodType(_, _) => mapOver(tp) // nullarymethod was eliminated during uncurry
-     case _ => tp.deconst
-   }
-  }
-
-  /** The symbol which is called by a bridge;
-   *  @pre phase > erasure
-   */
-  def bridgedSym(bridge: Symbol) = 
-    bridge.owner.info.nonPrivateDecl(bridge.name) suchThat { sym => 
-      !sym.isBridge && matchesType(sym.tpe, bridge.tpe, true) &&
-      (sym.tpe.resultType <:< bridge.tpe.resultType)
+    def apply(tp: Type): Type = tp match {
+      case PolyType(_, _) => mapOver(tp)
+      case MethodType(_, _) => mapOver(tp) // nullarymethod was eliminated during uncurry
+      case _ => tp.deconst
     }
   }
 
