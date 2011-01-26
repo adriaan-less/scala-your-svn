@@ -49,8 +49,7 @@ abstract class UnCurry extends InfoTransform with TypingTransformers with ast.Tr
 // uncurry and uncurryType expand type aliases
   private def expandAlias(tp: Type): Type = if (!tp.isHigherKinded) tp.normalize else tp
 
-  trait XformRepeatedParamType {
-    def mapOver(tp: Type): Type
+  trait XformRepeatedParamType extends TypeMap {
     def apply(tp: Type): Type = {
       tp match {
         case TypeRef(pre, RepeatedParamClass, args) =>
@@ -67,10 +66,10 @@ abstract class UnCurry extends InfoTransform with TypingTransformers with ast.Tr
       case _ => false
     }
   }
-  object xformRepeatedParamType extends TypeMap with XformRepeatedParamType
+  object xformRepeatedParamType extends XformRepeatedParamType
 
   private val uncurry: TypeMap = new TypeMap {
-    object xformRepeatedParamTypeOnce extends XformRepeatedParamType {def mapOver(tp: Type) = tp}
+    object xformRepeatedParamTypeOnce extends XformRepeatedParamType {override def mapOver(tp: Type) = tp}
     def apply(tp0: Type): Type = {
       // tp0.typeSymbolDirect.initialize
       val tp = expandAlias(tp0)
