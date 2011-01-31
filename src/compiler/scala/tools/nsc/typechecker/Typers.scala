@@ -708,7 +708,7 @@ trait Typers extends Modes {
       case TypeRef(_, ByNameParamClass, List(arg))
       if ((mode & EXPRmode) != 0)   => // (2)
         adapt(tree setType arg, mode, pt, original)
-      case tp if isRepeatedParamType(tp) && ((mode & EXPRmode) != 0) => // (XXX)
+      case tp@TypeRef(pre, sym, List(a)) if (sym == RepeatedParamClass || sym == JavaRepeatedParamClass) && ((mode & EXPRmode) != 0) => // (XXX) don't use the isRepeatedParamType test as it normalizes
         adapt(tree setType uncurry.xformRepeatedParamType(tp), mode, pt, original)
       case tr @ TypeRef(_, sym, _) 
       if sym.isAliasType && tr.normalize.isInstanceOf[ExistentialType] &&
