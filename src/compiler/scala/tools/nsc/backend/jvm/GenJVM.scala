@@ -12,7 +12,9 @@ import java.nio.ByteBuffer
 import scala.collection.{ mutable, immutable }
 import mutable.{ ListBuffer, LinkedHashSet }
 import scala.reflect.generic.{ PickleFormat, PickleBuffer }
-import scala.tools.nsc.io.AbstractFile
+import scala.tools.reflect.SigParser
+import scala.tools.nsc.io.{ AbstractFile, Path }
+import scala.tools.nsc.util.ScalaClassLoader
 import scala.tools.nsc.symtab._
 import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 
@@ -46,7 +48,6 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
   /** JVM code generation phase
    */
   class JvmPhase(prev: Phase) extends ICodePhase(prev) {
-
     def name = phaseName
     override def erasedTypes = true
 
@@ -136,7 +137,19 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
         innerClassBuffer += sym
       
       super.javaName(sym)
-    }    
+    }
+    
+    protected def emitJavap(bytes: Array[Byte], javapFile: io.File) {
+      import scala.tools.util.Javap
+      val pw = javapFile.printWriter()
+      try {
+        val javap = new Javap(ScalaClassLoader.getSystemLoader(), pw) {
+          override def findBytes(path: String): Array[Byte] = bytes
+        }
+        javap(Seq("-verbose", "dummy")) foreach (_.show())
+      }
+      finally pw.close()
+    }
 
     /** Write a class to disk, adding the Scala signature (pickled type
      *  information) and inner classes.
@@ -151,6 +164,14 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
       jclass writeTo outstream
       outstream.close()
       informProgress("wrote " + outfile)
+      
+      if (!settings.Ygenjavap.isDefault) {
+        val segments  = jclass.getName().split("[./]")
+        val javapFile = segments.foldLeft(Path(settings.Ygenjavap.value))(_ / _) changeExtension "javap" toFile
+
+        javapFile.parent.createDirectory()
+        emitJavap(outfile.toByteArray, javapFile)
+      }
     }
 
     /** Returns the ScalaSignature annotation if it must be added to this class,
@@ -290,7 +311,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
     private def addEnclosingMethodAttribute(jclass: JClass, clazz: Symbol) {
       val sym = clazz.originalEnclosingMethod
       if (sym.isMethod) {
-        log("enclosing method for %s is %s (%s)".format(clazz, sym, sym.enclClass))
+        log("enclosing method for %s is %s (in %s)".format(clazz, sym, sym.enclClass))
         jclass addAttribute fjbgContext.JEnclosingMethodAttribute(
           jclass,
           javaName(sym.enclClass),
@@ -298,16 +319,22 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
           javaType(sym)
         )
       } else if (clazz.isAnonymousClass) {
-        val enclClass = clazz.rawowner
-        assert(enclClass.isClass)
+        val enclClass = clazz.rawowner        
+        assert(enclClass.isClass, "" + enclClass)
         val sym = enclClass.primaryConstructor
-        log("enclosing method for %s is %s (%s)".format(clazz, sym, enclClass))
-        jclass addAttribute fjbgContext.JEnclosingMethodAttribute(
-          jclass,
-          javaName(enclClass),
-          javaName(sym),
-          JMethodType.ARGLESS_VOID_FUNCTION
-        )
+        if (sym == NoSymbol)
+          log("Ran out of room looking for an enclosing method for %s: no constructor here.".format(
+            enclClass, clazz)
+          )
+        else {
+          log("enclosing method for %s is %s (in %s)".format(clazz, sym, enclClass))
+          jclass addAttribute fjbgContext.JEnclosingMethodAttribute(
+            jclass,
+            javaName(enclClass),
+            javaName(sym),
+            javaType(sym).asInstanceOf[JMethodType]
+          )
+        }
       }
     }
 
@@ -513,10 +540,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
     }
 
     /** Run the signature parser to catch bogus signatures.
-     *  XXX But we should not be generating bogus signatures!
-     *  The ticket is #4067.
      */
-    import scala.tools.reflect.SigParser
     def isValidSignature(sym: Symbol, sig: String) = (
       if (sym.isMethod) SigParser verifyMethod sig
       else if (sym.isTerm) SigParser verifyType sig
@@ -558,14 +582,12 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
             buf putShort index
             addAttribute(jmember, tpnme.SignatureATTR, buf)
           }
-          else {
-            val msg = "!! Suppressing invalid generic sig for %s in %s: %s".format(
-              sym, sym.owner.skipPackageObject.fullName, sig
-            )
-
-            if (settings.Yverifysigs.value) Console.println(msg)
-            else log(msg)
-          }
+          else clasz.cunit.warning(sym.pos, 
+            """|compiler bug: created invalid generic signature for %s in %s
+               |signature: %s
+               |if this is reproducible, please report bug at http://lampsvn.epfl.ch/trac/scala
+            """.trim.stripMargin.format(sym, sym.owner.skipPackageObject.fullName, sig)
+          )
         }
       }
     }
@@ -1266,7 +1288,9 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
           case CHECK_CAST(tpe) =>
             tpe match {
               case REFERENCE(cls) =>
-                jcode emitCHECKCAST new JObjectType(javaName(cls))
+                // No need to checkcast for Objects
+                if (cls != ObjectClass)
+                  jcode emitCHECKCAST new JObjectType(javaName(cls))
               case ARRAY(elem) =>
                 jcode emitCHECKCAST new JArrayType(javaType(elem))
               case _ =>

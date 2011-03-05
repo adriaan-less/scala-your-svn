@@ -49,7 +49,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       tpnme.Float   -> FLOAT_TAG,
       tpnme.Double  -> DOUBLE_TAG,
       tpnme.Boolean -> BOOL_TAG,
-      tpnme.Unit    -> VOID_TAG
+      tpnme.Unit    -> VOID_TAG,
+      tpnme.Object  -> TVAR_TAG
     )
     
     private def classesMap[T](f: Name => T) = symbolsMap(ScalaValueClassesNoUnit, f)
@@ -58,7 +59,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     
     private def boxedName(name: Name) = sn.Boxed(name.toTypeName)
     
-    lazy val abbrvTag         = symbolsMap(ScalaValueClasses, nameToTag)
+    lazy val abbrvTag         = symbolsMap(ObjectClass :: ScalaValueClasses, nameToTag)
     lazy val numericWeight    = symbolsMapFilt(ScalaValueClasses, nameToWeight.keySet, nameToWeight)
     lazy val boxedModule      = classesMap(x => getModule(boxedName(x)))
     lazy val boxedClass       = classesMap(x => getClass(boxedName(x)))
@@ -175,6 +176,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     lazy val AnyClass             = newClass(ScalaPackageClass, tpnme.Any, Nil) setFlag (ABSTRACT)
     lazy val AnyRefClass          = newAlias(ScalaPackageClass, tpnme.AnyRef, ObjectClass.typeConstructor)
     lazy val ObjectClass          = getClass(sn.Object)
+    lazy val AnyCompanionClass    = getClass("scala.AnyCompanion") setFlag (SEALED | ABSTRACT | TRAIT)
     lazy val AnyValCompanionClass = getClass("scala.AnyValCompanion") setFlag (SEALED | ABSTRACT | TRAIT)
 
     // bottom types
@@ -229,6 +231,7 @@ trait Definitions extends reflect.generic.StandardDefinitions {
     // fundamental modules
     lazy val PredefModule: Symbol = getModule("scala.Predef")
     lazy val PredefModuleClass = PredefModule.tpe.typeSymbol
+      def Predef_AnyRef = getMember(PredefModule, "AnyRef") // used by the specialization annotation
       def Predef_classOf = getMember(PredefModule, nme.classOf)
       def Predef_error    = getMember(PredefModule, nme.error)
       def Predef_identity = getMember(PredefModule, nme.identity)
@@ -236,8 +239,8 @@ trait Definitions extends reflect.generic.StandardDefinitions {
       def Predef_wrapRefArray = getMember(PredefModule, nme.wrapRefArray)
     lazy val ConsoleModule: Symbol = getModule("scala.Console")
     lazy val ScalaRunTimeModule: Symbol = getModule("scala.runtime.ScalaRunTime")
-    lazy val SymbolModule: Symbol = getModule("scala.Symbol") 
-      lazy val Symbol_apply = getMember(SymbolModule, nme.apply)
+    lazy val SymbolModule: Symbol = getModule("scala.Symbol")
+    lazy val Symbol_apply = getMember(SymbolModule, nme.apply)
       def SeqFactory = getMember(ScalaRunTimeModule, nme.Seq)
       def arrayApplyMethod = getMember(ScalaRunTimeModule, "array_apply")
       def arrayUpdateMethod = getMember(ScalaRunTimeModule, "array_update")

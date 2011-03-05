@@ -148,7 +148,7 @@ trait Names extends reflect.generic.Names {
 // Classes ----------------------------------------------------------------------
 
   /** The name class. */
-  sealed abstract class Name(index: Int, len: Int) extends Function1[Int, Char] {
+  sealed abstract class Name(protected val index: Int, protected val len: Int) extends Function1[Int, Char] {
     /** Index into name table */
     def start: Int = index
 
@@ -360,6 +360,8 @@ trait Names extends reflect.generic.Names {
     final def stripStart(prefix: String): Name  = subName(prefix.length, len)
     final def stripEnd(suffix: Name): Name      = subName(0, len - suffix.length)
     final def stripEnd(suffix: String): Name    = subName(0, len - suffix.length)
+    
+    def lastIndexOf(ch: Char) = toChars lastIndexOf ch
 
     /** Return the subname with characters from start to end-1.
      */
@@ -399,9 +401,11 @@ trait Names extends reflect.generic.Names {
       (if (nameDebug && isTypeName) "!" else ""))//debug
     
     def isOperatorName: Boolean = decode != toString
+    def nameKind: String = if (isTypeName) "type" else "term"
+    def longString: String = nameKind + " " + NameTransformer.decode(toString)
   }
 
-  final class TermName(index: Int, len: Int, hash: Int) extends Name(index, len) {
+  final class TermName(_index: Int, _len: Int, hash: Int) extends Name(_index, _len) {
     var next: TermName = termHashtable(hash)
     termHashtable(hash) = this
     def isTermName: Boolean = true
@@ -423,7 +427,7 @@ trait Names extends reflect.generic.Names {
       newTermName(chrs, start + from, to - from)
   }
 
-  final class TypeName(index: Int, len: Int, hash: Int) extends Name(index, len) {
+  final class TypeName(_index: Int, _len: Int, hash: Int) extends Name(_index, _len) {
     var next: TypeName = typeHashtable(hash)
     typeHashtable(hash) = this
     def isTermName: Boolean = false

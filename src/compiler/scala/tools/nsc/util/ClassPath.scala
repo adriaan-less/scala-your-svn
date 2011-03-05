@@ -8,12 +8,10 @@ package scala.tools.nsc
 package util
 
 import java.net.URL
-import scala.collection.{ mutable, immutable }
-import mutable.ListBuffer
+import scala.collection.mutable.ListBuffer
 import io.{ File, Directory, Path, AbstractFile }
 import scala.tools.util.StringOps.splitWhere
 import Path.isJarOrZip
-import scala.tools.util.PathResolver
 import File.pathSeparator
 
 /** <p>
@@ -79,6 +77,9 @@ object ClassPath {
   
   /** Split the classpath and map them into Paths */
   def toPaths(cp: String): List[Path] = split(cp) map (x => Path(x).toAbsolute)
+  
+  /** Make all classpath components absolute. */
+  def makeAbsolute(cp: String): String = fromPaths(toPaths(cp): _*)
   
   /** Join the paths as a classpath */
   def fromPaths(paths: Path*): String = join(paths map (_.path): _*)
@@ -289,14 +290,15 @@ class SourcePath[T](dir: AbstractFile, val context: ClassPathContext[T]) extends
   def asClasspathString = dir.path
   val sourcepaths: List[AbstractFile] = List(dir)
 
-  lazy val classes: List[ClassRep] = dir collect {
-    case f if !f.isDirectory && validSourceFile(f.name) => ClassRep(None, Some(f))
+  lazy val classes: List[ClassRep] = dir flatMap { f =>
+    if (f.isDirectory || !validSourceFile(f.name)) Nil
+    else List(ClassRep(None, Some(f)))
   } toList
   
-  lazy val packages: List[SourcePath[T]] = dir collect {
-    case f if f.isDirectory && validPackage(f.name) => new SourcePath[T](f, context)
+  lazy val packages: List[SourcePath[T]] = dir flatMap { f =>
+    if (f.isDirectory && validPackage(f.name)) List(new SourcePath[T](f, context))
+    else Nil
   } toList
-
 
   override def toString() = "sourcepath: "+ dir.toString()
 }
@@ -311,12 +313,14 @@ class DirectoryClassPath(val dir: AbstractFile, val context: ClassPathContext[Ab
   def asClasspathString = dir.path
   val sourcepaths: List[AbstractFile] = Nil
   
-  lazy val classes: List[ClassRep] = dir collect {
-    case f if !f.isDirectory && validClassFile(f.name) => ClassRep(Some(f), None)
+  lazy val classes: List[ClassRep] = dir flatMap { f =>
+    if (f.isDirectory || !validClassFile(f.name)) Nil
+    else List(ClassRep(Some(f), None))
   } toList
   
-  lazy val packages: List[DirectoryClassPath] = dir collect {
-    case f if f.isDirectory && validPackage(f.name) => new DirectoryClassPath(f, context)
+  lazy val packages: List[DirectoryClassPath] = dir flatMap { f =>
+    if (f.isDirectory && validPackage(f.name)) List(new DirectoryClassPath(f, context))
+    else Nil
   } toList
   
   override def toString() = "directory classpath: "+ dir

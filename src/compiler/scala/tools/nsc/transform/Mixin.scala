@@ -250,7 +250,14 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
 
       /** Mix in members of implementation class mixinClass into class clazz */
       def mixinImplClassMembers(impl: Symbol, iface: Symbol) {
-        assert (impl.isImplClass)
+        assert(
+          // XXX this should be impl.isImplClass, except that we get impl classes
+          // coming through under -optimise which do not agree that they are (because
+          // the IMPLCLASS flag is unset, I believe.) See ticket #4285.
+          nme.isImplClassName(impl.name) || impl.isImplClass,
+          "%s (%s) is not a an implementation class, it cannot mix in %s".format(
+            impl, impl.defaultFlagString, iface)
+        )
         for (member <- impl.info.decls.toList) {
           if (isForwarded(member)) {
             val imember = member.overriddenSymbol(iface)
@@ -372,7 +379,9 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             clazz.owner.info.decls enter sourceModule
           }
           sourceModule setInfo sym.tpe
-          assert(clazz.sourceModule != NoSymbol)//debug
+          // Companion module isn't visible for anonymous class at this point anyway
+          assert(clazz.sourceModule != NoSymbol || clazz.isAnonymousClass, 
+            clazz + " has no sourceModule: sym = " + sym + " sym.tpe = " + sym.tpe)
           parents1 = List()
           decls1 = new Scope(decls.toList filter isImplementedStatically)
         } else if (!parents.isEmpty) {
@@ -865,7 +874,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
       /** Does this field require an initialized bit?
        *  Note: fields of classes inheriting DelayedInit are not checked.
        *        This is because the they are neither initialized in the constructor
-       *        nor do they have a setter (not if they are vals abyway). The usual
+       *        nor do they have a setter (not if they are vals anyway). The usual
        *        logic for setting bitmaps does therefor not work for such fields.
        *        That's why they are excluded.
        */

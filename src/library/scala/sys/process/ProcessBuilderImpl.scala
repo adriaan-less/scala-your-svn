@@ -18,6 +18,10 @@ import Uncloseable.protect
 private[process] trait ProcessBuilderImpl {
   self: ProcessBuilder.type =>
   
+  private[process] class DaemonBuilder(underlying: ProcessBuilder) extends AbstractBuilder {
+    final def run(io: ProcessIO): Process = underlying.run(io.daemonized())
+  }
+  
   private[process] class Dummy(override val toString: String, exitValue: => Int) extends AbstractBuilder {
     override def run(io: ProcessIO): Process = new DummyProcess(exitValue)
     override def canPipeTo = true
@@ -30,12 +34,16 @@ private[process] trait ProcessBuilderImpl {
   private[process] class OStreamBuilder(
     stream: => OutputStream,
     label: String
-  ) extends ThreadBuilder(label, _ writeInput protect(stream)) { }
+  ) extends ThreadBuilder(label, _ writeInput protect(stream)) {
+    override def hasExitValue = false
+  }
   
   private[process] class IStreamBuilder(
     stream: => InputStream,
     label: String
-  ) extends ThreadBuilder(label, _ processOutput protect(stream)) { }
+  ) extends ThreadBuilder(label, _ processOutput protect(stream)) {
+    override def hasExitValue = false
+  }
 
   private[process] abstract class ThreadBuilder(
     override val toString: String,
@@ -45,10 +53,10 @@ private[process] trait ProcessBuilderImpl {
     override def run(io: ProcessIO): Process = {
       val success = new SyncVar[Boolean]
       success put false
-      val t = Spawn {
+      val t = Spawn({
         runImpl(io)
         success set true
-      }
+      }, io.daemonizeThreads)
       
       new ThreadProcess(t, success)
     }
@@ -62,10 +70,10 @@ private[process] trait ProcessBuilderImpl {
 
       // spawn threads that process the input, output, and error streams using the functions defined in `io`
       val inThread  = Spawn(writeInput(process.getOutputStream), true)
-      val outThread = Spawn(processOutput(process.getInputStream))
+      val outThread = Spawn(processOutput(process.getInputStream), daemonizeThreads)
       val errorThread =
         if (p.redirectErrorStream) Nil
-        else List(Spawn(processError(process.getErrorStream)))
+        else List(Spawn(processError(process.getErrorStream), daemonizeThreads))
 
       new SimpleProcess(process, inThread, outThread :: errorThread)
     }
@@ -105,6 +113,8 @@ private[process] trait ProcessBuilderImpl {
     def !(log: ProcessLogger)  = runBuffered(log, false)
     def !<                     = run(true).exitValue()
     def !<(log: ProcessLogger) = runBuffered(log, true)
+    
+    def daemonized(): ProcessBuilder = new DaemonBuilder(this)
 
     private[this] def slurp(log: Option[ProcessLogger], withIn: Boolean): String = {
       val buffer = new StringBuffer
@@ -130,6 +140,7 @@ private[process] trait ProcessBuilderImpl {
       log buffer run(log, connectInput).exitValue()
 
     def canPipeTo = false
+    def hasExitValue = true
   }
 
   private[process] class URLImpl(url: URL) extends URLBuilder with Source {

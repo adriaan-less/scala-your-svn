@@ -26,16 +26,15 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
   private var universe: Universe = null
   
   /**  */
-  def makeModel: Universe = {
+  def makeModel: Option[Universe] = {
     val universe = new Universe { thisUniverse =>
       thisFactory.universe = thisUniverse
       val settings = thisFactory.settings
-      val rootPackage =
-        makeRootPackage getOrElse { throw new Error("no documentable class found in compilation units") }
+      private val rootPackageMaybe = makeRootPackage
+      val rootPackage = rootPackageMaybe getOrElse null
     }
     modelFinished = true
-    thisFactory.universe = null
-    universe
+    if (universe.rootPackage != null) Some(universe) else None
   }
 
   /** */
@@ -135,7 +134,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
         case NullaryMethodType(res) => resultTpe(res)
         case _ => tpe
       }
-      makeType(resultTpe(sym.tpe), inTemplate, sym)
+      makeTypeInTemplateContext(resultTpe(sym.tpe), inTemplate, sym)
     }
     def isDef = false
     def isVal = false
@@ -225,7 +224,8 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
     def isDocTemplate = true
     def companion = sym.companionSymbol match {
       case NoSymbol => None
-      case comSym if !isEmptyJavaObject(comSym) => Some(makeDocTemplate(comSym, inTpl))
+      case comSym if !isEmptyJavaObject(comSym) && (comSym.isClass || comSym.isModule || isNestedObjectLazyVal(comSym)) =>
+        Some(makeDocTemplate(comSym, inTpl))
       case _ => None
     }
   }
@@ -258,12 +258,12 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
   private trait TypeBoundsImpl extends EntityImpl {    
     def lo = sym.info.bounds match {
       case TypeBounds(lo, hi) if lo.typeSymbol != NothingClass =>
-        Some(makeType(appliedType(lo, sym.info.typeParams map {_.tpe}), inTemplate))
+        Some(makeTypeInTemplateContext(appliedType(lo, sym.info.typeParams map {_.tpe}), inTemplate, sym))
       case _ => None
     }
     def hi = sym.info.bounds match {
       case TypeBounds(lo, hi) if hi.typeSymbol != AnyClass =>
-        Some(makeType(appliedType(hi, sym.info.typeParams map {_.tpe}), inTemplate))
+        Some(makeTypeInTemplateContext(appliedType(hi, sym.info.typeParams map {_.tpe}), inTemplate, sym))
       case _ => None
     }
   }
@@ -381,30 +381,30 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
   def makeAnnotation(annot: AnnotationInfo): Annotation = {
     val aSym = annot.atp.typeSymbol
     new EntityImpl(aSym, makeTemplate(aSym.owner)) with Annotation {
-      def annotationClass =
+      lazy val annotationClass =
         makeTemplate(annot.atp.typeSymbol)
-      def arguments =
-        annotationClass match {
+      val arguments = { // lazy
+        def noParams = annot.args map { _ => None }
+        val params: List[Option[ValueParam]] = annotationClass match {
           case aClass: Class =>
-            aClass.valueParams match {
-              case Nil => Nil
-              case vp :: vps =>
-                (vp zip annot.args) map { case (param, arg) =>
-                  new ValueArgument {
-                    def parameter = Some(param)
-                    def value = makeTree(arg)
-                  }
-                }
+            (aClass.primaryConstructor map { _.valueParams.head }) match {
+              case Some(vps) => vps map { Some(_) }
+              case None => noParams
             }
-          case _ =>
-            annot.args map { arg =>
-              new ValueArgument {
-                def parameter = None
-                def value = makeTree(arg)
-              }
-            }
+          case _ => noParams
         }
-
+        assert(params.length == annot.args.length)
+        (params zip annot.args) flatMap { case (param, arg) =>
+          makeTree(arg) match {
+            case Some(tree) =>
+              Some(new ValueArgument {
+                def parameter = param
+                def value = tree
+              })
+            case None => None
+          }
+        }
+      }
     }
   }
 
@@ -419,16 +419,30 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
           else None
         else 
           Some(new NonTemplateMemberImpl(bSym, inTpl) with Val {
-                override def isLazyVal = true
-              })
+            override lazy val comment = // The analyser does not duplicate the lazy val's DocDef when it introduces its accessor.
+              thisFactory.comment(bSym.accessed, inTpl) // This hack should be removed after analyser is fixed.
+            override def isLazyVal = true
+          })
       else if (bSym.isGetter && bSym.accessed.isMutable)
         Some(new NonTemplateMemberImpl(bSym, inTpl) with Val {
           override def isVar = true
         })
-      else if (bSym.isMethod && !bSym.hasAccessorFlag && !bSym.isConstructor && !bSym.isModule)
-        Some(new NonTemplateParamMemberImpl(bSym, inTpl) with HigherKindedImpl with Def {
+      else if (bSym.isMethod && !bSym.hasAccessorFlag && !bSym.isConstructor && !bSym.isModule) {
+        val cSym = { // This unsightly hack closes issue #4086.
+          if (bSym == definitions.Object_synchronized) {
+            val cSymInfo = bSym.info match {
+              case PolyType(ts, MethodType(List(bp), mt)) =>
+                val cp = bp.cloneSymbol.setInfo(appliedType(definitions.ByNameParamClass.typeConstructor, List(bp.info)))
+                PolyType(ts, MethodType(List(cp), mt))
+            }
+            bSym.cloneSymbol.setInfo(cSymInfo)
+          }
+          else bSym
+        }
+        Some(new NonTemplateParamMemberImpl(cSym, inTpl) with HigherKindedImpl with Def {
           override def isDef = true
         })
+      }
       else if (bSym.isConstructor)
         Some(new NonTemplateParamMemberImpl(bSym, inTpl) with Constructor {
           override def isConstructor = true
@@ -445,7 +459,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
       else if (bSym.isAliasType)
         Some(new NonTemplateMemberImpl(bSym, inTpl) with HigherKindedImpl with AliasType {
           override def isAliasType = true
-          def alias = makeType(sym.tpe.dealias, inTpl, sym)
+          def alias = makeTypeInTemplateContext(sym.tpe.dealias, inTpl, sym)
         })
       else if (bSym.isPackage)
         inTpl match { case inPkg: PackageImpl =>  makePackage(bSym, inPkg) }
@@ -495,7 +509,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
           (currentRun.units filter (_.source.file == aSym.sourceFile)).toList match {
             case List(unit) =>
               (unit.body find (_.symbol == aSym)) match {
-                case Some(ValDef(_,_,_,rhs)) => Some(makeTree(rhs))
+                case Some(ValDef(_,_,_,rhs)) => makeTree(rhs)
                 case _ => None
               }
             case _ => None
@@ -503,12 +517,12 @@ class ModelFactory(val global: Global, val settings: doc.Settings) { thisFactory
         }
         else None
       def resultType =
-        makeType(sym.tpe, inTpl, sym)
+        makeTypeInTemplateContext(sym.tpe, inTpl, sym)
       def isImplicit = aSym.isImplicit
     }
 
   /** */
-  def makeType(aType: Type, inTpl: => TemplateImpl, dclSym: Symbol): TypeEntity = {
+  def makeTypeInTemplateContext(aType: Type, inTpl: => TemplateImpl, dclSym: Symbol): TypeEntity = {
     def ownerTpl(sym: Symbol): Symbol =
       if (sym.isClass || sym.isModule || sym == NoSymbol) sym else ownerTpl(sym.owner)
     val tpe =

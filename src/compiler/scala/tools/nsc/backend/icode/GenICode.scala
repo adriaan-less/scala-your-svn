@@ -19,8 +19,6 @@ import PartialFunction._
  *  @author  Iulian Dragos
  *  @version 1.0
  */
-// TODO:
-// - switches with alternatives
 abstract class GenICode extends SubComponent  {
   import global._
   import icodes._
@@ -675,21 +673,22 @@ abstract class GenICode extends SubComponent  {
           var ctx1         = genLoad(expr, ctx, returnedKind)
           lazy val tmp     = ctx1.makeLocal(tree.pos, expr.tpe, "tmp")
           val saved        = savingCleanups(ctx1) {
-            ctx1.cleanups exists {
+            var saved = false
+            ctx1.cleanups foreach {
               case MonitorRelease(m) =>
                 if (settings.debug.value)
                   log("removing " + m + " from cleanups: " + ctx1.cleanups)
                 ctx1.bb.emit(Seq(LOAD_LOCAL(m), MONITOR_EXIT()))
                 ctx1.exitSynchronized(m)
-                false
-              case Finalizer(f) =>
+
+              case Finalizer(f, finalizerCtx) =>
                 if (settings.debug.value)
                   log("removing " + f + " from cleanups: " + ctx1.cleanups)
-                  
-                val saved = returnedKind != UNIT && mayCleanStack(f) && {
+                 
+                if (returnedKind != UNIT && mayCleanStack(f)) {
                   log("Emitting STORE_LOCAL for " + tmp + " to save finalizer.")
                   ctx1.bb.emit(STORE_LOCAL(tmp))
-                  true
+                  saved = true
                 }
                 
                 // duplicate finalizer (takes care of anchored labels) 
@@ -698,9 +697,11 @@ abstract class GenICode extends SubComponent  {
                 // we have to run this without the same finalizer in
                 // the list, otherwise infinite recursion happens for
                 // finalizers that contain 'return'
-                ctx1 = genLoad(f1, ctx1.removeFinalizer(f), UNIT)
-                saved
+                val fctx = finalizerCtx.newBlock
+                ctx1.bb.closeWith(JUMP(fctx.bb))
+                ctx1 = genLoad(f1, fctx, UNIT)
             }
+            saved
           }
 
           if (saved) {
@@ -1840,7 +1841,7 @@ abstract class GenICode extends SubComponent  {
       def contains(x: AnyRef) = value == x
     }
     case class MonitorRelease(m: Local) extends Cleanup(m) { }
-    case class Finalizer(f: Tree) extends Cleanup (f) { }
+    case class Finalizer(f: Tree, ctx: Context) extends Cleanup (f) { }
 
     def duplicateFinalizer(boundLabels: Set[Symbol], targetCtx: Context, finalizer: Tree) =  {
       (new DuplicateLabels(boundLabels))(targetCtx, finalizer)
@@ -1921,7 +1922,7 @@ abstract class GenICode extends SubComponent  {
         this.currentExceptionHandlers = other.currentExceptionHandlers
         this.scope = other.scope
       }
-
+      
       def setPackage(p: Name): this.type = {
         this.packg = p
         this
@@ -1954,8 +1955,8 @@ abstract class GenICode extends SubComponent  {
         this
       }
 
-      def addFinalizer(f: Tree): this.type = {
-        cleanups = Finalizer(f) :: cleanups;
+      def addFinalizer(f: Tree, ctx: Context): this.type = {
+        cleanups = Finalizer(f, ctx) :: cleanups;
         this
       }
 
@@ -2008,7 +2009,7 @@ abstract class GenICode extends SubComponent  {
        * 'covered' by this exception handler (in addition to the 
        * previously active handlers).
        */
-      def newHandler(cls: Symbol, resultKind: TypeKind, pos: Position): ExceptionHandler = {
+      private def newExceptionHandler(cls: Symbol, resultKind: TypeKind, pos: Position): ExceptionHandler = {
         handlerCount += 1
         val exh = new ExceptionHandler(method, "" + handlerCount, cls, pos)
         exh.resultKind = resultKind
@@ -2032,7 +2033,7 @@ abstract class GenICode extends SubComponent  {
       /** Return a new context for generating code for the given
        * exception handler.
        */
-      def enterHandler(exh: ExceptionHandler): Context = {
+      private def enterExceptionHandler(exh: ExceptionHandler): Context = {
         currentExceptionHandlers ::= exh
         val ctx = newBlock
         exh.setStartBlock(ctx.bb)
@@ -2044,7 +2045,7 @@ abstract class GenICode extends SubComponent  {
       }
 
       /** Remove the given handler from the list of active exception handlers. */
-      def removeHandler(exh: ExceptionHandler): Unit = {
+      def removeActiveHandler(exh: ExceptionHandler): Unit = {
         assert(handlerCount > 0 && handlers.head == exh,
                "Wrong nesting of exception handlers." + this + " for " + exh)
         handlerCount -= 1
@@ -2118,9 +2119,9 @@ abstract class GenICode extends SubComponent  {
 
 
         val finalizerExh = if (finalizer != EmptyTree) Some({
-          val exh = outerCtx.newHandler(NoSymbol, toTypeKind(finalizer.tpe), finalizer.pos) // finalizer covers exception handlers
+          val exh = outerCtx.newExceptionHandler(NoSymbol, toTypeKind(finalizer.tpe), finalizer.pos) // finalizer covers exception handlers
           this.addActiveHandler(exh)  // .. and body aswell 
-          val ctx = finalizerCtx.enterHandler(exh)
+          val ctx = finalizerCtx.enterExceptionHandler(exh)
           val exception = ctx.makeLocal(finalizer.pos, ThrowableClass.tpe, "exc")
           loadException(ctx, exh, finalizer.pos)
           ctx.bb.emit(STORE_LOCAL(exception));
@@ -2134,8 +2135,9 @@ abstract class GenICode extends SubComponent  {
         }) else None
         
         val exhs = handlers.map { handler =>
-            val exh = this.newHandler(handler._1, handler._2, tree.pos)
-            var ctx1 = outerCtx.enterHandler(exh)
+            val exh = this.newExceptionHandler(handler._1, handler._2, tree.pos)
+            var ctx1 = outerCtx.enterExceptionHandler(exh)
+            ctx1.addFinalizer(finalizer, finalizerCtx)
             loadException(ctx1, exh, tree.pos)
             ctx1 = handler._3(ctx1)
             // emit finalizer
@@ -2146,7 +2148,7 @@ abstract class GenICode extends SubComponent  {
           }
         val bodyCtx = this.newBlock
         if (finalizer != EmptyTree)
-          bodyCtx.addFinalizer(finalizer)
+          bodyCtx.addFinalizer(finalizer, finalizerCtx)
 
         var finalCtx = body(bodyCtx)
         finalCtx = emitFinalizer(finalCtx)
@@ -2187,9 +2189,9 @@ abstract class GenICode extends SubComponent  {
         if (finalizer != EmptyTree) {
           // finalizer is covers try and all catch blocks, i.e.
           //   try { try { .. } catch { ..} } finally { .. }
-          val exh = outerCtx.newHandler(NoSymbol, UNIT, tree.pos)
+          val exh = outerCtx.newExceptionHandler(NoSymbol, UNIT, tree.pos)
           this.addActiveHandler(exh)
-          val ctx = finalizerCtx.enterHandler(exh)
+          val ctx = finalizerCtx.enterExceptionHandler(exh)
           loadException(ctx, exh, tree.pos)
           val ctx1 = genLoad(finalizer, ctx, UNIT)
           // need jump for the ICode to be valid. MSIL backend will emit `Endfinally` instead.
@@ -2198,8 +2200,8 @@ abstract class GenICode extends SubComponent  {
         }
 
         for (handler <- handlers) {
-          val exh = this.newHandler(handler._1, handler._2, tree.pos)
-          var ctx1 = outerCtx.enterHandler(exh)
+          val exh = this.newExceptionHandler(handler._1, handler._2, tree.pos)
+          var ctx1 = outerCtx.enterExceptionHandler(exh)
           loadException(ctx1, exh, tree.pos)
           ctx1 = handler._3(ctx1)
           // msil backend will emit `Leave` to jump out of a handler

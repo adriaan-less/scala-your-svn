@@ -23,10 +23,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
   val emptySymbolArray = new Array[Symbol](0)
 
   /** Used for deciding in the IDE whether we can interrupt the compiler */
-  protected var activeLocks = 0
+  //protected var activeLocks = 0
 
   /** Used for debugging only */
-  protected var lockedSyms = collection.immutable.Set[Symbol]()
+  //protected var lockedSyms = collection.immutable.Set[Symbol]()
 
   /** Used to keep track of the recursion depth on locked symbols */
   private var recursionTable = immutable.Map.empty[Symbol, Int]
@@ -307,14 +307,16 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
         } else { handler }
       } else { 
         rawflags |= LOCKED 
-        activeLocks += 1
+//        activeLocks += 1
+//        lockedSyms += this
       }
     }
 
     // Unlock a symbol
     def unlock() = {
       if ((rawflags & LOCKED) != 0L) {
-        activeLocks -= 1
+//        activeLocks -= 1
+//        lockedSyms -= this
         rawflags = rawflags & ~LOCKED
         if (settings.Yrecursion.value != 0)
           recursionTable -= this
@@ -595,6 +597,14 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
       rawowner = owner
     }
+    private[Symbols] def flattenName(): Name = {
+      // TODO: this assertion causes me a lot of trouble in the interpeter in situations
+      // where everything proceeds smoothly if there's no assert.  I don't think calling "name"
+      // on a symbol is the right place to throw fatal exceptions if things don't look right.
+      // It really hampers exploration.
+      assert(rawowner.isClass, "fatal: %s has non-class owner %s after flatten.".format(rawname + idString, rawowner))
+      nme.flattenedName(rawowner.name, rawname)
+    }
 
     def ownerChain: List[Symbol] = this :: owner.ownerChain
 
@@ -699,7 +709,8 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
           }
         } else {
           rawflags |= LOCKED 
-          activeLocks += 1
+//          activeLocks += 1
+ //         lockedSyms += this
         }
         val current = phase
         try {
@@ -838,11 +849,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
      *
      * This is done in checkAccessible and overriding checks in refchecks
      * We can't do this on class loading because it would result in infinite cycles.
-     */
-    private var triedCooking: Boolean = false
+     */    
     final def cookJavaRawInfo() {
-      // println("cookJavaRawInfo: "+(rawname, triedCooking))
-      if(triedCooking) return else triedCooking = true // only try once...
+      if (hasFlag(TRIEDCOOKING)) return else setFlag(TRIEDCOOKING) // only try once...
+      val oldInfo = info
       doCookJavaRawInfo()
     }
 
@@ -1213,19 +1223,22 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     /** Is this symbol defined in the same scope and compilation unit as `that' symbol?
      */
-    def isCoDefinedWith(that: Symbol) = (this.rawInfo ne NoType) && {
-      !this.owner.isPackageClass || 
-      (this.sourceFile eq null) ||
-      (that.sourceFile eq null) ||
-      (this.sourceFile == that.sourceFile) || {
-        // recognize companion object in separate file and fail, else compilation
-        // appears to succeed but highly opaque errors come later: see bug #1286
-        if (this.sourceFile.path != that.sourceFile.path)
-          throw InvalidCompanions(this, that)
+    def isCoDefinedWith(that: Symbol) = (
+      (this.rawInfo ne NoType) &&
+      (this.owner == that.owner) && {
+        !this.owner.isPackageClass ||
+        (this.sourceFile eq null) ||
+        (that.sourceFile eq null) ||
+        (this.sourceFile == that.sourceFile) || {
+          // recognize companion object in separate file and fail, else compilation
+          // appears to succeed but highly opaque errors come later: see bug #1286
+          if (this.sourceFile.path != that.sourceFile.path)
+            throw InvalidCompanions(this, that)
         
-        false
+          false
+        }
       }
-    }
+    )
 
     /** The internal representation of classes and objects:
      *
@@ -1626,15 +1639,17 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       if (variance == 1) "+"
       else if (variance == -1) "-"
       else ""
+    
+    def defaultFlagMask =
+      if (settings.debug.value) -1L
+      else if (owner.isRefinementClass) ExplicitFlags & ~OVERRIDE
+      else ExplicitFlags
+    
+    def defaultFlagString = hasFlagsToString(defaultFlagMask)
 
     /** String representation of symbol's definition */
     def defString: String = {
-      val mask =
-        if (settings.debug.value) -1L
-        else if (owner.isRefinementClass) ExplicitFlags & ~OVERRIDE
-        else ExplicitFlags
-
-      compose(List(hasFlagsToString(mask), keyString, varianceString + nameString + 
+      compose(List(defaultFlagString, keyString, varianceString + nameString + 
                    (if (hasRawInfo) infoString(rawInfo) else "<_>")))
     }
 
@@ -1754,10 +1769,9 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
 
     override def name: TermName =
       if (isFlatAdjusted) {
-        if (flatname == null) {
-          assert(rawowner.isClass, "fatal: %s has non-class owner %s after flatten.".format(rawname, rawowner))
-          flatname = newTermName(compactify(rawowner.name + "$" + rawname))
-        }
+        if (flatname == null)
+          flatname = flattenName().toTermName
+
         flatname
       } else rawname
 
@@ -1956,12 +1970,10 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       if (needsFlatClasses) rawowner.owner
       else rawowner
 
-    override def name: TypeName =
+    override def name: TypeName =    
       if (needsFlatClasses) {
-        if (flatname == null) {
-          assert(rawowner.isClass, "fatal: %s has owner %s, but a class owner is required".format(rawname+idString, rawowner))
-          flatname = newTypeName(compactify(rawowner.name + "$" + rawname))
-        }
+        if (flatname == null)
+          flatname = flattenName().toTypeName
         flatname
       }
       else rawname.asInstanceOf[TypeName]
@@ -2037,7 +2049,16 @@ trait Symbols extends reflect.generic.Symbols { self: SymbolTable =>
       sourceModule = module
     }
     override def sourceModule = module
-    lazy val implicitMembers = info.implicitMembers
+    private var implicitMembersCacheValue: List[Symbol] = List()
+    private var implicitMembersCacheKey: Type = NoType
+    def implicitMembers: List[Symbol] = {
+      val tp = info
+      if (implicitMembersCacheKey ne tp) {
+        implicitMembersCacheKey = tp
+        implicitMembersCacheValue = tp.implicitMembers
+      }
+      implicitMembersCacheValue
+    }
     override def sourceModule_=(module: Symbol) { this.module = module }
   }
 

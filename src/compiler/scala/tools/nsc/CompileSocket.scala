@@ -16,9 +16,33 @@ import scala.util.control.Exception.catching
 import scala.tools.util.StringOps.splitWhere
 import scala.sys.process._
 
+trait HasCompileSocket {
+  def compileSocket: CompileSocket
+  def compileOnServer(sock: Socket, args: Seq[String]): Boolean = {
+    var noErrors = true
+
+    sock.applyReaderAndWriter { (in, out) =>
+      out println (compileSocket getPassword sock.getPort())
+      out println (args mkString "\0")
+
+      def loop(): Boolean = in.readLine() match {
+        case null => noErrors
+        case line => 
+          if (compileSocket.errorPattern matcher line matches)
+            noErrors = false
+
+          Console.err println line      
+          loop()
+      }
+      try loop()
+      finally sock.close()
+    }
+  }
+}
+
 /** This class manages sockets for the fsc offline compiler.  */
 class CompileSocket {
-  protected def compileClient: StandardCompileClient = CompileClient //todo: lazy val
+  protected lazy val compileClient: StandardCompileClient = CompileClient
 
   /** The prefix of the port identification file, which is followed
    *  by the port number.
@@ -82,11 +106,11 @@ class CompileSocket {
   private def serverCommand(vmArgs: Seq[String]): Seq[String] =
     Seq(vmCommand) ++ vmArgs ++ Seq(serverClass) filterNot (_ == "")
 
-  /** Start a new server; returns true iff it succeeds */
+  /** Start a new server. */
   private def startNewServer(vmArgs: String) = {
     val cmd = serverCommand(vmArgs split " " toSeq)
     info("[Executing command: %s]" format cmd)
-    (cmd.! == 0) || fatal("Cannot start compilation daemon.\ntried command: %s" format cmd)
+    cmd.daemonized().run()
   }
 
   /** The port identification file */
@@ -108,8 +132,10 @@ class CompileSocket {
     var attempts = 0
     var port = pollPort()
 
-    if (port < 0)
+    if (port < 0) {
+      info("No compile server running: starting one with args '" + vmArgs + "'")
       startNewServer(vmArgs)
+    }
       
     while (port < 0 && attempts < MaxAttempts) {
       attempts += 1
@@ -141,9 +167,9 @@ class CompileSocket {
     * cannot be established.
     */
   def getOrCreateSocket(vmArgs: String, create: Boolean = true): Option[Socket] = {
-    // try for 5 seconds
+    // try for 10 seconds
     val retryDelay = 100
-    val maxAttempts = (5 * 1000) / retryDelay
+    val maxAttempts = (10 * 1000) / retryDelay
     
     def getsock(attempts: Int): Option[Socket] = attempts match {
       case 0    => fscError("Unable to establish connection to compilation daemon") ; None
@@ -202,4 +228,5 @@ class CompileSocket {
 }
 
 
-object CompileSocket extends CompileSocket
+object CompileSocket extends CompileSocket {
+}

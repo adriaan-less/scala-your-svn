@@ -73,14 +73,6 @@ trait Implicits {
   def resetImplicits() { implicitsCache.clear() }
   private val ManifestSymbols = Set(PartialManifestClass, FullManifestClass, OptManifestClass)
 
-  /** If type `pt` an instance of Manifest or OptManifest, or an abstract type lower-bounded
-   *  by such an instance?
-   */
-  def isManifest(pt: Type): Boolean = pt.dealias match {
-    case TypeRef(_, sym, _) => ManifestSymbols(sym) || sym.isAbstractType && isManifest(pt.bounds.lo)
-    case _                  => false
-  }
-
   /** The result of an implicit search
    *  @param  tree    The tree representing the implicit
    *  @param  subst   A substituter that represents the undetermined type parameters
@@ -732,11 +724,15 @@ trait Implicits {
      */
     private def companionImplicits(tp: Type): Infoss = {
       val partMap = new LinkedHashMap[Symbol, Type]
+      val seen = mutable.HashSet[Type]()  // cycle detection
 
       /** Enter all parts of `tp` into `parts` set.
        *  This method is performance critical: about 2-4% of all type checking is spent here
        */
       def getParts(tp: Type) {
+        if (seen(tp))
+          return
+        seen += tp
         tp match {
           case TypeRef(pre, sym, args) =>
             if (sym.isClass) {
@@ -1004,7 +1000,6 @@ trait Implicits {
       }
     }
   }
-
-  private class DivergentImplicit extends Exception()
-  private def DivergentImplicit = new DivergentImplicit
 }
+class DivergentImplicit extends Exception
+object DivergentImplicit extends DivergentImplicit

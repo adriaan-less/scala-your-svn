@@ -2,12 +2,20 @@
 // code by Gilles Dubochet with contributions by Pedro Furlanetto
 
 $(document).ready(function(){
-    var prefilters = $("#ancestors > ol > li").filter(function(){
-        var name = $(this).attr("name");
-        return name == "scala.Any" || name == "scala.AnyRef";
-    });
-    prefilters.removeClass("in");
-    prefilters.addClass("out");
+    var isHiddenClass;
+    if (document.title == 'scala.AnyRef') {
+        isHiddenClass = function (name) {
+            return name == 'scala.Any';
+        };
+    } else {
+        isHiddenClass = function (name) {
+            return name == 'scala.Any' || name == 'scala.AnyRef';
+        };
+    }
+
+    $("#linearization li").filter(function(){
+        return isHiddenClass($(this).attr("name"));
+    }).removeClass("in").addClass("out");
     filter();
 
     var input = $("#textfilter input");
@@ -23,7 +31,7 @@ $(document).ready(function(){
         filter();
     });
 
-    $("#ancestors > ol > li").click(function(){
+    $("#linearization li").click(function(){
         if ($(this).hasClass("in")) {
             $(this).removeClass("in");
             $(this).addClass("out");
@@ -35,14 +43,14 @@ $(document).ready(function(){
         filter();
     });
     $("#ancestors > ol > li.hideall").click(function() {
-        $("#ancestors > ol > li.in").removeClass("in").addClass("out");
+        $("#linearization li.in").removeClass("in").addClass("out");
+        $("#linearization li:first").removeClass("out").addClass("in");
         filter();
     })
     $("#ancestors > ol > li.showall").click(function() {
         var filtered =
-            $("#ancestors > ol > li.out").filter(function() {
-                var name = $(this).attr("name");
-                return !(name == "scala.Any" || name == "scala.AnyRef");
+            $("#linearization li.out").filter(function() {
+                return ! isHiddenClass($(this).attr("name"));
             });
         filtered.removeClass("out").addClass("in");
         filter();
@@ -235,8 +243,10 @@ function filter() {
         //var name1 = qualName1.slice(qualName1.indexOf("#") + 1);
         var showByOwned = true;
         if ($(this).parents(".parent").length == 0) {
-           // owner filtering must not happen in "inherited from" member lists
-            var owner1 = qualName1.slice(0, qualName1.indexOf("#"));
+            // owner filtering must not happen in "inherited from" member lists
+            var ownerIndex = qualName1.indexOf("#");
+            if (ownerIndex < 0) { ownerIndex = qualName1.lastIndexOf("."); }
+            var owner1 = qualName1.slice(0, ownerIndex);
             for (out in outOwners) {
                 if (outOwners[out] == owner1) {
                     showByOwned = false;

@@ -6,7 +6,8 @@
 package scala.tools.nsc
 package typechecker
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{HashMap, WeakHashMap}
+import scala.ref.WeakReference
 import symtab.Flags
 import symtab.Flags._
 
@@ -50,7 +51,7 @@ trait Namers { self: Analyzer =>
   // is stored in this map. The map is cleared lazily, i.e. when the new symbol
   // is created with the same name, the old one (if present) is wiped out, or the
   // entry is deleted when it is used and no longer needed.
-  private val caseClassOfModuleClass = new HashMap[Symbol, ClassDef]
+  private val caseClassOfModuleClass = new WeakHashMap[Symbol, WeakReference[ClassDef]]
 
   // Default getters of constructors are added to the companion object in the
   // typeCompleter of the constructor (methodSig). To compute the signature,
@@ -204,7 +205,6 @@ trait Namers { self: Analyzer =>
         updatePosFlags(c, tree.pos, tree.mods.flags)
         setPrivateWithin(tree, c, tree.mods)
       } else {
-        caseClassOfModuleClass -= c
         var sym = context.owner.newClass(tree.pos, tree.name)
         sym = sym.setFlag(tree.mods.flags | inConstructorFlag)
         sym = setPrivateWithin(tree, sym, tree.mods)
@@ -381,7 +381,7 @@ trait Namers { self: Analyzer =>
                 context.error(tree.pos, "Implementation restriction: case classes cannot have more than " + MaxFunctionArity + " parameters.")
               
               val m = ensureCompanionObject(tree, caseModuleDef(tree))
-              caseClassOfModuleClass(m.moduleClass) = tree
+              caseClassOfModuleClass(m.moduleClass) = new WeakReference(tree)
             }
             val hasDefault = impl.body exists {
               case DefDef(_, nme.CONSTRUCTOR, _, vparamss, _, _)  => vparamss.flatten exists (_.mods.hasDefault)
@@ -612,10 +612,6 @@ trait Namers { self: Analyzer =>
      *  value should not be widened, so it has a use even in situations
      *  whether it is otherwise redundant (such as in a singleton.)
      *  Locally defined symbols are also excluded from widening.
-     *
-     *  PP:is there a useful difference in practice between widen
-     *  and deconst which wouldn't be achieved by simply calling widen
-     *  in both situations? If so, could an example of this be added?
      */
     private def widenIfNecessary(sym: Symbol, tpe: Type, pt: Type): Type = {
       val getter = 
@@ -761,7 +757,8 @@ trait Namers { self: Analyzer =>
       // add apply and unapply methods to companion objects of case classes, 
       // unless they exist already; here, "clazz" is the module class
       if (clazz.isModuleClass) {
-        Namers.this.caseClassOfModuleClass get clazz map { cdef =>
+        Namers.this.caseClassOfModuleClass get clazz map { cdefRef =>
+          val cdef = cdefRef()
           addApplyUnapply(cdef, templateNamer)
           caseClassOfModuleClass -= clazz
         }
@@ -773,7 +770,8 @@ trait Namers { self: Analyzer =>
       // @check: this seems to work only if the type completer of the class runs before the one of the
       // module class: the one from the module class removes the entry form caseClassOfModuleClass (see above).
       if (clazz.isClass && !clazz.hasModuleFlag) {
-        Namers.this.caseClassOfModuleClass get companionModuleOf(clazz, context).moduleClass map { cdef =>
+        Namers.this.caseClassOfModuleClass get companionModuleOf(clazz, context).moduleClass map { cdefRef =>
+          val cdef = cdefRef()
           def hasCopy(decls: Scope) = (decls lookup nme.copy) != NoSymbol
           if (!hasCopy(decls) &&
                   !parents.exists(p => hasCopy(p.typeSymbol.info.decls)) &&
@@ -1241,13 +1239,13 @@ trait Namers { self: Analyzer =>
                     isValidSelector(from) {
                       if (currentRun.compileSourceFor(expr, from))
                         return typeSig(tree)
+                      
+                      def notMember = context.error(tree.pos, from.decode + " is not a member of " + expr)
                       // for Java code importing Scala objects
-                      if (from.endsWith(nme.raw.DOLLAR))
-                        isValidSelector(from.subName(0, from.length -1)) {
-                          context.error(tree.pos, from.decode + " is not a member of " + expr)
-                        }
+                      if (from endsWith nme.raw.DOLLAR)
+                        isValidSelector(from stripEnd "$")(notMember)
                       else
-                        context.error(tree.pos, from.decode + " is not a member of " + expr)
+                        notMember
                     }
 
                     if (checkNotRedundant(tree.pos, from, to))
@@ -1346,10 +1344,17 @@ trait Namers { self: Analyzer =>
   abstract class TypeCompleter extends LazyType {
     val tree: Tree
   }
+  
+  var lockedCount = 0
 
   def mkTypeCompleter(t: Tree)(c: Symbol => Unit) = new TypeCompleter { 
     val tree = t 
-    override def complete(sym: Symbol) = c(sym)
+    override def complete(sym: Symbol) = try {
+      lockedCount += 1
+      c(sym)
+    } finally {
+      lockedCount -= 1
+    }
   }
 
   /** A class representing a lazy type with known type parameters.
@@ -1357,10 +1362,13 @@ trait Namers { self: Analyzer =>
   class PolyTypeCompleter(tparams: List[Tree], restp: TypeCompleter, owner: Tree, ownerSym: Symbol, ctx: Context) extends TypeCompleter { 
     override val typeParams: List[Symbol]= tparams map (_.symbol) //@M
     override val tree = restp.tree
-    override def complete(sym: Symbol) {
+    override def complete(sym: Symbol) = try {
+      lockedCount += 1
       if(ownerSym.isAbstractType) //@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
         newNamer(ctx.makeNewScope(owner, ownerSym)).enterSyms(tparams) //@M
       restp.complete(sym)
+    } finally {
+      lockedCount -= 1
     }
   }
 

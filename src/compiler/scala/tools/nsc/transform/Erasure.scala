@@ -15,11 +15,9 @@ abstract class Erasure extends AddInterfaces
                           with typechecker.Analyzer
                           with ast.TreeDSL
 {
-  import global._                  // the global environment
-  import definitions._             // standard classes and methods
+  import global._
+  import definitions._
   import CODE._
-
-  def typedPos(pos: Position)(tree: Tree) = this.typer.typedPos(pos)(tree)
 
   val phaseName: String = "erasure"
 
@@ -152,7 +150,7 @@ abstract class Erasure extends AddInterfaces
         case mt @ MethodType(params, restpe) =>
           MethodType(
             cloneSymbols(params) map (p => p.setInfo(apply(p.tpe))),
-            if (restpe.typeSymbol == UnitClass) 
+            if (restpe.typeSymbol == UnitClass)
               erasedTypeRef(UnitClass) 
             else if (settings.YdepMethTpes.value)
               // this replaces each typeref that refers to an argument by the type `p.tpe` of the actual argument p (p in params)
@@ -192,8 +190,8 @@ abstract class Erasure extends AddInterfaces
             if (!parents.isEmpty) traverse(parents.head)
           case ClassInfoType(parents, _, _) =>
             parents foreach traverse
-	  case AnnotatedType(_, atp, _) =>
-	    traverse(atp)
+          case AnnotatedType(_, atp, _) =>
+            traverse(atp)
           case _ =>
             mapOver(tp)
         }
@@ -206,9 +204,11 @@ abstract class Erasure extends AddInterfaces
   // only refer to type params that will actually make it into the sig, this excludes:
   // * higher-order type parameters (aka !sym.owner.isTypeParameterOrSkolem)
   // * parameters of methods
-  private def isTypeParameterInSig(sym: Symbol) = (
+  // * type members not visible in the enclosing template
+  private def isTypeParameterInSig(sym: Symbol, nestedIn: Symbol) = (
+    !sym.owner.isTypeParameterOrSkolem &&
     sym.isTypeParameterOrSkolem &&
-    !sym.owner.isTypeParameterOrSkolem
+    (sym isNestedIn nestedIn)
   )
   // Ensure every '.' in the generated signature immediately follows
   // a close angle bracket '>'.  Any which do not are replaced with '$'.
@@ -223,6 +223,8 @@ abstract class Erasure extends AddInterfaces
       case ch                 => last = ch ; ch
     }
   }
+  // for debugging signatures: traces logic given system property
+  private val traceSig = util.Tracer(sys.props contains "scalac.sigs.trace")
 
   /** The Java signature of type 'info', for symbol sym. The symbol is used to give the right return
    *  type for constructors.
@@ -230,14 +232,15 @@ abstract class Erasure extends AddInterfaces
   def javaSig(sym0: Symbol, info: Type): Option[String] = atPhase(currentRun.erasurePhase) {
     def jsig(tp: Type): String = jsig2(false, Nil, tp)
     
-    def boxedSig(tp: Type) = (boxedClass get tp.typeSymbol) match {
-      case Some(boxed) => jsig(boxed.tpe)
-      case None        => jsig(tp)
-    }
-    def hiBounds(bounds: TypeBounds): List[Type] = bounds.hi.normalize match {
+    def boxedSig(tp: Type) = jsig(squashBoxed(tp))
+    def squashBoxed(tp: Type) =
+      if (boxedClass contains tp.typeSymbol) ObjectClass.tpe
+      else tp
+      
+    def hiBounds(bounds: TypeBounds): List[Type] = (bounds.hi.normalize match {
       case RefinedType(parents, _) => parents map normalize
-      case tp                      => List(tp)
-    }
+      case tp                      => tp :: Nil
+    }) map squashBoxed
 
     def jsig2(toplevel: Boolean, tparams: List[Symbol], tp0: Type): String = {
       val tp = tp0.dealias 
@@ -252,9 +255,9 @@ abstract class Erasure extends AddInterfaces
               val bounds = tp.typeSymbol.info.bounds
               if (AnyRefClass.tpe <:< bounds.hi) {
                 if (bounds.lo <:< NullClass.tpe) "*"
-                else "-" + jsig(bounds.lo)
+                else "-" + boxedSig(bounds.lo)
               }
-              else "+" + jsig(bounds.hi)
+              else "+" + boxedSig(bounds.hi)
             }
             else if (tp.typeSymbol == UnitClass) {
               jsig(ObjectClass.tpe)
@@ -271,7 +274,7 @@ abstract class Erasure extends AddInterfaces
             if (unboundedGenericArrayLevel(tp) == 1) jsig(ObjectClass.tpe)
             else ARRAY_TAG.toString+(args map jsig).mkString
           }
-          else if (isTypeParameterInSig(sym))
+          else if (isTypeParameterInSig(sym, sym0.enclClass))
             TVAR_TAG.toString+sym.name+";"
           else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass) 
             jsig(ObjectClass.tpe)
@@ -282,7 +285,7 @@ abstract class Erasure extends AddInterfaces
           else if (sym == NullClass)
             jsig(RuntimeNullClass.tpe)
           else if (isValueClass(sym)) 
-            abbrvTag(sym).toString
+            jsig(ObjectClass.tpe)
           else if (sym.isClass) {
             val preRebound = pre.baseType(sym.owner) // #2585
             dotCleanup(
@@ -320,8 +323,8 @@ abstract class Erasure extends AddInterfaces
         case MethodType(params, restpe) =>
           "("+(params map (_.tpe) map jsig).mkString+")"+
           (if (restpe.typeSymbol == UnitClass || sym0.isConstructor) VOID_TAG.toString else jsig(restpe))
-        case RefinedType(parents, decls) if (!parents.isEmpty) =>
-          jsig(parents.head)
+        case RefinedType(parent :: _, decls) =>
+          jsig(parent)
         case ClassInfoType(parents, _, _) =>
           (parents map jsig).mkString
         case AnnotatedType(_, atp, _) =>
@@ -335,15 +338,13 @@ abstract class Erasure extends AddInterfaces
           else jsig(etp)
       }
     }
-    if (needsJavaSig(info)) {
-      try {
-        //println("Java sig of "+sym0+" is "+jsig2(true, List(), sym0.info))//DEBUG
-        Some(jsig2(true, List(), info))
-      } catch {
-        case ex: UnknownSig => None
+    // traceSig("javaSig", sym0, info) {
+      if (needsJavaSig(info)) {
+        try Some(jsig2(true, Nil, info))
+        catch { case ex: UnknownSig => None }
       }
-    }
-    else None
+      else None
+    // }
   }
 
   class UnknownSig extends Exception
@@ -768,15 +769,15 @@ abstract class Erasure extends AddInterfaces
       while (opc.hasNext) {
         val member = opc.overriding
         val other = opc.overridden
-        //Console.println("bridge? " + member + ":" + member.tpe + member.locationString + " to " + other + ":" + other.tpe + other.locationString);//DEBUG
+        //Console.println("bridge? " + member + ":" + member.tpe + member.locationString + " to " + other + ":" + other.tpe + other.locationString)//DEBUG
         if (atPhase(currentRun.explicitouterPhase)(!member.isDeferred)) {
-          val otpe = erasure(other.tpe);
+          val otpe = erasure(other.tpe)
           val bridgeNeeded = atPhase(phase.next) (
             !(other.tpe =:= member.tpe) &&
             !(deconstMap(other.tpe) =:= deconstMap(member.tpe)) &&
             { var e = bridgesScope.lookupEntry(member.name)
               while ((e ne null) && !((e.sym.tpe =:= otpe) && (bridgeTarget(e.sym) == member)))
-                e = bridgesScope.lookupNextEntry(e);
+                e = bridgesScope.lookupNextEntry(e)
               (e eq null)
             }
           );
@@ -802,7 +803,7 @@ abstract class Erasure extends AddInterfaces
                     DefDef(bridge,
                       member.tpe match {
                         case MethodType(List(), ConstantType(c)) => Literal(c)
-                        case _ => 
+                        case _ =>
                           (((Select(This(owner), member): Tree) /: bridge.paramss)
                              ((fun, vparams) => Apply(fun, vparams map Ident)))
                       });
@@ -810,7 +811,7 @@ abstract class Erasure extends AddInterfaces
                     log("generating bridge from " + other + "(" + Flags.flagsToString(bridge.flags)  + ")" + ":" + otpe + other.locationString + " to " + member + ":" + erasure(member.tpe) + member.locationString + " =\n " + bridgeDef);
                   bridgeDef
                 }
-              } :: bridges;
+              } :: bridges
           }
         }
         opc.next
@@ -868,7 +869,7 @@ abstract class Erasure extends AddInterfaces
           val level = unboundedGenericArrayLevel(arg.tpe)
           def isArrayTest(arg: Tree) = 
             gen.mkRuntimeCall("isArray", List(arg, Literal(Constant(level))))
-          typedPos(tree.pos) {
+          global.typer.typedPos(tree.pos) {
             if (level == 1) isArrayTest(qual)
             else
               gen.evalOnce(qual, currentOwner, unit) { qual1 =>
@@ -888,7 +889,7 @@ abstract class Erasure extends AddInterfaces
           if (unboundedGenericArrayLevel(qual.tpe.widen) == 1) 
             // convert calls to apply/update/length on generic arrays to
             // calls of ScalaRunTime.array_xxx method calls
-            typedPos(tree.pos) { gen.mkRuntimeCall("array_"+name, qual :: args) }
+            global.typer.typedPos(tree.pos) { gen.mkRuntimeCall("array_"+name, qual :: args) }
           else
             // store exact array erasure in map to be retrieved later when we might
             // need to do the cast in adaptMember

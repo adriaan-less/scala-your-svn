@@ -1542,8 +1542,12 @@ self =>
    /** CaseClauses ::= CaseClause {CaseClause}
     *   CaseClause ::= case Pattern [Guard] `=>' Block
     */
-    def caseClauses(): List[CaseDef] = caseSeparated {
-      atPos(in.offset)(makeCaseDef(pattern(), guard(), caseBlock()))
+    def caseClauses(): List[CaseDef] = {
+      val cases = caseSeparated { atPos(in.offset)(makeCaseDef(pattern(), guard(), caseBlock())) }
+      if (cases.isEmpty)  // trigger error if there are no cases
+        accept(CASE)
+
+      cases
     }
 
     // IDE HOOK (so we can memoize case blocks) // needed?
@@ -2310,7 +2314,7 @@ self =>
         var newmods = mods
         val nameOffset = in.offset
         val name = ident()
-        atPos(start, if (name == nme.ERROR) start else nameOffset) {
+        val result = atPos(start, if (name == nme.ERROR) start else nameOffset) {
           // contextBoundBuf is for context bounded type parameters of the form
           // [T : B] or [T : => B]; it contains the equivalent implicit parameter type,
           // i.e. (B[T] or T => B)
@@ -2332,6 +2336,8 @@ self =>
             }
           DefDef(newmods, name, tparams, vparamss, restype, rhs)
         }
+        signalParseProgress(result.pos)
+        result
       }
     }
 

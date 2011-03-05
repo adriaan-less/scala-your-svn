@@ -8,25 +8,29 @@
 # PARTICULAR PURPOSE.
 ##############################################################################
 
-function onExit() {
-  if [[ -n "$scaladebug" ]]; then
-    echo "scala script runner trapped exit, running handler."
-  fi
-    
-  local exit_status=${1:-$?}
+# Not sure what the right default is here: trying nonzero.
+SCALA_EXIT_STATUS=127
+REENABLE_ECHO=true
 
+function reenableEcho() {
+  REENABLE_ECHO=false
   # reenable echo
   case "$TERM" in
       rxvt* | xterm* | screen*)
           stty icanon echo
           ;;
   esac
-  
-  exit $exit_status
 }
 
-# install exit handler
-trap onExit EXIT
+function onExit() {
+  if $REENABLE_ECHO; then
+    reenableEcho
+    exit $SCALA_EXIT_STATUS
+  fi
+}
+
+# to reenable echo if we are interrupted before completing.
+trap onExit INT
 
 cygwin=false;
 case "`uname`" in
@@ -95,22 +99,31 @@ fi
 declare -a java_args
 declare -a scala_args
 
+# default to the boot classpath for speed.
+CPSELECT="-Xbootclasspath/a:"
+
 while [ $# -gt 0 ]; do
   case "$1" in
     -D*)
+      # pass to scala as well: otherwise we lose it sometimes when we
+      # need it, e.g. communicating with a server compiler.
       java_args=("${java_args[@@]}" "$1")
+      scala_args=("${scala_args[@@]}" "$1")
+      shift
+      ;;
+    -J*)
+      # as with -D, pass to scala even though it will almost
+      # never be used.
+      java_args=("${java_args[@@]}" "${1:2}")
+      scala_args=("${scala_args[@@]}" "$1")
       shift
       ;;
     -toolcp)
       TOOL_CLASSPATH="$TOOL_CLASSPATH:$2"
-      shift
+      shift 2
       ;;
-    -J*)
-      java_args=("${java_args[@@]}" "${1:2}")
-      shift
-      ;;
-    --usebootcp)
-      CPSWITCH="-Xbootclasspath/a:$TOOL_CLASSPATH"
+    -nobootcp)
+      CPSELECT="-classpath "
       shift
       ;;
     *)
@@ -119,8 +132,6 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
-
-: ${CPSWITCH:="-cp $TOOL_CLASSPATH"}
 
 # reset "$@@" to the remaining args
 set -- "${scala_args[@@]}"
@@ -132,9 +143,14 @@ fi
 "${JAVACMD:=java}" \
   $JAVA_OPTS \
   "${java_args[@@]}" \
-  $CPSWITCH \
+  ${CPSELECT}${TOOL_CLASSPATH} \
   -Dscala.usejavacp=true \
   -Dscala.home="$SCALA_HOME" \
   -Denv.emacs="$EMACS" \
   $CYGWIN_JLINE_TERMINAL \
   @properties@ @class@ @toolflags@ "$@@"
+
+# record the exit status lest it be overwritten:
+# then reenable echo and propagate the code.
+SCALA_EXIT_STATUS=$?
+onExit

@@ -308,14 +308,29 @@ final class ListBuffer[A]
     this
   }
 
-  override def iterator = new Iterator[A] {
+  override def iterator: Iterator[A] = new Iterator[A] {
+    // Have to be careful iterating over mutable structures.
+    // This used to have "(cursor ne last0)" as part of its hasNext
+    // condition, which means it can return true even when the iterator
+    // is exhausted.  Inconsistent results are acceptable when one mutates
+    // a structure while iterating, but we should never return hasNext == true
+    // on exhausted iterators (thus creating exceptions) merely because
+    // values were changed in-place.
     var cursor: List[A] = null
-    def hasNext: Boolean = !start.isEmpty && (cursor ne last0)
+    var delivered = 0
+
+    // Note: arguably this should not be a "dynamic test" against
+    // the present length of the buffer, but fixed at the size of the
+    // buffer when the iterator is created.  At the moment such a
+    // change breaks tests: see comment on def units in Global.scala.
+    def hasNext: Boolean = delivered < ListBuffer.this.length
     def next(): A =
-      if (!hasNext) {
+      if (!hasNext)
         throw new NoSuchElementException("next on empty Iterator")
-      } else {
-        if (cursor eq null) cursor = start else cursor = cursor.tail
+      else {
+        if (cursor eq null) cursor = start
+        else cursor = cursor.tail
+        delivered += 1
         cursor.head
       }
   }
