@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 package scala.tools.nsc
@@ -148,6 +148,8 @@ trait BaseTypeSeqs {
       case TypeBounds(lo, hi) =>
         max(maxDpth(lo), maxDpth(hi))
       case MethodType(paramtypes, result) =>
+        maxDpth(result)
+      case NullaryMethodType(result) =>
         maxDpth(result)
       case PolyType(tparams, result) =>
         max(maxDpth(result), maxDpth(tparams map (_.info)) + 1)

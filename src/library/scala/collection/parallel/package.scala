@@ -1,3 +1,12 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection
 
 
@@ -6,6 +15,7 @@ import java.lang.Thread._
 import scala.collection.generic.CanBuildFrom
 import scala.collection.generic.CanCombineFrom
 import scala.collection.parallel.mutable.ParArray
+import scala.collection.mutable.UnrolledBuffer
 
 import annotation.unchecked.uncheckedVariance
 
@@ -15,7 +25,7 @@ import annotation.unchecked.uncheckedVariance
 package object parallel {
   
   /* constants */
-  val MIN_FOR_COPY = -1
+  val MIN_FOR_COPY = 512
   val CHECK_RATE = 512
   val SQRT2 = math.sqrt(2)
   val availableProcessors = java.lang.Runtime.getRuntime.availableProcessors
@@ -46,17 +56,6 @@ package object parallel {
   val tasksupport = getTaskSupport
   
   /* implicit conversions */
-  
-  /** An implicit conversion providing arrays with a `par` method, which
-   *  returns a parallel array.
-   *  
-   *  @tparam T      type of the elements in the array, which is a subtype of AnyRef
-   *  @param array   the array to be parallelized
-   *  @return        a `Parallelizable` object with a `par` method=
-   */
-  implicit def array2ParArray[T <: AnyRef](array: Array[T]) = new Parallelizable[mutable.ParArray[T]] {
-    def par = mutable.ParArray.handoff[T](array)
-  }
   
   trait FactoryOps[From, Elem, To] {
     trait Otherwise[R] {
@@ -221,7 +220,7 @@ package object parallel {
         afterCombine(other)
         
         this
-      } else system.error("Unexpected combiner type.")
+      } else sys.error("Unexpected combiner type.")
     } else this
     
   }

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2010 LAMP/EPFL
+ * Copyright 2006-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -232,6 +232,7 @@ class PathResolver(settings: Settings, context: JavaContext) {
     if (settings.Ylogcp.value) {
       Console.println("Classpath built from " + settings.toConciseString)
       Console.println("Defaults: " + PathResolver.Defaults)
+      Console.println("Calculated: " + Calculated)
       
       val xs = (Calculated.basis drop 2).flatten.distinct
       println("After java boot/extdirs classpath has %d entries:" format xs.size)

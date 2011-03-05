@@ -1,15 +1,37 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection.parallel.immutable
 
 
 
 import scala.collection.immutable.Range
-import scala.collection.parallel.ParSeq
 import scala.collection.parallel.Combiner
 import scala.collection.generic.CanCombineFrom
 import scala.collection.parallel.ParIterableIterator
 
 
 
+/** Parallel ranges.
+ *  
+ *  $paralleliterableinfo
+ *  
+ *  $sideeffects
+ *  
+ *  @param range    the sequential range this parallel range was obtained from
+ *  
+ *  @author Aleksandar Prokopec
+ *  @since 2.9
+ *
+ *  @define Coll immutable.ParRange
+ *  @define coll immutable parallel range
+ */
 @SerialVersionUID(1L)
 class ParRange(val range: Range)
 extends ParSeq[Int]
@@ -27,9 +49,9 @@ self =>
   
   type SCPI = SignalContextPassingIterator[ParRangeIterator]
   
-  override def toParSeq = this // TODO remove when we have ParSeq, when ParVector is in place 
+  override def toParSeq = this
   
-  override def toParSet[U >: Int] = toParCollection[U, ParSet[U]](() => HashSetCombiner[U]) // TODO remove when we have ParSeq, when ParVector is in place
+  override def toParSet[U >: Int] = toParCollection[U, ParSet[U]](() => HashSetCombiner[U])
   
   class ParRangeIterator(range: Range = self.range)
   extends ParIterator {

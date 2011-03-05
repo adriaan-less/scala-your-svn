@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -36,6 +36,8 @@ trait Set[A] extends (A => Boolean)
  *  @define Coll Set
  */
 object Set extends SetFactory[Set] {
+  private[collection] val hashSeed = "Set".hashCode
+
   def newBuilder[A] = immutable.Set.newBuilder[A]
   override def empty[A]: Set[A] = immutable.Set.empty[A]
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]

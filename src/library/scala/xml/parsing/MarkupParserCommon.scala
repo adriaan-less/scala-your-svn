@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -14,17 +14,14 @@ import scala.xml.dtd._
 import scala.annotation.switch
 import Utility.Escapes.{ pairs => unescape }
 
-object MarkupParserCommon {
-  final val SU = '\u001A'
-}
-import MarkupParserCommon._ 
+import Utility.SU
 
 /** This is not a public trait - it contains common code shared
  *  between the library level XML parser and the compiler's.
  *  All members should be accessed through those.
  */
 private[scala] trait MarkupParserCommon extends TokenTests {
-  protected def unreachable = system.error("Cannot be reached.")
+  protected def unreachable = sys.error("Cannot be reached.")
   
   // type HandleType       // MarkupHandler, SymbolicXMLBuilder
   type InputType        // Source, CharArrayReader
@@ -85,7 +82,7 @@ private[scala] trait MarkupParserCommon extends TokenTests {
       case `end`  => return buf.toString
       case ch     => buf append ch
     }
-    system.error("Expected '%s'".format(end))
+    sys.error("Expected '%s'".format(end))
   }
 
   /** [42]  '<' xmlEndTag ::=  '<' '/' Name S? '>'
@@ -158,11 +155,11 @@ private[scala] trait MarkupParserCommon extends TokenTests {
    * see [66]
    */
   def xCharRef(ch: () => Char, nextch: () => Unit): String =
-    Utility.parseCharRef(ch, nextch, reportSyntaxError _)
+    Utility.parseCharRef(ch, nextch, reportSyntaxError _, truncatedError _)
 
   def xCharRef(it: Iterator[Char]): String = {
     var c = it.next
-    Utility.parseCharRef(() => c, () => { c = it.next }, reportSyntaxError _)    
+    Utility.parseCharRef(() => c, () => { c = it.next }, reportSyntaxError _, truncatedError _)
   }
 
   def xCharRef: String = xCharRef(() => ch, () => nextch)

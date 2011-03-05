@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -10,7 +10,7 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable.ListBuffer
-import util.{ OffsetPosition }
+import util.{ SourceFile, OffsetPosition, FreshNameCreator }
 import scala.reflect.generic.{ ModifierFlags => Flags }
 import Tokens._
 import util.Chars.{ isScalaLetter }
@@ -124,29 +124,83 @@ self =>
 
   case class OpInfo(operand: Tree, operator: Name, offset: Offset)
 
-  class UnitParser(val unit: global.CompilationUnit, patches: List[BracePatch]) extends Parser {
+  class SourceFileParser(val source: SourceFile) extends Parser {
 
-    def this(unit: global.CompilationUnit) = this(unit, List())
-    
     /** The parse starting point depends on whether the source file is self-contained:
      *  if not, the AST will be supplemented.
      */
     def parseStartRule =
-      if (unit.source.isSelfContained) () => compilationUnit()
+      if (source.isSelfContained) () => compilationUnit()
       else () => scriptBody()
 
-    val in = new UnitScanner(unit, patches)
+    def newScanner = new SourceFileScanner(source)
+
+    val in = newScanner
     in.init()
 
+    private val globalFresh = new FreshNameCreator.Default
+
     def freshName(prefix: String): Name = freshTermName(prefix)
-    def freshTermName(prefix: String): TermName = unit.freshTermName(prefix)
-    def freshTypeName(prefix: String): TypeName = unit.freshTypeName(prefix)
+    def freshTermName(prefix: String): TermName = newTermName(globalFresh.newName(prefix))
+    def freshTypeName(prefix: String): TypeName = newTypeName(globalFresh.newName(prefix))
 
-    def o2p(offset: Int): Position = new OffsetPosition(unit.source,offset)
-    def r2p(start: Int, mid: Int, end: Int): Position = rangePos(unit.source, start, mid, end)
-    def warning(offset: Int, msg: String) { unit.warning(o2p(offset), msg) }
+    def o2p(offset: Int): Position = new OffsetPosition(source, offset)
+    def r2p(start: Int, mid: Int, end: Int): Position = rangePos(source, start, mid, end)
 
-    def deprecationWarning(offset: Int, msg: String) {
+    // suppress warnings; silent abort on errors
+    def warning(offset: Int, msg: String) {}
+    def deprecationWarning(offset: Int, msg: String) {}
+
+    def syntaxError(offset: Int, msg: String): Unit = throw new MalformedInput(offset, msg)
+    def incompleteInputError(msg: String): Unit = throw new MalformedInput(source.content.length - 1, msg)
+
+    /** the markup parser */
+    lazy val xmlp = new MarkupParser(this, true)
+
+    object symbXMLBuilder extends SymbolicXMLBuilder(this, true) { // DEBUG choices
+      val global: self.global.type = self.global
+      def freshName(prefix: String): Name = SourceFileParser.this.freshName(prefix)
+    }
+
+    def xmlLiteral : Tree = xmlp.xLiteral
+    def xmlLiteralPattern : Tree = xmlp.xLiteralPattern
+  }
+
+  class OutlineParser(source: SourceFile) extends SourceFileParser(source) {
+
+    def skipBraces[T](body: T): T = {
+      accept(LBRACE)  
+      var openBraces = 1
+      while (in.token != EOF && openBraces > 0) {
+        if (in.token == XMLSTART) xmlLiteral()
+        else {
+          if (in.token == LBRACE) openBraces += 1
+          else if (in.token == RBRACE) openBraces -= 1
+          in.nextToken()
+        }
+      }
+      body
+    }
+    
+    override def blockExpr(): Tree = skipBraces(EmptyTree)
+
+    override def templateBody(isPre: Boolean) = skipBraces(emptyValDef, List(EmptyTree))
+  }
+
+  class UnitParser(val unit: global.CompilationUnit, patches: List[BracePatch]) extends SourceFileParser(unit.source) {
+
+    def this(unit: global.CompilationUnit) = this(unit, List())
+    
+    override def newScanner = new UnitScanner(unit, patches)
+
+    override def freshTermName(prefix: String): TermName = unit.freshTermName(prefix)
+    override def freshTypeName(prefix: String): TypeName = unit.freshTypeName(prefix)
+
+    override def warning(offset: Int, msg: String) { 
+      unit.warning(o2p(offset), msg) 
+    }
+
+    override def deprecationWarning(offset: Int, msg: String) {   
       unit.deprecationWarning(o2p(offset), msg)
     }
 
@@ -165,15 +219,15 @@ self =>
       for ((offset, msg) <- syntaxErrors)
         unit.error(o2p(offset), msg)
     
-    def incompleteInputError(msg: String) {
-      val offset = unit.source.content.length - 1
-      if (smartParsing) syntaxErrors += ((offset, msg))
-      else unit.incompleteInputError(o2p(offset), msg)
-    }
-
-    def syntaxError(offset: Int, msg: String) { 
+    override def syntaxError(offset: Int, msg: String) { 
       if (smartParsing) syntaxErrors += ((offset, msg))
       else unit.error(o2p(offset), msg) 
+    }
+
+    override def incompleteInputError(msg: String) {
+      val offset = source.content.length - 1
+      if (smartParsing) syntaxErrors += ((offset, msg))
+      else unit.incompleteInputError(o2p(offset), msg)
     }
 
     /** parse unit. If there are inbalanced braces,
@@ -187,17 +241,6 @@ self =>
         case patches  => new UnitParser(unit, patches).parse()
       }
     }
-
-    /** the markup parser */
-    lazy val xmlp = new MarkupParser(this, true)
-
-    object symbXMLBuilder extends SymbolicXMLBuilder(this, true) { // DEBUG choices
-      val global: self.global.type = self.global
-      def freshName(prefix: String): Name = UnitParser.this.freshName(prefix)
-    }
-
-    def xmlLiteral : Tree = xmlp.xLiteral
-    def xmlLiteralPattern : Tree = xmlp.xLiteralPattern
   }
 
   final val Local = 0
@@ -240,6 +283,16 @@ self =>
     /** Are we inside the Scala package? Set for files that start with package scala
      */
     private var inScalaPackage = false
+    private var currentPackage = ""
+    def resetPackage() {
+      inScalaPackage = false
+      currentPackage = ""      
+    }
+    private lazy val anyValNames: Set[Name] = tpnme.ScalaValueNames.toSet + tpnme.AnyVal
+
+    private def inScalaRootPackage       = inScalaPackage && currentPackage == "scala"    
+    private def isScalaArray(name: Name) = inScalaRootPackage && name == tpnme.Array
+    private def isAnyValType(name: Name) = inScalaRootPackage && anyValNames(name)
     
     def parseStartRule: () => Tree
 
@@ -323,7 +376,7 @@ self =>
         Nil,
         List(Nil),
         TypeTree(),
-        Block(List(Apply(Select(Super("", ""), nme.CONSTRUCTOR), Nil)), Literal(Constant(())))
+        Block(List(Apply(Select(Super(tpnme.EMPTY, tpnme.EMPTY), nme.CONSTRUCTOR), Nil)), Literal(Constant(())))
       )
 
       // def main
@@ -557,7 +610,6 @@ self =>
     def isUnaryOp = isIdent && raw.isUnary(in.name)
     def isRawStar = isIdent && in.name == raw.STAR
     def isRawBar  = isIdent && in.name == raw.BAR
-    def isScalaArray(name: Name) = inScalaPackage && name == tpnme.Array
 
     def isIdent = in.token == IDENTIFIER || in.token == BACKQUOTED_IDENT
 
@@ -1005,6 +1057,20 @@ self =>
       val id = atPos(start) { Ident(ident()) }
       if (in.token == DOT) { selectors(id, false, in.skipToken()) }
       else id
+    }
+    /** Calls qualId() and manages some package state.
+     */
+    private def pkgQualId() = {
+      if (in.token == IDENTIFIER && in.name.encode == nme.scala_)
+        inScalaPackage = true
+      
+      val pkg = qualId()
+      newLineOptWhenFollowedBy(LBRACE)
+      
+      if (currentPackage == "") currentPackage = pkg.toString
+      else currentPackage = currentPackage + "." + pkg
+    
+      pkg
     }
 
     /** SimpleExpr    ::= literal
@@ -1476,8 +1542,12 @@ self =>
    /** CaseClauses ::= CaseClause {CaseClause}
     *   CaseClause ::= case Pattern [Guard] `=>' Block
     */
-    def caseClauses(): List[CaseDef] = caseSeparated {
-      atPos(in.offset)(makeCaseDef(pattern(), guard(), caseBlock()))
+    def caseClauses(): List[CaseDef] = {
+      val cases = caseSeparated { atPos(in.offset)(makeCaseDef(pattern(), guard(), caseBlock())) }
+      if (cases.isEmpty)  // trigger error if there are no cases
+        accept(CASE)
+
+      cases
     }
 
     // IDE HOOK (so we can memoize case blocks) // needed?
@@ -2244,7 +2314,7 @@ self =>
         var newmods = mods
         val nameOffset = in.offset
         val name = ident()
-        atPos(start, if (name == nme.ERROR) start else nameOffset) {
+        val result = atPos(start, if (name == nme.ERROR) start else nameOffset) {
           // contextBoundBuf is for context bounded type parameters of the form
           // [T : B] or [T : => B]; it contains the equivalent implicit parameter type,
           // i.e. (B[T] or T => B)
@@ -2266,6 +2336,8 @@ self =>
             }
           DefDef(newmods, name, tparams, vparamss, restype, rhs)
         }
+        signalParseProgress(result.pos)
+        result
       }
     }
 
@@ -2472,27 +2544,36 @@ self =>
      *  TraitExtends     ::= 'extends' | `<:'
      */
     def templateOpt(mods: Modifiers, name: Name, constrMods: Modifiers, vparamss: List[List[ValDef]], tstart: Int): Template = {
-      val (parents0, argss, self, body) = 
-        if (in.token == EXTENDS || settings.YvirtClasses && mods.hasTraitFlag && in.token == SUBTYPE) {
+      val (parents0, argss, self, body) = (
+        if (in.token == EXTENDS || in.token == SUBTYPE && mods.hasTraitFlag) { 
           in.nextToken()
           template(mods.hasTraitFlag)
-        } else if ((in.token == SUBTYPE) && mods.hasTraitFlag) {
-          in.nextToken()
-          template(true)
-        } else {
+        }
+        else {
           newLineOptWhenFollowedBy(LBRACE)
           val (self, body) = templateBodyOpt(false)
           (List(), List(List()), self, body)
         }
-      var parents = parents0
-      if (!isInterface(mods, body) && !isScalaArray(name))
-        parents = parents :+ scalaScalaObjectConstr
-      if (parents.isEmpty)
-        parents = List(scalaAnyRefConstr)
-      if (mods.isCase) parents ++= List(productConstr, serializableConstr)
+      )
+      
       val tstart0 = if (body.isEmpty && in.lastOffset < tstart) in.lastOffset else tstart
       atPos(tstart0) {
-        Template(parents, self, constrMods, vparamss, argss, body, o2p(tstart))
+        if (isAnyValType(name)) {
+          val parent = if (name == tpnme.AnyVal) tpnme.Any else tpnme.AnyVal
+          Template(List(scalaDot(parent)), self, body)
+        }
+        else {
+          val parents = (
+            if (!isInterface(mods, body) && !isScalaArray(name)) parents0 :+ scalaScalaObjectConstr
+            else if (parents0.isEmpty) List(scalaAnyRefConstr)
+            else parents0
+          ) ++ (
+            if (mods.isCase) List(productConstr, serializableConstr)
+            else Nil
+          )
+
+          Template(parents, self, constrMods, vparamss, argss, body, o2p(tstart))
+        }
       }
     }
 
@@ -2553,8 +2634,7 @@ self =>
     /** Packaging ::= package QualId [nl] `{' TopStatSeq `}'
      */
     def packaging(start: Int): Tree = {
-      val pkg = qualId()
-      newLineOptWhenFollowedBy(LBRACE)
+      val pkg = pkgQualId()
       val stats = inBracesOrNil(topStatSeq())
       makePackaging(start, pkg, stats)
     }
@@ -2602,7 +2682,7 @@ self =>
      *                     |
      * @param isPre specifies whether in early initializer (true) or not (false)
      */
-    def templateStatSeq(isPre : Boolean) = checkNoEscapingPlaceholders {
+    def templateStatSeq(isPre : Boolean): (ValDef, List[Tree]) = checkNoEscapingPlaceholders {
       var self: ValDef = emptyValDef
       val stats = new ListBuffer[Tree]
       if (isExprIntro) {
@@ -2747,10 +2827,7 @@ self =>
             }
           } else {
             in.flushDoc
-            if (in.token == IDENTIFIER && in.name.encode == nme.scala_)
-              inScalaPackage = true
-            val pkg = qualId()
-            newLineOptWhenFollowedBy(LBRACE)
+            val pkg = pkgQualId()
             if (in.token == EOF) {
               ts += makePackaging(start, pkg, List())
             } else if (isStatSep) {
@@ -2758,6 +2835,7 @@ self =>
               ts += makePackaging(start, pkg, topstats())
             } else {
               ts += inBraces(makePackaging(start, pkg, topStatSeq()))
+              acceptStatSepOpt()
               ts ++= topStatSeq()
             }
           }
@@ -2766,6 +2844,8 @@ self =>
         }
         ts.toList
       }
+      
+      resetPackage()
       topstats() match {        
         case List(stat @ PackageDef(_, _)) => stat
         case stats =>

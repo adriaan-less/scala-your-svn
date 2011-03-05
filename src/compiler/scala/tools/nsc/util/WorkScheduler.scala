@@ -17,7 +17,7 @@ class WorkScheduler {
   }
 
   /** called from Server: test whether one of todo list, throwables, or InterruptReqs is nonempty */
-  def moreWork(): Boolean = synchronized {
+  def moreWork: Boolean = synchronized {
     todo.nonEmpty || throwables.nonEmpty || interruptReqs.nonEmpty
   }
   
@@ -77,7 +77,11 @@ class WorkScheduler {
    */
   def raise(exc: Throwable) = synchronized {
     throwables enqueue exc
-    postWorkItem { () => }
+    postWorkItem { new EmptyAction }
   }
+}
+
+class EmptyAction extends (() => Unit) {
+  def apply() {}
 }
 

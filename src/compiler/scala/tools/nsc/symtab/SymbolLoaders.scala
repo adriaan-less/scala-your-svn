@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -25,21 +25,47 @@ abstract class SymbolLoaders {
   val global: Global
   import global._
 
+  protected def enterIfNew(owner: Symbol, member: Symbol, completer: SymbolLoader): Symbol = {
+    assert(owner.info.decls.lookup(member.name) == NoSymbol, owner.fullName + "." + member.name)
+    owner.info.decls enter member
+    member
+  }    
+
+  private def realOwner(root: Symbol): Symbol = {
+    if (root.isRoot) definitions.EmptyPackageClass else root
+  }
+
+  /** Enter class with given `name` into scope of `root`
+   *  and give them `completer` as type.
+   */
+  def enterClass(root: Symbol, name: String, completer: SymbolLoader): Symbol = {
+    val owner = realOwner(root)
+    val clazz = owner.newClass(NoPosition, newTypeName(name))
+    clazz setInfo completer
+    enterIfNew(owner, clazz, completer)
+  }
+
+  /** Enter module with given `name` into scope of `root`
+   *  and give them `completer` as type.
+   */
+  def enterModule(root: Symbol, name: String, completer: SymbolLoader): Symbol = {
+    val owner = realOwner(root)
+    val module = owner.newModule(NoPosition, newTermName(name))
+    module setInfo completer
+    module.moduleClass setInfo moduleClassLoader
+    enterIfNew(owner, module, completer)
+  }
+
   /** Enter class and module with given `name` into scope of `root`
    *  and give them `completer` as type.
    */
   def enterClassAndModule(root: Symbol, name: String, completer: SymbolLoader) {
-    val owner = if (root.isRoot) definitions.EmptyPackageClass else root
-    assert(owner.info.decls.lookup(name) == NoSymbol, owner.fullName + "." + name)
-    val clazz = owner.newClass(NoPosition, newTypeName(name))
-    val module = owner.newModule(NoPosition, name)
-    clazz setInfo completer
-    module setInfo completer
-    module.moduleClass setInfo moduleClassLoader
-    owner.info.decls enter clazz
-    owner.info.decls enter module
-    assert(clazz.companionModule == module || clazz.isAnonymousClass, module)
-    assert(module.companionClass == clazz, clazz)
+    val clazz = enterClass(root, name, completer)
+    val module = enterModule(root, name, completer)
+    if (!clazz.isAnonymousClass) {
+      assert(clazz.companionModule == module, module)
+      assert(module.companionClass == clazz, clazz)
+    }
   }
 
   /** In batch mode: Enter class and module with given `name` into scope of `root`
@@ -61,7 +87,7 @@ abstract class SymbolLoaders {
     /** Load source or class file for `root', return */
     protected def doComplete(root: Symbol): Unit
     
-    protected def sourcefile: Option[AbstractFile] = None
+    def sourcefile: Option[AbstractFile] = None
 
     /**
      * Description of the resource (ClassPath, AbstractFile, MSILType)
@@ -160,14 +186,16 @@ abstract class SymbolLoaders {
 
       val sourcepaths = classpath.sourcepaths
       for (classRep <- classpath.classes if doLoad(classRep)) {
-	((classRep.binary, classRep.source) : @unchecked) match {
-	  case (Some(bin), Some(src)) if needCompile(bin, src) => 
+        ((classRep.binary, classRep.source) : @unchecked) match {
+          case (Some(bin), Some(src)) if needCompile(bin, src) => 
+            if (settings.verbose.value) inform("[symloader] picked up newer source file for " + src.path)
             enterToplevelsFromSource(root, classRep.name, src)
-	  case (None, Some(src)) => 
+          case (None, Some(src)) => 
+            if (settings.verbose.value) inform("[symloader] no class, picked up source file for " + src.path)
             enterToplevelsFromSource(root, classRep.name, src)
-	  case (Some(bin), _) => 
+          case (Some(bin), _) => 
             enterClassAndModule(root, classRep.name, newClassLoader(bin))
-	}
+        }
       }
 
       for (pkg <- classpath.packages) {
@@ -257,7 +285,7 @@ abstract class SymbolLoaders {
       classfileParser.parse(classfile, root)
       stopTimer(classReadNanos, start)
     }
-    override protected def sourcefile = classfileParser.srcfile
+    override def sourcefile = classfileParser.srcfile
   }
 
   class MSILTypeLoader(typ: MSILType) extends SymbolLoader {
@@ -271,7 +299,7 @@ abstract class SymbolLoaders {
 
   class SourcefileLoader(val srcfile: AbstractFile) extends SymbolLoader {
     protected def description = "source file "+ srcfile.toString
-    override protected def sourcefile = Some(srcfile)
+    override def sourcefile = Some(srcfile)
     protected def doComplete(root: Symbol): Unit = global.currentRun.compileLate(srcfile)
   }
 

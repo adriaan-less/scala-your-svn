@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -65,7 +65,7 @@ trait ScalaClassLoader extends JavaClassLoader {
     val url = this.getResource(name)
 
     if (url == null) Array()
-    else new io.Streamable.Bytes { def inputStream() = url.openStream } . toByteArray()
+    else io.Streamable.bytes(url.openStream)
   }
   
   /** Run the main method of a class to be loaded by this classloader */

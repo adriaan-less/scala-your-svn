@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -35,11 +35,38 @@ class LowPriorityImplicits {
   implicit def floatWrapper(x: Float)     = new runtime.RichFloat(x)
   implicit def doubleWrapper(x: Double)   = new runtime.RichDouble(x)  
   implicit def booleanWrapper(x: Boolean) = new runtime.RichBoolean(x)
+  
+  // These eight implicits exist solely to exclude Null from the domain of
+  // the boxed types, so that e.g. "var x: Int = null" is a compile time
+  // error rather than a delayed null pointer exception by way of the
+  // conversion from java.lang.Integer.  If defined in the same file as
+  // Integer2int, they would have higher priority because Null is a subtype
+  // of Integer.  We balance that out and create conflict by moving the
+  // definition into the superclass.
+  //
+  // Caution: do not adjust tightrope tension without safety goggles in place.
+  implicit def Byte2byteNullConflict(x: Null): Byte          = sys.error("value error")
+  implicit def Short2shortNullConflict(x: Null): Short       = sys.error("value error")
+  implicit def Character2charNullConflict(x: Null): Char     = sys.error("value error")
+  implicit def Integer2intNullConflict(x: Null): Int         = sys.error("value error")
+  implicit def Long2longNullConflict(x: Null): Long          = sys.error("value error")
+  implicit def Float2floatNullConflict(x: Null): Float       = sys.error("value error")
+  implicit def Double2doubleNullConflict(x: Null): Double    = sys.error("value error")
+  implicit def Boolean2booleanNullConflict(x: Null): Boolean = sys.error("value error")
 
-  implicit def genericWrapArray[T](xs: Array[T]): WrappedArray[T] = 
-    if (xs ne null) WrappedArray.make(xs) else null
+  implicit def genericWrapArray[T](xs: Array[T]): WrappedArray[T] =
+    if (xs eq null) null
+    else WrappedArray.make(xs)
 
-  implicit def wrapRefArray[T <: AnyRef](xs: Array[T]): WrappedArray[T] = if (xs ne null) new WrappedArray.ofRef[T](xs) else null
+  // Since the JVM thinks arrays are covariant, one 0-length Array[AnyRef]
+  // is as good as another for all T <: AnyRef.  Instead of creating 100,000,000
+  // unique ones by way of this implicit, let's share one.
+  implicit def wrapRefArray[T <: AnyRef](xs: Array[T]): WrappedArray[T] = {
+    if (xs eq null) null
+    else if (xs.length == 0) WrappedArray.empty[T]
+    else new WrappedArray.ofRef[T](xs)
+  }
+    
   implicit def wrapIntArray(xs: Array[Int]): WrappedArray[Int] = if (xs ne null) new WrappedArray.ofInt(xs) else null
   implicit def wrapDoubleArray(xs: Array[Double]): WrappedArray[Double] = if (xs ne null) new WrappedArray.ofDouble(xs) else null
   implicit def wrapLongArray(xs: Array[Long]): WrappedArray[Long] = if (xs ne null) new WrappedArray.ofLong(xs) else null

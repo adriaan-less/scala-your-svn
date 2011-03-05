@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -94,7 +94,8 @@ class Random(val self: java.util.Random) {
    *  from the ASCII range 33-126.
    */
   def nextPrintableChar(): Char = {
-    val (low, high) = (33, 126)
+    val low  = 33
+    val high = 127
     (self.nextInt(high - low) + low).toChar
   }
 

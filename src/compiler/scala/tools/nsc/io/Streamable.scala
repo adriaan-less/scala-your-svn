@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
 
@@ -8,7 +8,7 @@ package io
 
 import java.net.{ URI, URL }
 import java.io.{ BufferedInputStream, InputStream, PrintStream, File => JFile }
-import java.io.{ BufferedReader, InputStreamReader }
+import java.io.{ BufferedReader, InputStreamReader, Closeable => JCloseable }
 import scala.io.{ Codec, BufferedSource, Source }
 import collection.mutable.ArrayBuffer
 import Path.fail
@@ -106,11 +106,16 @@ object Streamable {
     def slurp(codec: Codec) = chars(codec).mkString
   }
   
-  def bytes(is: InputStream): Array[Byte] =
-    new Bytes { val inputStream = is } toByteArray
+  /** Call a function on something Closeable, finally closing it. */
+  def closing[T <: JCloseable, U](stream: T)(f: T => U): U =
+    try f(stream)
+    finally stream.close()
   
-  def slurp(is: InputStream)(implicit codec: Codec): String =
-    new Chars { val inputStream = is } slurp codec
+  def bytes(is: => InputStream): Array[Byte] =
+    new Bytes { def inputStream() = is } toByteArray
+  
+  def slurp(is: => InputStream)(implicit codec: Codec): String =
+    new Chars { def inputStream() = is } slurp codec
 
   def slurp(url: URL)(implicit codec: Codec): String =
     slurp(url.openStream())

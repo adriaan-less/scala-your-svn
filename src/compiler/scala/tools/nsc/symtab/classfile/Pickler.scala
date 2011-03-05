@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -9,6 +9,7 @@ package classfile
 
 import java.lang.Float.floatToIntBits
 import java.lang.Double.doubleToLongBits
+import scala.io.Codec
 import reflect.generic.{ PickleBuffer, PickleFormat }
 import scala.collection.mutable.LinkedHashMap
 import PickleFormat._
@@ -65,6 +66,7 @@ abstract class Pickler extends SubComponent {
     private var entries   = new Array[AnyRef](256)
     private var ep        = 0
     private val index     = new LinkedHashMap[AnyRef, Int]
+    private lazy val nonClassRoot = root.ownersIterator.find(! _.isClass) getOrElse NoSymbol
 
     private def isRootSym(sym: Symbol) = 
       sym.name.toTermName == rootName && sym.owner == rootOwner
@@ -73,8 +75,12 @@ abstract class Pickler extends SubComponent {
      *  for existentially bound variables that have a non-local owner.
      *  Question: Should this be done for refinement class symbols as well?
      */
-    private def localizedOwner(sym: Symbol) = 
-      if (isLocal(sym) && !isRootSym(sym) && !isLocal(sym.owner)) root 
+    private def localizedOwner(sym: Symbol) =
+      if (isLocal(sym) && !isRootSym(sym) && !isLocal(sym.owner))
+        // don't use a class as the localized owner for type parameters that are not owned by a class: those are not instantiated by asSeenFrom
+        // however, they would suddenly be considered by asSeenFrom if their localized owner became a class (causing the crashes of #4079, #2741)
+        (if(sym.isTypeParameter && !sym.owner.isClass) nonClassRoot
+         else root)
       else sym.owner
 
     /** Is root in symbol.owner*, or should it be treated as a local symbol
@@ -182,6 +188,8 @@ abstract class Pickler extends SubComponent {
           putSymbol(clazz); putTypes(parents); putSymbols(decls.toList)
         case MethodType(params, restpe) =>
           putType(restpe); putSymbols(params)
+        case NullaryMethodType(restpe) =>
+          putType(restpe)
         case PolyType(tparams, restpe) =>
           /** no longer needed since all params are now local 
           tparams foreach { tparam => 
@@ -491,7 +499,9 @@ abstract class Pickler extends SubComponent {
     /** Write a name in UTF8 format. */
     private def writeName(name: Name) {
       ensureCapacity(name.length * 3)
-      writeIndex = name.copyUTF8(bytes, writeIndex)
+      val utfBytes = Codec fromUTF8 name.toString
+      compat.Platform.arraycopy(utfBytes, 0, bytes, writeIndex, utfBytes.length)
+      writeIndex += utfBytes.length
     }
 
     /** Write an annotation */
@@ -575,7 +585,11 @@ abstract class Pickler extends SubComponent {
           writeRef(restpe); writeRefs(formals)
           if (mt.isImplicit) IMPLICITMETHODtpe
           else METHODtpe
-        case PolyType(tparams, restpe) =>
+        case mt @ NullaryMethodType(restpe) => // reuse POLYtpe since those can never have an empty list of tparams -- TODO: is there any way this can come back and bite us in the bottom?
+        // ugliness and thrift aside, this should make this somewhat more backward compatible
+        // (I'm not sure how old scalac's would deal with nested PolyTypes, as these used to be folded into one)
+          writeRef(restpe); writeRefs(Nil); POLYtpe
+        case PolyType(tparams, restpe) => // invar: tparams nonEmpty
           writeRef(restpe); writeRefs(tparams); POLYtpe
         case ExistentialType(tparams, restpe) =>
           writeRef(restpe); writeRefs(tparams); EXISTENTIALtpe

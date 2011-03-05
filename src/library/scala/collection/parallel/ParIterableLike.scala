@@ -1,3 +1,12 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection.parallel
 
 
@@ -10,15 +19,14 @@ import scala.collection.Parallel
 import scala.collection.Parallelizable
 import scala.collection.Sequentializable
 import scala.collection.generic._
-
+import immutable.HashMapCombiner
 
 import java.util.concurrent.atomic.AtomicBoolean
 
+import annotation.unchecked.uncheckedVariance
 
-import annotation.unchecked.uncheckedStable
 
 
-// TODO update docs!!
 /** A template trait for parallel collections of type `ParIterable[T]`.
  *  
  *  $paralleliterableinfo
@@ -30,75 +38,96 @@ import annotation.unchecked.uncheckedStable
  *  
  *  @define paralleliterableinfo
  *  This is a base trait for Scala parallel collections. It defines behaviour
- *  common to all parallel collections. The actual parallel operation implementation
- *  is found in the `ParallelIterableFJImpl` trait extending this trait. Concrete
- *  parallel collections should inherit both this and that trait.
+ *  common to all parallel collections. Concrete parallel collections should
+ *  inherit this trait and `ParIterable` if they want to define specific combiner
+ *  factories.
  *  
  *  Parallel operations are implemented with divide and conquer style algorithms that
  *  parallelize well. The basic idea is to split the collection into smaller parts until
  *  they are small enough to be operated on sequentially.
  *  
- *  All of the parallel operations are implemented in terms of several methods. The first is:
- *  {{{
- *     def split: Seq[Repr]
- *  }}}
- *  which splits the collection into a sequence of disjunct views. This is typically a
- *  very fast operation which simply creates wrappers around the receiver collection.
- *  These views can then be split recursively into smaller views and so on. Each of
- *  the views is still a parallel collection.
+ *  All of the parallel operations are implemented as tasks within this trait. Tasks rely
+ *  on the concept of splitters, which extend iterators. Every parallel collection defines:
  *  
- *  The next method is:
  *  {{{
- *     def combine[OtherRepr >: Repr](other: OtherRepr): OtherRepr
+ *     def parallelIterator: ParIterableIterator[T]
  *  }}}
- *  which combines this collection with the argument collection and returns a collection
- *  containing both the elements of this collection and the argument collection. This behaviour
- *  may be implemented by producing a view that iterates over both collections, by aggressively
- *  copying all the elements into the new collection or by lazily creating a wrapper over both
- *  collections that gets evaluated once it's needed. It is recommended to avoid copying all of
+ *  
+ *  which returns an instance of `ParIterableIterator[T]`, which is a subtype of `Splitter[T]`.
+ *  Parallel iterators have a method `remaining` to check the remaining number of elements,
+ *  and method `split` which is defined by splitters. Method `split` divides the splitters
+ *  iterate over into disjunct subsets:
+ *  
+ *  {{{
+ *     def split: Seq[Splitter]
+ *  }}}
+ *  
+ *  which splits the splitter into a sequence of disjunct subsplitters. This is typically a
+ *  very fast operation which simply creates wrappers around the receiver collection.
+ *  This can be repeated recursively.
+ *  
+ *  Method `newCombiner` produces a new combiner. Combiners are an extension of builders.
+ *  They provide a method `combine` which combines two combiners and returns a combiner
+ *  containing elements of both combiners.
+ *  This method can be implemented by aggressively copying all the elements into the new combiner
+ *  or by lazily binding their results. It is recommended to avoid copying all of
  *  the elements for performance reasons, although that cost might be negligible depending on 
- *  the use case.
+ *  the use case. Standard parallel collection combiners avoid copying when merging results,
+ *  relying either on a two-step lazy construction or specific data-structure properties.
  *  
  *  Methods:
+ *  
  *  {{{
- *     def seq: Repr
- *  }}}
- *  and
- *  {{{
+ *     def seq: Sequential
  *     def par: Repr
  *  }}}
+ *  
  *  produce a view of the collection that has sequential or parallel operations, respectively.
+ *  These methods are efficient - they will not copy the elements, but have fixed target
+ *  types. The combination of methods `toParMap`, `toParSeq` or `toParSet` is more flexible,
+ *  but may copy the elements in some cases.
  *  
  *  The method:
+ *  
  *  {{{
  *     def threshold(sz: Int, p: Int): Int
  *  }}}
+ *  
  *  provides an estimate on the minimum number of elements the collection has before
  *  the splitting stops and depends on the number of elements in the collection. A rule of the
  *  thumb is the number of elements divided by 8 times the parallelism level. This method may
  *  be overridden in concrete implementations if necessary.
  *  
- *  Finally, method `newCombiner` produces a new parallel builder.
- *  
- *  Since this trait extends the `Iterable` trait, methods like `size` and `iterator` must also
- *  be implemented.
+ *  Since this trait extends the `Iterable` trait, methods like `size` must also
+ *  be implemented in concrete collections, while `iterator` forwards to `parallelIterator` by
+ *  default.
  *  
  *  Each parallel collection is bound to a specific fork/join pool, on which dormant worker
- *  threads are kept. One can change a fork/join pool of a collection any time except during
- *  some method being invoked. The fork/join pool contains other information such as the parallelism
+ *  threads are kept. The fork/join pool contains other information such as the parallelism
  *  level, that is, the number of processors used. When a collection is created, it is assigned the
- *  default fork/join pool found in the `scala.collection.parallel` package object.
+ *  default fork/join pool found in the `scala.parallel` package object.
  *  
- *  Parallel collections may or may not be strict, and they are not ordered in terms of the `foreach` 
- *  operation (see `Traversable`). In terms of the iterator of the collection, some collections
- *  are ordered (for instance, parallel sequences).
+ *  Parallel collections are not necessarily ordered in terms of the `foreach` 
+ *  operation (see `Traversable`). Parallel sequences have a well defined order for iterators - creating
+ *  an iterator and traversing the elements linearly will always yield the same order.
+ *  However, bulk operations such as `foreach`, `map` or `filter` always occur in undefined orders for all
+ *  parallel collections.
+ *
+ *  Existing parallel collection implementations provide strict parallel iterators. Strict parallel iterators are aware
+ *  of the number of elements they have yet to traverse. It's also possible to provide non-strict parallel iterators,
+ *  which do not know the number of elements remaining. To do this, the new collection implementation must override
+ *  `isStrictSplitterCollection` to `false`. This will make some operations unavailable.
+ *
+ *  To create a new parallel collection, extend the `ParIterable` trait, and implement `size`, `parallelIterator`,
+ *  `newCombiner` and `seq`. Having an implicit combiner factory requires extending this trait in addition, as
+ *  well as providing a companion object, as with regular collections.
  *  
- *  @author prokopec
- *  @since 2.8
+ *  @author Aleksandar Prokopec
+ *  @since 2.9
  *  
  *  @define sideeffects
  *  The higher-order functions passed to certain operations may contain side-effects. Since implementations
- *  of operations may not be sequential, this means that side-effects may not be predictable and may
+ *  of bulk operations may not be sequential, this means that side-effects may not be predictable and may
  *  produce data-races, deadlocks or invalidation of state if care is not taken. It is up to the programmer
  *  to either avoid using side-effects or to use some form of synchronization when accessing mutable data.
  *  
@@ -112,12 +141,13 @@ import annotation.unchecked.uncheckedStable
  *  builder for the resulting collection.
  *  
  *  @define abortsignalling
- *  This method will provide sequential views it produces with `abort` signalling capabilities. This means
- *  that sequential views may send and read `abort` signals.
+ *  This method will use `abort` signalling capabilities. This means
+ *  that splitters may send and read `abort` signals.
  *  
  *  @define indexsignalling
- *  This method will provide sequential views it produces with `indexFlag` signalling capabilities. This means
- *  that sequential views may set and read `indexFlag` state.
+ *  This method will use `indexFlag` signalling capabilities. This means
+ *  that splitters may set and read the `indexFlag` state.
+ *
  */
 trait ParIterableLike[+T, +Repr <: Parallel, +Sequential <: Iterable[T] with IterableLike[T, Sequential]]
 extends IterableLike[T, Repr]
@@ -213,7 +243,7 @@ self =>
    */
   protected[this] override def newBuilder: collection.mutable.Builder[T, Repr] = newCombiner
   
-  /** Optionally reuses existing combiner for better performance. By default it doesn't - subclasses may override this behaviour.
+  /** Optionally reuses an existing combiner for better performance. By default it doesn't - subclasses may override this behaviour.
    *  The provided combiner `oldc` that can potentially be reused will be either some combiner from the previous computational task, or `None` if there
    *  was no previous phase (in which case this method must return `newc`).
    *  
@@ -383,16 +413,24 @@ self =>
     executeAndWaitResult(new Aggregate(z, seqop, combop, parallelIterator))
   }
   
-  /** Applies a function `f` to all the elements of the receiver.
+  /** Applies a function `f` to all the elements of $coll. Does so in a nondefined order,
+   *  and in parallel.
    *  
    *  $undefinedorder
    *  
    *  @tparam U    the result type of the function applied to each element, which is always discarded
-   *  @param f     function that's applied to each element
+   *  @param f     function applied to each element
    */
-  override def foreach[U](f: T => U): Unit = {
+  def pforeach[U](f: T => U): Unit = {
     executeAndWaitResult(new Foreach(f, parallelIterator))
   }
+  
+  /** Applies a function `f` to all the elements of $coll in a sequential order.
+   *
+   *  @tparam U    the result type of the function applied to each element, which is always discarded
+   *  @param f     function applied to each element
+   */
+  override def foreach[U](f: T => U) = iterator.foreach(f)
   
   override def count(p: T => Boolean): Int = {
     executeAndWaitResult(new Count(p, parallelIterator))
@@ -511,6 +549,12 @@ self =>
   
   override def partition(pred: T => Boolean): (Repr, Repr) = {
     executeAndWaitResult(new Partition(pred, cbfactory, parallelIterator) mapResult { p => (p._1.result, p._2.result) })
+  }
+  
+  override def groupBy[K](f: T => K): immutable.ParMap[K, Repr] = {
+    executeAndWaitResult(new GroupBy(f, () => HashMapCombiner[K, T], parallelIterator) mapResult {
+      rcb => rcb.groupByKey(cbfactory)
+    })
   }
   
   override def take(n: Int): Repr = {
@@ -886,9 +930,9 @@ self =>
     def leaf(prev: Option[Combiner[S, That]]) = result = pit.flatmap2combiner(f, pbf(self.repr))
     protected[this] def newSubtask(p: ParIterableIterator[T]) = new FlatMap(f, pbf, p)
     override def merge(that: FlatMap[S, That]) = {
-      debuglog("merging " + result + " and " + that.result)
+      //debuglog("merging " + result + " and " + that.result)
       result = result combine that.result
-      debuglog("merged into " + result)
+      //debuglog("merged into " + result)
     }
   }
   
@@ -947,6 +991,29 @@ self =>
     def leaf(prev: Option[(Combiner[U, This], Combiner[U, This])]) = result = pit.partition2combiners(pred, reuse(prev.map(_._1), cbf()), reuse(prev.map(_._2), cbf()))
     protected[this] def newSubtask(p: ParIterableIterator[T]) = new Partition(pred, cbf, p)
     override def merge(that: Partition[U, This]) = result = (result._1 combine that.result._1, result._2 combine that.result._2)
+  }
+  
+  protected[this] class GroupBy[K, U >: T](
+    f: U => K,
+    mcf: () => HashMapCombiner[K, U],
+    protected[this] val pit: ParIterableIterator[T]
+  ) extends Transformer[HashMapCombiner[K, U], GroupBy[K, U]] {
+    @volatile var result: Result = null
+    final def leaf(prev: Option[Result]) = {
+      // note: HashMapCombiner doesn't merge same keys until evaluation
+      val cb = mcf()
+      while (pit.hasNext) {
+        val elem = pit.next
+        cb += f(elem) -> elem
+      }
+      result = cb
+    }
+    protected[this] def newSubtask(p: ParIterableIterator[T]) = new GroupBy(f, mcf, p)
+    override def merge(that: GroupBy[K, U]) = {
+      // note: this works because we know that a HashMapCombiner doesn't merge same keys until evaluation
+      // --> we know we're not dropping any mappings
+      result = (result combine that.result).asInstanceOf[HashMapCombiner[K, U]]
+    }
   }
   
   protected[this] class Take[U >: T, This >: Repr](n: Int, cbf: () => Combiner[U, This], protected[this] val pit: ParIterableIterator[T])
@@ -1257,9 +1324,9 @@ self =>
   
   private[parallel] def brokenInvariants = Seq[String]()
   
-  private val dbbuff = ArrayBuffer[String]()
-  def debugBuffer: ArrayBuffer[String] = dbbuff
-  // def debugBuffer: ArrayBuffer[String] = null
+  // private val dbbuff = ArrayBuffer[String]()
+  // def debugBuffer: ArrayBuffer[String] = dbbuff
+  def debugBuffer: ArrayBuffer[String] = null
   
   private[parallel] def debugclear() = synchronized {
     debugBuffer.clear

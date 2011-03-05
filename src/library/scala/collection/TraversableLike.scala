@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,14 +13,16 @@ package scala.collection
 import generic._
 import mutable.{ Builder, ListBuffer }
 import annotation.tailrec
+import annotation.migration
 import annotation.unchecked.{ uncheckedVariance => uV }
+
 
 /** A template trait for traversable collections of type `Traversable[A]`.
  *  $traversableInfo
  *  @define mutability
  *  @define traversableInfo
- *  This is a base trait of all kinds of $mutability Scala collections. It implements
- *  the behavior common to all collections, in terms of a method
+ *  This is a base trait of all kinds of $mutability Scala collections. It
+ *  implements the behavior common to all collections, in terms of a method
  *  `foreach` with signature:
  * {{{
  *     def foreach[U](f: Elem => U): Unit
@@ -69,8 +71,8 @@ import annotation.unchecked.{ uncheckedVariance => uV }
  *    depends on the element type `B` being admissible for that class,
  *    which means that an implicit instance of type `CanBuildFrom[Repr, B, That]`
  *    is found.
- *  @define bfinfo an implicit value of class `CanBuildFrom` which determines the
- *    result class `That` from the current representation type `Repr` and
+ *  @define bfinfo an implicit value of class `CanBuildFrom` which determines
+ *    the result class `That` from the current representation type `Repr` and
  *    and the new element type `B`. 
  *  @define orderDependent
  * 
@@ -97,7 +99,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   protected type Self = Repr
 
   /** The collection of type $coll underlying this `TraversableLike` object.
-   *  By default this is implemented as the `TraversableLike` object itself, but this can be overridden.
+   *  By default this is implemented as the `TraversableLike` object itself,
+   *  but this can be overridden.
    */
   def repr: Repr = this.asInstanceOf[Repr]
 
@@ -170,10 +173,10 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
    *  @tparam B     the element type of the returned collection. 
    *  @tparam That  $thatinfo
    *  @param bf     $bfinfo
-   *  @return       a new collection of type `That` which contains all elements of this $coll
-   *                followed by all elements of `that`.
+   *  @return       a new collection of type `That` which contains all elements
+   *                of this $coll followed by all elements of `that`.
    * 
-   *  @usecase def ++(that: TraversableOnce[A]): $Coll[A]
+   *  @usecase def ++[B](that: TraversableOnce[B]): $Coll[B]
    *  
    *  @return       a new $coll which contains all elements of this $coll
    *                followed by all elements of `that`.
@@ -186,18 +189,18 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     b.result
   }
   
-  /** Concatenates this $coll with the elements of a traversable collection.  It
-   *  differs from ++ in that the right operand determines the type of the resulting
-   *  collection rather than the left one.
+  /** Concatenates this $coll with the elements of a traversable collection.
+   *  It differs from ++ in that the right operand determines the type of the
+   *  resulting collection rather than the left one.
    * 
    *  @param that   the traversable to append.
    *  @tparam B     the element type of the returned collection. 
    *  @tparam That  $thatinfo
    *  @param bf     $bfinfo
-   *  @return       a new collection of type `That` which contains all elements of this $coll
-   *                followed by all elements of `that`.
+   *  @return       a new collection of type `That` which contains all elements
+   *                of this $coll followed by all elements of `that`.
    * 
-   *  @usecase def ++(that: TraversableOnce[A]): $Coll[A]
+   *  @usecase def ++:[B](that: TraversableOnce[B]): $Coll[B]
    *  
    *  @return       a new $coll which contains all elements of this $coll
    *                followed by all elements of `that`.
@@ -304,8 +307,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     b.result
   }
 
-  /** Builds a new collection by applying an option-valued function to all elements of this $coll
-   *  on which the function is defined.
+  /** Builds a new collection by applying an option-valued function to all
+   *  elements of this $coll on which the function is defined.
    *
    *  @param f      the option-valued function which filters and maps the $coll.
    *  @tparam B     the element type of the returned collection.
@@ -398,8 +401,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
    *  $mayNotTerminateInf
    *
    *  @param   p     the predicate used to test elements.
-   *  @return        `true` if the given predicate `p` holds for some of the elements
-   *                 of this $coll, otherwise `false`.
+   *  @return        `true` if the given predicate `p` holds for some of the
+   *                 elements of this $coll, otherwise `false`.
    */
   def exists(p: A => Boolean): Boolean = {
     var result = false
@@ -428,17 +431,18 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     result
   }
   
-  /**
-   * Produces a collection containing cummulative results of applying the operator going left to right.
-   * $willNotTerminateInf
-   * $orderDependent
-   * 
-   * @tparam B      the type of the elements in the resulting collection
-   * @tparam That   the actual type of the resulting collection
-   * @param z       the initial value
-   * @param op      the binary operator applied to the intermediate result and the element
-   * @param bf      $bfinfo
-   * @return        collection with intermediate results
+  /** Produces a collection containing cummulative results of applying the
+   *  operator going left to right.
+   *  
+   *  $willNotTerminateInf
+   *  $orderDependent
+   *  
+   *  @tparam B      the type of the elements in the resulting collection
+   *  @tparam That   the actual type of the resulting collection
+   *  @param z       the initial value
+   *  @param op      the binary operator applied to the intermediate result and the element
+   *  @param bf      $bfinfo
+   *  @return        collection with intermediate results
    */
   def scanLeft[B, That](z: B)(op: (B, A) => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
@@ -449,24 +453,36 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     b.result
   }
   
-  /**
-   * Produces a collection containing cummulative results of applying the operator going right to left.
-   * $willNotTerminateInf
-   * $orderDependent
-   * 
-   * @tparam B      the type of the elements in the resulting collection
-   * @tparam That   the actual type of the resulting collection
-   * @param z       the initial value
-   * @param op      the binary operator applied to the intermediate result and the element
-   * @param bf      $bfinfo
-   * @return        collection with intermediate results
+  /** Produces a collection containing cummulative results of applying the operator going right to left.
+   *  The head of the collection is the last cummulative result.
+   *  $willNotTerminateInf
+   *  $orderDependent
+   *  
+   *  Example:
+   *  {{{
+   *    List(1, 2, 3, 4).scanRight(0)(_ + _) == List(10, 9, 7, 4, 0)
+   *  }}}
+   *  
+   *  @tparam B      the type of the elements in the resulting collection
+   *  @tparam That   the actual type of the resulting collection
+   *  @param z       the initial value
+   *  @param op      the binary operator applied to the intermediate result and the element
+   *  @param bf      $bfinfo
+   *  @return        collection with intermediate results
    */
+  @migration(2, 9,
+    "This scanRight definition has changed in 2.9.\n" +
+    "The previous behavior can be reproduced with scanRight.reverse."
+  )
   def scanRight[B, That](z: B)(op: (A, B) => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
-    val b = bf(repr)
-    b.sizeHint(this, 1)
+    var scanned = List(z)
     var acc = z
-    b += acc
-    for (x <- reversed) { acc = op(x, acc); b += acc }
+    for (x <- reversed) {
+      acc = op(x, acc)
+      scanned ::= acc
+    }
+    val b = bf(repr)
+    for (elem <- scanned) b += elem
     b.result
   }
 
@@ -506,7 +522,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   /** Selects the last element.
     * $orderDependent
     * @return The last element of this $coll.
-    * @throws NoSuchElementException If the $coll is empty. */
+    * @throws NoSuchElementException If the $coll is empty.
+    */
   def last: A = {
     var lst = head
     for (x <- this)
@@ -543,8 +560,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   /** Selects first ''n'' elements.
    *  $orderDependent
    *  @param  n    Tt number of elements to take from this $coll.
-   *  @return a $coll consisting only of the first `n` elements of this $coll, or else the
-   *          whole $coll, if it has less than `n` elements.
+   *  @return a $coll consisting only of the first `n` elements of this $coll,
+   *          or else the whole $coll, if it has less than `n` elements.
    */
   def take(n: Int): Repr = {
     val b = newBuilder
@@ -638,8 +655,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   /** Splits this $coll into a prefix/suffix pair according to a predicate.
    *
    *  Note: `c span p`  is equivalent to (but possibly more efficient than)
-   *  `(c takeWhile p, c dropWhile p)`, provided the evaluation of the predicate `p`
-   *  does not cause any side-effects.
+   *  `(c takeWhile p, c dropWhile p)`, provided the evaluation of the
+   *  predicate `p` does not cause any side-effects.
    *  $orderDependent
    * 
    *  @param p the test predicate
@@ -728,6 +745,7 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   def toStream: Stream[A] = toBuffer.toStream
 
   /** Converts this $coll to a string.
+   *
    *  @return   a string representation of this collection. By default this
    *            string consists of the `stringPrefix` of this $coll,
    *            followed by all elements separated by commas and enclosed in parentheses.
@@ -735,8 +753,10 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   override def toString = mkString(stringPrefix + "(", ", ", ")")
 
   /** Defines the prefix of this object's `toString` representation.
-   *  @return  a string representation which starts the result of `toString` applied to this $coll.
-   *           By default the string prefix is the simple name of the collection class $coll.
+   *
+   *  @return  a string representation which starts the result of `toString`
+   *           applied to this $coll. By default the string prefix is the
+   *           simple name of the collection class $coll.
    */
   def stringPrefix : String = {
     var string = repr.asInstanceOf[AnyRef].getClass.getName
@@ -774,8 +794,9 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
   /** Creates a non-strict filter of this $coll.
    *
    *  Note: the difference between `c filter p` and `c withFilter p` is that
-   *        the former creates a new collection, whereas the latter only restricts
-   *        the domain of subsequent `map`, `flatMap`, `foreach`, and `withFilter` operations.
+   *        the former creates a new collection, whereas the latter only
+   *        restricts the domain of subsequent `map`, `flatMap`, `foreach`,
+   *        and `withFilter` operations.
    *  $orderDependent
    * 
    *  @param p   the predicate used to test elements.
@@ -786,8 +807,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
    */
   def withFilter(p: A => Boolean): FilterMonadic[A, Repr] = new WithFilter(p)
 
-  /** A class supporting filtered operations. Instances of this class are returned by
-   *  method `withFilter`.
+  /** A class supporting filtered operations. Instances of this class are
+   *  returned by method `withFilter`.
    */
   class WithFilter(p: A => Boolean) extends FilterMonadic[A, Repr] {
 
@@ -798,15 +819,15 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
      *  @tparam B     the element type of the returned collection.
      *  @tparam That  $thatinfo
      *  @param bf     $bfinfo
-     *  @return       a new collection of type `That` resulting from applying the given function
-     *                `f` to each element of the outer $coll that satisfies predicate `p`
-     *                and collecting the results.
+     *  @return       a new collection of type `That` resulting from applying
+     *                the given function `f` to each element of the outer $coll
+     *                that satisfies predicate `p` and collecting the results.
      *
      *  @usecase def map[B](f: A => B): $Coll[B] 
      *  
      *  @return       a new $coll resulting from applying the given function
-     *                `f` to each element of the outer $coll that satisfies predicate `p`
-     *                and collecting the results.
+     *                `f` to each element of the outer $coll that satisfies
+     *                predicate `p` and collecting the results.
      */
     def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
       val b = bf(repr)
@@ -816,14 +837,17 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     }
 
     /** Builds a new collection by applying a function to all elements of the
-     *  outer $coll containing this `WithFilter` instance that satisfy predicate `p` and concatenating the results. 
+     *  outer $coll containing this `WithFilter` instance that satisfy
+     *  predicate `p` and concatenating the results. 
      *
      *  @param f      the function to apply to each element.
      *  @tparam B     the element type of the returned collection.
      *  @tparam That  $thatinfo
      *  @param bf     $bfinfo
-     *  @return       a new collection of type `That` resulting from applying the given collection-valued function
-     *                `f` to each element of the outer $coll that satisfies predicate `p` and concatenating the results.
+     *  @return       a new collection of type `That` resulting from applying
+     *                the given collection-valued function `f` to each element
+     *                of the outer $coll that satisfies predicate `p` and
+     *                concatenating the results.
      *
      *  @usecase def flatMap[B](f: A => TraversableOnce[B]): $Coll[B]
      * 
@@ -837,8 +861,8 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
       b.result
     }
 
-    /** Applies a function `f` to all elements of the outer $coll containing this `WithFilter` instance
-     *  that satisfy predicate `p`.
+    /** Applies a function `f` to all elements of the outer $coll containing
+     *  this `WithFilter` instance that satisfy predicate `p`.
      *
      *  @param  f   the function that is applied for its side-effect to every element.
      *              The result of function `f` is discarded.

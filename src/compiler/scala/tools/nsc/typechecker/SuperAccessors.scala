@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
@@ -39,7 +39,7 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
     private var accDefs: List[(Symbol, ListBuffer[Tree])] = List()
     
     private def accDefBuf(clazz: Symbol) = 
-      accDefs collectFirst { case (`clazz`, buf) => buf } getOrElse system.error("no acc def buf for "+clazz)
+      accDefs collectFirst { case (`clazz`, buf) => buf } getOrElse sys.error("no acc def buf for "+clazz)
 
     private def transformArgs(args: List[Tree], params: List[Symbol]) =
       ((args, params).zipped map { (arg, param) =>
@@ -103,7 +103,7 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
             var superAccTpe = clazz.thisType.memberType(sym) 
             if (sym.isModule && !sym.isMethod) {
               // the super accessor always needs to be a method. See #231
-              superAccTpe = PolyType(List(), superAccTpe)
+              superAccTpe = NullaryMethodType(superAccTpe)
             }
             superAcc.setInfo(superAccTpe.cloneInfo(superAcc))
             //println("creating super acc "+superAcc+":"+superAcc.tpe)//DEBUG
@@ -157,7 +157,7 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
               decls.enter(s)
             }
           }
-          if (settings.verbose.value && onlyPresentation && !sym.isAnonymousClass) {
+          if (settings.verbose.value && forScaladoc && !sym.isAnonymousClass) {
             println("========== scaladoc of "+sym+" =============================")
             println(toJavaDoc(expandedDocComment(sym)))
             for (member <- sym.info.members) {
@@ -299,7 +299,6 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
           MethodType(List(protAcc.newSyntheticValueParam(objType)),
                      memberType.cloneInfo(protAcc).asSeenFrom(qual.tpe, sym.owner))
       }
-      if (settings.debug.value) log("accType: " + accType)
         
       var protAcc = clazz.info.decl(accName).suchThat(s => s == NoSymbol || s.tpe =:= accType(s))
       if (protAcc == NoSymbol) { 
@@ -406,7 +405,7 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
      *  self type is a Java class, and a protected accessor is needed, we issue
      *  an error. If the self type is a Scala class, we don't add an accessor.
      *  An accessor is not needed if the access boundary is larger than the 
-     *  enclosing package, since that translates to 'public' on the host system.
+     *  enclosing package, since that translates to 'public' on the host sys.
      *  (as Java has no real package nesting).
      *
      * If the access happens inside a 'trait', access is more problematic since 
@@ -434,18 +433,18 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         && (sym.owner.enclosingPackageClass == packageAccessBoundry(sym))
       )
       val host = hostForAccessorOf(sym, clazz)
-      def isSelfType = (host.thisSym != host) && {
-        if (host.thisSym.tpe.typeSymbol.isJavaDefined)
+      def isSelfType = !(host.tpe <:< host.typeOfThis) && {
+        if (host.typeOfThis.typeSymbol.isJavaDefined)
           restrictionError(pos, unit,
-            "%s accesses protected %s from self type %s.".format(clazz, sym, host.thisSym.tpe)
+            "%s accesses protected %s from self type %s.".format(clazz, sym, host.typeOfThis)
           )
         true
       }
       def isJavaProtected = host.isTrait && sym.isJavaDefined && {
         restrictionError(pos, unit, 
-          "%s accesses protected %s inside a concrete trait method. " +
-          "Add an accessor in a class extending %s to work around this bug." .
-            format(clazz, sym, sym.enclClass)
+          """|%s accesses protected %s inside a concrete trait method.
+             |Add an accessor in a class extending %s as a workaround.""".stripMargin.format(
+                clazz, sym, sym.enclClass)
         )
         true
       }

@@ -1,5 +1,5 @@
 /* NSC -- new scala compiler
- * Copyright 2004-2010 LAMP/EPFL
+ * Copyright 2004-2011 LAMP/EPFL
  */
 
 
@@ -83,7 +83,7 @@ abstract class TypeParser {
     for (cnstrnt <- tvarCILDef.Constraints) {
       ts += getCLRType(cnstrnt) // TODO we're definitely not at or after erasure, no need to call objToAny, right?
     }
-    TypeBounds(definitions.NothingClass.tpe, intersectionType(ts.toList, clazz))
+    TypeBounds.upper(intersectionType(ts.toList, clazz))
     // TODO variance???
   }
 
@@ -150,8 +150,8 @@ abstract class TypeParser {
     val canBeTakenAddressOf = (typ.IsValueType || typ.IsEnum) && (typ.FullName != "System.Enum")
 
     if(canBeTakenAddressOf) {
-      clazzBoxed = clazz.owner.newClass(clazz.name + "Boxed")
-      clazzMgdPtr = clazz.owner.newClass(clazz.name + "MgdPtr")
+      clazzBoxed = clazz.owner.newClass(clazz.name.toTypeName append "Boxed")
+      clazzMgdPtr = clazz.owner.newClass(clazz.name.toTypeName append "MgdPtr")
       clrTypes.mdgptrcls4clssym(clazz) =  clazzMgdPtr
       /* adding typMgdPtr to clrTypes.sym2type should happen early (before metadata for supertypes is parsed,
          before metadata for members are parsed) so that clazzMgdPtr can be found by getClRType. */
@@ -309,8 +309,8 @@ abstract class TypeParser {
 	    val flags = translateAttributes(getter);
 	    val owner: Symbol = if (getter.IsStatic) statics else clazz;
 	    val methodSym = owner.newMethod(NoPosition, name).setFlag(flags)
-            val mtype: Type = if (gparamsLength == 0) PolyType(List(), propType) // .NET properties can't be polymorphic
-                              else methodType(getter, getter.ReturnType)(methodSym)
+      val mtype: Type = if (gparamsLength == 0) NullaryMethodType(propType) // .NET properties can't be polymorphic
+                        else methodType(getter, getter.ReturnType)(methodSym)
         methodSym.setInfo(mtype);
 	    methodSym.setFlag(Flags.ACCESSOR);
 	    (if (getter.IsStatic) staticDefs else instanceDefs).enter(methodSym)

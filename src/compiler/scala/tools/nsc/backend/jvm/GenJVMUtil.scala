@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Iulian Dragos
  */
 
@@ -7,27 +7,18 @@
 package scala.tools.nsc
 package backend.jvm
 
-import java.nio.ByteBuffer
-
 import scala.collection.{ mutable, immutable }
-import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.symtab._
-import scala.tools.nsc.symtab.classfile.ClassfileConstants._
 
 import ch.epfl.lamp.fjbg._
-import JAccessFlags._
-import JObjectType.{ JAVA_LANG_STRING, JAVA_LANG_OBJECT }
-import java.io.{ DataOutputStream }
-import reflect.generic.{ PickleFormat, PickleBuffer }
 
 trait GenJVMUtil {
   self: GenJVM =>
-  
+
   import global._
   import icodes._
   import icodes.opcodes._
   import definitions._
-  
+
   /** Map from type kinds to the Java reference types. It is used for
    *  loading class constants. @see Predef.classOf.
    */
@@ -44,17 +35,13 @@ trait GenJVMUtil {
   ) 
 
   private val javaNameCache = {
-    val map = new mutable.HashMap[Symbol, String]()
+    val map = new mutable.WeakHashMap[Symbol, String]()
     map ++= List(
       NothingClass        -> RuntimeNothingClass.fullName('/'),
       RuntimeNothingClass -> RuntimeNothingClass.fullName('/'),
       NullClass           -> RuntimeNullClass.fullName('/'),
       RuntimeNullClass    -> RuntimeNullClass.fullName('/')    
     )
-    primitiveCompanions foreach { sym => 
-      map(sym) = "scala/runtime/" + sym.name + "$"
-    }
-
     map
   }
 
@@ -63,7 +50,7 @@ trait GenJVMUtil {
    *  the Eclipse plugin uses it).
    */
   trait BytecodeUtil {
-    
+
     val conds = immutable.Map[TestOp, Int](
       EQ -> JExtendedCode.COND_EQ,
       NE -> JExtendedCode.COND_NE,
@@ -126,7 +113,7 @@ trait GenJVMUtil {
         )
       else
         javaType(s.tpe)
-    
+
     protected def genConstant(jcode: JExtendedCode, const: Constant) {
       const.tag match {
         case UnitTag    => ()

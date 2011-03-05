@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -113,7 +113,10 @@ trait Contexts { self: Analyzer =>
     var inConstructorSuffix = false         // are we in a secondary constructor
                                             // after the this constructor call?
     var returnsSeen = false                 // for method context: were returns encountered?
-    var inSelfSuperCall = false             // is this a context for a constructor self or super call?
+    var inSelfSuperCall = false             // is this context (enclosed in) a constructor call?
+    // (the call to the super or self constructor in the first line of a constructor)
+    // in this context the object's fields should not be in scope
+
     var reportAmbiguousErrors = false
     var reportGeneralErrors = false
     var diagnostic: List[String] = Nil      // these messages are printed when issuing an error
@@ -136,6 +139,13 @@ trait Contexts { self: Analyzer =>
       val tparams = undetparams
       undetparams = List()
       tparams
+    }
+    
+    def withImplicitsDisabled[T](op: => T): T = {
+      val saved = implicitsEnabled
+      implicitsEnabled = false
+      try op
+      finally implicitsEnabled = saved
     }
 
     /**
@@ -177,6 +187,7 @@ trait Contexts { self: Analyzer =>
       c.variance = this.variance
       c.depth = if (scope == this.scope) this.depth else this.depth + 1
       c.imports = imports
+      c.inSelfSuperCall = inSelfSuperCall
       c.reportAmbiguousErrors = this.reportAmbiguousErrors
       c.reportGeneralErrors = this.reportGeneralErrors
       c.diagnostic = this.diagnostic
@@ -291,16 +302,26 @@ trait Contexts { self: Analyzer =>
      *  @param sym2 ...
      *  @param rest ...
      */
-    def ambiguousError(pos: Position, pre: Type, sym1: Symbol,
-                       sym2: Symbol, rest: String) {
-      val msg =
-        ("ambiguous reference to overloaded definition,\n" +
-         "both " + sym1 + sym1.locationString + " of type " + pre.memberType(sym1) +
-         "\nand  " + sym2 + sym2.locationString + " of type " + pre.memberType(sym2) +
-         "\nmatch " + rest)
+    def ambiguousError(pos: Position, pre: Type, sym1: Symbol, sym2: Symbol, rest: String) {
+      val (reportPos, msg) = (
+        if (sym1.hasDefaultFlag && sym2.hasDefaultFlag && sym1.enclClass == sym2.enclClass) {
+          val methodName = nme.defaultGetterToMethod(sym1.name)
+          (sym1.enclClass.pos,            
+           "in "+ sym1.enclClass +", multiple overloaded alternatives of " + methodName +
+                     " define default arguments")
+        }
+        else {
+          (pos,
+            ("ambiguous reference to overloaded definition,\n" +
+             "both " + sym1 + sym1.locationString + " of type " + pre.memberType(sym1) +
+             "\nand  " + sym2 + sym2.locationString + " of type " + pre.memberType(sym2) +
+             "\nmatch " + rest)
+          )
+        }
+      )
       if (reportAmbiguousErrors) {
         if (!pre.isErroneous && !sym1.isErroneous && !sym2.isErroneous)
-          unit.error(pos, msg)
+          unit.error(reportPos, msg)
       } else throw new TypeError(pos, msg)
     }
 
@@ -364,6 +385,7 @@ trait Contexts { self: Analyzer =>
      */
     def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
       lastAccessCheckDetails = ""
+      // Console.println("isAccessible(%s, %s, %s)".format(sym, pre, superAccess))
 
       @inline def accessWithinLinked(ab: Symbol) = {
         val linked = ab.linkedClassOfClass
@@ -438,7 +460,6 @@ trait Contexts { self: Analyzer =>
         || sym.isProtected &&
              (  superAccess
              || pre.isInstanceOf[ThisType]
-             || sym.isConstructor
              || phase.erasedTypes 
              || isProtectedAccessOK(sym)
              || (sym.allOverriddenSymbols exists isProtectedAccessOK)
@@ -452,7 +473,7 @@ trait Contexts { self: Analyzer =>
     }
 
     def pushTypeBounds(sym: Symbol) {
-      savedTypeBounds = (sym, sym.info) :: savedTypeBounds
+      savedTypeBounds ::= ((sym, sym.info))
     }
 
     def restoreTypeBounds(tp: Type): Type = {
@@ -460,7 +481,7 @@ trait Contexts { self: Analyzer =>
       for ((sym, info) <- savedTypeBounds) {
         if (settings.debug.value) log("resetting " + sym + " to " + info);
         sym.info match {
-          case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) => 
+          case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) =>
             current = current.instantiateTypeParams(List(sym), List(lo))
 //@M TODO: when higher-kinded types are inferred, probably need a case PolyType(_, TypeBounds(...)) if ... =>            
           case _ =>
@@ -517,7 +538,17 @@ trait Contexts { self: Analyzer =>
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      val nextOuter = if (owner.isConstructor) outer.outer.outer else outer
+      // nextOuter determines which context is searched next for implicits (after `this`, which contributes `newImplicits` below)
+      // in most cases, it is simply the outer context
+      // if we're owned by a constructor, the actual current context and the conceptual context are different when it comes to scoping:
+      // the current conceptual scope is the context enclosing the blocks that represent the constructor body
+      // (TODO: why is there more than one such block in the outer chain?)
+      val scopingCtx =
+        if(owner.isConstructor) nextEnclosing(c => !c.tree.isInstanceOf[Block]) // drop the constructor body blocks (they come in varying numbers depending on whether we are in the ctor call in the first statement or after)
+        // scopingCtx == the constructor definition (if we were after the ctor call) or the class that contains this constructor (if we are in the ctor call)
+        else this
+      val nextOuter = scopingCtx.outer
+
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()
@@ -537,8 +568,8 @@ trait Contexts { self: Analyzer =>
             assert(imports.tail == nextOuter.imports)
             collectImplicitImports(imports.head)
           } else if (owner.isPackageClass) { 
- 	    // the corresponding package object may contain implicit members. 
- 	    collectImplicits(owner.tpe.implicitMembers, owner.tpe)
+            // the corresponding package object may contain implicit members.
+            collectImplicits(owner.tpe.implicitMembers, owner.tpe)
           } else List()
         implicitsCache = if (newImplicits.isEmpty) nextOuter.implicitss
                          else newImplicits :: nextOuter.implicitss

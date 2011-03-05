@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -137,7 +137,7 @@ trait Parsers {
     def flatMapWithNext[U](f: Nothing => Input => ParseResult[U]): ParseResult[U] 
       = this
 
-    def get: Nothing = system.error("No result when parsing failed")
+    def get: Nothing = sys.error("No result when parsing failed")
   }
   /** An extractor so NoSuccess(msg, next) can be used in matches.
    */

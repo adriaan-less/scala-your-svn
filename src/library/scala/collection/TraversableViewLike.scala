@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,6 +13,7 @@ package scala.collection
 import generic._
 import mutable.{Builder, ArrayBuffer}
 import TraversableView.NoBuilder
+import annotation.migration
 
 
 /** A template trait for non-strict views of traversable collections.
@@ -199,8 +200,18 @@ self =>
     buf.result
   }
   
+  // Have to overload all three to work around #4299.  The overload
+  // is because mkString should force a view but toString should not.
+  override def mkString: String = mkString("")
+  override def mkString(sep: String): String = mkString("", sep, "")
+  override def mkString(start: String, sep: String, end: String): String = {
+    thisSeq.addString(new StringBuilder(), start, sep, end).toString
+  }
+  
   override def addString(b: StringBuilder, start: String, sep: String, end: String): StringBuilder =
     b append start append "..." append end
+
+  override def toString = stringPrefix+"(...)"
 
   override def filter(p: A => Boolean): This = newFiltered(p).asInstanceOf[This]
   override def withFilter(p: A => Boolean): This = newFiltered(p).asInstanceOf[This]
@@ -216,7 +227,11 @@ self =>
 
   override def scanLeft[B, That](z: B)(op: (B, A) => B)(implicit bf: CanBuildFrom[This, B, That]): That =
     newForced(thisSeq.scanLeft(z)(op)).asInstanceOf[That]
-
+  
+  @migration(2, 9,
+    "This scanRight definition has changed in 2.9.\n" +
+    "The previous behavior can be reproduced with scanRight.reverse."
+  )
   override def scanRight[B, That](z: B)(op: (A, B) => B)(implicit bf: CanBuildFrom[This, B, That]): That =
     newForced(thisSeq.scanRight(z)(op)).asInstanceOf[That]
 

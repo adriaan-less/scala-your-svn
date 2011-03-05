@@ -1,12 +1,10 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
-
-
 
 package scala.runtime
 
@@ -17,9 +15,12 @@ import scala.collection.immutable.{ NumericRange, List, Stream, Nil, :: }
 import scala.collection.generic.{ Sorted }
 import scala.xml.{ Node, MetaData }
 import scala.util.control.ControlThrowable
+import java.lang.Double.doubleToLongBits
 import java.lang.reflect.{ Modifier, Method => JMethod }
 
-/* The object <code>ScalaRunTime</code> provides ...
+/** The object ScalaRunTime provides support methods required by
+ *  the scala runtime.  All these methods should be considered
+ *  outside the API and subject to change or removal without notice.
  */
 object ScalaRunTime {
   def isArray(x: AnyRef): Boolean = isArray(x, 1)
@@ -157,19 +158,21 @@ object ScalaRunTime {
   def _toString(x: Product): String =
     x.productIterator.mkString(x.productPrefix + "(", ",", ")")
 
-  def _hashCodeMurmur(x: Product): Int =
-    scala.util.MurmurHash.product(x)
-  
   def _hashCode(x: Product): Int = {
+    import scala.util.MurmurHash._
     val arr =  x.productArity
-    var code = arr
+    var h = startHash(arr)
+    var c = startMagicA
+    var k = startMagicB
     var i = 0
     while (i < arr) {
       val elem = x.productElement(i)
-      code = code * 41 + (if (elem == null) 0 else elem.##)
+      h = extendHash(h, if (elem == null) 0 else elem.##, c, k)
+      c = nextMagicA(c)
+      k = nextMagicB(k)
       i += 1
     }
-    code
+    finalizeHash(h)
   }
 
   /** Fast path equality method for inlining; used when -optimise is set.
@@ -210,29 +213,27 @@ object ScalaRunTime {
     if (iv == fv) return iv
     
     val lv = fv.toLong
-    if (lv == fv) return lv.hashCode
+    if (lv == fv) return hash(lv)
     else fv.hashCode
   }
   @inline def hash(lv: Long): Int = {
-    val iv = lv.toInt
-    if (iv == lv) iv else lv.hashCode
+    val low = lv.toInt
+    val lowSign = low >>> 31
+    val high = (lv >>> 32).toInt
+    low ^ (high + lowSign)
   }
   @inline def hash(x: Int): Int = x
   @inline def hash(x: Short): Int = x.toInt
   @inline def hash(x: Byte): Int = x.toInt
   @inline def hash(x: Char): Int = x.toInt
-  @inline def hash(x: Boolean): Int = x.hashCode
+  @inline def hash(x: Boolean): Int = if (x) trueHashcode else falseHashcode
   @inline def hash(x: Unit): Int = 0
-  
   @inline def hash(x: Number): Int  = runtime.BoxesRunTime.hashFromNumber(x)
   
-  /** XXX Why is there one boxed implementation in here? It would seem
-   *  we should have all the numbers or none of them.
-   */
-  @inline def hash(x: java.lang.Long): Int = {
-    val iv = x.intValue
-    if (iv == x.longValue) iv else x.hashCode
-  }
+  // These are so these values are constant folded into def hash(Boolean)
+  // rather than being recalculated all the time.
+  private final val trueHashcode = true.hashCode
+  private final val falseHashcode = false.hashCode
 
   /** A helper method for constructing case class equality methods,
    *  because existential types get in the way of a clean outcome and
@@ -289,6 +290,8 @@ object ScalaRunTime {
     // The recursively applied attempt to prettify Array printing
     def inner(arg: Any): String = arg match {
       case null                         => "null"
+      case ""                           => "\"\""
+      case x: String                    => if (x.head.isWhitespace || x.last.isWhitespace) "\"" + x + "\"" else x
       case x if useOwnToString(x)       => x.toString
       case x: AnyRef if isArray(x)      => WrappedArray make x take maxElements map inner mkString ("Array(", ", ", ")")
       case x: collection.Map[_, _]      => x take maxElements map mapInner mkString (x.stringPrefix + "(", ", ", ")")

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -34,7 +34,7 @@ trait AbsSettings {
   // two AbsSettings objects are equal if their visible settings are equal.
   override def hashCode() = visibleSettings.hashCode
   override def equals(that: Any) = that match {
-    case s: AbsSettings => this.visibleSettings == s.visibleSettings
+    case s: AbsSettings => this.userSetSettings == s.userSetSettings
     case _              => false
   }
   override def toString() = "Settings {\n%s}\n" format (userSetSettings map ("  " + _ + "\n") mkString)
@@ -82,7 +82,12 @@ trait AbsSettings {
     def respondsTo(label: String) = (name == label) || (abbreviations contains label)
     
     /** If the setting should not appear in help output, etc. */
-    def isInternalOnly = false
+    private var internalSetting = false
+    def isInternalOnly = internalSetting
+    def internalOnly(): this.type = {
+      internalSetting = true
+      this
+    }
 
     /** Issue error and return */
     def errorAndValue[T](msg: String, x: T): T = { errorFn(msg) ; x }
@@ -101,12 +106,8 @@ trait AbsSettings {
     protected[nsc] def tryToSetColon(args: List[String]): Option[ResultOfTryToSet] =
       errorAndValue("'%s' does not accept multiple arguments" format name, None)
 
-    /** Commands which take properties in form -Dfoo=bar or -Dfoo
-     */
-    protected[nsc] def tryToSetProperty(args: List[String]): Option[ResultOfTryToSet] =
-      errorAndValue("'%s' does not accept property style arguments" format name, None)
-
     /** Attempt to set from a properties file style property value.
+     *  Currently used by Eclipse SDT only.
      */
     def tryToSetFromPropertyValue(s: String): Unit = tryToSet(s :: Nil)
 

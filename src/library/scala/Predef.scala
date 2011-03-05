@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -38,6 +38,7 @@ object Predef extends LowPriorityImplicits {
   type Set[A]     = immutable.Set[A]
   val Map         = immutable.Map
   val Set         = immutable.Set
+  val AnyRef      = new SpecializableCompanion {}   // a dummy used by the specialization annotation
 
   // Manifest types, companions, and incantations for summoning
   type ClassManifest[T] = scala.reflect.ClassManifest[T]
@@ -58,14 +59,14 @@ object Predef extends LowPriorityImplicits {
 
   // Deprecated
 
-  @deprecated("Use system.error(message) instead")
-  def error(message: String): Nothing = system.error(message)
+  @deprecated("Use sys.error(message) instead")
+  def error(message: String): Nothing = sys.error(message)
 
-  @deprecated("Use system.exit() instead")
-  def exit(): Nothing = system.exit()
+  @deprecated("Use sys.exit() instead")
+  def exit(): Nothing = sys.exit()
 
-  @deprecated("Use system.exit(status) instead")
-  def exit(status: Int): Nothing = system.exit(status)
+  @deprecated("Use sys.exit(status) instead")
+  def exit(status: Int): Nothing = sys.exit(status)
 
   @deprecated("Use formatString.format(args: _*) or arg.formatted(formatString) instead")
   def format(text: String, xs: Any*) = augmentString(text).format(xs: _*)
@@ -155,9 +156,9 @@ object Predef extends LowPriorityImplicits {
   
   final class Ensuring[A](val x: A) {
     def ensuring(cond: Boolean): A = { assert(cond); x }
-    def ensuring(cond: Boolean, msg: Any): A = { assert(cond, msg); x }
+    def ensuring(cond: Boolean, msg: => Any): A = { assert(cond, msg); x }
     def ensuring(cond: A => Boolean): A = { assert(cond(x)); x }
-    def ensuring(cond: A => Boolean, msg: Any): A = { assert(cond(x), msg); x }
+    def ensuring(cond: A => Boolean, msg: => Any): A = { assert(cond(x), msg); x }
   }
   implicit def any2Ensuring[A](x: A): Ensuring[A] = new Ensuring(x)
 
@@ -340,7 +341,7 @@ object Predef extends LowPriorityImplicits {
    * simply add an implicit argument of type `T <:< U`, where U is the required upper bound (for lower-bounds, use: `U <: T`)
    * in part contributed by Jason Zaugg
    */
-  sealed abstract class <:<[-From, +To] extends (From => To)
+  sealed abstract class <:<[-From, +To] extends (From => To) with Serializable
   implicit def conforms[A]: A <:< A = new (A <:< A) { def apply(x: A) = x }
   // not in the <:< companion object because it is also intended to subsume identity (which is no longer implicit)
 
@@ -348,14 +349,14 @@ object Predef extends LowPriorityImplicits {
    *
    * @see <:< for expressing subtyping constraints
    */
-  sealed abstract class =:=[From, To] extends (From => To)
+  sealed abstract class =:=[From, To] extends (From => To) with Serializable
   object =:= {
     implicit def tpEquals[A]: A =:= A = new (A =:= A) {def apply(x: A) = x}
   }
 
   // less useful due to #2781
   @deprecated("Use From => To instead")
-  sealed abstract class <%<[-From, +To] extends (From => To)
+  sealed abstract class <%<[-From, +To] extends (From => To) with Serializable
   object <%< {
     implicit def conformsOrViewsAs[A <% B, B]: A <%< B = new (A <%< B) {def apply(x: A) = x}
   }

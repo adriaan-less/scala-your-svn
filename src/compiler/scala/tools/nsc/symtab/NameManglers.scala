@@ -1,11 +1,13 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
 package scala.tools.nsc
 package symtab
 
+import java.security.MessageDigest
+import scala.io.Codec
 import util.Chars.isOperatorPart
 
 /** A trait to encapsulate name mangling.  It's intended for the
@@ -14,8 +16,40 @@ import util.Chars.isOperatorPart
  */
 trait NameManglers {
   self: SymbolTable =>
+  
+  trait NameManglingCommon {
+    self: CompilerCommonNames =>
 
-  trait NameMangling {
+    def flattenedName(segments: Name*): NameType = compactedString(segments mkString "$")
+
+    private final val MaxFileNameLength = 255
+    private final val MaxNameLength = MaxFileNameLength - 6 // leave space for ".class"    
+    
+    /** "COMPACTIFY" */
+    private lazy val md5 = MessageDigest.getInstance("MD5")
+    private def toMD5(s: String, edge: Int) = {
+      val prefix = s take edge
+      val suffix = s takeRight edge
+      val marker = "$$$$"
+
+      val cs = s.toArray
+      val bytes = Codec fromUTF8 cs
+      md5 update bytes
+      val md5chars = md5.digest() map (b => (b & 0xFF).toHexString) mkString
+
+      prefix + marker + md5chars + marker + suffix
+    }
+    private def compactedString(s: String) =
+      if (s.length <= MaxNameLength) s 
+      else toMD5(s, MaxNameLength / 4)
+  }
+
+  trait TypeNameMangling extends NameManglingCommon {
+    self: tpnme.type =>
+    
+  }
+
+  trait TermNameMangling extends NameManglingCommon {
     self: nme.type =>    
     
     val IMPL_CLASS_SUFFIX             = "$class"
@@ -29,6 +63,7 @@ trait NameManglers {
   
     def isConstructorName(name: Name)       = name == CONSTRUCTOR || name == MIXIN_CONSTRUCTOR    
     def isExceptionResultName(name: Name)   = name startsWith EXCEPTION_RESULT_PREFIX
+    /** !!! Foo$class$1 is an implClassName, I think.  */
     def isImplClassName(name: Name)         = name endsWith IMPL_CLASS_SUFFIX
     def isLocalDummyName(name: Name)        = name startsWith LOCALDUMMY_PREFIX
     def isLocalName(name: Name)             = name endsWith LOCAL_SUFFIX_STRING
@@ -45,7 +80,7 @@ trait NameManglers {
 
     /** The expanded setter name of `name' relative to this class `base` 
      */
-    def expandedSetterName(name: Name, base: Symbol): Name =
+    def expandedSetterName(name: TermName, base: Symbol): TermName =
       expandedName(name, base, separator = TRAIT_SETTER_SEPARATOR_STRING)
 
     /** If `name' is an expandedName name, the original name. 
@@ -71,31 +106,37 @@ trait NameManglers {
      */
     def splitSpecializedName(name: Name): (Name, String, String) =
       if (name.endsWith("$sp")) {
-        val name1 = name.subName(0, name.length - 3)
-        val idxC = name1.lastPos('c')
-        val idxM = name1.lastPos('m', idxC)
+        val name1 = name stripEnd "$sp"
+        val idxC  = name1 lastIndexOf 'c'
+        val idxM  = name1 lastIndexOf 'm'
+
         (name1.subName(0, idxM - 1),
          name1.subName(idxC + 1, name1.length).toString,
          name1.subName(idxM + 1, idxC).toString)
       } else
         (name, "", "")
 
-    def getterName(name: Name): Name     = if (isLocalName(name)) localToGetter(name) else name
-    def getterToLocal(name: Name): Name  = name append LOCAL_SUFFIX_STRING
-    def getterToSetter(name: Name): Name = name append SETTER_SUFFIX
-    def localToGetter(name: Name): Name  = name stripEnd LOCAL_SUFFIX_STRING
+    def getterName(name: TermName): TermName     = if (isLocalName(name)) localToGetter(name) else name
+    def getterToLocal(name: TermName): TermName  = name.toTermName append LOCAL_SUFFIX_STRING
+    def getterToSetter(name: TermName): TermName = name.toTermName append SETTER_SUFFIX
+    def localToGetter(name: TermName): TermName  = name stripEnd LOCAL_SUFFIX_STRING toTermName
 
-    def setterToGetter(name: Name): Name = {
+    def setterToGetter(name: TermName): TermName = {
       val p = name.pos(TRAIT_SETTER_SEPARATOR_STRING)
       if (p < name.length)
         setterToGetter(name.subName(p + TRAIT_SETTER_SEPARATOR_STRING.length, name.length))
       else
-        name stripEnd SETTER_SUFFIX
+        name stripEnd SETTER_SUFFIX toTermName
     }
   
-    def defaultGetterName(name: Name, pos: Int): Name = {
+    def defaultGetterName(name: Name, pos: Int): TermName = {
       val prefix = if (isConstructorName(name)) "init" else name
       newTermName(prefix + DEFAULT_GETTER_STRING + pos)
+    }
+    def defaultGetterToMethod(name: Name): TermName = {
+      val p = name.pos(DEFAULT_GETTER_STRING)
+      if (p < name.length) name.subName(0, p)
+      else name
     }
     
     def implClassName(name: Name): TypeName     = name append IMPL_CLASS_SUFFIX toTypeName

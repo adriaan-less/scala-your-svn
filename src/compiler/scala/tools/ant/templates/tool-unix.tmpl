@@ -1,12 +1,36 @@
 #!/bin/bash --posix
 #
 ##############################################################################
-# Copyright 2002-2010, LAMP/EPFL
+# Copyright 2002-2011, LAMP/EPFL
 #
 # This is free software; see the distribution for copying conditions.
 # There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A
 # PARTICULAR PURPOSE.
 ##############################################################################
+
+# Not sure what the right default is here: trying nonzero.
+SCALA_EXIT_STATUS=127
+REENABLE_ECHO=true
+
+function reenableEcho() {
+  REENABLE_ECHO=false
+  # reenable echo
+  case "$TERM" in
+      rxvt* | xterm* | screen*)
+          stty icanon echo
+          ;;
+  esac
+}
+
+function onExit() {
+  if $REENABLE_ECHO; then
+    reenableEcho
+    exit $SCALA_EXIT_STATUS
+  fi
+}
+
+# to reenable echo if we are interrupted before completing.
+trap onExit INT
 
 cygwin=false;
 case "`uname`" in
@@ -50,9 +74,6 @@ if [ -z "$TOOL_CLASSPATH" ] ; then
     done
 fi
 
-EXEC=exec
-CYGWIN_TERM_PRE=
-CYGWIN_TERM_POST=
 CYGWIN_JLINE_TERMINAL=
 if $cygwin; then
     if [ "$OS" = "Windows_NT" ] && cygpath -m .>/dev/null 2>/dev/null ; then
@@ -64,15 +85,10 @@ if $cygwin; then
     TOOL_CLASSPATH=`cygpath --path --$format "$TOOL_CLASSPATH"`
     case "$TERM" in
         rxvt* | xterm*)
-            EXEC=
-            CYGWIN_TERM_PRE="stty -icanon min 1 -echo"
-            CYGWIN_TERM_POST="stty icanon echo"
+            stty -icanon min 1 -echo
             CYGWIN_JLINE_TERMINAL="-Djline.terminal=jline.UnixTerminal"
-            trap "$CYGWIN_TERM_POST" SIGINT
         ;;
     esac
-else
-    trap "stty echo" SIGINT
 fi
 
 [ -n "$JAVA_OPTS" ] || JAVA_OPTS="@javaflags@"
@@ -82,20 +98,32 @@ fi
 # -D options will be available as system properties.
 declare -a java_args
 declare -a scala_args
-CPSWITCH="-cp $TOOL_CLASSPATH"
+
+# default to the boot classpath for speed.
+CPSELECT="-Xbootclasspath/a:"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -D*)
+      # pass to scala as well: otherwise we lose it sometimes when we
+      # need it, e.g. communicating with a server compiler.
       java_args=("${java_args[@@]}" "$1")
+      scala_args=("${scala_args[@@]}" "$1")
       shift
       ;;
     -J*)
+      # as with -D, pass to scala even though it will almost
+      # never be used.
       java_args=("${java_args[@@]}" "${1:2}")
+      scala_args=("${scala_args[@@]}" "$1")
       shift
       ;;
-    --usebootcp)
-      CPSWITCH="-Xbootclasspath/a:$TOOL_CLASSPATH"
+    -toolcp)
+      TOOL_CLASSPATH="$TOOL_CLASSPATH:$2"
+      shift 2
+      ;;
+    -nobootcp)
+      CPSELECT="-classpath "
       shift
       ;;
     *)
@@ -104,6 +132,7 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
 # reset "$@@" to the remaining args
 set -- "${scala_args[@@]}"
 
@@ -111,16 +140,17 @@ if [ -z "$JAVACMD" -a -n "$JAVA_HOME" -a -x "$JAVA_HOME/bin/java" ]; then
     JAVACMD="$JAVA_HOME/bin/java"
 fi
 
-eval $CYGWIN_TERM_PRE
-
-$EXEC "${JAVACMD:=java}" \
+"${JAVACMD:=java}" \
   $JAVA_OPTS \
   "${java_args[@@]}" \
-  $CPSWITCH \
+  ${CPSELECT}${TOOL_CLASSPATH} \
   -Dscala.usejavacp=true \
   -Dscala.home="$SCALA_HOME" \
   -Denv.emacs="$EMACS" \
   $CYGWIN_JLINE_TERMINAL \
   @properties@ @class@ @toolflags@ "$@@"
-  
-eval $CYGWIN_TERM_POST
+
+# record the exit status lest it be overwritten:
+# then reenable echo and propagate the code.
+SCALA_EXIT_STATUS=$?
+onExit

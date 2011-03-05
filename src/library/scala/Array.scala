@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -483,7 +483,7 @@ object Array extends FallbackArrayBuilding {
  *  @author Martin Odersky
  *  @version 1.0
  */
-final class Array[T](_length: Int) {
+final class Array[T](_length: Int) extends java.io.Serializable {
 
    /** Multidimensional array creation */
    @deprecated("use `Array.ofDim' instead")

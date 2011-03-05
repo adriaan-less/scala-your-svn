@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -19,17 +19,15 @@ import PartialFunction._
  *  @author  Iulian Dragos
  *  @version 1.0
  */
-// TODO:
-// - switches with alternatives
 abstract class GenICode extends SubComponent  {
   import global._
   import icodes._
   import icodes.opcodes._
   import definitions.{
-    ArrayClass, ObjectClass, ThrowableClass, StringClass, NothingClass, NullClass, AnyRefClass,
+    ArrayClass, ObjectClass, ThrowableClass, StringClass, StringModule, NothingClass, NullClass, AnyRefClass,
     Object_equals, Object_isInstanceOf, Object_asInstanceOf, ScalaRunTimeModule,
     BoxedNumberClass, BoxedCharacterClass,
-    getMember, runtimeCompanions
+    getMember
   }
   import scalaPrimitives.{
     isArrayOp, isComparisonOp, isLogicalOp,
@@ -675,28 +673,35 @@ abstract class GenICode extends SubComponent  {
           var ctx1         = genLoad(expr, ctx, returnedKind)
           lazy val tmp     = ctx1.makeLocal(tree.pos, expr.tpe, "tmp")
           val saved        = savingCleanups(ctx1) {
-            ctx1.cleanups exists {
+            var saved = false
+            ctx1.cleanups foreach {
               case MonitorRelease(m) =>
                 if (settings.debug.value)
                   log("removing " + m + " from cleanups: " + ctx1.cleanups)
                 ctx1.bb.emit(Seq(LOAD_LOCAL(m), MONITOR_EXIT()))
                 ctx1.exitSynchronized(m)
-                false
-              case Finalizer(f) =>
+
+              case Finalizer(f, finalizerCtx) =>
                 if (settings.debug.value)
                   log("removing " + f + " from cleanups: " + ctx1.cleanups)
-                  
-                val saved = returnedKind != UNIT && mayCleanStack(f) && {
+                 
+                if (returnedKind != UNIT && mayCleanStack(f)) {
                   log("Emitting STORE_LOCAL for " + tmp + " to save finalizer.")
                   ctx1.bb.emit(STORE_LOCAL(tmp))
-                  true
+                  saved = true
                 }
+                
+                // duplicate finalizer (takes care of anchored labels) 
+                val f1 = duplicateFinalizer(Set.empty ++ ctx1.labels.keySet, ctx1, f)
+
                 // we have to run this without the same finalizer in
                 // the list, otherwise infinite recursion happens for
                 // finalizers that contain 'return'
-                ctx1 = genLoad(f, ctx1.removeFinalizer(f), UNIT)
-                saved
+                val fctx = finalizerCtx.newBlock
+                ctx1.bb.closeWith(JUMP(fctx.bb))
+                ctx1 = genLoad(f1, fctx, UNIT)
             }
+            saved
           }
 
           if (saved) {
@@ -1217,7 +1222,7 @@ abstract class GenICode extends SubComponent  {
       }
 
     private def genLoadModule(ctx: Context, sym: Symbol, pos: Position) {
-      ctx.bb.emit(LOAD_MODULE(runtimeCompanions.getOrElse(sym, sym)), pos)
+      ctx.bb.emit(LOAD_MODULE(sym), pos)
     }
 
     def genConversion(from: TypeKind, to: TypeKind, ctx: Context, cast: Boolean) = {
@@ -1316,6 +1321,34 @@ abstract class GenICode extends SubComponent  {
         case _ => abort("Unknown coercion primitive: " + code)
       }
     }
+    
+    /** The Object => String overload.
+     */
+    private lazy val String_valueOf: Symbol = getMember(StringModule, "valueOf") filter (sym =>
+      sym.info.paramTypes match {
+        case List(pt) => pt.typeSymbol == ObjectClass
+        case _        => false
+      }
+    )
+    
+    // I wrote it this way before I realized all the primitive types are
+    // boxed at this point, so I'd have to unbox them.  Keeping it around in
+    // case we want to get more precise.
+    //
+    // private def valueOfForType(tp: Type): Symbol = {
+    //   val xs = getMember(StringModule, "valueOf") filter (sym =>
+    //     // We always exclude the Array[Char] overload because java throws an NPE if 
+    //     // you pass it a null.  It will instead find the Object one, which doesn't.
+    //     sym.info.paramTypes match {
+    //       case List(pt) => pt.typeSymbol != ArrayClass && (tp <:< pt)
+    //       case _        => false
+    //     }
+    //   )
+    //   xs.alternatives match {
+    //     case List(sym)  => sym
+    //     case _          => NoSymbol
+    //   }
+    // }
 
     /** Generate string concatenation.
      *
@@ -1324,22 +1357,25 @@ abstract class GenICode extends SubComponent  {
      *  @return     ...
      */
     def genStringConcat(tree: Tree, ctx: Context): Context = {
-      val Apply(Select(larg, _), rarg) = tree
-      var ctx1 = ctx
-
-      val concatenations = liftStringConcat(tree)
-      if (settings.debug.value)
-        log("Lifted string concatenations for " + tree + "\n to: " + concatenations);
-
-      ctx1.bb.emit(CALL_PRIMITIVE(StartConcat), tree.pos);
-      for (elem <- concatenations) {
-        val kind = toTypeKind(elem.tpe)
-        ctx1 = genLoad(elem, ctx1, kind)
-        ctx1.bb.emit(CALL_PRIMITIVE(StringConcat(kind)), elem.pos)
+      liftStringConcat(tree) match {
+        // Optimization for expressions of the form "" + x.  We can avoid the StringBuilder.
+        case List(Literal(Constant("")), arg) if !forMSIL =>
+          if (settings.debug.value) log("Rewriting \"\" + x as String.valueOf(x) for: " + arg)
+          val ctx1 = genLoad(arg, ctx, ObjectReference)
+          ctx1.bb.emit(CALL_METHOD(String_valueOf, Static(false)), arg.pos)
+          ctx1 
+        case concatenations =>
+          if (settings.debug.value) log("Lifted string concatenations for " + tree + "\n to: " + concatenations)
+          var ctx1 = ctx
+          ctx1.bb.emit(CALL_PRIMITIVE(StartConcat), tree.pos)
+          for (elem <- concatenations) {
+            val kind = toTypeKind(elem.tpe)
+            ctx1 = genLoad(elem, ctx1, kind)
+            ctx1.bb.emit(CALL_PRIMITIVE(StringConcat(kind)), elem.pos)
+          }
+          ctx1.bb.emit(CALL_PRIMITIVE(EndConcat), tree.pos)
+          ctx1        
       }
-      ctx1.bb.emit(CALL_PRIMITIVE(EndConcat), tree.pos)
-
-      ctx1
     }
     
     /** Generate the scala ## method.
@@ -1805,7 +1841,7 @@ abstract class GenICode extends SubComponent  {
       def contains(x: AnyRef) = value == x
     }
     case class MonitorRelease(m: Local) extends Cleanup(m) { }
-    case class Finalizer(f: Tree) extends Cleanup (f) { }
+    case class Finalizer(f: Tree, ctx: Context) extends Cleanup (f) { }
 
     def duplicateFinalizer(boundLabels: Set[Symbol], targetCtx: Context, finalizer: Tree) =  {
       (new DuplicateLabels(boundLabels))(targetCtx, finalizer)
@@ -1886,7 +1922,7 @@ abstract class GenICode extends SubComponent  {
         this.currentExceptionHandlers = other.currentExceptionHandlers
         this.scope = other.scope
       }
-
+      
       def setPackage(p: Name): this.type = {
         this.packg = p
         this
@@ -1919,8 +1955,8 @@ abstract class GenICode extends SubComponent  {
         this
       }
 
-      def addFinalizer(f: Tree): this.type = {
-        cleanups = Finalizer(f) :: cleanups;
+      def addFinalizer(f: Tree, ctx: Context): this.type = {
+        cleanups = Finalizer(f, ctx) :: cleanups;
         this
       }
 
@@ -1940,7 +1976,7 @@ abstract class GenICode extends SubComponent  {
       def enterMethod(m: IMethod, d: DefDef): Context = {
         val ctx1 = new Context(this) setMethod(m)
         ctx1.labels = new mutable.HashMap()
-        ctx1.method.code = new Code(m.symbol.simpleName.toString(), m)
+        ctx1.method.code = new Code(m)
         ctx1.bb = ctx1.method.code.startBlock
         ctx1.defdef = d
         ctx1.scope = EmptyScope
@@ -1973,7 +2009,7 @@ abstract class GenICode extends SubComponent  {
        * 'covered' by this exception handler (in addition to the 
        * previously active handlers).
        */
-      def newHandler(cls: Symbol, resultKind: TypeKind, pos: Position): ExceptionHandler = {
+      private def newExceptionHandler(cls: Symbol, resultKind: TypeKind, pos: Position): ExceptionHandler = {
         handlerCount += 1
         val exh = new ExceptionHandler(method, "" + handlerCount, cls, pos)
         exh.resultKind = resultKind
@@ -1997,7 +2033,7 @@ abstract class GenICode extends SubComponent  {
       /** Return a new context for generating code for the given
        * exception handler.
        */
-      def enterHandler(exh: ExceptionHandler): Context = {
+      private def enterExceptionHandler(exh: ExceptionHandler): Context = {
         currentExceptionHandlers ::= exh
         val ctx = newBlock
         exh.setStartBlock(ctx.bb)
@@ -2009,7 +2045,7 @@ abstract class GenICode extends SubComponent  {
       }
 
       /** Remove the given handler from the list of active exception handlers. */
-      def removeHandler(exh: ExceptionHandler): Unit = {
+      def removeActiveHandler(exh: ExceptionHandler): Unit = {
         assert(handlerCount > 0 && handlers.head == exh,
                "Wrong nesting of exception handlers." + this + " for " + exh)
         handlerCount -= 1
@@ -2083,9 +2119,9 @@ abstract class GenICode extends SubComponent  {
 
 
         val finalizerExh = if (finalizer != EmptyTree) Some({
-          val exh = outerCtx.newHandler(NoSymbol, toTypeKind(finalizer.tpe), finalizer.pos) // finalizer covers exception handlers
+          val exh = outerCtx.newExceptionHandler(NoSymbol, toTypeKind(finalizer.tpe), finalizer.pos) // finalizer covers exception handlers
           this.addActiveHandler(exh)  // .. and body aswell 
-          val ctx = finalizerCtx.enterHandler(exh)
+          val ctx = finalizerCtx.enterExceptionHandler(exh)
           val exception = ctx.makeLocal(finalizer.pos, ThrowableClass.tpe, "exc")
           loadException(ctx, exh, finalizer.pos)
           ctx.bb.emit(STORE_LOCAL(exception));
@@ -2099,8 +2135,9 @@ abstract class GenICode extends SubComponent  {
         }) else None
         
         val exhs = handlers.map { handler =>
-            val exh = this.newHandler(handler._1, handler._2, tree.pos)
-            var ctx1 = outerCtx.enterHandler(exh)
+            val exh = this.newExceptionHandler(handler._1, handler._2, tree.pos)
+            var ctx1 = outerCtx.enterExceptionHandler(exh)
+            ctx1.addFinalizer(finalizer, finalizerCtx)
             loadException(ctx1, exh, tree.pos)
             ctx1 = handler._3(ctx1)
             // emit finalizer
@@ -2111,7 +2148,7 @@ abstract class GenICode extends SubComponent  {
           }
         val bodyCtx = this.newBlock
         if (finalizer != EmptyTree)
-          bodyCtx.addFinalizer(finalizer)
+          bodyCtx.addFinalizer(finalizer, finalizerCtx)
 
         var finalCtx = body(bodyCtx)
         finalCtx = emitFinalizer(finalCtx)
@@ -2152,9 +2189,9 @@ abstract class GenICode extends SubComponent  {
         if (finalizer != EmptyTree) {
           // finalizer is covers try and all catch blocks, i.e.
           //   try { try { .. } catch { ..} } finally { .. }
-          val exh = outerCtx.newHandler(NoSymbol, UNIT, tree.pos)
+          val exh = outerCtx.newExceptionHandler(NoSymbol, UNIT, tree.pos)
           this.addActiveHandler(exh)
-          val ctx = finalizerCtx.enterHandler(exh)
+          val ctx = finalizerCtx.enterExceptionHandler(exh)
           loadException(ctx, exh, tree.pos)
           val ctx1 = genLoad(finalizer, ctx, UNIT)
           // need jump for the ICode to be valid. MSIL backend will emit `Endfinally` instead.
@@ -2163,8 +2200,8 @@ abstract class GenICode extends SubComponent  {
         }
 
         for (handler <- handlers) {
-          val exh = this.newHandler(handler._1, handler._2, tree.pos)
-          var ctx1 = outerCtx.enterHandler(exh)
+          val exh = this.newExceptionHandler(handler._1, handler._2, tree.pos)
+          var ctx1 = outerCtx.enterExceptionHandler(exh)
           loadException(ctx1, exh, tree.pos)
           ctx1 = handler._3(ctx1)
           // msil backend will emit `Leave` to jump out of a handler

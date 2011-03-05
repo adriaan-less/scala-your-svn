@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -27,8 +27,6 @@ abstract class TreeGen {
   def scalaScalaObjectConstr      = scalaDot(tpnme.ScalaObject)
   def productConstr               = scalaDot(tpnme.Product)
   def serializableConstr          = scalaDot(tpnme.Serializable)
-
-  private def isRootOrEmptyPackageClass(s: Symbol) = s.isRoot || s.isEmptyPackageClass
   
   def scalaFunctionConstr(argtpes: List[Tree], restpe: Tree, abstractFun: Boolean = false): Tree = {
     val cls = if (abstractFun)
@@ -55,32 +53,20 @@ abstract class TreeGen {
     case NoPrefix =>
       EmptyTree
     case ThisType(clazz) =>
-      if (isRootOrEmptyPackageClass(clazz)) EmptyTree
+      if (clazz.isEffectiveRoot) EmptyTree
       else mkAttributedThis(clazz)
     case SingleType(pre, sym) =>
-      val qual = mkAttributedStableRef(pre, sym)
-      qual.tpe match {
-        case MethodType(List(), restpe) =>
-          Apply(qual, List()) setType restpe
-        case _ =>
-          qual
-      }
+      applyIfNoArgs(mkAttributedStableRef(pre, sym))
     case TypeRef(pre, sym, args) =>
       if (sym.isRoot) {
         mkAttributedThis(sym)
       } else if (sym.isModuleClass) {
-        val qual = mkAttributedRef(pre, sym.sourceModule)
-        qual.tpe match {
-          case MethodType(List(), restpe) =>
-            Apply(qual, List()) setType restpe
-          case _ =>
-            qual
-        }
+        applyIfNoArgs(mkAttributedRef(pre, sym.sourceModule))
       } else if (sym.isModule || sym.isClass) {
         assert(phase.erasedTypes, tpe)
         mkAttributedThis(sym)
       } else if (sym.isType) {
-        assert(termSym != NoSymbol)
+        assert(termSym != NoSymbol, tpe)
         mkAttributedIdent(termSym) setType tpe
       } else {
         mkAttributedRef(pre, sym)
@@ -96,20 +82,27 @@ abstract class TreeGen {
       // I am unclear whether this is reachable, but
       // the following implementation looks logical -Lex
       val firstStable = parents.find(_.isStable)
-      assert(!firstStable.isEmpty)
+      assert(!firstStable.isEmpty, tpe)
       mkAttributedQualifier(firstStable.get)
 
     case _ =>
       abort("bad qualifier: " + tpe)
+  }
+  /** If this is a reference to a method with an empty
+   *  parameter list, wrap it in an apply.
+   */
+  private def applyIfNoArgs(qual: Tree) = qual.tpe match {
+    case MethodType(Nil, restpe) => Apply(qual, Nil) setType restpe
+    case _                       => qual
   }
 
   /** Builds a reference to given symbol with given stable prefix. */
   def mkAttributedRef(pre: Type, sym: Symbol): Tree = {
     val qual = mkAttributedQualifier(pre)
     qual match {
-      case EmptyTree                                              => mkAttributedIdent(sym)
-      case This(clazz) if isRootOrEmptyPackageClass(qual.symbol)  => mkAttributedIdent(sym)
-      case _                                                      => mkAttributedSelect(qual, sym)
+      case EmptyTree                                  => mkAttributedIdent(sym)
+      case This(clazz) if qual.symbol.isEffectiveRoot => mkAttributedIdent(sym)
+      case _                                          => mkAttributedSelect(qual, sym)
     }
   }
 
@@ -153,30 +146,26 @@ abstract class TreeGen {
     stabilize(mkAttributedRef(sym))
 
   def mkAttributedThis(sym: Symbol): Tree =
-    This(sym.name) setSymbol sym setType sym.thisType
+    This(sym.name.toTypeName) setSymbol sym setType sym.thisType
 
   def mkAttributedIdent(sym: Symbol): Tree =
     Ident(sym.name) setSymbol sym setType sym.tpe
 
   def mkAttributedSelect(qual: Tree, sym: Symbol): Tree = {
-    def tpe = qual.tpe
-    
-    def isUnqualified(n: Name)        = n match { case nme.ROOT | nme.EMPTY_PACKAGE_NAME => true ; case _ => false }
-    def hasUnqualifiedName(s: Symbol) = s != null && isUnqualified(s.name.toTermName)
-    def isInPkgObject(s: Symbol)      = s != null && s.owner.isPackageObjectClass && s.owner.owner == tpe.typeSymbol
-    
-    if (hasUnqualifiedName(qual.symbol))
+    // Tests involving the repl fail without the .isEmptyPackage condition.
+    if (qual.symbol != null && (qual.symbol.isEffectiveRoot || qual.symbol.isEmptyPackage))
       mkAttributedIdent(sym)
     else {
-      val pkgQualifier            =
-        if (!isInPkgObject(sym)) qual else {
+      val pkgQualifier =
+        if (sym != null && sym.owner.isPackageObjectClass && sym.owner.owner == qual.tpe.typeSymbol) {
           val obj = sym.owner.sourceModule
-          Select(qual, nme.PACKAGEkw) setSymbol obj setType singleType(tpe, obj)
+          Select(qual, nme.PACKAGEkw) setSymbol obj setType singleType(qual.tpe, obj)
         }
-      val tree = Select(pkgQualifier, sym)
+        else qual
       
+      val tree = Select(pkgQualifier, sym)
       if (pkgQualifier.tpe == null) tree
-      else tree setType (tpe memberType sym)
+      else tree setType (qual.tpe memberType sym)
     }
   }
   
@@ -372,7 +361,7 @@ abstract class TreeGen {
   /** Try to convert Select(qual, name) to a SelectFromTypeTree.
    */
   def convertToSelectFromType(qual: Tree, origName: Name) = convertToTypeName(qual) match {
-    case Some(qual1)  => SelectFromTypeTree(qual1 setPos qual.pos, origName)
+    case Some(qual1)  => SelectFromTypeTree(qual1 setPos qual.pos, origName.toTypeName)
     case _            => EmptyTree
   }
 

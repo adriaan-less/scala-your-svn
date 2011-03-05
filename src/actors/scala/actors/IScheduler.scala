@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -10,7 +10,7 @@
 package scala.actors
 
 /**
- * The <code>IScheduler</code> trait provides a common interface
+ * A common interface
  * for all schedulers used to execute actor tasks.
  *
  * Subclasses of <code>Actor</code> that override its

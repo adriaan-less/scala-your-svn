@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -196,7 +196,7 @@ class Code(clazz: java.lang.Class[_]) {
             if (cs.length > 0) {
               cs(0).newInstance("").asInstanceOf[AnyRef]
             } else {
-              system.error("class " + clazz.getName() + " has no public constructor")
+              sys.error("class " + clazz.getName() + " has no public constructor")
             }
           }
         }

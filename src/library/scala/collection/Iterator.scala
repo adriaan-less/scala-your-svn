@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -428,7 +428,20 @@ trait Iterator[+A] extends TraversableOnce[A] {
       def next() = { skip(); pf(self.next()) }
     }
   }
-
+  
+  def scanLeft[B](z: B)(op: (B, A) => B): Iterator[B] = new Iterator[B] {
+    var hasNext = true
+    var elem = z
+    def next() = if (hasNext) {
+      val res = elem
+      if (self.hasNext) elem = op(elem, self.next())
+      else hasNext = false
+      res
+    } else Iterator.empty.next()
+  }
+  
+  def scanRight[B](z: B)(op: (A, B) => B): Iterator[B] = toBuffer.scanRight(z)(op).iterator
+  
   /** Takes longest prefix of values produced by this iterator that satisfy a predicate.
    *  @param   p  The predicate used to test elements.
    *  @return  An iterator returning the values produced by this iterator, until
@@ -743,11 +756,11 @@ trait Iterator[+A] extends TraversableOnce[A] {
     def hasNext = 
       hdDefined || self.hasNext
 
-    def next = 
+    def next() = 
       if (hdDefined) {
         hdDefined = false
         hd
-      } else self.next
+      } else self.next()
   }
   
   /** A flexible iterator for transforming an `Iterator[A]` into an

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -9,7 +9,7 @@ package backend.icode
 package analysis
 
 import scala.collection.{ mutable, immutable }
-import scala.collection.immutable.{ Set, ListSet }
+import immutable.ListSet
 
 /**
  * Compute liveness information for local variables.

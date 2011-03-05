@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -8,8 +8,7 @@ package scala.tools.nsc
 package backend
 
 import scala.tools.nsc.backend.icode._
-
-import scala.collection.mutable.{Map, HashMap}
+import scala.collection.{ mutable, immutable }
 
 /**
  * Scala primitive operations are represented as methods in Any and
@@ -203,13 +202,11 @@ abstract class ScalaPrimitives {
   final val D2F = 265                          // RunTime.d2f(x)
   final val D2D = 266                          // RunTime.d2d(x)
 
-
-  private var primitives: Map[Symbol, Int] = _
+  private val primitives: mutable.Map[Symbol, Int] = new mutable.HashMap()
 
   /** Initialize the primitive map */
   def init {
-    primitives = new HashMap()
-
+    primitives.clear()
     // scala.Any
     addPrimitive(Any_==, EQ)
     addPrimitive(Any_!=, NE)
@@ -584,7 +581,7 @@ abstract class ScalaPrimitives {
       val arrayParent = tpe :: tpe.parents collectFirst {
         case TypeRef(_, ArrayClass, elem :: Nil) => elem
       }
-      arrayParent getOrElse system.error(fun.fullName + " : " + (tpe :: tpe.baseTypeSeq.toList).mkString(", "))
+      arrayParent getOrElse sys.error(fun.fullName + " : " + (tpe :: tpe.baseTypeSeq.toList).mkString(", "))
     }
 
     code match {

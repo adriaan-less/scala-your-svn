@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -20,13 +20,26 @@ abstract class Profiling {
   def isActive: Boolean
   def startProfiling(): Unit
   def stopProfiling(): Unit
-  def captureSnapshot(): Unit
+  def captureSnapshot(): Unit  
 
-  def profile[T](body: => T): T = {
+  def allocationFreq: Option[Int] // record every Nth allocation
+  def startRecordingAllocations(): Unit
+  def stopRecordingAllocations(): Unit
+  
+  def profile[T](body: => T): T = profileCPU(body)
+
+  def profileCPU[T](body: => T): T = {
     startProfiling()
     val result = body
     stopProfiling()
     captureSnapshot()
+    result
+  }
+  
+  def profileMem[T](body: => T): T = {
+    startRecordingAllocations()
+    val result = body
+    stopRecordingAllocations()
     result
   }
   

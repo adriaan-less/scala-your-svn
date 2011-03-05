@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Burak Emir
  */
 
@@ -47,7 +47,7 @@ trait MarkupParsers {
 
   import global._
 
-  class MarkupParser(parser: UnitParser, final val preserveWS: Boolean) extends scala.xml.parsing.MarkupParserCommon {
+  class MarkupParser(parser: SourceFileParser, final val preserveWS: Boolean) extends scala.xml.parsing.MarkupParserCommon {
 
     import Tokens.{ EMPTY, LBRACE, RBRACE }
     

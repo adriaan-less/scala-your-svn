@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -23,8 +23,10 @@ import mutable.{ ListBuffer, Builder }
 object ListSet extends ImmutableSetFactory[ListSet] {
   /** setCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ListSet[A]] = setCanBuildFrom[A]
-  override def empty[A] = new ListSet[A]
+  override def empty[A] = EmptyListSet.asInstanceOf[ListSet[A]]
   override def newBuilder[A]: Builder[A, ListSet[A]] = new ListSetBuilder[A]
+  
+  private object EmptyListSet extends ListSet[Any] { }
   
   /** A custom builder because forgetfully adding elements one at
    *  a time to a list backed set puts the "squared" in N^2.  There is a

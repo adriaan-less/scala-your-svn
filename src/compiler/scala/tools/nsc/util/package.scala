@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
  
@@ -12,14 +12,19 @@ package object util {
   
   /** Apply a function and return the passed value */
   def returning[T](x: T)(f: T => Unit): T = { f(x) ; x }
+
+  /** Frequency counter */
+  def freq[T](xs: Traversable[T]): Map[T, Int] = xs groupBy identity mapValues (_.size)
+  
+  def freqrank[T](xs: Traversable[(T, Int)]): List[(Int, T)] = xs.toList map (_.swap) sortBy (-_._1)
   
   /** Execute code and then wait for all Threads created during its
    *  execution to complete.
    */
   def waitingForThreads[T](body: => T) = {
-    val ts1        = system.allThreads()
+    val ts1        = sys.allThreads()
     val result     = body
-    val ts2        = system.allThreads()
+    val ts2        = sys.allThreads()
     val newThreads = ts2.toSet -- ts1 filterNot (_.isDaemon())
     
     newThreads foreach (_.join())
@@ -53,4 +58,5 @@ package object util {
     ps.close()
     bs.toString()
   }
+  def stackTraceString(ex: Throwable): String = stringFromWriter(ex printStackTrace _)
 }

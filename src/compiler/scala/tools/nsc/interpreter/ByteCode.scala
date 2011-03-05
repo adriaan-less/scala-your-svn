@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
 
@@ -21,7 +21,7 @@ object ByteCode {
     for (clazz <- getSystemLoader.tryToLoadClass[AnyRef]("scala.tools.scalap.Decode$")) yield
       clazz.getField("MODULE$").get()
   
-  private def decoderMethod(name: String, args: Class[_]*): Option[reflect.Method] = {
+  private def decoderMethod(name: String, args: JClass*): Option[reflect.Method] = {
     for (decoder <- DECODER ; m <- Option(decoder.getClass.getMethod(name, args: _*))) yield m
   }   
 

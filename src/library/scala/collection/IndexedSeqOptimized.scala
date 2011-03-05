@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -190,7 +190,7 @@ trait IndexedSeqOptimized[+A, +Repr] extends IndexedSeqLike[A, Repr] { self =>
     i - start
   }
 
-  private def negLength(n: Int) = if (n == length) -1 else n
+  private def negLength(n: Int) = if (n >= length) -1 else n
 
   override /*SeqLike*/
   def indexWhere(p: A => Boolean, from: Int): Int = {

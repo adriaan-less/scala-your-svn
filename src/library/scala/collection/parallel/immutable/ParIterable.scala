@@ -1,3 +1,12 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection
 package parallel.immutable
 
@@ -14,10 +23,10 @@ import scala.collection.parallel.Combiner
  *  
  *  $sideeffects
  *  
- *  @tparam A    the element type of the collection
+ *  @tparam T    the element type of the collection
  *  
- *  @author prokopec
- *  @since 2.8
+ *  @author Aleksandar Prokopec
+ *  @since 2.9
  */
 trait ParIterable[+T]
 extends collection.immutable.Iterable[T]
@@ -40,12 +49,12 @@ extends collection.immutable.Iterable[T]
 /** $factoryinfo
  */
 object ParIterable extends ParFactory[ParIterable] {
- implicit def canBuildFrom[T]: CanCombineFrom[Coll, T, ParIterable[T]] =
-   new GenericCanCombineFrom[T]
+  implicit def canBuildFrom[T]: CanCombineFrom[Coll, T, ParIterable[T]] =
+    new GenericCanCombineFrom[T]
   
-  def newBuilder[T]: Combiner[T, ParIterable[T]] = HashSetCombiner[T] // TODO vector
+  def newBuilder[T]: Combiner[T, ParIterable[T]] = ParVector.newBuilder[T]
   
-  def newCombiner[T]: Combiner[T, ParIterable[T]] = HashSetCombiner[T] // TODO vector
+  def newCombiner[T]: Combiner[T, ParIterable[T]] = ParVector.newCombiner[T]
   
 }
 

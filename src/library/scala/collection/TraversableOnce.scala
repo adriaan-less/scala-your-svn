@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -519,20 +519,42 @@ trait TraversableOnce[+A] {
    * - immutable.ParMap overrides `toParMap` to `this`
    */
   
+  /** Converts this $coll to a parallel iterable.
+   *  $willNotTerminateInf
+   *  @return     a parallel iterable containing all elements of this $coll.
+   */
   def toParIterable: parallel.ParIterable[A] = toParSeq
   
+  /** Converts this $coll to a parallel sequence.
+   *  $willNotTerminateInf
+   *  @return     a parallel sequence containing all elements of this $coll.
+   */
   def toParSeq: parallel.ParSeq[A] = {
     val cb = parallel.mutable.ParArray.newCombiner[A]
     for (elem <- this) cb += elem
     cb.result
   }
   
+  /** Converts this $coll to a parallel set.
+   *  $willNotTerminateInf
+   *  @return     a parallel set containing all elements of this $coll.
+   */
   def toParSet[B >: A]: parallel.ParSet[B] = {
     val cb = parallel.mutable.ParHashSet.newCombiner[B]
     for (elem <- this) cb += elem
     cb.result
   }
   
+  /** Converts this $coll to a parallel map.
+   *  $willNotTerminateInf
+   *  
+   *  This operation is only available on collections containing pairs of elements.
+   *
+   *  @return    a parallel map containing all elements of this $coll.
+   *  @usecase   def toParMap[T, U]: ParMap[T, U]
+   *  @return    a parallel map of type `parallel.ParMap[T, U]`
+   *             containing all key/value pairs of type `(T, U)` of this $coll.
+   */
   def toParMap[T, U](implicit ev: A <:< (T, U)): parallel.ParMap[T, U] = {
     val cb = parallel.mutable.ParHashMap.newCombiner[T, U]
     for (elem <- this) cb += elem
@@ -629,20 +651,16 @@ trait TraversableOnce[+A] {
 }
 
 object TraversableOnce {
-  implicit def traversableOnceCanBuildFrom[T]: TraversableOnceCanBuildFrom[T] =
-    new TraversableOnceCanBuildFrom[T]  
-  
-  implicit def wrapTraversableOnce[A](trav: TraversableOnce[A]): TraversableOnceMonadOps[A] =
-    new TraversableOnceMonadOps(trav)
-    
-  implicit def flattenTraversableOnce[A](travs: TraversableOnce[TraversableOnce[A]]): TraversableOnceFlattenOps[A] = 
-    new TraversableOnceFlattenOps[A](travs)
+  implicit def traversableOnceCanBuildFrom[T] = new OnceCanBuildFrom[T]  
+  implicit def wrapTraversableOnce[A](trav: TraversableOnce[A]) = new MonadOps(trav)
+  implicit def flattenTraversableOnce[A, CC[_]](travs: TraversableOnce[CC[A]])(implicit ev: CC[A] => TraversableOnce[A]) =
+    new FlattenOps[A](travs map ev)
   
   /** With the advent of TraversableOnce, it can be useful to have a builder which
    *  operates on Iterators so they can be treated uniformly along with the collections.
    *  See scala.util.Random.shuffle for an example.
    */
-  class TraversableOnceCanBuildFrom[A] extends generic.CanBuildFrom[TraversableOnce[A], A, TraversableOnce[A]] {
+  class OnceCanBuildFrom[A] extends generic.CanBuildFrom[TraversableOnce[A], A, TraversableOnce[A]] {
     def newIterator = new ArrayBuffer[A] mapResult (_.iterator)
     
     /** Creates a new builder on request of a collection.
@@ -657,11 +675,11 @@ object TraversableOnce {
     def apply() = newIterator
   }
   
-  class TraversableOnceFlattenOps[A](travs: TraversableOnce[TraversableOnce[A]]) {
+  class FlattenOps[A](travs: TraversableOnce[TraversableOnce[A]]) {
     def flatten: Iterator[A] = travs.foldLeft(Iterator.empty: Iterator[A])(_ ++ _)
   }
 
-  class TraversableOnceMonadOps[+A](trav: TraversableOnce[A]) {    
+  class MonadOps[+A](trav: TraversableOnce[A]) {    
     def map[B](f: A => B): TraversableOnce[B] = trav.toIterator map f
     def flatMap[B](f: A => TraversableOnce[B]): TraversableOnce[B] = trav.toIterator flatMap f
     def withFilter(p: A => Boolean) = trav.toIterator filter p

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author  David Bernard, Manohar Jonnalagedda
  */
 
@@ -9,9 +9,7 @@ package html
 package page
 
 import model._
-
-import scala.xml.{NodeSeq, Text}
-import scala.collection.mutable.HashSet
+import scala.xml.{ NodeSeq, Text }
 
 class Template(tpl: DocTemplateEntity) extends HtmlPage {
 
@@ -44,7 +42,7 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
   /* for body, there is a special case for AnyRef, otherwise AnyRef appears like a package/object
    * this problem should be fixed, this implementation is just a patch 
    */
-  val body =
+  val body = {
     <body class={ if (tpl.isTrait || tpl.isClass || tpl.qualifiedName == "scala.AnyRef") "type" else "value" } onload="windowTitle();">
 
       { if (tpl.isRootPackage || tpl.inTemplate.isRootPackage)
@@ -137,6 +135,7 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
       <div id="tooltip" ></div>
       
     </body>
+  }
 
   def boundsToString(hi: Option[TypeEntity], lo: Option[TypeEntity]): String = {
     def bound0(bnd: Option[TypeEntity], pre: String): String = bnd match {
@@ -146,7 +145,7 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
     bound0(hi, "<:") ++ bound0(lo, ">:")
   }
 
-  def tparamsToString(tpss: List[TypeParam]): String =
+  def tparamsToString(tpss: List[TypeParam]): String = {
     if (tpss.isEmpty) "" else {
       def tparam0(tp: TypeParam): String =
          tp.variance + tp.name + boundsToString(tp.hi, tp.lo)
@@ -156,11 +155,14 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
       }
       "[" + tparams0(tpss) + "]"
     }
+  }
 
-  def defParamsToString(d: MemberEntity with Def):String = {
-    val namess = for( ps <- d.valueParams ) yield
-      for( p <- ps ) yield p.resultType.name
-    tparamsToString(d.typeParams) + namess.foldLeft("") { (s,names) => s + (names mkString("(",",",")")) }
+  def defParamsToString(d: MemberEntity with Def): String = {
+    val paramLists: List[String] =
+      if (d.valueParams.isEmpty) Nil
+      else d.valueParams map (ps => ps map (_.resultType.name) mkString ("(",",",")"))
+
+    tparamsToString(d.typeParams) + paramLists.mkString
   }
 
   def memberToHtml(mbr: MemberEntity): NodeSeq = {
@@ -176,7 +178,7 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
     </li>
   }
   
-  def memberToCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq =
+  def memberToCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq = {
     mbr match {
       case dte: DocTemplateEntity if isSelf =>
         // comment of class itself
@@ -202,19 +204,22 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
           </xml:group>
         }
     }
+  }
   
-  def memberToUseCaseCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq =
+  def memberToUseCaseCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq = {
     mbr match {
       case nte: NonTemplateMemberEntity if nte.isUseCase =>
         inlineToHtml(comment.Text("[use case] "))
       case _ => NodeSeq.Empty
     }
+  }
 
-  def memberToShortCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq =
+  def memberToShortCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq = {
     if (mbr.comment.isEmpty)
       NodeSeq.Empty
     else
       <p class="shortcomment cmt">{ memberToUseCaseCommentHtml(mbr, isSelf) }{ inlineToHtml(mbr.comment.get.short) }</p>
+  }
 
   def memberToInlineCommentHtml(mbr: MemberEntity, isSelf: Boolean): NodeSeq =
     <p class="comment cmt">{ inlineToHtml(mbr.comment.get.short) }</p>
@@ -315,18 +320,7 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
           annotations: {
             mbr.annotations.map { annot =>
               <xml:group>
-                <span class="name">@{ templateToHtml(annot.annotationClass) }</span>{
-                  def paramsToHtml(vls: List[ValueArgument]): NodeSeq =
-                    vls map { vl =>
-                      <span>{
-                        vl.parameter match {
-                          case Some(p) => Text(p.name + " = ")
-                          case None => NodeSeq.Empty
-                        }
-                      }{ treeToHtml(vl.value) }</span>
-                    }
-                  <span class="params">({ paramsToHtml(annot.arguments) })</span>
-                }
+                <span class="name">@{ templateToHtml(annot.annotationClass) }</span>{ argumentsToHtml(annot.arguments) }
               </xml:group>
             }
           }
@@ -345,27 +339,38 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
     } ++
     { if (mbr.deprecation.isEmpty || isReduced) NodeSeq.Empty else
         <div class="block"><ol>deprecated:
-          { <li>{ bodyToHtml(mbr.deprecation.get) }</li> }
+          { <li class="cmt">{ bodyToHtml(mbr.deprecation.get) }</li> }
         </ol></div>
     } ++
     { mbr.comment match {
         case Some(comment) =>
           <xml:group>
+            { if(!comment.example.isEmpty && !isReduced)
+              <div class="block">Example{ if (comment.example.length > 1) "s" else ""} :
+                <ol>{
+                  val exampleXml: List[scala.xml.NodeSeq] =
+                    for(example <- comment.example ) yield
+                      <li class="cmt">{ bodyToHtml(example) }</li>
+                  exampleXml.reduceLeft(_ ++ Text(", ") ++ _)
+                }</ol>
+              </div>
+              else NodeSeq.Empty
+            }
             { if(!comment.version.isEmpty && !isReduced)
                 <div class="block"><ol>version
-                  { for(body <- comment.version.toList) yield <li>{bodyToHtml(body)}</li> }
+                  { for(body <- comment.version.toList) yield <li class="cmt">{bodyToHtml(body)}</li> }
                 </ol></div>
               else NodeSeq.Empty
             }
             { if(!comment.since.isEmpty && !isReduced)
                 <div class="block"><ol>since
-                  { for(body <- comment.since.toList) yield <li>{bodyToHtml(body)}</li> }
+                  { for(body <- comment.since.toList) yield <li class="cmt">{bodyToHtml(body)}</li> }
                 </ol></div>
               else NodeSeq.Empty
             }
             { if(!comment.see.isEmpty && !isReduced)
                 <div class="block"><ol>see also:
-                  { val seeXml:List[scala.xml.NodeSeq]=(for(see <- comment.see ) yield <li>{bodyToHtml(see)}</li> )
+                  { val seeXml:List[scala.xml.NodeSeq]=(for(see <- comment.see ) yield <li class="cmt">{bodyToHtml(see)}</li> )
                     seeXml.reduceLeft(_ ++ Text(", ") ++ _)
                   }
                 </ol></div>
@@ -377,16 +382,18 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
     }
   }
 
-  def kindToString(mbr: MemberEntity): String = mbr match {
-    case tpl: DocTemplateEntity => docEntityKindToString(tpl)
-    case ctor: Constructor => "new"
-    case tme: MemberEntity =>
-      ( if (tme.isImplicit) "implicit " else "" ) +
-      ( if (tme.isDef) "def"
-        else if (tme.isVal) "val"
-        else if (tme.isLazyVal) "lazy val"
-        else if (tme.isVar) "var"
-        else "type")
+  def kindToString(mbr: MemberEntity): String = {
+    mbr match {
+      case tpl: DocTemplateEntity => docEntityKindToString(tpl)
+      case ctor: Constructor => "new"
+      case tme: MemberEntity =>
+        ( if (tme.isImplicit) "implicit " else "" ) +
+        ( if (tme.isDef) "def"
+          else if (tme.isVal) "val"
+          else if (tme.isLazyVal) "lazy val"
+          else if (tme.isVar) "var"
+          else "type")
+    }
   }
   
   def boundsToHtml(hi: Option[TypeEntity], lo: Option[TypeEntity], hasLinks: Boolean): NodeSeq = {
@@ -446,12 +453,16 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
             def paramsToHtml(vlsss: List[List[ValueParam]]): NodeSeq = {
               def param0(vl: ValueParam): NodeSeq =
                 // notice the }{ in the next lines, they are necessary to avoid a undesired withspace in output
-                <span name={ vl.name }>{ Text(vl.name + ": ") }{ typeToHtml(vl.resultType, hasLinks) }{
-                  if(!vl.defaultValue.isEmpty) {
-                    treeToHtml(vl.defaultValue.get);
+                <span name={ vl.name }>
+                  { Text(vl.name) }
+                  { Text(": ") ++ typeToHtml(vl.resultType, hasLinks) }
+                  {
+                    vl.defaultValue match {
+                      case Some(v) => Text(" = ") ++ treeToHtml(v)
+                      case None => NodeSeq.Empty
+                    }
                   }
-                  else NodeSeq.Empty
-                }</span>
+                </span>
 
               def params0(vlss: List[ValueParam]): NodeSeq = vlss match {
                 case Nil => NodeSeq.Empty
@@ -499,31 +510,52 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
       case _ if isSelf =>
         <h4 id="signature" class="signature">{ inside(hasLinks = true) }</h4>
       case _ =>
-        <h4 class="signature">{ inside(hasLinks = true) }</h4>      
+        <h4 class="signature">{ inside(hasLinks = true) }</h4>
     }
+
   }
   
   /** */
-  def treeToHtml(defVal:TreeEntity):NodeSeq = {
+  def treeToHtml(tree: TreeEntity): NodeSeq = {
+
+    /** Makes text good looking in the html page : newlines and basic indentation,
+     * You must change this function if you want to improve pretty printing of default Values
+     */
+    def codeStringToXml(text: String): NodeSeq = {
+      var goodLookingXml: NodeSeq = NodeSeq.Empty
+      var indent = 0
+      for(c<-text) c match {
+        case '{' => indent+=1
+          goodLookingXml ++= Text("{")
+        case '}' => indent-=1
+          goodLookingXml ++= Text("}")
+        case '\n' =>
+          goodLookingXml++= <br/> ++ indentation
+        case _ => goodLookingXml ++= Text(c.toString)
+      }
+      def indentation:NodeSeq = {
+        var indentXml = NodeSeq.Empty
+        for (x <- 1 to indent) indentXml ++= Text("&nbsp;&nbsp;")
+        indentXml
+      }
+      goodLookingXml
+    }
+
     var index = 0
-    val str = defVal.expression 
+    val str = tree.expression
     val length = str.length
     var myXml: NodeSeq = NodeSeq.Empty
-    for( x <- defVal.refs) {
-      val from = x._1
-      val to = x._2._2
+    for( (from, (member, to)) <- tree.refEntity.toSeq) {
       if (index < from) {
-        myXml ++= stringToXml(str.substring(index,from))
+        myXml ++= codeStringToXml(str.substring(index,from))
         index = from
       }
-      
-      if (index == from) {            
-        val member:Entity = x._2._1
+      if (index == from) {
         member match {
           case mbr: DocTemplateEntity =>
             val link = relativeLinkTo(mbr)
             myXml ++= <span class="name"><a href={link}>{str.substring(from, to)}</a></span>
-          case mbr: MemberEntity => 
+          case mbr: MemberEntity =>
             val anchor = "#" + mbr.name + defParamsString(mbr) + ":" + mbr.resultType.name
             val link = relativeLinkTo(mbr.inTemplate)
             myXml ++= <span class="name"><a href={link ++ anchor}>{str.substring(from, to)}</a></span>
@@ -533,40 +565,38 @@ class Template(tpl: DocTemplateEntity) extends HtmlPage {
     }
     // function used in the MemberEntity case above
     def defParamsString(mbr: Entity):String = mbr match {
-      case d:MemberEntity with Def => defParamsToString(d)      
+      case d:MemberEntity with Def => defParamsToString(d)
       case _ => ""
     }
-    
-    if (index <= length-1) myXml ++= stringToXml(str.substring(index, length ))
-    
-    Text(" =") ++
-    {
-      if(length< 7) <span class="symbol">{ myXml }</span>
-      else <span class="defval" name={ myXml }>{ " ..." }</span>
-    }
-  }
-  
-  /** Makes text good looking in the html page : newlines and basic indentation, 
-   * You must change this function if you want to improve pretty printing of default Values
-   */ 
-  def stringToXml(text: String): NodeSeq = {
-    var goodLookingXml: NodeSeq = NodeSeq.Empty
-    var indent = 0
-    for(c<-text) c match {
-      case '{' => indent+=1
-        goodLookingXml ++= Text("{")
-      case '}' => indent-=1
-        goodLookingXml ++= Text("}")
-      case '\n' => 
-        goodLookingXml++= <br/> ++ indentation
-      case _ => goodLookingXml ++= Text(c.toString)
-    }
-    def indentation:NodeSeq = {
-      var indentXml = NodeSeq.Empty
-      for (x<- 1 to indent) indentXml ++=  Text("&nbsp;&nbsp;")
-      indentXml
-    }
-    goodLookingXml
+
+    if (index <= length-1)
+      myXml ++= codeStringToXml(str.substring(index, length ))
+
+    if(length < 36)
+      <span class="symbol">{ myXml }</span>
+    else
+      <span class="defval" name={ myXml }>{ "..." }</span>
   }
 
+  def argumentsToHtml(argss: List[ValueArgument]): NodeSeq = {
+    def argumentsToHtml0(argss: List[ValueArgument]): NodeSeq = argss match {
+      case Nil         => NodeSeq.Empty
+      case arg :: Nil  => argumentToHtml(arg)
+      case arg :: args => argumentToHtml(arg) ++ xml.Text(", ") ++ argumentsToHtml0(args)
+    }
+    <span class="args">({ argumentsToHtml0(argss) })</span>
+  }
+
+  def argumentToHtml(arg: ValueArgument): NodeSeq = {
+    <span>
+      {
+        arg.parameter match {
+          case Some(param) => Text(param.name + " = ")
+          case None => NodeSeq.Empty
+        }
+      }
+      { treeToHtml(arg.value) }
+    </span>
+  }
+  
 }

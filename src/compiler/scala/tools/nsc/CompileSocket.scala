@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -11,13 +11,38 @@ import java.util.regex.Pattern
 import java.net._
 import java.security.SecureRandom
 
-import io.{ File, Path, Process, Socket }
+import io.{ File, Path, Socket }
 import scala.util.control.Exception.catching
 import scala.tools.util.StringOps.splitWhere
+import scala.sys.process._
+
+trait HasCompileSocket {
+  def compileSocket: CompileSocket
+  def compileOnServer(sock: Socket, args: Seq[String]): Boolean = {
+    var noErrors = true
+
+    sock.applyReaderAndWriter { (in, out) =>
+      out println (compileSocket getPassword sock.getPort())
+      out println (args mkString "\0")
+
+      def loop(): Boolean = in.readLine() match {
+        case null => noErrors
+        case line => 
+          if (compileSocket.errorPattern matcher line matches)
+            noErrors = false
+
+          Console.err println line      
+          loop()
+      }
+      try loop()
+      finally sock.close()
+    }
+  }
+}
 
 /** This class manages sockets for the fsc offline compiler.  */
 class CompileSocket {
-  protected def compileClient: StandardCompileClient = CompileClient //todo: lazy val
+  protected lazy val compileClient: StandardCompileClient = CompileClient
 
   /** The prefix of the port identification file, which is followed
    *  by the port number.
@@ -47,7 +72,7 @@ class CompileSocket {
     
   protected def fatal(msg: String) = {
     fscError(msg)
-    throw new Exception("fsc failure")
+    sys.error("fsc failure")
   }
 
   protected def info(msg: String) =
@@ -81,13 +106,11 @@ class CompileSocket {
   private def serverCommand(vmArgs: Seq[String]): Seq[String] =
     Seq(vmCommand) ++ vmArgs ++ Seq(serverClass) filterNot (_ == "")
 
-  /** Start a new server; returns true iff it succeeds */
-  private def startNewServer(vmArgs: String) {
+  /** Start a new server. */
+  private def startNewServer(vmArgs: String) = {
     val cmd = serverCommand(vmArgs split " " toSeq)
-    info("[Executed command: %s]" format cmd)
-    try Process exec cmd catch {
-      case ex: IOException => fatal("Cannot start compilation daemon.\ntried command: %s" format cmd)
-    }
+    info("[Executing command: %s]" format cmd)
+    cmd.daemonized().run()
   }
 
   /** The port identification file */
@@ -109,8 +132,10 @@ class CompileSocket {
     var attempts = 0
     var port = pollPort()
 
-    if (port < 0)
+    if (port < 0) {
+      info("No compile server running: starting one with args '" + vmArgs + "'")
       startNewServer(vmArgs)
+    }
       
     while (port < 0 && attempts < MaxAttempts) {
       attempts += 1
@@ -142,9 +167,9 @@ class CompileSocket {
     * cannot be established.
     */
   def getOrCreateSocket(vmArgs: String, create: Boolean = true): Option[Socket] = {
-    // try for 5 seconds
+    // try for 10 seconds
     val retryDelay = 100
-    val maxAttempts = (5 * 1000) / retryDelay
+    val maxAttempts = (10 * 1000) / retryDelay
     
     def getsock(attempts: Int): Option[Socket] = attempts match {
       case 0    => fscError("Unable to establish connection to compilation daemon") ; None
@@ -203,4 +228,5 @@ class CompileSocket {
 }
 
 
-object CompileSocket extends CompileSocket
+object CompileSocket extends CompileSocket {
+}

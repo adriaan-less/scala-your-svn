@@ -1,3 +1,12 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection.parallel
 
 
@@ -20,11 +29,11 @@ import scala.collection.parallel.immutable.ParRange
  *  
  *  @tparam T             the type of the elements in this view
  *  @tparam Coll          type of the collection this view is derived from
- *  @tparam CollSeq       TODO
+ *  @tparam CollSeq       type of the sequential collection corresponding to the underlying parallel collection
  *  @tparam This          actual representation type of this view
  *  @tparam ThisSeq       type of the sequential version of this view
  *  
- *  @since 2.8
+ *  @since 2.9
  */
 trait ParSeqViewLike[+T,
                      +Coll <: Parallel,
@@ -160,7 +169,7 @@ self =>
   override def collect[S, That](pf: PartialFunction[T, S])(implicit bf: CanBuildFrom[This, S, That]): That = filter(pf.isDefinedAt).map(pf)(bf)
   override def scanLeft[S, That](z: S)(op: (S, T) => S)(implicit bf: CanBuildFrom[This, S, That]): That = newForced(thisParSeq.scanLeft(z)(op)).asInstanceOf[That]
   override def scanRight[S, That](z: S)(op: (T, S) => S)(implicit bf: CanBuildFrom[This, S, That]): That = newForced(thisParSeq.scanRight(z)(op)).asInstanceOf[That]
-  override def groupBy[K](f: T => K): collection.immutable.Map[K, This] = thisParSeq.groupBy(f).mapValues(xs => newForced(xs).asInstanceOf[This])
+  override def groupBy[K](f: T => K): immutable.ParMap[K, This] = thisParSeq.groupBy(f).map(kv => (kv._1, newForced(kv._2).asInstanceOf[This]))
   override def force[U >: T, That](implicit bf: CanBuildFrom[Coll, U, That]) = bf ifParallel { pbf =>
     executeAndWaitResult(new Force(pbf, parallelIterator).mapResult(_.result).asInstanceOf[Task[That, _]])
   } otherwise {

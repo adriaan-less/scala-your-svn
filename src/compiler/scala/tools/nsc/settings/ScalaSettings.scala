@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 // $Id$
@@ -22,6 +22,11 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
 
   /** Disable a setting */
   def disable(s: Setting) = allSettings -= s
+
+  val jvmargs  = MapSetting("-J<flag>", "-J", "Pass <flag> directly to the runtime system.")
+  val defines  = MapSetting("-Dproperty=value", "-D", "Pass -Dproperty=value directly to the runtime system.")
+  val toolcp   = PathSetting("-toolcp", "Add to the runner classpath.", "")
+  val nobootcp = BooleanSetting("-nobootcp", "Do not use the boot classpath for the scala jars.")
 
   /**
    *  Standard settings
@@ -46,8 +51,8 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val sourcedir     = StringSetting     ("-Xsourcedir", "directory", "(Requires -target:msil) Mirror source folder structure in output directory.", ".").dependsOn(target, "msil")
   val checkInit     = BooleanSetting    ("-Xcheckinit", "Wrap field accessors to throw an exception on uninitialized access.")
   val noassertions  = BooleanSetting    ("-Xdisable-assertions", "Generate no assertions or assumptions.")
-  val elidebelow    = IntSetting        ("-Xelide-below", "Generate calls to @elidable-marked methods only if method priority is greater than argument.",
-                                                elidable.ASSERTION, None, elidable.byName.get(_))
+  val elidebelow    = IntSetting        ("-Xelide-below", "Calls to @elidable methods are omitted if method priority is lower than argument",
+                                                elidable.MINIMUM, None, elidable.byName get _)
   val noForwarders  = BooleanSetting    ("-Xno-forwarders", "Do not generate static forwarders in mirror classes.")
   val future        = BooleanSetting    ("-Xfuture", "Turn on future language features.")
   val genPhaseGraph = StringSetting     ("-Xgenerate-phase-graph", "file", "Generate the phase graphs (outputs .dot files) to fileX.dot.", "")
@@ -108,17 +113,18 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val log           = PhasesSetting     ("-Ylog", "Log operations during")
   val Ylogcp        = BooleanSetting    ("-Ylog-classpath", "Output information about what classpath is being applied.")
   val Ynogenericsig = BooleanSetting    ("-Yno-generic-signatures", "Suppress generation of generic signatures for Java.")
-  val Yverifysigs   = BooleanSetting    ("-Yverify-generics", "Validated generated generic signatures.")
   val noimports     = BooleanSetting    ("-Yno-imports", "Compile without any implicit imports.")
   // Not actually doing anything, so disabled.
   // val nopredefs     = BooleanSetting    ("-Yno-predefs", "Compile without any implicit predefined values.")
-  val Yprofile      = PhasesSetting     ("-Yprofile", "(Requires jvm -agentpath to contain yjgpagent) Profile")
-  val YprofileRes   = BooleanSetting    ("-Yprofile-resident", "Profile memory, get heap snapshot after each compiler run (requires yjpagent, see above).")
+  val Yprofile      = PhasesSetting     ("-Yprofile", "(Requires jvm -agentpath to contain yjgpagent) Profile CPU usage of given phases.")
+  val YprofileMem   = BooleanSetting    ("-Yprofile-memory", "Profile memory, get heap snapshot after each compiler run (requires yjpagent, see above).")
   val YprofileClass = StringSetting     ("-Yprofile-class", "class", "Name of profiler class.", "scala.tools.util.YourkitProfiling")
   val Yrecursion    = IntSetting        ("-Yrecursion", "Set recursion depth used when locking symbols.", 0, Some(0, Int.MaxValue), (_: String) => None)
   val selfInAnnots  = BooleanSetting    ("-Yself-in-annots", "Include a \"self\" identifier inside of annotations.")
   val Xshowtrees    = BooleanSetting    ("-Yshow-trees", "(Requires -Xprint:) Print detailed ASTs.")
+  val Yshowsyms     = BooleanSetting    ("-Yshow-syms", "Print the AST symbol hierarchy after each phase.")
   val skip          = PhasesSetting     ("-Yskip", "Skip")
+  val Ygenjavap     = StringSetting     ("-Ygen-javap", "dir", "Generate a parallel output directory of .javap files.", "")
   val Ynosqueeze    = BooleanSetting    ("-Yno-squeeze", "Disable creation of compact code in matching.")
   val Ystatistics   = BooleanSetting    ("-Ystatistics", "Print compiler statistics.") .
                                           withPostSetHook(set => util.Statistics.enabled = set.value)
@@ -135,26 +141,31 @@ trait ScalaSettings extends AbsScalaSettings with StandardScalaSettings {
   val Ytyperdebug   = BooleanSetting    ("-Ytyper-debug", "Trace all type assignements.")
   val Ypmatdebug    = BooleanSetting    ("-Ypmat-debug", "Trace all pattern matcher activity.")
   val Yrepldebug    = BooleanSetting    ("-Yrepl-debug", "Trace all repl activity.") .
-                                          withPostSetHook(set => interpreter._debug = true)
+                                          withPostSetHook(set => interpreter.isReplDebug = true)
   val Ycompletion   = BooleanSetting    ("-Ycompletion-debug", "Trace all tab completion activity.")
   val Ypmatnaive    = BooleanSetting    ("-Ypmat-naive", "Desugar matches as naively as possible.")
-  val Ymurmur       = BooleanSetting    ("-Ymurmur", "Use Murmur hash algorithm for case class generated hashCodes.")
   val Ynotnull      = BooleanSetting    ("-Ynotnull", "Enable (experimental and incomplete) scala.NotNull.")
   val YdepMethTpes  = BooleanSetting    ("-Ydependent-method-types", "Allow dependent method types.")
   val YmethodInfer  = BooleanSetting    ("-Yinfer-argument-types", "Infer types for arguments of overriden methods.")
   val noSelfCheck   = BooleanSetting    ("-Yno-self-type-checks", "Suppress check for self-type conformance among inherited members.")
   val YvirtClasses  = false // too embryonic to even expose as a -Y //BooleanSetting    ("-Yvirtual-classes", "Support virtual classes")
 
-  val YpresentationVerbose = BooleanSetting("-YpresentationVerbose", "Print information about presentation compiler tasks.")
-  val YpresentationDebug   = BooleanSetting("-Ypresentation-debug",   "Enable debugging output for the presentation compiler.")
-  
-  // Warnings
+  val exposeEmptyPackage = BooleanSetting("-Yexpose-empty-package", "Internal only: expose the empty package.").internalOnly()
+
+  /**
+   * Warnings
+   */
   val Ywarndeadcode = BooleanSetting    ("-Ywarn-dead-code", "Emit warnings for dead code")
 
   /**
-   * "fsc-specific" settings.
+   * IDE-specific settings
    */
-  val fscShutdown   = BooleanSetting    ("-shutdown", "Shutdown the fsc daemon")
+  val YpresentationVerbose = BooleanSetting("-Ypresentation-verbose", "Print information about presentation compiler tasks.")
+  val YpresentationDebug   = BooleanSetting("-Ypresentation-debug",  "Enable debugging output for the presentation compiler.")
+  
+  val YpresentationLog     = StringSetting("-Ypresentation-log", "file", "Log presentation compiler events into file", "")
+  val YpresentationReplay  = StringSetting("-Ypresentation-replay", "file", "Replay presentation compiler events from file", "")
+  val YpresentationDelay   = IntSetting("-Ypresentation-delay", "Wait number of ms after typing before starting typechecking", 0, Some(0, 999), str => Some(str.toInt))
 
   /**
    * -P "Plugin" settings

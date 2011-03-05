@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * Copyright 2007 Google Inc. All Rights Reserved.
  * Author: bqe@google.com (Burak Emir)
  */
@@ -7,10 +7,11 @@
 package scala.tools.nsc
 package matching
 
+import PartialFunction._
+import scala.collection.{ mutable, immutable }
 import util.Position
 import transform.ExplicitOuter
 import symtab.Flags
-import collection._
 import mutable.ListBuffer
 import immutable.IntMap
 import annotation.elidable
@@ -28,7 +29,6 @@ trait ParallelMatching extends ast.TreeDSL
   import CODE._
   import Types._
   import Debug._
-  import PartialFunction._
 
   /** Transition **/
   def toPats(xs: List[Tree]): List[Pattern] = xs map Pattern.apply  
@@ -841,7 +841,7 @@ trait ParallelMatching extends ast.TreeDSL
     final def condition(tpe: Type, scrut: Scrutinee, isBound: Boolean): Tree = {
       assert(scrut.isDefined)
       val cond = handleOuter(condition(tpe, scrut.id, isBound))
-    
+
       if (!needsOuterTest(tpe, scrut.tpe, owner)) cond
       else addOuterCondition(cond, tpe, scrut.id)
     }
@@ -878,7 +878,7 @@ trait ParallelMatching extends ast.TreeDSL
           case ConstantType(Constant(null)) if isRef  => scrutTree OBJ_EQ NULL
           case ConstantType(Constant(value))          => scrutTree MEMBER_== Literal(value)
           case SingleType(NoPrefix, sym)              => genEquals(sym)
-          case SingleType(pre, sym) if sym.isModule   => genEquals(sym)
+          case SingleType(pre, sym) if sym.isStable   => genEquals(sym)
           case ThisType(sym) if sym.isModule          => genEquals(sym)
           case _ if isMatchUnlessNull                 => scrutTree OBJ_NE NULL
           case _                                      => scrutTree IS tpe

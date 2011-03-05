@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -175,7 +175,7 @@ trait Infer {
       normalize(restpe)
     case mt @ MethodType(params, restpe) if !restpe.isDependent =>
       functionType(params map (_.tpe), normalize(restpe))
-    case PolyType(List(), restpe) => // nullary method type
+    case NullaryMethodType(restpe) =>
       normalize(restpe)
     case ExistentialType(tparams, qtpe) =>
       ExistentialType(tparams, normalize(qtpe))
@@ -307,101 +307,94 @@ trait Infer {
         }
       }
 
-    def isPlausiblyCompatible(tp: Type, pt: Type): Boolean = tp match {
-      case PolyType(_, restpe) =>
-        isPlausiblyCompatible(restpe, pt)
-      case ExistentialType(tparams, qtpe) =>
-        isPlausiblyCompatible(qtpe, pt)
-      case mt @ MethodType(params, restpe) =>
-        if (mt.isImplicit) isPlausiblyCompatible(restpe, pt)
-        else pt match {
-          case TypeRef(pre, sym, args) =>
-            if (sym.isAliasType) {
-              isPlausiblyCompatible(tp, pt.dealias)
-            } else if (sym.isAbstractType) {
-              isPlausiblyCompatible(tp, pt.bounds.lo)
-            } else {
-              val len = args.length - 1
-              hasLength(params, len) &&
-              sym == FunctionClass(len) && {
-                val ps = mt.paramTypes.iterator
-                val as = args.iterator
-                while (ps.hasNext && as.hasNext) {
-                  if (!isPlausiblySubType(as.next, ps.next))
-                    return false
-                }
-                ps.isEmpty && as.hasNext && {
-                  val lastArg = as.next
-                  as.isEmpty && isPlausiblySubType(restpe, lastArg)
-                }
-              }
+    /** Capturing the overlap between isPlausiblyCompatible and normSubType.
+     *  This is a faithful translation of the code which was there, but it
+     *  seems likely the methods are intended to be even more similar than
+     *  they are: perhaps someone more familiar with the intentional distinctions
+     *  can examine the now much smaller concrete implementations below.
+     */
+    abstract class CompatibilityChecker {
+      def resultTypeCheck(restpe: Type, arg: Type): Boolean
+      def argumentCheck(arg: Type, param: Type): Boolean
+      def lastChanceCheck(tp: Type, pt: Type): Boolean
+      
+      final def mtcheck(tp: MethodType, pt: TypeRef): Boolean = {
+        val MethodType(params, restpe) = tp
+        val TypeRef(pre, sym, args) = pt
+
+        if (sym.isAliasType) apply(tp, pt.dealias)
+        else if (sym.isAbstractType) apply(tp, pt.bounds.lo)
+        else {
+          val len = args.length - 1
+          hasLength(params, len) &&
+          sym == FunctionClass(len) && {
+            val ps = params.iterator
+            val as = args.iterator
+            while (ps.hasNext && as.hasNext) {
+              if (!argumentCheck(as.next, ps.next.tpe))
+                return false
             }
-          case _ =>
-            false
+            ps.isEmpty && as.hasNext && {
+              val lastArg = as.next
+              as.isEmpty && resultTypeCheck(restpe, lastArg)
+            }
+          }
         }
-      case _ =>
-        isPlausiblySubType(tp, pt)
+      }
+
+      def apply(tp: Type, pt: Type): Boolean = tp match {
+        case mt @ MethodType(_, restpe) =>
+          if (mt.isImplicit)
+            apply(restpe, pt)
+          else pt match {
+            case tr: TypeRef  => mtcheck(mt, tr)
+            case _            => lastChanceCheck(tp, pt)
+          }
+        case NullaryMethodType(restpe)  => apply(restpe, pt)
+        case PolyType(_, restpe)        => apply(restpe, pt)
+        case ExistentialType(_, qtpe)   => apply(qtpe, pt)
+        case _                          => argumentCheck(tp, pt)
+      }
     }
-        
-    private def isPlausiblySubType(tp1: Type, tp2: Type): Boolean = tp1 match {
-      case TypeRef(_, sym1, _) =>
-        if (sym1.isAliasType) isPlausiblySubType(tp1.dealias, tp2)
-        else if (!sym1.isClass) true
-        else tp2 match {
-          case TypeRef(_, sym2, _) => 
-            if (sym2.isAliasType) isPlausiblySubType(tp1, tp2.dealias)
-            else !sym2.isClass || (sym1 isSubClass sym2) || isNumericSubClass(sym1, sym2)
-          case _ => 
-            true
-        }
-      case _ =>
-        true
+    
+    object isPlausiblyCompatible extends CompatibilityChecker {
+      def resultTypeCheck(restpe: Type, arg: Type) = isPlausiblySubType(restpe, arg)
+      def argumentCheck(arg: Type, param: Type)    = isPlausiblySubType(arg, param)
+      def lastChanceCheck(tp: Type, pt: Type)      = false
+    }
+    object normSubType extends CompatibilityChecker {
+      def resultTypeCheck(restpe: Type, arg: Type) = normSubType(restpe, arg)
+      def argumentCheck(arg: Type, param: Type)    = arg <:< param
+      def lastChanceCheck(tp: Type, pt: Type)      = tp <:< pt
+      
+      override def apply(tp: Type, pt: Type): Boolean = tp match {
+        case ExistentialType(_, _)     => normalize(tp) <:< pt
+        case _                         => super.apply(tp, pt)
+      }
+    }
+
+    /** This expresses more cleanly in the negative: there's a linear path
+     *  to a final true or false.
+     */
+    private def isPlausiblySubType(tp1: Type, tp2: Type) = !isImpossibleSubType(tp1, tp2)
+    private def isImpossibleSubType(tp1: Type, tp2: Type) = {
+      (tp1.dealias, tp2.dealias) match {
+        case (TypeRef(_, sym1, _), TypeRef(_, sym2, _)) =>
+           sym1.isClass &&
+           sym2.isClass &&
+          !(sym1 isSubClass sym2) &&
+          !(sym1 isNumericSubClass sym2)
+        case _ =>
+          false
+      }
     }
 
     def isCompatible(tp: Type, pt: Type): Boolean = {
       val tp1 = normalize(tp)
       (tp1 weak_<:< pt) || isCoercible(tp1, pt)
     }
-
-    final def normSubType(tp: Type, pt: Type): Boolean = tp match {
-      case mt @ MethodType(params, restpe) =>
-        if (mt.isImplicit) normSubType(restpe, pt)
-        else  pt match {
-          case TypeRef(pre, sym, args) =>
-            if (sym.isAliasType) {
-              normSubType(tp, pt.dealias)
-            } else if (sym.isAbstractType) {
-              normSubType(tp, pt.bounds.lo)
-            } else {
-              val l = args.length - 1
-              l == params.length &&
-              sym == FunctionClass(l) && {
-                var curargs = args
-                var curparams = params
-                while (curparams.nonEmpty) {
-                  if (!(curargs.head <:< curparams.head.tpe))
-                    return false
-                  curargs = curargs.tail
-                  curparams = curparams.tail
-                }
-                normSubType(restpe, curargs.head)
-              }
-            }
-          case _ =>
-            tp <:< pt
-        }
-      case PolyType(List(), restpe) => // nullary method type
-        normSubType(restpe, pt)
-      case ExistentialType(tparams, qtpe) =>
-        normalize(tp) <:< pt
-      case _ =>
-        tp <:< pt
-    }
-
-    def isCompatibleArg(tp: Type, pt: Type): Boolean = {
-      val tp1 = normalize(tp)
-      (tp1 weak_<:< pt) || isCoercible(tp1, pt)
-    }
+    def isCompatibleArgs(tps: List[Type], pts: List[Type]) = 
+      (tps corresponds pts)(isCompatible)
 
     def isWeaklyCompatible(tp: Type, pt: Type): Boolean =
       pt.typeSymbol == UnitClass || // can perform unit coercion
@@ -412,20 +405,14 @@ trait Infer {
     /** Like weakly compatible but don't apply any implicit conversions yet.
      *  Used when comparing the result type of a method with its prototype.
      */
-    def isConservativelyCompatible(tp: Type, pt: Type): Boolean = {
-      val savedImplicitsEnabled = context.implicitsEnabled
-      context.implicitsEnabled = false
-      try {
-        isWeaklyCompatible(tp, pt)
-      } finally {
-        context.implicitsEnabled = savedImplicitsEnabled
-      }
-    }
+    def isConservativelyCompatible(tp: Type, pt: Type): Boolean =
+      context.withImplicitsDisabled(isWeaklyCompatible(tp, pt))
 
+    /** This is overridden in the Typer.infer with some logic, but since
+     *  that's the only place in the compiler an Inferencer is ever created,
+     *  I suggest this should either be abstract or have the implementation.
+     */
     def isCoercible(tp: Type, pt: Type): Boolean = false
-
-    def isCompatibleArgs(tps: List[Type], pts: List[Type]) = 
-      (tps corresponds pts)(isCompatibleArg)
 
     /* -- Type instantiation------------------------------------------------ */
 
@@ -444,7 +431,7 @@ trait Infer {
       }
       val tp1 = tp map { 
         case WildcardType =>
-          addTypeParam(TypeBounds(NothingClass.tpe, AnyClass.tpe))
+          addTypeParam(TypeBounds.empty)
         case BoundedWildcardType(bounds) =>
           addTypeParam(bounds)
         case t => t
@@ -623,7 +610,7 @@ trait Infer {
                 ", argtpes = "+argtpes+
                 ", pt = "+pt+
                 ", tvars = "+tvars+" "+(tvars map (_.constr)))
-      if (formals.length != argtpes.length) {
+      if (!sameLength(formals, argtpes)) {
         throw new NoInstance("parameter lists differ in length")
       }
       
@@ -653,7 +640,7 @@ trait Infer {
       // Then define remaining type variables from argument types.
       (argtpes, formals).zipped map { (argtpe, formal) =>
         //@M isCompatible has side-effect: isSubtype0 will register subtype checks in the tvar's bounds
-        if (!isCompatibleArg(argtpe.deconst.instantiateTypeParams(tparams, tvars), 
+        if (!isCompatible(argtpe.deconst.instantiateTypeParams(tparams, tvars), 
                              formal.instantiateTypeParams(tparams, tvars))) {
           throw new DeferredNoInstance(() =>
             "argument expression's type is not compatible with formal parameter type" +
@@ -672,7 +659,7 @@ trait Infer {
     }
 
     private[typechecker] def followApply(tp: Type): Type = tp match {
-      case PolyType(List(), restp) => 
+      case NullaryMethodType(restp) => 
         val restp1 = followApply(restp)
         if (restp1 eq restp) tp else restp1
       case _ =>
@@ -829,6 +816,8 @@ trait Infer {
             else tryTupleApply
           }
 
+        case NullaryMethodType(restpe) => // strip nullary method type, which used to be done by the polytype case below
+          isApplicable(undetparams, restpe, argtpes0, pt)
         case PolyType(tparams, restpe) =>
           val tparams1 = cloneSymbols(tparams)
           isApplicable(tparams1 ::: undetparams, restpe.substSym(tparams, tparams1), argtpes0, pt)
@@ -873,18 +862,24 @@ trait Infer {
       case et: ExistentialType =>
         isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
         //et.withTypeVars(isAsSpecific(_, ftpe2)) 
+      case NullaryMethodType(res) =>
+        isAsSpecific(res, ftpe2)
       case mt: MethodType if mt.isImplicit =>
         isAsSpecific(ftpe1.resultType, ftpe2)
-      case MethodType(params @ (x :: xs), _) =>
+      case MethodType(params, _) if params nonEmpty =>
         var argtpes = params map (_.tpe)
         if (isVarArgsList(params) && isVarArgsList(ftpe2.params))
           argtpes = argtpes map (argtpe => 
             if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
         isApplicable(List(), ftpe2, argtpes, WildcardType)
+      case PolyType(tparams, NullaryMethodType(res)) =>
+        isAsSpecific(PolyType(tparams, res), ftpe2)
       case PolyType(tparams, mt: MethodType) if mt.isImplicit =>
         isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
-      case PolyType(_, MethodType(params @ (x :: xs), _)) =>
+      case PolyType(_, MethodType(params, _)) if params nonEmpty =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
+      // case NullaryMethodType(res) =>
+      //   isAsSpecific(res, ftpe2)
       case ErrorType =>
         true
       case _ =>
@@ -895,12 +890,25 @@ trait Infer {
             et.withTypeVars(isAsSpecific(ftpe1, _))
           case mt: MethodType =>
             !mt.isImplicit || isAsSpecific(ftpe1, mt.resultType)
+          case NullaryMethodType(res) =>
+            isAsSpecific(ftpe1, res)
+          case PolyType(tparams, NullaryMethodType(res)) =>
+            isAsSpecific(ftpe1, PolyType(tparams, res))
           case PolyType(tparams, mt: MethodType) =>
             !mt.isImplicit || isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
           case _ =>
             isAsSpecificValueType(ftpe1, ftpe2, List(), List())
         }
     }
+    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = (tpe1, tpe2) match {
+      case (PolyType(tparams1, rtpe1), _) =>
+        isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
+      case (_, PolyType(tparams2, rtpe2)) =>
+        isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
+      case _ =>
+        existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
+    }
+
 
 /*
     def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type): Boolean =
@@ -956,16 +964,6 @@ trait Infer {
       case _ =>
         false
     }
-
-    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = (tpe1, tpe2) match {
-      case (PolyType(tparams1, rtpe1), _) =>
-        isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
-      case (_, PolyType(tparams2, rtpe2)) =>
-        isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
-      case _ =>
-        existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
-    }
-
 /*
     /** Is type `tpe1' a strictly better expression alternative than type `tpe2'?
      */
@@ -1133,7 +1131,7 @@ trait Infer {
       if (targs eq null) {
         if (!tree.tpe.isErroneous && !pt.isErroneous)
           error(tree.pos, "polymorphic expression cannot be instantiated to expected type" + 
-                foundReqMsg(PolyType(undetparams, skipImplicit(tree.tpe)), pt))
+                foundReqMsg(polyType(undetparams, skipImplicit(tree.tpe)), pt))
       } else {
         new TreeTypeSubstituter(undetparams, targs).traverse(tree)
       }
@@ -1640,20 +1638,18 @@ trait Infer {
       if (context.implicitsEnabled) {
         val reportGeneralErrors = context.reportGeneralErrors
         context.reportGeneralErrors = false
-        context.implicitsEnabled = false
         try {
-          infer
-        } catch {
-          case ex: CyclicReference => 
-            throw ex
-          case ex: TypeError =>
+          context.withImplicitsDisabled(infer)
+        }
+        catch {
+          case ex: CyclicReference  => throw ex
+          case ex: TypeError        =>
             context.reportGeneralErrors = reportGeneralErrors
-            context.implicitsEnabled = true
             infer
         }
         context.reportGeneralErrors = reportGeneralErrors
-        context.implicitsEnabled = true
-      } else infer
+      }
+      else infer
     }
 
     /** Assign <code>tree</code> the type of unique polymorphic alternative

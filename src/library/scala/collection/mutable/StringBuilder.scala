@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -432,11 +432,24 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
 
   /** Returns a new String representing the data in this sequence.
    *
+   *  @note    because toString is inherited from AnyRef and used for
+   *           many purposes, it is better practice to call mkString
+   *           to obtain a StringBuilder result.
    *  @return  the current contents of this sequence as a String
    */
   override def toString = underlying.toString
+  
+  /** Returns a new String representing the data in this sequence.
+   *
+   *  @return  the current contents of this sequence as a String
+   */
   override def mkString = toString
 
+  /** Returns the result of this Builder, which in the case
+   *  of StringBuilders is a StringBuilder (not a String.)
+   *
+   *  @return  this StringBuilder
+   */
   def result(): StringBuilder = this
 }
 

@@ -1,3 +1,12 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection.parallel
 
 
@@ -12,29 +21,29 @@ import scala.collection.generic.VolatileAbort
 
 
 
-// TODO update docs!!
 /** A template trait for sequences of type `ParSeq[T]`, representing
  *  parallel sequences with element type `T`.
  *  
  *  $parallelseqinfo
  *  
- *  @tparam T        the type of the elements contained in this collection
- *  @tparam Repr     the type of the actual collection containing the elements
+ *  @tparam T           the type of the elements contained in this collection
+ *  @tparam Repr        the type of the actual collection containing the elements
+ *  @tparam Sequential  the type of the sequential version of this parallel collection
  *  
  *  @define parallelseqinfo
- *  Parallel sequences inherit the `IndexedSeq` trait. This means they provide
- *  efficient indexing and length computations. Like their sequential counterparts
+ *  Parallel sequences inherit the `Seq` trait. Their indexing and length computations
+ *  are defined to be efficient. Like their sequential counterparts
  *  they always have a defined order of elements. This means they will produce resulting
  *  parallel sequences in the same way sequential sequences do. However, the order
- *  in which they iterate over elements to produce results is not defined and is generally
+ *  in which they perform bulk operations on elements to produce results is not defined and is generally
  *  nondeterministic. If the higher-order functions given to them produce no sideeffects,
  *  then this won't be noticeable.
  *  
  *  This trait defines a new, more general `split` operation and reimplements the `split`
  *  operation of `ParallelIterable` trait using the new `split` operation.
  *  
- *  @author prokopec
- *  @since 2.8
+ *  @author Aleksandar Prokopec
+ *  @since 2.9
  */
 trait ParSeqLike[+T, +Repr <: Parallel, +Sequential <: Seq[T] with SeqLike[T, Sequential]]
 extends scala.collection.SeqLike[T, Repr]
@@ -235,22 +244,23 @@ self =>
     }
   } otherwise super.endsWith(that)
   
-  override def patch[U >: T, That](from: Int, patch: Seq[U], replaced: Int)
-  (implicit bf: CanBuildFrom[Repr, U, That]): That = if (patch.isParSeq && bf.isParallel) {
-    val that = patch.asParSeq
-    val pbf = bf.asParallel
+  override def patch[U >: T, That](from: Int, patch: Seq[U], replaced: Int)(implicit bf: CanBuildFrom[Repr, U, That]): That = {
     val realreplaced = replaced min (length - from)
-    val pits = parallelIterator.psplit(from, replaced, length - from - realreplaced)
-    val copystart = new Copy[U, That](() => pbf(repr), pits(0))
-    val copymiddle = wrap {
-      val tsk = new that.Copy[U, That](() => pbf(repr), that.parallelIterator)
-      tasksupport.executeAndWaitResult(tsk)
-    }
-    val copyend = new Copy[U, That](() => pbf(repr), pits(2))
-    executeAndWaitResult(((copystart parallel copymiddle) { _ combine _ } parallel copyend) { _ combine _ } mapResult {
-      _.result
-    })
-  } else patch_sequential(from, patch, replaced)
+    if (patch.isParSeq && bf.isParallel && (size - realreplaced + patch.size) > MIN_FOR_COPY) {
+      val that = patch.asParSeq
+      val pbf = bf.asParallel
+      val pits = parallelIterator.psplit(from, replaced, length - from - realreplaced)
+      val copystart = new Copy[U, That](() => pbf(repr), pits(0))
+      val copymiddle = wrap {
+        val tsk = new that.Copy[U, That](() => pbf(repr), that.parallelIterator)
+        tasksupport.executeAndWaitResult(tsk)
+      }
+      val copyend = new Copy[U, That](() => pbf(repr), pits(2))
+      executeAndWaitResult(((copystart parallel copymiddle) { _ combine _ } parallel copyend) { _ combine _ } mapResult {
+        _.result
+      })
+    } else patch_sequential(from, patch, replaced)
+  }
   
   private def patch_sequential[U >: T, That](from: Int, patch: Seq[U], r: Int)(implicit bf: CanBuildFrom[Repr, U, That]): That = {
     val b = bf(repr)
