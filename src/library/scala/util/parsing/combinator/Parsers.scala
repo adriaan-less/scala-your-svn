@@ -568,17 +568,24 @@ trait Parsers {
    * @return A parser that returns a list of results produced by first applying `f' and then 
    *         repeatedly `p' to the input (it only succeeds if `f' matches).
    */
-  def rep1[T](firstP: => Parser[T], p0: => Parser[T]): Parser[List[T]] = Parser {
-    lazy val p = p0 // avoid repeatedly re-evaluating by-name parser (lazy argument)
+  def rep1[T](first: => Parser[T], p0: => Parser[T]): Parser[List[T]] = Parser { in =>
+    lazy val p = p0 // lazy argument
     val elems = new ListBuffer[T]
 
-    @tailrec def parse(currentParser: Parser[T], first: Boolean)(currentIn: Input): ParseResult[List[T]] =
-      currentParser(currentIn) match {
-        case Success(x, rest) => elems += x ; parse(p, false)(rest)
-        case ns: NoSuccess => if (first) ns else Success(elems.toList, currentIn)
+    def continue(in: Input): ParseResult[List[T]] = {
+      val p0 = p    // avoid repeatedly re-evaluating by-name parser
+      @tailrec def applyp(in0: Input): ParseResult[List[T]] = p0(in0) match {
+        case Success(x, rest) => elems += x ; applyp(rest)
+        case _                => Success(elems.toList, in0)
       }
-    
-    parse(firstP, true)
+      
+      applyp(in)
+    }
+
+    first(in) match {
+      case Success(x, rest) => elems += x ; continue(rest)
+      case ns: NoSuccess    => ns
+    }
   }
 
   /** A parser generator for a specified number of repetitions.
