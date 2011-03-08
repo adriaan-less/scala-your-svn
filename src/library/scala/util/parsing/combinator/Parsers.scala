@@ -12,6 +12,7 @@ package scala.util.parsing.combinator
 import scala.util.parsing.input._
 import scala.collection.mutable.ListBuffer
 import scala.annotation.tailrec
+import annotation.migration
 
 // TODO: better error handling (labelling like parsec's <?>)
 
@@ -329,16 +330,16 @@ trait Parsers {
     def ^^ [U](f: T => U): Parser[U] = map(f).named(toString+"^^")
     
 
-    /** A parser combinator that changes a successful result into specified value.
+    /** A parser combinator that changes a successful result into the specified value.
      *
      * <p>`p ^^^ v' succeeds if `p' succeeds; discards its result, and returns `v` instead.</p>
-     * @param v0 The new result for the parser, evaluated at most once (if `p` succeeds), not evaluated at all if `p` fails.
-     * @return A parser that always succeeds, with the given result `v'
+     * @param v The new result for the parser, evaluated at most once (if `p` succeeds), not evaluated at all if `p` fails.
+     * @return a parser that has the same behaviour as the current parser, but whose successful result is `v`
      */
     @migration(2, 9, "As of 2.9, the call-by-name argument is evaluated at most once per constructed Parser object, instead of on every need that arises during parsing.")
-    def ^^^ [U](v0: => U): Parser[U] =  new Parser[U] {
-      lazy val v = v0 // lazy argument
-      def apply(in: Input) = Parser.this(in) getOrElse v
+    def ^^^ [U](v: => U): Parser[U] =  new Parser[U] {
+      lazy val v0 = v // lazy argument
+      def apply(in: Input) = Parser.this(in) getOrElse v0
     }.named(toString+"^^^")
     
     /** A parser combinator for partial function application 
