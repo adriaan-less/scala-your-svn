@@ -11,7 +11,7 @@ package scala.runtime
 import scala.reflect.ClassManifest
 import scala.collection.{ Seq, IndexedSeq, TraversableView }
 import scala.collection.mutable.WrappedArray
-import scala.collection.immutable.{ NumericRange, List, Stream, Nil, :: }
+import scala.collection.immutable.{ StringLike, NumericRange, List, Stream, Nil, :: }
 import scala.collection.generic.{ Sorted }
 import scala.xml.{ Node, MetaData }
 import scala.util.control.ControlThrowable
@@ -167,7 +167,7 @@ object ScalaRunTime {
     var i = 0
     while (i < arr) {
       val elem = x.productElement(i)
-      h = extendHash(h, if (elem == null) 0 else elem.##, c, k)
+      h = extendHash(h, elem.##, c, k)
       c = nextMagicA(c)
       k = nextMagicB(k)
       i += 1
@@ -195,7 +195,8 @@ object ScalaRunTime {
   // must not call ## themselves.
  
   @inline def hash(x: Any): Int =
-    if (x.isInstanceOf[java.lang.Number]) BoxesRunTime.hashFromNumber(x.asInstanceOf[java.lang.Number])
+    if (x == null) 0
+    else if (x.isInstanceOf[java.lang.Number]) BoxesRunTime.hashFromNumber(x.asInstanceOf[java.lang.Number])
     else x.hashCode
   
   @inline def hash(dv: Double): Int = {
@@ -271,8 +272,8 @@ object ScalaRunTime {
       case _: Range | _: NumericRange[_] => true
       // Sorted collections to the wrong thing (for us) on iteration - ticket #3493
       case _: Sorted[_, _]  => true
-      // StringBuilder(a, b, c) is not so attractive
-      case _: StringBuilder => true
+      // StringBuilder(a, b, c) and similar not so attractive
+      case _: StringLike[_] => true
       // Don't want to evaluate any elements in a view
       case _: TraversableView[_, _] => true
       // Don't want to a) traverse infinity or b) be overly helpful with peoples' custom
