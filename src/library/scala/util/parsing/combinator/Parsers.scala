@@ -339,7 +339,7 @@ trait Parsers {
     @migration(2, 9, "As of 2.9, the call-by-name argument is evaluated at most once per constructed Parser object, instead of on every need that arises during parsing.")
     def ^^^ [U](v: => U): Parser[U] =  new Parser[U] {
       lazy val v0 = v // lazy argument
-      def apply(in: Input) = Parser.this(in) getOrElse v0
+      def apply(in: Input) = Parser.this(in) map (x => v0)
     }.named(toString+"^^^")
     
     /** A parser combinator for partial function application 
