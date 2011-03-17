@@ -562,7 +562,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
     )
     def addGenericSignature(jmember: JMember, sym: Symbol, owner: Symbol) {
       if (noGenericSignature(sym)) ()
-      else {
+      else try {
         val memberTpe = atPhase(currentRun.erasurePhase)(owner.thisType.memberInfo(sym))
         // println("addGenericSignature sym: " + sym.fullName + " : " + memberTpe + " sym.info: " + sym.info)
         // println("addGenericSignature: "+ (sym.ownerChain map (x => (x.name, x.isImplClass))))
@@ -589,7 +589,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid {
             """.trim.stripMargin.format(sym, sym.owner.skipPackageObject.fullName, sig)
           )
         }
-      }
+      } catch { case _ => }
     }
 
     def addAnnotations(jmember: JMember, annotations: List[AnnotationInfo]) {
