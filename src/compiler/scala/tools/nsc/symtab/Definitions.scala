@@ -470,12 +470,12 @@ trait Definitions extends reflect.generic.StandardDefinitions {
 
     def isFunctionType(tp: Type): Boolean = tp.normalize match {
       case TypeRef(_, sym, args) if args.nonEmpty =>
-        val len = args.length
-        len < MaxFunctionArity && sym == FunctionClass(len - 1)
+        val arity = args.length - 1
+        arity <= MaxFunctionArity && sym == FunctionClass(arity)
       case _ =>
         false
     }
-    
+
     def isSeqType(tp: Type) = elementType(SeqClass, tp.normalize) != NoType
 
     def elementType(container: Symbol, tp: Type): Type = tp match {
