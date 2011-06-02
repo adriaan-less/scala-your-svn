@@ -366,11 +366,13 @@ trait Typers extends Modes {
 
       override def apply(t: Type): Type = {
         def checkNoEscape(sym: Symbol) {
+          // `sym` should not escape ("stay hidden") if it's private and it's defined by something nested in `owner` that's strictly more accessible than `sym`
           if (sym.isPrivate && !sym.hasFlag(SYNTHETIC_PRIVATE)) {
+            // owner.ownerChain.takeWhile (o => !(o.isLocal || o.isPrivate || o.privateWithin.hasTransOwner(sym.owner))).
+            //                    exists (o => o == sym.owner || o == sym.owner.linkedClassOfClass)
             var o = owner
             while (o != NoSymbol && o != sym.owner && o != sym.owner.linkedClassOfClass &&
-                   !o.isLocal && !o.isPrivate &&
-                   !o.privateWithin.hasTransOwner(sym.owner))
+                   !(o.isLocal || o.isPrivate || o.privateWithin.hasTransOwner(sym.owner))) // could this reuse isLessAccessibleThan?
               o = o.owner
             if (o == sym.owner || o == sym.owner.linkedClassOfClass)
               addHidden(sym)
@@ -394,8 +396,10 @@ trait Typers extends Modes {
               if (!hiddenSymbols.isEmpty && hiddenSymbols.head == sym && 
                   sym.isAliasType && sameLength(sym.typeParams, args)) {
                 hiddenSymbols = hiddenSymbols.tail
-                t.normalize
-              } else t
+                apply(t.normalize) // must re-check the type alias's RHS to rule out programs such as:
+                // class C { private class P; type S <: PA; private type PA = P }
+              } else t // no need to check t.normalize if we don't use it here for avoidance
+              // if the type alias's RHS is problematic, that will be discovered when the definition is traversed
             case SingleType(_, sym) => 
               checkNoEscape(sym)
               t

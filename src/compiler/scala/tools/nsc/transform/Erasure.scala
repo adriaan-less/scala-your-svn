@@ -1059,11 +1059,12 @@ abstract class Erasure extends AddInterfaces
           if (!isAccessible(owner) && qual.tpe != null) {
             // Todo: Figure out how qual.tpe could be null in the check above (it does appear in build where SwingWorker.this 
             // has a null type).
-            val qualSym = qual.tpe.widen.typeSymbol
+            val qualtpe = qual.tpe.widen.normalize // normalize to fix crashing part of #4559
+            val qualSym = qualtpe.typeSymbol
             if (isAccessible(qualSym) && !qualSym.isPackageClass && !qualSym.isPackageObjectClass) {
               // insert cast to prevent illegal access error (see #4283)
               // util.trace("insert erasure cast ") (*/
-              treeCopy.Select(tree, qual AS_ATTR qual.tpe.widen, name) //)
+              treeCopy.Select(tree, qual AS_ATTR qualtpe, name) //)
             } else tree
           } else tree
 

@@ -704,6 +704,7 @@ trait Symbols /* extends reflect.generic.Symbols*/ { self: SymbolTable =>
       else RootClass
     }
 
+    // accessBoundary(owner).ownerChain.tail exists (o => o == other.accessBoundary(owner) || o == other.accessBoundary(owner).linkedClassOfClass)
     def isLessAccessibleThan(other: Symbol): Boolean = {
       val tb = this.accessBoundary(owner)
       val ob1 = other.accessBoundary(owner)
