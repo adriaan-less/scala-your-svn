@@ -7,7 +7,7 @@ package scala.tools.nsc
 package interpreter
 
 import Predef.{ println => _, _ }
-import java.io.{ BufferedReader, FileReader, PrintWriter }
+import java.io.{ BufferedReader, FileReader }
 import java.util.concurrent.locks.ReentrantLock
 import scala.sys.process.Process
 import session._
@@ -31,13 +31,13 @@ import io.{ File, Sources }
  *  @author  Lex Spoon
  *  @version 1.2
  */
-class ILoop(in0: Option[BufferedReader], protected val out: PrintWriter)
+class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
                 extends AnyRef
                    with LoopCommands
                    with ILoopInit
 {
-  def this(in0: BufferedReader, out: PrintWriter) = this(Some(in0), out)
-  def this() = this(None, new PrintWriter(Console.out, true))
+  def this(in0: BufferedReader, out: JPrintWriter) = this(Some(in0), out)
+  def this() = this(None, new JPrintWriter(Console.out, true))
   
   var in: InteractiveReader = _   // the input stream from which commands come
   var settings: Settings = _
@@ -177,15 +177,8 @@ class ILoop(in0: Option[BufferedReader], protected val out: PrintWriter)
   // When you know you are most likely breaking into the middle
   // of a line being typed.  This softens the blow.
   protected def echoAndRefresh(msg: String) = {
-    if (in.currentLine == "") {
-      in.eraseLine()
-      echo(msg)
-      echoNoNL(prompt)
-    }
-    else {
-      echo("\n" + msg)
-      in.redrawLine()
-    }
+    echo("\n" + msg)
+    in.redrawLine()
   }
   protected def echo(msg: String) = {
     out println msg
@@ -495,8 +488,8 @@ class ILoop(in0: Option[BufferedReader], protected val out: PrintWriter)
   )
   
   val replayQuestionMessage =
-    """|The repl compiler has crashed spectacularly. Shall I replay your
-       |session? I can re-run all lines except the last one.
+    """|That entry seems to have slain the compiler.  Shall I replay
+       |your session? I can re-run each line except the last one.
        |[y/n]
     """.trim.stripMargin
 
@@ -509,14 +502,12 @@ class ILoop(in0: Option[BufferedReader], protected val out: PrintWriter)
           if (isReplDebug) "[searching " + sources.path + " for exception contexts...]"
           else "[searching for exception contexts...]"
         )
-        echo(Exceptional(ex).force().context())
       }
-      else {
-        echo(util.stackTraceString(ex))
-      }
+      echo(intp.global.throwableAsString(ex))
+
       ex match {
         case _: NoSuchMethodError | _: NoClassDefFoundError =>
-          echo("Unrecoverable error.")
+          echo("\nUnrecoverable error.")
           throw ex
         case _  =>
           def fn(): Boolean =
@@ -623,12 +614,13 @@ class ILoop(in0: Option[BufferedReader], protected val out: PrintWriter)
   
   def powerCmd(): Result = {
     if (isReplPower) "Already in power mode."
-    else enablePowerMode()
+    else enablePowerMode(false)
   }
-  def enablePowerMode() = {
+  def enablePowerMode(isAsync: Boolean) = {
     replProps.power setValue true
     power.unleash()
-    echoAndRefresh(power.banner)
+    if (isAsync) asyncMessage(power.banner)
+    else echo(power.banner)
   }
   
   def verbosity() = {
@@ -861,7 +853,7 @@ object ILoop {
     
     stringFromStream { ostream =>
       Console.withOut(ostream) {
-        val output = new PrintWriter(new OutputStreamWriter(ostream), true) {
+        val output = new JPrintWriter(new OutputStreamWriter(ostream), true) {
           override def write(str: String) = {
             // completely skip continuation lines
             if (str forall (ch => ch.isWhitespace || ch == '|')) ()
@@ -897,7 +889,7 @@ object ILoop {
     stringFromStream { ostream =>
       Console.withOut(ostream) {
         val input    = new BufferedReader(new StringReader(code))
-        val output   = new PrintWriter(new OutputStreamWriter(ostream), true)
+        val output   = new JPrintWriter(new OutputStreamWriter(ostream), true)
         val repl     = new ILoop(input, output)
         
         if (sets.classpath.isDefault)
