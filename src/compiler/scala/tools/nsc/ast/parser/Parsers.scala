@@ -876,6 +876,7 @@ self =>
         val start = in.offset
         simpleTypeRest(in.token match {
           case LPAREN   => atPos(start)(makeTupleType(inParens(types()), true))
+          case LBRACKET => atPos(start)(anonTypeFun())
           case USCORE   => wildcardType(in.skipToken())
           case _        =>
             path(false, true) match {
@@ -883,6 +884,15 @@ self =>
               case r => convertToTypeId(r)
             }
         })
+      }
+
+      private def anonTypeFun(): Tree = {
+        inBrackets {
+          val tps = commaSeparated(typeParam(NoMods withAnnotations annotations(true)))
+          accept(ARROW)
+          val res = typ
+          makeTypeFun(tps, res)
+        }
       }
 
       private def typeProjection(t: Tree): Tree = {
@@ -2036,44 +2046,44 @@ self =>
      *  TypeParam             ::= Id TypeParamClauseOpt TypeBounds {<% Type} {":" Type}
      */
     def typeParamClauseOpt(owner: Name, contextBoundBuf: ListBuffer[Tree]): List[TypeDef] = {
-      def typeParam(ms: Modifiers): TypeDef = {
-        var mods = ms | Flags.PARAM
-        val start = in.offset
-        if (owner.isTypeName && isIdent) {
-          if (in.name == raw.PLUS) {
-            in.nextToken()
-            mods |= Flags.COVARIANT
-          } else if (in.name == raw.MINUS) {
-            in.nextToken()
-            mods |= Flags.CONTRAVARIANT
-          }
-        }
-        val nameOffset = in.offset
-        // TODO AM: freshName(o2p(in.skipToken()), "_$$"), will need to update test suite
-        val pname: TypeName = wildcardOrIdent().toTypeName
-        val param = atPos(start, nameOffset) {
-          val tparams = typeParamClauseOpt(pname, null) // @M TODO null --> no higher-order context bounds for now
-          TypeDef(mods, pname, tparams, typeBounds())
-        }
-        if (contextBoundBuf ne null) {
-          while (in.token == VIEWBOUND) {
-            contextBoundBuf += atPos(in.skipToken()) {
-              makeFunctionTypeTree(List(Ident(pname)), typ())
-            }
-          }
-          while (in.token == COLON) {
-            contextBoundBuf += atPos(in.skipToken()) {
-              AppliedTypeTree(typ(), List(Ident(pname)))
-            }
-          }
-        }
-        param
-      }
       newLineOptWhenFollowedBy(LBRACKET)
       if (in.token == LBRACKET) inBrackets(commaSeparated(typeParam(NoMods withAnnotations annotations(true))))
       else Nil
     }
 
+    def typeParam(ms: Modifiers): TypeDef = {
+      var mods = ms | Flags.PARAM
+      val start = in.offset
+      if (owner.isTypeName && isIdent) {
+        if (in.name == raw.PLUS) {
+          in.nextToken()
+          mods |= Flags.COVARIANT
+        } else if (in.name == raw.MINUS) {
+          in.nextToken()
+          mods |= Flags.CONTRAVARIANT
+        }
+      }
+      val nameOffset = in.offset
+      // TODO AM: freshName(o2p(in.skipToken()), "_$$"), will need to update test suite
+      val pname: TypeName = wildcardOrIdent().toTypeName
+      val param = atPos(start, nameOffset) {
+        val tparams = typeParamClauseOpt(pname, null) // @M TODO null --> no higher-order context bounds for now
+        TypeDef(mods, pname, tparams, typeBounds())
+      }
+      if (contextBoundBuf ne null) {
+        while (in.token == VIEWBOUND) {
+          contextBoundBuf += atPos(in.skipToken()) {
+            makeFunctionTypeTree(List(Ident(pname)), typ())
+          }
+        }
+        while (in.token == COLON) {
+          contextBoundBuf += atPos(in.skipToken()) {
+            AppliedTypeTree(typ(), List(Ident(pname)))
+          }
+        }
+      }
+      param
+    }
     /** TypeBounds ::= [`>:' Type] [`<:' Type] 
      */
     def typeBounds(): TypeBoundsTree = { 
