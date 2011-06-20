@@ -875,6 +875,9 @@ trait Typers extends Modes {
         } else if (!context.undetparams.isEmpty && !inPolyMode(mode)) { // (9)
           assert(!inHKMode(mode)) //@M
           instantiate(tree, mode, pt)
+        } else if (tree.hasSymbol && tree.symbol.isJavaDefined && (tree.tpe.isInstanceOf[MethodType] || tree.tpe.isInstanceOf[OverloadedType])) {
+          // may need to re-cook now that type parameters have been instantiated to possibly raw type arguments
+          tree setType rawToExistential(tree.tpe)
         } else if (tree.tpe <:< pt) {
           tree
         } else {
