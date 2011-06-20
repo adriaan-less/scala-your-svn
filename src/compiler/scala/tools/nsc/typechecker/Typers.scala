@@ -395,10 +395,11 @@ trait Typers extends Modes {
             case TypeRef(_, sym, args) => 
               checkNoEscape(sym)
               if (!hiddenSymbols.isEmpty && hiddenSymbols.head == sym && 
-                  sym.isAliasType && sameLength(sym.typeParams, args)) {
+                  sym.isAliasType) { // keep type alias symbols out of hiddenSymbols since existentialTransform (rightfully) rejects abstracting over them
                 hiddenSymbols = hiddenSymbols.tail
                 apply(t.normalize) // must re-check the type alias's RHS to rule out programs such as:
                 // class C { private class P; type S <: PA; private type PA = P }
+                // normalizing even when it's a type constructor alias that's not applied to type arguments -- #4559
               } else t // no need to check t.normalize if we don't use it here for avoidance
               // if the type alias's RHS is problematic, that will be discovered when the definition is traversed
             case SingleType(_, sym) => 
