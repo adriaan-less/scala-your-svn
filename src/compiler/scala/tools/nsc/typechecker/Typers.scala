@@ -352,7 +352,7 @@ trait Typers extends Modes {
         else if (tp1.typeSymbol.isAnonymousClass) // todo: eliminate
           check(owner, scope, pt, tree setType tp1.typeSymbol.classBound)
         else if (owner == NoSymbol)
-          tree setType packSymbols(hiddenSymbols.reverse, tp1)
+          tree setType packSymbols(hiddenSymbols.reverse, tp1) // packSymbols does not handle type aliases since they need not be existentially abstracted over (they should be dealiased if needed)
         else if (!phase.erasedTypes) { // privates
           val badSymbol = hiddenSymbols.head
           error(tree.pos,
