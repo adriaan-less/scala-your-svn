@@ -352,7 +352,7 @@ trait Typers extends Modes {
         else if (tp1.typeSymbol.isAnonymousClass) // todo: eliminate
           check(owner, scope, pt, tree setType tp1.typeSymbol.classBound)
         else if (owner == NoSymbol)
-          tree setType packSymbols(hiddenSymbols.reverse, tp1) // packSymbols does not handle type aliases since they need not be existentially abstracted over (they should be dealiased if needed)
+          tree setType packSymbols(hiddenSymbols.reverse, tp1)
         else if (!phase.erasedTypes) { // privates
           val badSymbol = hiddenSymbols.head
           error(tree.pos,
@@ -395,7 +395,7 @@ trait Typers extends Modes {
             case TypeRef(_, sym, args) => 
               checkNoEscape(sym)
               if (!hiddenSymbols.isEmpty && hiddenSymbols.head == sym && 
-                  sym.isAliasType) { // keep type alias symbols out of hiddenSymbols since existentialTransform (rightfully) rejects abstracting over them
+                  sym.isAliasType) { // keep all type alias symbols out of hiddenSymbols since existentialTransform (rightfully?) refuses to abstract over them
                 hiddenSymbols = hiddenSymbols.tail
                 apply(t.normalize) // must re-check the type alias's RHS to rule out programs such as:
                 // class C { private class P; type S <: PA; private type PA = P }
