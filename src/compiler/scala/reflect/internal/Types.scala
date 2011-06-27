@@ -1832,6 +1832,7 @@ A type's typeSymbol should never be inspected directly.
 
     override def typeArgs: List[Type] = args
     private def typeArgsOrDummies = if (!isHigherKinded) args else dummyArgs
+    // def hasFishyArgs = args == dummyArgs
 
     // @MAT was typeSymbol.unsafeTypeParams, but typeSymbol normalizes now
     private def typeParamsDirect =
@@ -5090,16 +5091,16 @@ A type's typeSymbol should never be inspected directly.
    *
    *  @See baseTypeSeq  for a definition of sorted and upwards closed.
    */
-  private def lubList(tss: List[List[Type]], depth: Int): List[Type] = {
+  private def lubList(tsParams: List[List[Symbol]], tss: List[List[Type]], depth: Int): List[Type] = {
     if (tss.tail.isEmpty) tss.head
     else if (tss exists (_.isEmpty)) List()
     else {
       val ts0 = tss map (_.head)
-      val sym = minSym(ts0)
+      val sym = minSym(ts0) // TODO: optimisation potential? delay minSym until else branch, simply use ts0.head.typeSymbol to check whether all of ts0's symbols are equal?
       if (ts0 forall (_.typeSymbol == sym))
-        mergePrefixAndArgs(elimSub(ts0, depth), 1, depth).toList ::: lubList(tss map (_.tail), depth)
+        mergePrefixAndArgs(elimSub(tsParams, ts0, depth), 1, depth, tsParams).toList ::: lubList(tsParams, tss map (_.tail), depth)
       else
-        lubList(tss map (ts => if (ts.head.typeSymbol == sym) ts.tail else ts), depth)
+        lubList(tsParams, tss map (ts => if (ts.head.typeSymbol == sym) ts.tail else ts), depth)
     }
   }
   // @PP lubLists gone bad: lubList(List(
@@ -5109,8 +5110,8 @@ A type's typeSymbol should never be inspected directly.
   //   List(scala.collection.generic.GenericCompanion[Seq[Any]], ScalaObject, java.lang.Object, Any)
   // )
 
-  private def lubBaseTypeSeq(tss: List[BaseTypeSeq], depth: Int): List[Type] = 
-    lubList(tss map (_.toList), depth)
+  private def lubBaseTypeSeq(tsParams: List[List[Symbol]], tss: List[BaseTypeSeq], depth: Int): List[Type] = 
+    lubList(tsParams, tss map (_.toList), depth)
 
   /** The minimal symbol (wrt Symbol.isLess) of a list of types */
   private def minSym(tps: List[Type]): Symbol =
@@ -5152,7 +5153,7 @@ A type's typeSymbol should never be inspected directly.
 
   /** Eliminate from list of types all elements which are a subtype
    *  of some other element of the list. */
-  private def elimSub(ts: List[Type], depth: Int): List[Type] = {
+  private def elimSub(tsParams: List[List[Symbol]], ts: List[Type], depth: Int): List[Type] = {
     def elimAnonymousClass(t: Type) = t match {
       case TypeRef(pre, clazz, List()) if clazz.isAnonymousClass =>
         clazz.classBound.asSeenFrom(pre, clazz.owner)
@@ -5165,12 +5166,13 @@ A type's typeSymbol should never be inspected directly.
         val rest = elimSub0(ts1 filter (t1 => !isSubType(t1, t, decr(depth))))
         if (rest exists (t1 => isSubType(t, t1, decr(depth)))) rest else t :: rest
     }
-    val ts0 = elimSub0(ts)
+    val ts00 = ts map { case tp@TypeRef(pre, sym, args) if args.nonEmpty && tsParams.contains(args.map(_.typeSymbolDirect)) => tp.typeConstructor case tp => tp } 
+    val ts0 = elimSub0(ts00)
     if (ts0.isEmpty || ts0.tail.isEmpty) ts0
     else {
       val ts1 = ts0 mapConserve (t => elimAnonymousClass(t.underlying))
       if (ts1 eq ts0) ts0
-      else elimSub(ts1, depth)
+      else elimSub(tsParams, ts1, depth)
     }
   }
 
@@ -5257,7 +5259,7 @@ A type's typeSymbol should never be inspected directly.
  
   /** The least upper bound wrt <:< of a list of types */
   def lub(ts: List[Type], depth: Int): Type = {
-    def lub0(ts0: List[Type]): Type = elimSub(ts0, depth) match {
+    def lub0(ts0: List[Type]): Type = elimSub(ts0 map (_.typeParams), ts0, depth) match {
       case List() => NothingClass.tpe
       case List(t) => t
       case ts @ PolyType(tparams, _) :: _ =>
@@ -5284,7 +5286,7 @@ A type's typeSymbol should never be inspected directly.
     def lub1(ts0: List[Type]): Type = {
       val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
       val bts: List[BaseTypeSeq] = ts map (_.baseTypeSeq)
-      val lubBaseTypes: List[Type] = lubBaseTypeSeq(bts, depth)
+      val lubBaseTypes: List[Type] = lubBaseTypeSeq(ts map (_.typeParams), bts, depth)
       val lubParents = spanningTypes(lubBaseTypes)
       val lubOwner = commonOwner(ts)
       val lubBase = intersectionType(lubParents, lubOwner)
@@ -5525,7 +5527,7 @@ A type's typeSymbol should never be inspected directly.
    *  Return `Some(x)` if the computation succeeds with result `x`.
    *  Return `None` if the computation fails.
    */
-  def mergePrefixAndArgs(tps: List[Type], variance: Int, depth: Int): Option[Type] = tps match {
+  def mergePrefixAndArgs(tps: List[Type], variance: Int, depth: Int, tparssHO: List[List[Symbol]] = Nil): Option[Type] = tps match {
     case List(tp) =>
       Some(tp)
     case TypeRef(_, sym, _) :: rest =>
@@ -5547,8 +5549,9 @@ A type's typeSymbol should never be inspected directly.
             else Some(typeRef(pre, sym, List(lub(args))))
           }
         } else {
-          val args = (sym.typeParams, argss.transpose).zipped map {
-            (tparam, as) =>
+          val args = 
+            if (argss.head exists (a => tparssHO.head.contains(a.typeSymbol))) Nil
+            else (sym.typeParams, argss.transpose).zipped map { (tparam, as) =>
               if (depth == 0)
                 if (tparam.variance == variance) AnyClass.tpe
                 else if (tparam.variance == -variance) NothingClass.tpe
