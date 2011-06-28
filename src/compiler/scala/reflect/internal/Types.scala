@@ -5090,17 +5090,23 @@ A type's typeSymbol should never be inspected directly.
    *
    *    xs <= ys   iff   forall y in ys exists x in xs such that x <: y
    *
+   *
+   * @arg tsParams for each type in the original list of types `ts0`, its list of type parameters (if that type is a type constructor)
+   *      (these type parameters may be referred to by type arguments in the BTS column of those types,
+   *       and must be interpreted as bound variables, under a type lambda that wraps the types that refer to these type params)
    *  @See baseTypeSeq  for a definition of sorted and upwards closed.
    */
   private def lubList(tsParams: List[List[Symbol]], tss: List[List[Type]], depth: Int): List[Type] = {
     if (tss.tail.isEmpty) tss.head
     else if (tss exists (_.isEmpty)) List()
     else {
-      val ts0 = tss map (_.head)
+      val ts0 = tss map (_.head) // ts is the 1-dimensional frontier of symbols cutting through 2-dimensional tss, 
+      // (imagine tss as a matrix whose columns are basetype sequences -- the first row is the original list of types for which we're computing the lub/glb)
+      // invariant: all symbols "under" (closer to the first row) the frontier are smaller (according to _.isLess) than the ones "on and beyond" the frontier
       val sym = minSym(ts0) // TODO: optimisation potential? delay minSym until else branch, simply use ts0.head.typeSymbol to check whether all of ts0's symbols are equal?
-      if (ts0 forall (_.typeSymbol == sym))
+      if (ts0 forall (_.typeSymbol == sym)) // is the frontier made up of types with the same symbol? (due to the invariant, that symbol is the maximal symbol, i.e., the one that conveys most information wrt subtyping)
         mergePrefixAndArgs(elimSub(tsParams, ts0, depth), 1, depth, tsParams).toList ::: lubList(tsParams, tss map (_.tail), depth)
-      else
+      else // frontier is not uniform yet, move it beyond the current minimal symbol & lather, rince, repeat
         lubList(tsParams, tss map (ts => if (ts.head.typeSymbol == sym) ts.tail else ts), depth)
     }
   }
