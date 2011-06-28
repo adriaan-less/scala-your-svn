@@ -5557,7 +5557,7 @@ A type's typeSymbol should never be inspected directly.
           }
         } else {
           val args = 
-            if (argss.head exists (a => tparssHO.head.contains(a.typeSymbol))) Nil
+            if (tparssHO.nonEmpty && argss.nonEmpty && argss.head.exists(a => tparssHO.head.contains(a.typeSymbol))) Nil
             else (sym.typeParams, argss.transpose).zipped map { (tparam, as) =>
               if (depth == 0)
                 if (tparam.variance == variance) AnyClass.tpe
