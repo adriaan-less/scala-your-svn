@@ -5084,29 +5084,36 @@ A type's typeSymbol should never be inspected directly.
 
 // Lubs and Glbs ---------------------------------------------------------
 
-  /** The least sorted upwards closed upper bound of a non-empty list
-   *  of lists of types relative to the following ordering <= between lists of types:
+  /** Given a matrix `tsBts` whose columns are basetype sequences (and the symbols `tsParams` that should be interpreted as type parameters in this matrix),
+   * compute its least sorted upwards closed upper bound relative to the following ordering <= between lists of types:
    *
    *    xs <= ys   iff   forall y in ys exists x in xs such that x <: y
    *
    *
-   * @arg tsParams for each type in the original list of types `ts0`, its list of type parameters (if that type is a type constructor)
-   *      (these type parameters may be referred to by type arguments in the BTS column of those types,
-   *       and must be interpreted as bound variables, under a type lambda that wraps the types that refer to these type params)
+   *  @arg tsParams for each type in the original list of types `ts0`, its list of type parameters (if that type is a type constructor)
+   *                (these type parameters may be referred to by type arguments in the BTS column of those types,
+   *                and must be interpreted as bound variables, under a type lambda that wraps the types that refer to these type params)
+   *  @arg tsBts    a matrix whose columns are basetype sequences
+   *                the first row is the original list of types for which we're computing the lub 
+   *                  (except that type constructors have been applied to their dummyArgs)
    *  @See baseTypeSeq  for a definition of sorted and upwards closed.
    */
-  private def lubList(tsParams: List[List[Symbol]], tss: List[List[Type]], depth: Int): List[Type] = {
-    if (tss.tail.isEmpty) tss.head
-    else if (tss exists (_.isEmpty)) List()
+  private def lubList(tsParams: List[List[Symbol]], tsBts: List[List[Type]], depth: Int): List[Type] = {
+    if (tsBts.tail.isEmpty) tsBts.head
+    else if (tsBts exists (_.isEmpty)) List()
     else {
-      val ts0 = tss map (_.head) // ts is the 1-dimensional frontier of symbols cutting through 2-dimensional tss, 
-      // (imagine tss as a matrix whose columns are basetype sequences -- the first row is the original list of types for which we're computing the lub/glb)
+      val ts0 = tsBts map (_.head) // ts0 is the 1-dimensional frontier of symbols cutting through 2-dimensional tsBts, 
       // invariant: all symbols "under" (closer to the first row) the frontier are smaller (according to _.isLess) than the ones "on and beyond" the frontier
-      val sym = minSym(ts0) // TODO: optimisation potential? delay minSym until else branch, simply use ts0.head.typeSymbol to check whether all of ts0's symbols are equal?
-      if (ts0 forall (_.typeSymbol == sym)) // is the frontier made up of types with the same symbol? (due to the invariant, that symbol is the maximal symbol, i.e., the one that conveys most information wrt subtyping)
-        mergePrefixAndArgs(elimSub(tsParams, ts0, depth), 1, depth, tsParams).toList ::: lubList(tsParams, tss map (_.tail), depth)
-      else // frontier is not uniform yet, move it beyond the current minimal symbol & lather, rince, repeat
-        lubList(tsParams, tss map (ts => if (ts.head.typeSymbol == sym) ts.tail else ts), depth)
+
+      // is the frontier made up of types with the same symbol? (due to the invariant, that symbol is the maximal symbol, i.e., the one that conveys most information wrt subtyping)
+      val sym0 = ts0.head.typeSymbolDirect
+      if (ts0.tail forall (_.typeSymbolDirect == sym0)){
+        mergePrefixAndArgs(elimSub(tsParams, ts0, depth), 1, depth, tsParams).toList ::: lubList(tsParams, tsBts map (_.tail), depth)
+      } else { 
+        // frontier is not uniform yet, move it beyond the current minimal symbol & lather, rince, repeat
+        val sym = minSym(ts0)
+        lubList(tsParams, tsBts map (ts => if (ts.head.typeSymbolDirect == sym) ts.tail else ts), depth)
+      }
     }
   }
   // @PP lubLists gone bad: lubList(List(
@@ -5115,9 +5122,6 @@ A type's typeSymbol should never be inspected directly.
   // )) == (
   //   List(scala.collection.generic.GenericCompanion[Seq[Any]], ScalaObject, java.lang.Object, Any)
   // )
-
-  private def lubBaseTypeSeq(tsParams: List[List[Symbol]], tss: List[BaseTypeSeq], depth: Int): List[Type] = 
-    lubList(tsParams, tss map (_.toList), depth)
 
   /** The minimal symbol (wrt Symbol.isLess) of a list of types */
   private def minSym(tps: List[Type]): Symbol =
@@ -5291,8 +5295,7 @@ A type's typeSymbol should never be inspected directly.
     }
     def lub1(ts0: List[Type]): Type = {
       val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
-      val bts: List[BaseTypeSeq] = ts map (_.baseTypeSeq)
-      val lubBaseTypes: List[Type] = lubBaseTypeSeq(ts map (_.typeParams), bts, depth)
+      val lubBaseTypes: List[Type] = lubList(ts map (_.typeParams), ts map (_.baseTypeSeq.toList), depth)
       val lubParents = spanningTypes(lubBaseTypes)
       val lubOwner = commonOwner(ts)
       val lubBase = intersectionType(lubParents, lubOwner)
