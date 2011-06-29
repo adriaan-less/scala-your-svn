@@ -89,7 +89,7 @@ trait Types /*extends reflect.generic.Types*/ { self: SymbolTable =>
   /** Decrement depth unless it is a don't care. */
   private final def decr(depth: Int) = if (depth == AnyDepth) AnyDepth else depth - 1
 
-  private final val printLubs = false
+  private final val printLubs = true
   /** In case anyone wants to turn off lub verification without reverting anything. */
   private final val verifyLubs = true
 
@@ -1452,6 +1452,7 @@ trait Types /*extends reflect.generic.Types*/ { self: SymbolTable =>
      */
     override def normalize = {
       if (isHigherKinded) {
+        println("HKnormRT: "+ (parents, decls, typeSymbol))
         typeFun(
           typeParams,
           RefinedType(
@@ -5117,7 +5118,7 @@ A type's typeSymbol should never be inspected directly.
     else {
       val ts0 = tsBts map (_.head) // ts0 is the 1-dimensional frontier of symbols cutting through 2-dimensional tsBts, 
       // invariant: all symbols "under" (closer to the first row) the frontier are smaller (according to _.isLess) than the ones "on and beyond" the frontier
-
+      println("lubList: "+ ts0)
       // is the frontier made up of types with the same symbol? 
       // --> produce a single type for this frontier by merging the prefixes and arguments of these typerefs that share the same symbol
       // due to the invariant, that symbol is the current maximal symbol for which this holds, i.e., the one that conveys most information wrt subtyping
@@ -5316,6 +5317,9 @@ A type's typeSymbol should never be inspected directly.
       val lubParents = spanningTypes(lubBaseTypes)
       val lubOwner = commonOwner(ts)
       val lubBase = intersectionType(lubParents, lubOwner)
+      if(ts exists (_.isHigherKinded)) 
+        println("lub (ts, bts, lubBaseTypes, lubParents, lubOwner, lubBase): "+(ts,"\n", lubBaseTypes,"\n", lubBase))
+
       val lubType =
         if (phase.erasedTypes || depth == 0) lubBase
         else {
@@ -5587,10 +5591,7 @@ A type's typeSymbol should never be inspected directly.
                   val l = lub(as, decr(depth))
                   val g = glb(as, decr(depth))
                   if (l <:< g) l
-                  else { // Martin: I removed this, because incomplete. Not sure there is a good way to fix it. For the moment we
-                         // just err on the conservative side, i.e. with a bound that is too high.
-                         // if(!(tparam.info.bounds contains tparam)){ //@M can't deal with f-bounds, see #2251
-
+                  else {
                     val qvar = commonOwner(as) freshExistential "" setInfo TypeBounds(g, l)
                     capturedParams += qvar
                     qvar.tpe
@@ -5599,7 +5600,10 @@ A type's typeSymbol should never be inspected directly.
               }
             }
           if (args contains NoType) None
-          else Some(existentialAbstraction(capturedParams.toList, typeRef(pre, sym, args)))
+          else {
+            println("MPA="+ (tps, sym, args))
+            Some(existentialAbstraction(capturedParams.toList, typeRef(pre, sym, args)))
+          }
         }
       } catch {
         case ex: MalformedType => None
