@@ -5092,13 +5092,19 @@ A type's typeSymbol should never be inspected directly.
    *
    *  @arg tsParams for each type in the original list of types `ts0`, its list of type parameters (if that type is a type constructor)
    *                (these type parameters may be referred to by type arguments in the BTS column of those types,
-   *                and must be interpreted as bound variables, under a type lambda that wraps the types that refer to these type params)
+   *                and must be interpreted as bound variables; i.e., under a type lambda that wraps the types that refer to these type params)
    *  @arg tsBts    a matrix whose columns are basetype sequences
    *                the first row is the original list of types for which we're computing the lub 
    *                  (except that type constructors have been applied to their dummyArgs)
    *  @See baseTypeSeq  for a definition of sorted and upwards closed.
    */
   private def lubList(tsParams: List[List[Symbol]], tsBts: List[List[Type]], depth: Int): List[Type] = {
+    // strip typerefs in ts from their arguments if those refer to type parameters that are meant to be bound
+    def elimHOTparams(ts: List[Type]) = ts map { 
+      case tp@TypeRef(pre, sym, args) if args.nonEmpty && tsParams.contains(args.map(_.typeSymbolDirect)) => tp.typeConstructor
+      case tp => tp
+    }
+
     if (tsBts.tail.isEmpty) tsBts.head
     else if (tsBts exists (_.isEmpty)) List()
     else {
@@ -5108,19 +5114,20 @@ A type's typeSymbol should never be inspected directly.
       // is the frontier made up of types with the same symbol? (due to the invariant, that symbol is the maximal symbol, i.e., the one that conveys most information wrt subtyping)
       val sym0 = ts0.head.typeSymbolDirect
       if (ts0.tail forall (_.typeSymbolDirect == sym0)){
-        mergePrefixAndArgs(elimSub(tsParams, ts0, depth), 1, depth, tsParams).toList ::: lubList(tsParams, tsBts map (_.tail), depth)
+        mergePrefixAndArgs(elimSub(elimHOTparams(ts0), depth), 1, depth).toList ::: lubList(tsParams, tsBts map (_.tail), depth)
       } else { 
-        // frontier is not uniform yet, move it beyond the current minimal symbol & lather, rince, repeat
+        // frontier is not uniform yet, move it beyond the current minimal symbol; lather, rince, repeat
         val sym = minSym(ts0)
         lubList(tsParams, tsBts map (ts => if (ts.head.typeSymbolDirect == sym) ts.tail else ts), depth)
       }
     }
   }
+  // @AM the following problem is solved by elimHOTparams in lublist
   // @PP lubLists gone bad: lubList(List(
   //   List(scala.collection.generic.GenericCompanion[scala.collection.immutable.Seq], ScalaObject, java.lang.Object, Any)
   //   List(scala.collection.generic.GenericCompanion[scala.collection.mutable.Seq], ScalaObject, java.lang.Object, Any)
   // )) == (
-  //   List(scala.collection.generic.GenericCompanion[Seq[Any]], ScalaObject, java.lang.Object, Any)
+  //   List(scala.collection.generic.GenericCompanion[Seq**[Any]**], ScalaObject, java.lang.Object, Any)
   // )
 
   /** The minimal symbol (wrt Symbol.isLess) of a list of types */
@@ -5169,20 +5176,19 @@ A type's typeSymbol should never be inspected directly.
 
   /** Eliminate from list of types all elements which are a subtype
    *  of some other element of the list. */
-  private def elimSub(tsParams: List[List[Symbol]], ts: List[Type], depth: Int): List[Type] = {
+  private def elimSub(ts: List[Type], depth: Int): List[Type] = {
     def elimSub0(ts: List[Type]): List[Type] = ts match {
       case List() => List()
       case t :: ts1 =>
         val rest = elimSub0(ts1 filter (t1 => !isSubType(t1, t, decr(depth))))
         if (rest exists (t1 => isSubType(t, t1, decr(depth)))) rest else t :: rest
     }
-    val ts00 = ts map { case tp@TypeRef(pre, sym, args) if args.nonEmpty && tsParams.contains(args.map(_.typeSymbolDirect)) => tp.typeConstructor case tp => tp } 
-    val ts0 = elimSub0(ts00)
+    val ts0 = elimSub0(ts)
     if (ts0.isEmpty || ts0.tail.isEmpty) ts0
     else {
       val ts1 = ts0 mapConserve (t => elimAnonymousClass(t.underlying))
       if (ts1 eq ts0) ts0
-      else elimSub(tsParams, ts1, depth)
+      else elimSub(ts1, depth)
     }
   }
 
@@ -5269,7 +5275,7 @@ A type's typeSymbol should never be inspected directly.
  
   /** The least upper bound wrt <:< of a list of types */
   def lub(ts: List[Type], depth: Int): Type = {
-    def lub0(ts0: List[Type]): Type = elimSub(ts0 map (_.typeParams), ts0, depth) match {
+    def lub0(ts0: List[Type]): Type = elimSub(ts0, depth) match {
       case List() => NothingClass.tpe
       case List(t) => t
       case ts @ PolyType(tparams, _) :: _ =>
@@ -5536,7 +5542,7 @@ A type's typeSymbol should never be inspected directly.
    *  Return `Some(x)` if the computation succeeds with result `x`.
    *  Return `None` if the computation fails.
    */
-  def mergePrefixAndArgs(tps: List[Type], variance: Int, depth: Int, tparssHO: List[List[Symbol]] = Nil): Option[Type] = tps match {
+  def mergePrefixAndArgs(tps: List[Type], variance: Int, depth: Int): Option[Type] = tps match {
     case List(tp) =>
       Some(tp)
     case TypeRef(_, sym, _) :: rest =>
@@ -5558,14 +5564,12 @@ A type's typeSymbol should never be inspected directly.
             else Some(typeRef(pre, sym, List(lub(args))))
           }
         } else {
-          val args = 
-            if (tparssHO.nonEmpty && argss.nonEmpty && argss.head.exists(a => tparssHO.head.contains(a.typeSymbol))) Nil
-            else (sym.typeParams, argss.transpose).zipped map { (tparam, as) =>
+          val args = (sym.typeParams, argss.transpose).zipped map { (tparam, as) =>
               if (depth == 0)
                 if (tparam.variance == variance) AnyClass.tpe
                 else if (tparam.variance == -variance) NothingClass.tpe
                 else NoType
-              else
+              else {
                 if (tparam.variance == variance) lub(as, decr(depth))
                 else if (tparam.variance == -variance) glb(as, decr(depth))
                 else {
@@ -5581,7 +5585,8 @@ A type's typeSymbol should never be inspected directly.
                     qvar.tpe
                   }
                 }
-          }
+              }
+            }
           if (args contains NoType) None
           else Some(existentialAbstraction(capturedParams.toList, typeRef(pre, sym, args)))
         }
