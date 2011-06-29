@@ -5100,6 +5100,13 @@ A type's typeSymbol should never be inspected directly.
    */
   private def lubList(tsParams: List[List[Symbol]], tsBts: List[List[Type]], depth: Int): List[Type] = {
     // strip typerefs in ts from their arguments if those refer to type parameters that are meant to be bound
+    // TODO: this only deals with the simplest of type constructors
+    // a better fix would be to actually bind those type parameters that appear free in error, but that would require major changes to the BTS infrastructure
+    // example that only kindasorta works now...
+      // given: trait Container[+T]; trait Template[+CC[X] <: Container[X]]; class C1[T] extends Template[Container] with Container[T]
+    // C1's BTS contains Template[Container] with Container[T], but that should really be [T] => Template[Container] with Container[T]
+    // instead of wrapping it in a polytype, the current approach uses elimHOTparams to patch up this type so that 
+    // it looks more like a type ctor: Template[Container] with Container, but this is ill-kinded as Template[Container] is a proper type, whereas Container is not
     def elimHOTparams(ts: List[Type]) = ts map { 
       case tp@TypeRef(pre, sym, args) if args.nonEmpty && tsParams.contains(args.map(_.typeSymbolDirect)) => tp.typeConstructor
       case tp => tp
@@ -5111,7 +5118,11 @@ A type's typeSymbol should never be inspected directly.
       val ts0 = tsBts map (_.head) // ts0 is the 1-dimensional frontier of symbols cutting through 2-dimensional tsBts, 
       // invariant: all symbols "under" (closer to the first row) the frontier are smaller (according to _.isLess) than the ones "on and beyond" the frontier
 
-      // is the frontier made up of types with the same symbol? (due to the invariant, that symbol is the maximal symbol, i.e., the one that conveys most information wrt subtyping)
+      // is the frontier made up of types with the same symbol? 
+      // --> produce a single type for this frontier by merging the prefixes and arguments of these typerefs that share the same symbol
+      // due to the invariant, that symbol is the current maximal symbol for which this holds, i.e., the one that conveys most information wrt subtyping
+      // before merging, strip type arguments that refer to bound type params (when we're computing the lub of type constructors)
+      // furthermore, the number of types to merge is reduced without losing information by dropping types that are a subtype of some other type
       val sym0 = ts0.head.typeSymbolDirect
       if (ts0.tail forall (_.typeSymbolDirect == sym0)){
         mergePrefixAndArgs(elimSub(elimHOTparams(ts0), depth), 1, depth).toList ::: lubList(tsParams, tsBts map (_.tail), depth)
