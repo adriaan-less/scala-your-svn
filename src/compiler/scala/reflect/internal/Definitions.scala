@@ -304,6 +304,9 @@ trait Definitions /*extends reflect.generic.StandardDefinitions*/ {
       clazz setInfo polyType(List(newTypeParam(clazz, 0)), ClassInfoType(anyparam, new Scope, clazz))
     }
 
+    // for crazy type-level hacking
+    lazy val SolveImplicit = getMember(PredefModule, tpnme.Solve)
+
     // collections classes
     lazy val ConsClass          = getClass("scala.collection.immutable.$colon$colon")
     lazy val IterableClass      = getClass("scala.collection.Iterable")

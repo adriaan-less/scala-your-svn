@@ -1906,6 +1906,7 @@ A type's typeSymbol should never be inspected directly.
     private def normalize0: Type =
       if (pre eq WildcardType) WildcardType // arises when argument-dependent types are approximated (see def depoly in implicits)
       else if (isHigherKinded) etaExpand   // eta-expand, subtyping relies on eta-expansion of higher-kinded types
+      else if (sym eq SolveImplicit) args(1).normalize // typer should have replaced it by its solution before uncurry, otherwise, subsume to default -- also serves as fallback when
       else if (sym.isAliasType && sameLength(sym.info.typeParams, args))
                                betaReduce.normalize // beta-reduce, but don't do partial application -- cycles have been checked in typeRef
       else if (sym.isRefinementClass) 

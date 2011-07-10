@@ -3840,6 +3840,45 @@ trait Typers extends Modes {
         }
       }
 
+      // Special treatment for Predef.Solve, which is defined as
+      //  `type Solve[Bound[x  <: Default], Default] = Default`  (even though it should really be treated as an abstract type upper-bounded by Default)
+      // 
+      // A type `Solve[C, B]` is considered an abstract type upper-bounded by B
+      // this method replaces `Solve[C, B]` by some type `T` iff there's an implicit of type `C[T]` (and `T <: B`)
+      def typedSolveImplicit(tree: Tree, args: List[Tree]): Tree = {
+// TODO: find a suitable owner for the undetermined type parameter that is needed to have implicit search -- do we even need one?
+        val solSym = NoSymbol.newTypeParameter(tree.pos, "SolveImplicit$".toTypeName)
+
+        val boundTp = args(0).tpe // Bound
+        val baseTp = args(1).tpe // Base
+        val param = solSym.setInfo(TypeBounds(NothingClass.typeConstructor, baseTp))
+        val pt = appliedType(boundTp, List(param.tpe))
+
+        val savedUndets = context.undetparams
+        context.undetparams = param :: context.undetparams
+
+        printTyping(
+          ptLine("typedSolveImplicit %s or %s: pt = %s".format(boundTp, baseTp, pt),
+            "undetparams"      -> context.undetparams,
+            "context.owner"    -> context.owner
+          )
+        )
+
+        val result = inferImplicit(tree, pt, false, false, context)
+        context.undetparams = savedUndets
+        printTyping("typedSolveImplicit result: "+ result)
+
+        val solution = 
+          if(result.subst.from contains param) result.subst.to(result.subst.from indexOf param)
+          else baseTp
+
+        printTyping("typedSolveImplicit solved type: "+ solution)
+
+        TypeTree(solution)
+        // error(tree.pos, "Could not determine "+ tdef +" by searching the implicit of type "+ pt.substSym(List(param), List(tdef)) +".")
+        // tree
+      }
+
       def typedAppliedTypeTree(tpt: Tree, args: List[Tree]) = {
         val tpt1 = typed1(tpt, mode | FUNmode | TAPPmode, WildcardType)
         if (tpt1.tpe.isError) {
@@ -3873,7 +3912,8 @@ trait Typers extends Modes {
             }}
             val original = treeCopy.AppliedTypeTree(tree, tpt1, args1)
             val result = TypeTree(appliedType(tpt1.tpe, argtypes)) setOriginal  original
-            if(tpt1.tpe.isInstanceOf[PolyType]) // did the type application (performed by appliedType) involve an unchecked beta-reduction?
+            if(tpt1.symbol eq SolveImplicit) typedSolveImplicit(tree, args1)
+            else if(tpt1.tpe.isInstanceOf[PolyType]) // did the type application (performed by appliedType) involve an unchecked beta-reduction?
               (TypeTreeWithDeferredRefCheck(){ () =>
                 // wrap the tree and include the bounds check -- refchecks will perform this check (that the beta reduction was indeed allowed) and unwrap
                 // we can't simply use original in refchecks because it does not contains types

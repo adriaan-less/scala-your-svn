@@ -388,4 +388,13 @@ object Predef extends LowPriorityImplicits {
      */
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }
+
+  // During type checking, Solve[C, B] is replaced by T if there's an implicit value of type C[T], where T <: B
+  // If no implicit has been found yet (or if there is none), Solve is considered equal to Default
+  type Solve[Bound[x  <: Default], Default] = Default
+
+  // TODO: replace by the following definition so that Solve is an abstract type and not an alias
+  // this is closer to its semantics, since its an unknown type (upper-bounded by Default) 
+  // until the implicit has actually been resolved
+  // trait Implicitly[Bound[x]] { type Or[Default] <: Default}
 }

@@ -140,6 +140,7 @@ trait StdNames extends /*reflect.generic.StdNames with*/ NameManglers { self: Sy
     final val ScalaObject: NameType     = "ScalaObject"
     final val Serializable: NameType    = "Serializable"
     final val Singleton: NameType       = "Singleton"
+    final val Solve: NameType           = "Solve"
     final val String: NameType          = "String"
     final val Throwable: NameType       = "Throwable"
 
