@@ -168,7 +168,7 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
       body
   }
   @inline final def debuglog(msg: => String) {
-    if (settings.debug.value)
+    if (settings.debug.value && (settings.log containsPhase globalPhase))
       inform("[log " + phase + "] " + msg)
   }
   private def elapsedMessage(msg: String, start: Long) =
@@ -1065,6 +1065,9 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
       // record dependency data
       if (!dependencyAnalysis.off)
         dependencyAnalysis.saveDependencyAnalysis()
+
+      // Clear any sets or maps created via perRunCaches.
+      perRunCaches.clearAll()
     }
 
     /** Compile list of abstract files. */
@@ -1228,21 +1231,21 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
       inform(List(name, baseClasses, contents) mkString "\n\n")
     }
   }
-
-  /** Returns the file with the given suffix for the given class. Used for icode writing. */
-  def getFile(clazz: Symbol, suffix: String): File = {
+  
+  def getFile(source: AbstractFile, segments: Array[String], suffix: String): File = {
     val outDir = Path(
-      settings.outputDirs.outputDirFor(clazz.sourceFile).path match {
+      settings.outputDirs.outputDirFor(source).path match {
         case ""   => "."
         case path => path
       }
     )
-    val segments = clazz.fullName split '.'
     val dir      = segments.init.foldLeft(outDir)(_ / _).createDirectory()
-    
     new File(dir.path, segments.last + suffix)
   }
 
+  /** Returns the file with the given suffix for the given class. Used for icode writing. */
+  def getFile(clazz: Symbol, suffix: String): File = getFile(clazz.sourceFile, clazz.fullName split '.', suffix)
+ 
   private def writeICode() {
     val printer = new icodes.TextPrinter(null, icodes.linearizer)
     icodes.classes.values.foreach((cls) => {

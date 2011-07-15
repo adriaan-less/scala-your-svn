@@ -6,10 +6,9 @@ package scala.tools.nsc
 package interactive
 
 import java.io.{ PrintWriter, StringWriter, FileReader, FileWriter }
-import collection.mutable.{ArrayBuffer, ListBuffer, SynchronizedBuffer, HashMap}
-
 import scala.collection.mutable
-import mutable.{LinkedHashMap, SynchronizedMap,LinkedHashSet, SynchronizedSet}
+import collection.mutable.{ ArrayBuffer, ListBuffer, SynchronizedBuffer }
+import mutable.{LinkedHashMap, SynchronizedMap, SynchronizedSet}
 import scala.concurrent.SyncVar
 import scala.util.control.ControlThrowable
 import scala.tools.nsc.io.{ AbstractFile, LogReplay, Logger, NullLogger, Replayer }
@@ -409,7 +408,7 @@ class Global(settings: Settings, reporter: Reporter, projectName: String = "")
 
     // ensure all loaded units are parsed
     for (s <- allSources; unit <- getUnit(s)) {
-      checkForMoreWork(NoPosition)
+      // checkForMoreWork(NoPosition)  // disabled, as any work done here would be in an inconsistent state
       if (!unit.isUpToDate && unit.status != JustParsed) reset(unit) // reparse previously typechecked units.
       parseAndEnter(unit)
       serviceParsedEntered()
@@ -609,7 +608,7 @@ class Global(settings: Settings, reporter: Reporter, projectName: String = "")
       debugLog("at pos "+pos+" was found: "+tree.getClass+" "+tree.pos.show)
       tree match {
         case Import(expr, _) =>
-          debugLog("import found"+expr.tpe+" "+expr.tpe.members)
+          debugLog("import found"+expr.tpe+(if (expr.tpe == null) "" else " "+expr.tpe.members))
         case _ =>
       }
       if (stabilizedType(tree) ne null) {
@@ -913,9 +912,9 @@ class Global(settings: Settings, reporter: Reporter, projectName: String = "")
     }
   }
 
-  def getInstrumented(source: SourceFile, response: Response[(String, SourceFile)]) {
+  def getInstrumented(source: SourceFile, line: Int, response: Response[(String, Array[Char])]) {
     respond(response) {
-      instrument(source)
+      instrument(source, line)
     }
   }
 
