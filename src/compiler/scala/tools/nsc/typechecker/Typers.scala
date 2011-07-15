@@ -3841,16 +3841,17 @@ trait Typers extends Modes {
       }
 
       // Special treatment for Predef.Solve, which is defined as
-      //  `type Solve[Bound[x  <: Default], Default] = Default`  (even though it should really be treated as an abstract type upper-bounded by Default)
+      //   trait Implicitly[Default] { type Solve[Bound[x <: Default]] <: Default }
+
       // 
-      // A type `Solve[C, B]` is considered an abstract type upper-bounded by B
-      // this method replaces `Solve[C, B]` by some type `T` iff there's an implicit of type `C[T]` (and `T <: B`)
+      // A type `Implicitly[B]#Solve[C]` is considered an abstract type upper-bounded by B
+      // this method replaces `Solve[B]` by some type `T` iff there's an implicit of type `C[T]` (and `T <: B`)
       def typedSolveImplicit(tree: Tree, args: List[Tree]): Tree = {
 // TODO: find a suitable owner for the undetermined type parameter that is needed to have implicit search -- do we even need one?
         val solSym = NoSymbol.newTypeParameter(tree.pos, "SolveImplicit$".toTypeName)
 
-        val boundTp = args(0).tpe // Bound
-        val baseTp = args(1).tpe // Base
+        val boundTp = args(0).tpe // ContextBound
+        val baseTp = tree match { case SelectFromTypeTree(qual, name) => qual.tpe.typeArgs(0) } // Base
         val param = solSym.setInfo(TypeBounds(NothingClass.typeConstructor, baseTp))
         val pt = appliedType(boundTp, List(param.tpe))
 

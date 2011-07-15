@@ -305,7 +305,8 @@ trait Definitions /*extends reflect.generic.StandardDefinitions*/ {
     }
 
     // for crazy type-level hacking
-    lazy val SolveImplicit = getMember(PredefModule, tpnme.Solve)
+    lazy val Implicitly = getMember(PredefModule, tpnme.Implicitly)
+    lazy val SolveImplicit = getMember(Implicitly, tpnme.Solve)
 
     // collections classes
     lazy val ConsClass          = getClass("scala.collection.immutable.$colon$colon")

@@ -392,7 +392,7 @@ object Predef extends LowPriorityImplicits {
   // During type checking, Solve[B, D] is replaced by T if there's an implicit value of type B[T], where T <: D
   // If no implicit has been found yet (or if there is none), Solve[B, D] is considered an alias for D
   // TODO: it should really be considered an abstract type with upper-bound D
-  type Solve[Bound[x <: Default], Default] = Default
+  trait Implicitly[Default] { type Solve[Bound[x <: Default]] <: Default }
 
   // TODO: something like the following is closer to the semantics for Solve,
   // since it behaves like an abstract type (upper-bounded by Default) until the implicit has actually been resolved
