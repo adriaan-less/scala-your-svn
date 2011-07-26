@@ -387,4 +387,6 @@ object Predef extends LowPriorityImplicits {
      */
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }
+  
+  trait MatchingStrategy[M[_]]
 }

@@ -21,6 +21,7 @@ abstract class ExplicitOuter extends InfoTransform
       with ParallelMatching
       with TypingTransformers
       with ast.TreeDSL
+      with VirtMatcher
 {
   import global._
   import definitions._
@@ -358,7 +359,7 @@ abstract class ExplicitOuter extends InfoTransform
       }
     }
     
-    def matchTranslation(tree: Match) = {
+    /*def matchTranslation(tree: Match) = {
       val Match(selector, cases) = tree
       var nselector = transform(selector)
 
@@ -426,7 +427,7 @@ abstract class ExplicitOuter extends InfoTransform
 
       if (nguard.isEmpty) t
       else Block(nguard.toList, t) setType t.tpe
-    }
+    }*/
     
     /** The main transformation method */
     override def transform(tree: Tree): Tree = {
@@ -502,7 +503,7 @@ abstract class ExplicitOuter extends InfoTransform
 
         // entry point for pattern matcher translation
         case mch: Match =>
-          matchTranslation(mch)
+          matchTranslation(localTyper, currentOwner, mch)
           
         case _ =>
           if (settings.Xmigration28.value) tree match {
