@@ -1020,7 +1020,7 @@ abstract class Erasure extends AddInterfaces
                                       fun.symbol != Object_isInstanceOf) =>
           // leave all other type tests/type casts, remove all other type applications
           preErase(fun)
-        case Apply(fn @ Select(qual, name), args) if (fn.symbol.owner == ArrayClass) => 
+        case Apply(fn @ Select(qual, name), args) if { if(fn.symbol == NoSymbol) println("MEH: "+ fn); (fn.symbol.owner == ArrayClass)} => 
           if (unboundedGenericArrayLevel(qual.tpe.widen) == 1) 
             // convert calls to apply/update/length on generic arrays to
             // calls of ScalaRunTime.array_xxx method calls

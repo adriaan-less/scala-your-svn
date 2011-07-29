@@ -387,6 +387,14 @@ object Predef extends LowPriorityImplicits {
      */
     implicit def dummyImplicit: DummyImplicit = new DummyImplicit
   }
-  
-  trait MatchingStrategy[M[_]]
+
+  trait MatchingStrategy[M[+x]] {
+    def fail: M[Nothing]
+    def success[T](x: T): M[T]
+  }
+
+  implicit object OptionMatching extends MatchingStrategy[Option] {
+    def fail: Option[Nothing] = None
+    def success[T](x: T): Option[T] = Some(x)
+  }
 }

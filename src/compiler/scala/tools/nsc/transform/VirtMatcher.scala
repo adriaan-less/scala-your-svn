@@ -10,9 +10,23 @@ import symtab._
 import Flags.{ CASE => _, _ }
 import scala.collection.mutable.ListBuffer
 
-/** Translate pattern matching into method calls. Turn all patterns into unapplies
+/** Translate pattern matching into method calls (these methods are grouped as a zero-plus monad).
+  *
+  * For each case, express all patterns as extractor calls, guards as 0-ary extractors, and sequence them using `flatMap` 
+  * (lifting the body of the case into the monad using `success`).
+  *
+  * Cases are combined into a pattern match using the `orElse` combinator (the implicit failure case is expressed using the monad's `fail`).
+  *
+  * The monad `M` in which the pattern match is interpreted is determined by solving `implicitly[MatchingStrategy[M]]` for M.
+  * Predef provides the default, `Option`:
+  
+      implicit object OptionMatching extends MatchingStrategy[Option] {
+        def fail: Option[Nothing] = None
+        def success[T](x: T): Option[T] = Some(x)
+      }
 
-
+  * Example translation: TODO
+  
     scrut match { case Person(father@Person(_, fatherName), name) if fatherName == name => }
     scrut match { case Person(father, name) => father match {case Person(_, fatherName) => }}
     Person.unapply(scrut) >> ((father, name) => (Person.unapply(father) >> (_, fatherName) => check(fatherName == name) >> (_ => body)))
@@ -22,6 +36,8 @@ import scala.collection.mutable.ListBuffer
         c => check(c._2 == b._2).>>(
           d => body)))))(scrut)
 
+
+  * TODO: recover exhaustivity and unreachability checking using a variation on the type-safe builder pattern
   */
 trait VirtMatcher extends ast.TreeDSL {
   import global._
@@ -30,6 +46,9 @@ trait VirtMatcher extends ast.TreeDSL {
   def matchTranslation(localTper: analyzer.Typer, currentOwner: Symbol, tree: Tree): Tree = new MatchTranslator(localTper, currentOwner).X(tree)
   
   class MatchTranslator(val localTyper: analyzer.Typer, val currentOwner: Symbol) {
+    assert(currentOwner ne NoSymbol)
+    assert(currentOwner.owner ne NoSymbol)
+    
     /*
     Match(scrutinee, List(
       CaseDef(pattern, guard, body)
@@ -41,26 +60,38 @@ trait VirtMatcher extends ast.TreeDSL {
     'foo'   --> inside ` ... `, 'foo' interpolates the result of evaluating foo as code
 
     */
-    type TreeXForm = Tree => Tree
-    type TreeMaker = (Tree, TreeXForm => (TreeXForm, TreeXForm))
 
     /** Implement a pattern match by turning its cases (including the implicit failure case) 
-      * into the corresponding the (monadic) extractors and combining them with the `orElse` combinator.
+      * into the corresponding (monadic) extractors, and combining them with the `orElse` combinator.
+      *
+      * For `scrutinee match { case1 ... caseN }`, the resulting tree has the shape 
+      * `( x => Xcase1(x).orElse(Xcase2(x)).....orElse(fail) )(scrutinee)`.
       */
     def X(tree: Tree): Tree = tree match {
       case Match(scrut, cases) => 
         val scrutSym = freshSym(currentOwner, tree.pos) setInfo scrut.tpe
-        val xTree = // ( x => Xcase1.orElse(Xcase2).....orElse(fail) )(scrut)
-          mkApply(mkFunTree(scrutSym,
-            (cases :\ mkFailTree)((currCase, accumCases) => 
-              mkOrElse(Xcase(scrutSym, currCase), accumCases))),
-          scrut)
+        val xTree =
+          mkApply(mkFun(scrutSym, ((cases map Xcase(scrutSym)) ++ List(mkFail)) reduceLeft mkOrElse), scrut)
         println("xformed: "+ xTree)
-        localTyper typed xTree
+        localTyper.context.implicitsEnabled = true
+        atPhase(currentRun.typerPhase) {
+          localTyper typed xTree
+        }
       case t => t
     }
 
-    def Xcase(scrutSym: Symbol, tree: Tree): Tree = {
+    type TreeXForm = Tree => Tree
+    type TreeMaker = (Tree, TreeXForm => (TreeXForm, TreeXForm))
+
+    /**  The translation of `pat if guard => body` has two aspects: 
+      *     1) the substitution due to the variables bound by patterns
+      *     2) the combination of the extractor calls using `flatMap`.
+      *
+      * 2) is easy -- it looks like: `Xpat_1.flatMap(Xpat_2).....flatMap(Xpat_N).flatMap(Xguard).flatMap(success(Xbody))`
+      * 1) is tricky because Xpat_i determines the shape of Xpat_i+1: 
+      *    zoom in on `Xpat_1.flatMap(Xpat_2)` for example: `Xpat_1.flatMap(Xpat_2)` the result type of Xpat_i's extractor call determines the variables in the 
+      */
+    def Xcase(scrutSym: Symbol)(tree: Tree): Tree = {
       // (o => (o(foo), newO)) :: (o => (o(foo), newO')) :: (o => (o(foo), newO'')) :: (o => (o(foo), newO'''))
       // (identity(foo), newO) :: (newO(foo), newO') :: (newO'(foo), newO'') :: (newO''(foo), newO''')
       def threadSubstitution(substTreeMakers: List[TreeMaker]): List[(Tree, TreeXForm)] = 
@@ -71,48 +102,51 @@ trait VirtMatcher extends ast.TreeDSL {
 
       tree match {
         case CaseDef(pattern, guard, body) => 
-          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkSuccessTree(X(body))){
-            case ((extractor, mkFunAndSubst), tree) => mkBindTree(extractor, mkFunAndSubst(tree))
+          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkSuccess(X(body))){ // TODO: if we want to support a generalisation of Kotlin's patmat continue, must not hard-wire lifting into the monad (mkSuccess), so that user can generate failure when needed -- use implicit conversion to lift into monad on-demand
+            case ((extractor, mkFunAndSubst), tree) => mkFlatMap(extractor, mkFunAndSubst(tree))
           }
       }
     }
-
-    def mkGuardTree(guard: Tree): Tree = mkCheckTree(X(guard))
-    def Xguard(guard: Tree): List[TreeMaker] = 
-      if (guard == EmptyTree) List()
-      else List(
-        (mkGuardTree(X(guard)), 
-          { outerSubst => 
-            (nestedTree => mkFunTree(freshSym(currentOwner, nestedTree.pos) setInfo UnitClass.tpe, 
-             outerSubst(nestedTree)), outerSubst) // guard does not bind any variables, so next subst is the current one
-          }))
 
     def Xpat(scrutSym: Symbol)(pattern: Tree): List[TreeMaker] = {
       /** `patTree` is the extractor call
         * `patBinders` are the variables bound by this pattern --> must become tuple selections on extractor's result
         */
-      def mkPatTreeMaker(patTree: Tree, patBinders: List[Symbol]): TreeMaker = 
+      def mkPatTreeMaker(patTree: Tree, subPatBinders: List[Symbol], subPatTypes: List[Type]): TreeMaker = {
         (patTree, 
-          { outerSubst: TreeXForm => 
-              println("patbinderstpe "+ (patBinders map (_.tpe)))
-              val binder = freshSym(currentOwner, patTree.pos) setInfo tupleTypeOrUnit(patBinders map (_.tpe))
-              def nextSubst(tree: Tree): Tree = new TreeSubstituter(patBinders, (1 to patBinders.length).toList map mkPatBinderTupleSel(binder)).transform(outerSubst(tree))
-              ((nestedTree: Tree) => mkFunTree(binder, 
-               nextSubst(nestedTree)), nextSubst)
+          { outerSubst: TreeXForm =>
+              val binder = freshSym(currentOwner, patTree.pos) setInfo tupleTypeOrUnit(subPatTypes)
+              val subst = new TreeSubstituter(subPatBinders, (1 to subPatBinders.length).map(mkPatBinderTupleSel(binder)).toList)
+              println("pat next subst: "+ subst)
+              def nextSubst(tree: Tree): Tree = subst.transform(outerSubst(tree))
+              (nestedTree => mkFun(binder, nextSubst(nestedTree)), nextSubst)
           })
+      }
 
       val res = new ListBuffer[TreeMaker]
-      def traverseDepthFirst(currSym: Symbol, t: Tree): Unit = {
-          val (nestedBinders, nestedTrees) = nestedBindersAndTrees(t)
-          res += mkPatTreeMaker(mkApplyUnapply(toUnapply(t), currSym), nestedBinders)  // TODO scrutSym.owner, 
-          (nestedBinders, nestedTrees).zipped foreach traverseDepthFirst
+      def traverseDepthFirst(currSym: Symbol, t: Tree): Unit = if (!isWildcardPattern(t)) { // skip wildcard trees -- no point in checking them
+          val (subPatBinders, subPatTypes, subPatTrees) = nestedBindersAndTrees(t)
+          res += mkPatTreeMaker(mkApplyUnapply(toUnapply(t), currSym), subPatBinders, subPatTypes)
+          (subPatBinders, subPatTrees).zipped foreach traverseDepthFirst
       }
       traverseDepthFirst(scrutSym, pattern)
       res.toList
     }
 
+    def Xguard(guard: Tree): List[TreeMaker] = {
+      def mkGuardTree(guard: Tree): Tree = mkCheck(X(guard))
+
+      if (guard == EmptyTree) List()
+      else List(
+        (mkGuardTree(X(guard)), 
+          { outerSubst => 
+            val binder = freshSym(currentOwner, guard.pos) setInfo UnitClass.tpe
+            (nestedTree => mkFun(binder, outerSubst(nestedTree)), outerSubst) // guard does not bind any variables, so next subst is the current one
+          }))
+    }
 
 // tree exegesis, rephrasing everything in terms of extractors 
+
     /** A conservative approximation of which patterns do not discern anything.
       */
     def isWildcardPattern(pat: Tree): Boolean = pat match {
@@ -124,22 +158,24 @@ trait VirtMatcher extends ast.TreeDSL {
       case _                    => false
     }
 
-    /** Decompose the pattern in `tree`, returning the symbols it binds at the top-level, and its pattern sub-trees (if any)
+    /** Decompose the pattern in `tree`, of shape C(p_1, ..., p_N), into a list of N symbols, and a list of its N sub-trees
+      * The list of N symbols contains symbols for every bound name as well as the un-named sub-patterns (fresh symbols are generated here for these)
       */
-    def nestedBindersAndTrees(tree: Tree): (List[Symbol], List[Tree]) = tree match {
-      case Apply(fun, args) => (args map (_.symbol), args filterNot isWildcardPattern)
+    def nestedBindersAndTrees(tree: Tree): (List[Symbol], List[Type], List[Tree]) = tree match {
+      case Apply(fun, args) => (args map (_.symbol), args map (_.symbol.tpe), args)
       case UnApply(unfun, args) => 
         val binderTypes = analyzer.unapplyTypeList(unfun.symbol, unfun.tpe)
-        println("unapp: "+ (unfun, args, args map (_.symbol), binderTypes zip (args map (_.symbol.info))))
-        (args map (_.symbol), args filterNot isWildcardPattern)
-      case t => (Nil, Nil)
+        val fixedArgs = (args, binderTypes).zipped map {(a, tp) => if(a.symbol ne null) a.symbol else (freshSym(currentOwner, tree.pos, "p") setInfo tp)}
+        (fixedArgs, binderTypes, args)
+      case t => (Nil, Nil, Nil)
     }
 
     def toUnapply(tree: Tree): Tree = tree
 
 // code gen
+
     var ctr = 0
-    def freshSym(owner: Symbol, pos: Position) = {ctr += 1; assert(owner ne null); assert(owner ne NoSymbol); new TermSymbol(owner, pos, ("x"+ctr).toTermName)}
+    def freshSym(owner: Symbol, pos: Position, prefix: String = "x") = {ctr += 1; assert(owner ne null); assert(owner ne NoSymbol); new TermSymbol(owner, pos, (prefix+ctr).toTermName)}
 
     def matcherTycon: Type = OptionClass.typeConstructor // TODO: determined by solving M in `implicitly[MatchingStrategy[M]]`
     def tupleTypeOrUnit(tps: List[Type]): Type = if(tps.isEmpty) UnitClass.tpe else tupleType(tps)
@@ -148,19 +184,20 @@ trait VirtMatcher extends ast.TreeDSL {
 
     import CODE._
     // TODO: lift out this call and cache the result
-    def mkImplicitMatcherTree: Tree = TypeApply(REF(Predef_implicitly), List(TypeTree(appliedType(matchingStrategyTycon.typeConstructor, List(matcherTycon)))))  // implicitly[MatchingStrategy[matcherTycon]].fail
-    def mkFailTree: Tree = mkImplicitMatcherTree DOT "fail".toTermName 
-    def mkSuccessTree(res: Tree): Tree = (mkImplicitMatcherTree DOT "success".toTermName) APPLY res
+    def ref(s: Symbol) = {assert(s.owner ne NoSymbol); REF(s)}
+    def mkImplicitMatcher: Tree = TypeApply(ref(Predef_implicitly), List(TypeTree(appliedType(matchingStrategyTycon.typeConstructor, List(matcherTycon)))))  // implicitly[MatchingStrategy[matcherTycon]].fail
+    def mkFail: Tree = mkImplicitMatcher DOT "fail".toTermName 
+    def mkSuccess(res: Tree): Tree = (mkImplicitMatcher DOT "success".toTermName) APPLY res
     def mkOrElse(thisCase: Tree, elseCase: Tree): Tree = (thisCase DOT "orElse".toTermName) APPLY elseCase
     def mkApply(fun: Tree, arg: Tree): Tree = fun APPLY arg
-    def mkBindTree(a: Tree, b: Tree): Tree = (a DOT "flatMap".toTermName) APPLY b
-    def mkFunTree(arg: Symbol, body: Tree): Tree = Function(List(ValDef(arg)), body)
-    def mkPatBinderTupleSel(binder: Symbol)(i: Int): Tree = REF(binder) DOT ("_"+i).toTermName // make tree that accesses the i'th component of the tuple referenced by binder
-    def mkCheckTree(t: Tree): Tree = (mkImplicitMatcherTree DOT "check".toTermName) APPLY t
+    def mkFlatMap(a: Tree, b: Tree): Tree = (a DOT "flatMap".toTermName) APPLY b
+    def mkFun(arg: Symbol, body: Tree): Tree = Function(List(ValDef(arg)), body)
+    def mkPatBinderTupleSel(binder: Symbol)(i: Int): Tree = ref(binder) DOT ("_"+i).toTermName // make tree that accesses the i'th component of the tuple referenced by binder
+    def mkCheck(t: Tree): Tree = (mkImplicitMatcher DOT "check".toTermName) APPLY t
     def mkApplyUnapply(fun: Tree, arg: Symbol): Tree = 
       (fun match {
-        case UnApply(t, _) => REF(treeInfo.methPart(t).symbol)
+        case UnApply(t, _) => ref(treeInfo.methPart(t).symbol)
         case t => t
-      }) APPLY REF(arg)
+      }) APPLY ref(arg)
   }
 }
