@@ -4,7 +4,7 @@
  */
 
 package scala.tools.nsc
-package transform
+package typechecker
 
 import symtab._
 import Flags.{ CASE => _, _ }
@@ -39,13 +39,20 @@ import scala.collection.mutable.ListBuffer
 
   * TODO: recover exhaustivity and unreachability checking using a variation on the type-safe builder pattern
   */
-trait VirtMatcher extends ast.TreeDSL {
+trait PatMatVirtualiser extends ast.TreeDSL { self: Contexts with Typers =>
   import global._
   import definitions._
 
-  def matchTranslation(localTper: analyzer.Typer, currentOwner: Symbol, tree: Tree): Tree = new MatchTranslator(localTper, currentOwner).X(tree)
+  def typedMatch(typer: Typer, tree: Tree, selector: Tree, cases: List[CaseDef], mode: Int, pt: Type): Tree = {
+    import typer._
+
+    val selector1 = typed(selector, EXPRmode | BYVALmode, WildcardType)
+    val xTree = new MatchTranslator(context.owner).X(treeCopy.Match(tree, selector1, typedCases(tree, cases, selector1.tpe.widen, pt)))
+    println("xformed patmat: "+ xTree)
+    typed(xTree, mode, pt)
+  }
   
-  class MatchTranslator(val localTyper: analyzer.Typer, val currentOwner: Symbol) {
+  private class MatchTranslator(currentOwner: Symbol) {
     assert(currentOwner ne NoSymbol)
     assert(currentOwner.owner ne NoSymbol)
     
@@ -70,13 +77,7 @@ trait VirtMatcher extends ast.TreeDSL {
     def X(tree: Tree): Tree = tree match {
       case Match(scrut, cases) => 
         val scrutSym = freshSym(currentOwner, tree.pos) setInfo scrut.tpe
-        val xTree =
-          mkApply(mkFun(scrutSym, ((cases map Xcase(scrutSym)) ++ List(mkFail)) reduceLeft mkOrElse), scrut)
-        println("xformed: "+ xTree)
-        localTyper.context.implicitsEnabled = true
-        atPhase(currentRun.typerPhase) {
-          localTyper typed xTree
-        }
+        mkApply(mkFun(scrutSym, ((cases map Xcase(scrutSym)) ++ List(mkFail)) reduceLeft mkOrElse), scrut)
       case t => t
     }
 

@@ -27,7 +27,7 @@ import scala.tools.util.StringOps.{ countAsString, countElementsAsString }
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Typers extends Modes {
+trait Typers extends Modes with PatMatVirtualiser {
   self: Analyzer =>
 
   import global._
@@ -3177,7 +3177,7 @@ trait Typers extends Modes {
           treeCopy.If(tree, cond1, thenp1, elsep1) setType owntype
         }
       }
-
+/* DONE IN VIRTMATCH
       def typedMatch(tree: Tree, selector: Tree, cases: List[CaseDef]): Tree = 
         if (selector == EmptyTree) {
           val arity = if (isFunctionType(pt)) pt.normalize.typeArgs.length - 1 else 1
@@ -3199,7 +3199,7 @@ trait Typers extends Modes {
           }
           treeCopy.Match(tree, selector1, cases1) setType owntype
         }
-
+*/
       def typedReturn(expr: Tree) = {
         val enclMethod = context.enclMethod
         if (enclMethod == NoContext || 
@@ -4022,7 +4022,7 @@ trait Typers extends Modes {
           typedIf(cond, thenp, elsep)
 
         case tree @ Match(selector, cases) =>
-          typedMatch(tree, selector, cases)
+          typedMatch(Typer.this, tree, selector, cases, mode, pt)
 
         case Return(expr) =>
           typedReturn(expr)
