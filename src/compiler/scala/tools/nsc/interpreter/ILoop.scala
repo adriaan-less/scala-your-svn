@@ -18,6 +18,7 @@ import scala.concurrent.ops
 import util.{ ClassPath, Exceptional, stringFromWriter, stringFromStream }
 import interpreter._
 import io.{ File, Sources }
+import scala.reflect.NameTransformer._
 
 /** The Scala interactive shell.  It provides a read-eval-print loop
  *  around the Interpreter class.
@@ -85,6 +86,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     if (intp ne null) {
       intp.close
       intp = null
+      removeSigIntHandler()
       Thread.currentThread.setContextClassLoader(originalClassLoader)
     }
   }
@@ -359,10 +361,10 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
       if (rest.nonEmpty) {
         intp optFlatName hd match {
           case Some(flat) =>
-            val clazz = flat :: rest mkString "$"
+            val clazz = flat :: rest mkString NAME_JOIN_STRING
             val bytes = super.tryClass(clazz)
             if (bytes.nonEmpty) bytes
-            else super.tryClass(clazz + "$")
+            else super.tryClass(clazz + MODULE_SUFFIX_STRING)
           case _          => super.tryClass(path)
         }
       }
@@ -371,7 +373,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
         // we have to drop the $ to find object Foo, then tack it back onto
         // the end of the flattened name.
         def className  = intp flatName path
-        def moduleName = (intp flatName path.stripSuffix("$")) + "$"
+        def moduleName = (intp flatName path.stripSuffix(MODULE_SUFFIX_STRING)) + MODULE_SUFFIX_STRING
 
         val bytes = super.tryClass(className)
         if (bytes.nonEmpty) bytes

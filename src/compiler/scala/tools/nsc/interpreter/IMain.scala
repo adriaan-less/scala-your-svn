@@ -19,7 +19,7 @@ import reporters._
 import symtab.Flags
 import scala.reflect.internal.Names
 import scala.tools.util.PathResolver
-import scala.tools.nsc.util.{ ScalaClassLoader, Exceptional }
+import scala.tools.nsc.util.{ ScalaClassLoader, Exceptional, Indenter }
 import ScalaClassLoader.URLClassLoader
 import Exceptional.unwrap
 import scala.collection.{ mutable, immutable }
@@ -209,7 +209,11 @@ class IMain(val settings: Settings, protected val out: JPrintWriter) extends Imp
   def quietRun[T](code: String) = beQuietDuring(interpret(code))
   
   private def logAndDiscard[T](label: String, alt: => T): PartialFunction[Throwable, T] = {
-    case t => repldbg(label + ": " + t) ; alt
+    case t =>
+      repldbg(label + ": " + unwrap(t))
+      repltrace(util.stackTraceString(unwrap(t)))
+
+      alt
   }
 
   /** whether to bind the lastException variable */
@@ -311,7 +315,7 @@ class IMain(val settings: Settings, protected val out: JPrintWriter) extends Imp
    *  }}}
    */
   def generatedName(simpleName: String): Option[String] = {
-    if (simpleName endsWith "$") optFlatName(simpleName.init) map (_ + "$")
+    if (simpleName endsWith nme.MODULE_SUFFIX_STRING) optFlatName(simpleName.init) map (_ + nme.MODULE_SUFFIX_STRING)
     else optFlatName(simpleName)
   }
   def flatName(id: String)    = optFlatName(id) getOrElse id
@@ -795,7 +799,7 @@ class IMain(val settings: Settings, protected val out: JPrintWriter) extends Imp
      *  $line5.$iw$$iw$$iw$Bippy      // fullFlatName
      */
     def fullFlatName(name: String) =
-      lineRep.readPath + accessPath.replace('.', '$') + "$" + name
+      lineRep.readPath + accessPath.replace('.', '$') + nme.NAME_JOIN_STRING + name
 
     /** The unmangled symbol name, but supplemented with line info. */
     def disambiguated(name: Name): String = name + " (in " + lineRep + ")"
@@ -1003,11 +1007,20 @@ class IMain(val settings: Settings, protected val out: JPrintWriter) extends Imp
     }
   }
 
-  private object exprTyper extends { val repl: IMain.this.type = imain } with ExprTyper { }
+  object replTokens extends {
+    val global: imain.global.type = imain.global
+  } with ReplTokens { }
+
+  private object exprTyper extends {
+    val repl: IMain.this.type = imain
+  } with ExprTyper { }
+
   def parse(line: String): Option[List[Tree]] = exprTyper.parse(line)
   def typeOfExpression(expr: String, silent: Boolean = true): Option[Type] = {
     exprTyper.typeOfExpression(expr, silent)
   }
+  def prettyPrint(code: String) =
+    replTokens.prettyPrint(exprTyper tokens code)
 
   protected def onlyTerms(xs: List[Name]) = xs collect { case x: TermName => x }
   protected def onlyTypes(xs: List[Name]) = xs collect { case x: TypeName => x }
@@ -1086,9 +1099,20 @@ class IMain(val settings: Settings, protected val out: JPrintWriter) extends Imp
     /** Secret bookcase entrance for repl debuggers: end the line
      *  with "// show" and see what's going on.
      */
-    if (repllog.isTrace || (code.lines exists (_.trim endsWith "// show"))) {
-      echo(code)
-      parse(code) foreach (ts => ts foreach (t => withoutUnwrapping(repldbg(asCompactString(t)))))
+    def isShow    = code.lines exists (_.trim endsWith "// show")
+    def isShowRaw = code.lines exists (_.trim endsWith "// raw")
+
+    // checking for various debug signals
+    if (isShowRaw)
+      replTokens withRawTokens prettyPrint(code)
+    else if (repllog.isTrace || isShow)
+      prettyPrint(code)
+
+    // old style
+    parse(code) foreach { ts =>
+      ts foreach { t =>
+        withoutUnwrapping(repldbg(asCompactString(t)))
+      }
     }
   }
 

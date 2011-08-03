@@ -83,7 +83,7 @@ trait Namers { self: Analyzer =>
       (moduleFlags & ModuleToClassFlags) | FINAL | inConstructorFlag
 
     def updatePosFlags(sym: Symbol, pos: Position, flags: Long): Symbol = {
-      if (settings.debug.value) log("overwriting " + sym)
+      debuglog("overwriting " + sym)
       val lockedFlag = sym.flags & LOCKED
       sym.reset(NoType)
       sym setPos pos
@@ -305,7 +305,7 @@ trait Namers { self: Analyzer =>
 
     private def enterSymFinishWith(tree: Tree, tparams: List[TypeDef]) {
       val sym = tree.symbol
-      if (settings.debug.value) log("entered " + sym + " in " + context.owner + ", scope-id = " + context.scope.## )
+      debuglog("entered " + sym + " in " + context.owner + ", scope-id = " + context.scope.## )
       var ltype = namerOf(sym).typeCompleter(tree)
       if (tparams nonEmpty) {
         //@M! TypeDef's type params are handled differently
@@ -524,7 +524,7 @@ trait Namers { self: Analyzer =>
 
           val getterName = if (hasBoolBP) "is" + beanName
                            else "get" + beanName
-          val getterMods = Modifiers(flags, mods.privateWithin, Nil, mods.positions)
+          val getterMods = Modifiers(flags, mods.privateWithin, Nil) setPositions mods.positions
           val beanGetterDef = atPos(vd.pos.focus) {
             DefDef(getterMods, getterName, Nil, List(Nil), tpt.duplicate,
                    if (mods.isDeferred) EmptyTree
@@ -547,7 +547,7 @@ trait Namers { self: Analyzer =>
 // --- Lazy Type Assignment --------------------------------------------------
 
     def typeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
-      if (settings.debug.value) log("defining " + sym + flagsToString(sym.flags)+sym.locationString)
+      debuglog("defining " + sym + flagsToString(sym.flags)+sym.locationString)
       val tp = typeSig(tree)
       tp match {
         case TypeBounds(lo, hi) =>
@@ -565,7 +565,7 @@ trait Namers { self: Analyzer =>
           !typer.checkNonCyclic(tree.pos, tp))
         sym.setInfo(ErrorType) // this early test is there to avoid infinite baseTypes when
                                // adding setters and getters --> bug798
-      if (settings.debug.value) log("defined " + sym);
+      debuglog("defined " + sym);
       validate(sym)
     }
 
@@ -579,18 +579,18 @@ trait Namers { self: Analyzer =>
     }
 
     def getterTypeCompleter(vd: ValDef) = mkTypeCompleter(vd) { sym =>
-      if (settings.debug.value) log("defining " + sym)
+      debuglog("defining " + sym)
       val tp = typeSig(vd)
       sym.setInfo(NullaryMethodType(tp))
-      if (settings.debug.value) log("defined " + sym)
+      debuglog("defined " + sym)
       validate(sym)
     }
 
     def setterTypeCompleter(vd: ValDef) = mkTypeCompleter(vd) { sym =>
-      if (settings.debug.value) log("defining " + sym)
+      debuglog("defining " + sym)
       val param = sym.newSyntheticValueParam(typeSig(vd))
       sym.setInfo(MethodType(List(param), UnitClass.tpe))
-      if (settings.debug.value) log("defined " + sym)
+      debuglog("defined " + sym)
       validate(sym)
     }
 
@@ -780,7 +780,7 @@ trait Namers { self: Analyzer =>
       // the namer phase must traverse this copy method to create default getters for its parameters.
       // here, clazz is the ClassSymbol of the case class (not the module).
       // @check: this seems to work only if the type completer of the class runs before the one of the
-      // module class: the one from the module class removes the entry form caseClassOfModuleClass (see above).
+      // module class: the one from the module class removes the entry from caseClassOfModuleClass (see above).
       if (clazz.isClass && !clazz.hasModuleFlag) {
         Namers.this.caseClassOfModuleClass get companionModuleOf(clazz, context).moduleClass map { cdefRef =>
           val cdef = cdefRef()
@@ -1259,8 +1259,8 @@ trait Namers { self: Analyzer =>
                       
                       def notMember() = context.error(tree.pos, from.decode + " is not a member of " + expr)
                       // for Java code importing Scala objects
-                      if (from endsWith nme.raw.DOLLAR)
-                        isValidSelector(from stripEnd "$")(notMember())
+                      if (nme.isModuleName(from))
+                        isValidSelector(nme.stripModuleSuffix(from))(notMember())
                       else
                         notMember()
                     }
@@ -1381,28 +1381,30 @@ trait Namers { self: Analyzer =>
   
   var lockedCount = 0
 
-  def mkTypeCompleter(t: Tree)(c: Symbol => Unit) = new TypeCompleter { 
+  def mkTypeCompleter(t: Tree)(c: Symbol => Unit) = new LockingTypeCompleter {
     val tree = t 
-    override def complete(sym: Symbol) = try {
+    def completeImpl(sym: Symbol) = c(sym)
+  }
+
+  trait LockingTypeCompleter extends TypeCompleter {
+    def completeImpl(sym: Symbol): Unit
+
+    override def complete(sym: Symbol) = {
       lockedCount += 1
-      c(sym)
-    } finally {
-      lockedCount -= 1
+      try completeImpl(sym)
+      finally lockedCount -= 1
     }
   }
 
   /** A class representing a lazy type with known type parameters.
    */
-  class PolyTypeCompleter(tparams: List[Tree], restp: TypeCompleter, owner: Tree, ownerSym: Symbol, ctx: Context) extends TypeCompleter { 
+  class PolyTypeCompleter(tparams: List[Tree], restp: TypeCompleter, owner: Tree, ownerSym: Symbol, ctx: Context) extends LockingTypeCompleter {
     override val typeParams: List[Symbol]= tparams map (_.symbol) //@M
     override val tree = restp.tree
-    override def complete(sym: Symbol) = try {
-      lockedCount += 1
-      if(ownerSym.isAbstractType) //@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
+    def completeImpl(sym: Symbol) = {
+      if (ownerSym.isAbstractType) //@M an abstract type's type parameters are entered -- TODO: change to isTypeMember ?
         newNamer(ctx.makeNewScope(owner, ownerSym)).enterSyms(tparams) //@M
       restp.complete(sym)
-    } finally {
-      lockedCount -= 1
     }
   }
 

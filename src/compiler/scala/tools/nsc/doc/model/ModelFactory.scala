@@ -577,8 +577,9 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
           nameBuffer append "⇒ "
           appendType0(tp.args.head)
         case tp: TypeRef if definitions.isTupleTypeOrSubtype(tp) =>
+          val args = tp.normalize.typeArgs
           nameBuffer append '('
-          appendTypes0(tp.args, ", ")
+          appendTypes0(args, ", ")
           nameBuffer append ')'
         case TypeRef(pre, aSym, targs) =>
           val preSym = pre.widen.typeSymbol
@@ -595,7 +596,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
           // }
           val bSym = normalizeTemplate(aSym)
           if (bSym.isNonClassType)
-            nameBuffer append bSym.name
+            nameBuffer append bSym.decodedName
           else {
             val tpl = makeTemplate(bSym)
             val pos0 = nameBuffer.length
