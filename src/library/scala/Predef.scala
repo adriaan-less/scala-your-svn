@@ -391,10 +391,12 @@ object Predef extends LowPriorityImplicits {
   trait MatchingStrategy[M[+x]] {
     def fail: M[Nothing]
     def success[T](x: T): M[T]
+    def check(cond: Boolean): M[Unit]
   }
 
   implicit object OptionMatching extends MatchingStrategy[Option] {
     def fail: Option[Nothing] = None
     def success[T](x: T): Option[T] = Some(x)
+    def check(cond: Boolean): Option[Unit] = if(cond) Some(()) else None
   }
 }
