@@ -169,6 +169,15 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
             })
       }
 
+      def typedProtoTreeMaker(patTree: Tree, patBinder: Symbol): ProtoTreeMaker = {
+        (patTree, 
+            { outerSubst: TreeXForm =>
+                val binder = freshSym(currentOwner, patTree.pos) setInfo patBinder.info
+                val theSubst = mkTypedSubst(List(patBinder), List(CODE.REF(binder)))
+                def nextSubst(tree: Tree): Tree = theSubst.transform(outerSubst(tree))
+                (nestedTree => mkFun(binder, nextSubst(nestedTree)), nextSubst)
+            })
+      }
       /** `tree` is the cast (with failure expressed using the monad)
         * tp is the type for the binder of the next tree (`nestedTree`), it's assumed to already be used there, so no substitution is performed
         */
@@ -245,24 +254,20 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
           doUnapply(args, binderTypes, extractor, prevBinder, patTree.pos)
 
-        case Typed(expr, tpt)     =>
-          println("Typed: expr&sym should match prevBinder: "+ (expr, expr.symbol, prevBinder))
+        case BoundSym(patBinder, Typed(expr, tpt))     =>
+          println("Typed: expr is wildcard, right? "+ expr)
 
-          res += patProtoTreeMaker(mkCast(tpt.tpe, prevBinder), List())
+          res += typedProtoTreeMaker(mkCast(tpt.tpe, prevBinder), patBinder)
           
           (Nil, Nil) // a typed pattern never has any subtrees
 
-        case Literal(Constant(v)) =>
-
+        case Literal(Constant(_)) | Ident(_) | Select(_, _) =>
           res += patProtoTreeMaker(mkCheck(mkEquals(prevBinder, patTree)), List())
 
           (Nil, Nil)
           
-        // case Bind(x, body)        => // should not occur -- transformPat strips Bind's
-        // case x: Ident             => // if (isVarPattern(x)) VariablePattern(x) else SimpleIdPattern(x)
-        // case x: Select            => // StableIdPattern(x)
-        // case x: ArrayValue        => // SequencePattern(x)
         // case x @ Alternative(ps)  => 
+        // case x: ArrayValue        => // SequencePattern(x)
         // case x: Star              => 
         // case x: This              => 
 
