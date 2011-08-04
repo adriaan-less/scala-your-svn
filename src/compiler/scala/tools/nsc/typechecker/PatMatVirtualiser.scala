@@ -10,7 +10,7 @@ import symtab._
 import Flags.{ CASE => _, _ }
 import scala.collection.mutable.ListBuffer
 
-/** Translate pattern matching into method calls (these methods form a zero-plus monad).
+/** Translate pattern matching into method calls (these methods form a zero-plus monad), similar in spirit to how for-comprehensions are compiled.
   *
   * For each case, express all patterns as extractor calls, guards as 0-ary extractors, and sequence them using `flatMap` 
   * (lifting the body of the case into the monad using `success`).
@@ -172,75 +172,100 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       /** `tree` is the cast (with failure expressed using the monad)
         * tp is the type for the binder of the next tree (`nestedTree`), it's assumed to already be used there, so no substitution is performed
         */
-      def simpleProtoTreeMaker(tree: Tree, tp: Type): ProtoTreeMaker = {
+      def simpleProtoTreeMaker(tree: Tree, binder: Symbol): ProtoTreeMaker = {
         (tree, 
           { outerSubst: TreeXForm =>
-              val binder = freshSym(currentOwner, tree.pos) setInfo tp
               (nestedTree => mkFun(binder,outerSubst(nestedTree)), outerSubst)
           })
       }
 
       val res = new ListBuffer[ProtoTreeMaker]
 
-      def doUnapply(extractor: Symbol, prevBinder: Symbol, patBinders: List[Symbol], pos: Position): Unit = {
-        val expectedTp = extractor.tpe.paramTypes.head
-        val tp = prevBinder.info
+      // def tryInstantiateType(tparams: List[Symbol], tp: Type, pt: Type): Type = if(tparams isEmpty) tp else {
+      //   val tvars = tparams map freshVar
+      //   val tpInst = tp.instantiateTypeParams(tparams, tvars)
+      //   val targs = 
+      //     if( tpInst <:< pt )
+      //       try solvedTypes(tvars, tparams, tparams map (x => 0), false, lubDepth(List(tp, pt)))
+      //       catch {
+      //         case ex/*: NoInstance*/ => List()
+      //       }
+      //     else List()
+        
+      //   if(sameLength(tparams, targs)) tp.instantiateTypeParams(tparams, targs)
+      //   else tp
+      // }
 
+      def doUnapply(args: List[Tree], binderTypes: List[Type], extractor: Symbol, prevBinder: Symbol, pos: Position): (List[Symbol], List[Tree]) = {
+        val tp = prevBinder.info
+        val extractorParamTp0 = extractor.tpe.paramTypes.head
+        // val tparams = extractorParamTp0.typeArgs map (_.typeSymbol) // why are these different from extractorParamTp0.typeSymbol.typeParams?
+        // val targs = extractorParamTp0.typeSymbol.typeParams map tp.memberType
+        // val extractorParamTp = tryInstantiateType(tparams, extractorParamTp0, tp)
+        // println("(extractorParamTp0, extractorParamTp0.typeArgs, extractorParamTp0.typeSymbol.typeParams)= "+ (extractorParamTp0, extractorParamTp0.typeArgs, extractorParamTp0.typeSymbol.typeParams))
+        // println("(tp, tp.typeArgs, tp.typeSymbol.typeParams)= "+ (tp, tp.typeArgs, tp.typeSymbol.typeParams))
+        // println("targs: "+ targs)
+        // val baseTp = 
+        val extractorParamTp = extractorParamTp0.instantiateTypeParams(extractorParamTp0.baseType(tp.typeSymbol).typeArgs map (_.typeSymbol), tp.typeArgs) // TODO: hack! use asSeenFrom? inference?
+
+        // println("ASF "+ (extractorParamTp, tp.memberType(extractorParamTp0.baseType(tp.typeSymbol))))
+        
         val prevBinderOrCasted = 
-          if(!(tp <:< expectedTp)) {
-            val castPrevBinder = freshSym(currentOwner, pos, "cp") setInfo expectedTp 
-            res += simpleProtoTreeMaker(mkCast(expectedTp, prevBinder), expectedTp) // chain a cast before the actual extractor call
-            castPrevBinder
+          if(!(tp <:< extractorParamTp)) { // example check: List[Int] <:< ::[B] (where B is ::'s type parameter) -- it's expected this fails, but that B in there should go away (ideally become Int)
+            val castedBinder = freshSym(currentOwner, pos, "cp") setInfo extractorParamTp 
+            res += simpleProtoTreeMaker(mkCast(extractorParamTp, prevBinder), castedBinder) // chain a cast before the actual extractor call
+            castedBinder
           } else prevBinder
 
+        // binderTypes != args map (_.tpe) since the args may have more specific types than the constructor's parameter types
+        val sub@(patBinders, _) = 
+            (args, binderTypes).zipped map { 
+              case (BoundSym(b, p), _) => (b, p)
+              case (p, tp) => (freshSym(currentOwner, pos, "p") setInfo tp, p)
+            } unzip 
+
         res += patProtoTreeMaker(mkApply(extractor, prevBinderOrCasted), patBinders)
+
+        sub
       }
 
       /** Decompose the pattern in `tree`, of shape C(p_1, ..., p_N), into a list of N symbols, and a list of its N sub-trees
         * The list of N symbols contains symbols for every bound name as well as the un-named sub-patterns (fresh symbols are generated here for these)
         */
-      def traverseOne(prevBinder: Symbol, patTree: Tree): (List[Symbol], List[Tree]) = patTree match {
+      def transformPat(prevBinder: Symbol, patTree: Tree): (List[Symbol], List[Tree]) = patTree match {
         case UnApply(unfun, args) =>
           val binderTypes = analyzer.unapplyTypeList(unfun.symbol, unfun.tpe)
-          val sub@(patBinders, _) = (args, binderTypes).zipped map { 
-              case (BoundSym(b, p), _) => (b, p)
-              case (p, tp) => (freshSym(currentOwner, patTree.pos, "p") setInfo tp, p)
-            } unzip
-          
-          doUnapply(unfun.symbol, prevBinder, patBinders, patTree.pos)
 
-          sub
+          doUnapply(args, binderTypes, unfun.symbol, prevBinder, patTree.pos)
+
         case Apply(fun, args)     =>
-          val sub@(patBinders, _) = args map (BoundSym.unapply(_).get) unzip
+          val binderTypes = fun.tpe.paramTypes // not `args map (_.tpe)`, that's too strict
           val origSym = fun.asInstanceOf[TypeTree].original.symbol // undo rewrite performed in (5) of adapt
           val extractor = unapplyMember(origSym.filter(sym => reallyExists(unapplyMember(sym.tpe))).tpe)
 
-          doUnapply(extractor, prevBinder, patBinders, patTree.pos)
+          doUnapply(args, binderTypes, extractor, prevBinder, patTree.pos)
 
-          // println("unapp app: "+ (extractor))
-          // fun.symbol.filter{sym => println("sym "+ (sym, sym.tpe, unapplyMember(sym.tpe))); true}
-          // val xtractorSym = fun.symbol.filter(sym => reallyExists(unapplyMember(sym.tpe)))
-
-          sub
         case Typed(expr, tpt)     =>
           println("Typed: expr&sym should match prevBinder: "+ (expr, expr.symbol, prevBinder))
 
           res += patProtoTreeMaker(mkCast(tpt.tpe, prevBinder), List())
           
           (Nil, Nil) // a typed pattern never has any subtrees
+
         case Literal(Constant(v)) =>
 
           res += patProtoTreeMaker(mkCheck(mkEquals(prevBinder, patTree)), List())
 
           (Nil, Nil)
           
-        // case Bind(x, body)        => // should not occur -- traverseOne strips Bind's
+        // case Bind(x, body)        => // should not occur -- transformPat strips Bind's
         // case x: Ident             => // if (isVarPattern(x)) VariablePattern(x) else SimpleIdPattern(x)
         // case x: Select            => // StableIdPattern(x)
         // case x: ArrayValue        => // SequencePattern(x)
         // case x @ Alternative(ps)  => 
         // case x: Star              => 
         // case x: This              => 
+
         case _                       =>  // TODO
           println("UNHANDLED: "+ (prevBinder, patTree))
           (Nil, Nil)
@@ -249,18 +274,16 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
       def traverseDepthFirst(prevBinder: Symbol, patTree: Tree): Unit = 
         if (!isWildcardPattern(patTree)) // skip wildcard trees -- no point in checking them
-          traverseOne(prevBinder, patTree).zipped foreach traverseDepthFirst
+          transformPat(prevBinder, patTree).zipped foreach traverseDepthFirst
 
       traverseDepthFirst(scrutSym, pattern)
       res.toList
     }
 
     def Xguard(guard: Tree): List[ProtoTreeMaker] = {
-      def mkGuardTree(guard: Tree): Tree = mkCheck(X(guard))
-
       if (guard == EmptyTree) List()
       else List(
-        (mkGuardTree(X(guard)), 
+        (mkCheck(X(guard)), 
           { outerSubst => 
             val binder = freshSym(currentOwner, guard.pos) setInfo UnitClass.tpe
             (nestedTree => mkFun(binder, outerSubst(nestedTree)), outerSubst) // guard does not bind any variables, so next subst is the current one

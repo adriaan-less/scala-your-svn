@@ -1,3 +1,3 @@
-object Test {
- List(1,2,3) match { case x :: xs => println(x) }
+object Test extends App {
+ List(1,2,3) match { case x :: y :: xs => println(y) }
 }
