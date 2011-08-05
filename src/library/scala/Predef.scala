@@ -389,14 +389,18 @@ object Predef extends LowPriorityImplicits {
   }
 
   trait MatchingStrategy[M[+x]] {
-    def fail: M[Nothing]
-    def success[T](x: T): M[T]
-    def check(cond: Boolean): M[Unit]
+    def zero: M[Nothing]
+    def one[T](x: T): M[T]
+    def guard[T](cond: Boolean, then: => T): M[T] = if(cond) one(then) else zero
+    // find the first alternative to successfully flatMap f
+    def or[T, U](f: T => M[U], alts: M[T]*) = (alts foldLeft (zero: M[U]))(altFlatMap(f))
+    def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] // = a orElse b.flatMap(f) -- can't easily&efficiently express M[T] should have flatMap and orElse
   }
 
   implicit object OptionMatching extends MatchingStrategy[Option] {
-    def fail: Option[Nothing] = None
-    def success[T](x: T): Option[T] = Some(x)
-    def check(cond: Boolean): Option[Unit] = if(cond) Some(()) else None
+    type M[+x] = Option[x]
+    def zero: M[Nothing] = None
+    def one[T](x: T): M[T] = Some(x)
+    def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] = a orElse b.flatMap(f)
   }
 }

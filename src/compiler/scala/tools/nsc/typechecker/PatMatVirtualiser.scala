@@ -84,8 +84,35 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     }
 
     type TreeXForm = Tree => Tree
-    type ProtoTreeMaker = (Tree, TreeXForm => (TreeXForm /* wrap a Fun */, TreeXForm /* subst variables to tuple sel on variable bound by that Fun */))
-    type TreeMaker = (Tree, TreeXForm /* do aggregated substitution and wrap a Fun */)
+    type ProtoTreeMaker = (List[Tree], TreeXForm => (TreeXForm /* wrap a Fun */, TreeXForm /* subst variables to tuple sel on variable bound by that Fun */))
+
+    object TreeMaker {
+      def apply(trees: List[Tree], mkFunAndSubst0: TreeXForm): TreeMaker =
+        if (trees isEmpty) new NoTreeMaker{def mkFunAndSubst(next: Tree) = mkFunAndSubst0(next)}
+        else if (trees.length == 1) new SingleTreeMaker(trees.head){def mkFunAndSubst(next: Tree) = mkFunAndSubst0(next)}
+        else new AlternativeTreeMaker(trees){def mkFunAndSubst(next: Tree) = mkFunAndSubst0(next)}
+    }
+    abstract class TreeMaker {
+      // wrap a Fun (with binder x) around the next tree and do aggregated substitution (which
+      // replaces old pattern bindings by the appropriate tuple element selection on the new binders,
+      // that is, `x`, if it was bound by the immediately enclosing pattern)
+      def mkFunAndSubst(next: Tree): Tree
+
+      // build Tree that chains `next` after the current extractor
+      def flatMap(next: Tree): Tree
+    }
+
+    abstract class NoTreeMaker extends TreeMaker {
+      def flatMap(tree: Tree) = mkFunAndSubst(tree) // doesn't make a fun, only does substitution
+    }
+
+    abstract class SingleTreeMaker(extractor: Tree) extends TreeMaker {
+      def flatMap(tree: Tree) = mkFlatMap(extractor, mkFunAndSubst(tree))
+    }
+
+    abstract class AlternativeTreeMaker(alts: List[Tree]) extends TreeMaker {
+      def flatMap(tree: Tree) = mkOr(alts, mkFunAndSubst(tree))
+    }
 
     /**  The translation of `pat if guard => body` has two aspects: 
       *     1) the substitution due to the variables bound by patterns
@@ -117,16 +144,15 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       // (identity(foo), newO) :: (newO(foo), newO') :: (newO'(foo), newO'') :: (newO''(foo), newO''')
       def threadSubstitution(protoTreeMakers: List[ProtoTreeMaker]): List[TreeMaker] = 
         protoTreeMakers.foldLeft((List[TreeMaker](), identity[Tree](_))){ 
-          case ((accumTreeMakers, accumSubst), (extractor, substTreeMaker)) => 
+          case ((accumTreeMakers, accumSubst), (extractors, substTreeMaker)) => 
             val (nestedTreeMaker, newSubst) = substTreeMaker(accumSubst)
-            ((extractor, nestedTreeMaker) :: accumTreeMakers, newSubst)
+            (TreeMaker(extractors, nestedTreeMaker) :: accumTreeMakers, newSubst)
         }._1.reverse // ._2 is the state we accumulated while traversing the original list to build the result in _.1
 
       tree match {
         case CaseDef(pattern, guard, body) => 
-          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkSuccess(X(body))){ // TODO: if we want to support a generalisation of Kotlin's patmat continue, must not hard-wire lifting into the monad (mkSuccess), so that user can generate failure when needed -- use implicit conversion to lift into monad on-demand
-            case ((extractor, mkFunAndSubst), tree) => mkFlatMap(extractor, mkFunAndSubst(tree))
-          }
+          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkSuccess(X(body)))(_.flatMap(_)) 
+          // TODO: if we want to support a generalisation of Kotlin's patmat continue, must not hard-wire lifting into the monad (mkSuccess), so that user can generate failure when needed -- use implicit conversion to lift into monad on-demand
       }
     }
 
@@ -148,13 +174,19 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
           }
       * Probably allow lists of tree's in a treemaker and then:
       * case ((extractors, mkFunAndSubst), tree) => extractors map (mkFlatMap(_, mkFunAndSubst(tree))) reduceLeft mkOr
+
+
+
+
+
+
       */
     def Xpat(scrutSym: Symbol)(pattern: Tree): List[ProtoTreeMaker] = {
       /** `patTree` is the extractor call
         * `patBinders` are the variables bound by this pattern in the following patterns --> must become tuple selections on extractor's result
         */
       def patProtoTreeMaker(patTree: Tree, patBinders: List[Symbol]): ProtoTreeMaker = {
-        (patTree, 
+        (List(patTree), 
           if(patBinders isEmpty)           
             { outerSubst: TreeXForm =>
                 val binder = freshSym(currentOwner, patTree.pos) setInfo UnitClass.tpe
@@ -164,31 +196,45 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
             { outerSubst: TreeXForm =>
                 val binder = freshSym(currentOwner, patTree.pos) setInfo tupleType(patBinders map (_.info))
                 val theSubst = mkTypedSubst(patBinders, (1 to patBinders.length).map(mkPatBinderTupleSel(binder)).toList)
-                def nextSubst(tree: Tree): Tree = theSubst.transform(outerSubst(tree))
+                def nextSubst(tree: Tree): Tree = outerSubst(theSubst.transform(tree))
                 (nestedTree => mkFun(binder, nextSubst(nestedTree)), nextSubst)
             })
       }
 
-      def typedProtoTreeMaker(patTree: Tree, patBinder: Symbol): ProtoTreeMaker = {
-        (patTree, 
+      // since alternatives may not bind variables (except wildcards), only the trees in `alts`' ProtoTreeMakers matter
+      def altsProtoTreeMaker(alts: List[ProtoTreeMaker], patBinder: Symbol): ProtoTreeMaker = singleBinderMultiProtoTreeMaker(alts.flatMap(_._1), patBinder, UnitClass.tpe) // alternative pattern
+
+      def singleBinderProtoTreeMaker(patTree: Tree, patBinder: Symbol): ProtoTreeMaker = singleBinderMultiProtoTreeMaker(List(patTree), patBinder, patBinder.info)
+
+      def singleBinderMultiProtoTreeMaker(patTrees: List[Tree], binderToSubst: Symbol, binderTp: Type, unsafe: Boolean = false): ProtoTreeMaker = {
+        (patTrees, 
             { outerSubst: TreeXForm =>
-                val binder = freshSym(currentOwner, patTree.pos) setInfo patBinder.info
-                val theSubst = mkTypedSubst(List(patBinder), List(CODE.REF(binder)))
-                def nextSubst(tree: Tree): Tree = theSubst.transform(outerSubst(tree))
+                val binder = freshSym(currentOwner, patTrees.head.pos) setInfo binderTp
+                val theSubst = mkTypedSubst(List(binderToSubst), List(CODE.REF(binder)), unsafe)
+                println("theSubst: "+ theSubst)
+                def nextSubst(tree: Tree): Tree = outerSubst(theSubst.transform(tree))
                 (nestedTree => mkFun(binder, nextSubst(nestedTree)), nextSubst)
             })
       }
+
+
       /** `tree` is the cast (with failure expressed using the monad)
         * tp is the type for the binder of the next tree (`nestedTree`), it's assumed to already be used there, so no substitution is performed
         */
-      def simpleProtoTreeMaker(tree: Tree, binder: Symbol): ProtoTreeMaker = {
-        (tree, 
+      def simpleProtoTreeMaker(tree: Tree, binder: Symbol): ProtoTreeMaker =
+        (List(tree), 
           { outerSubst: TreeXForm =>
               (nestedTree => mkFun(binder,outerSubst(nestedTree)), outerSubst)
           })
-      }
 
-      val res = new ListBuffer[ProtoTreeMaker]
+      // shortcut: don't generate an extractor, TreeMaker only performs the substitution patBinder --> prevBinder
+      def bindProtoTreeMaker(prevBinder: Symbol, patBinder: Symbol): ProtoTreeMaker =
+        (List(), 
+          { outerSubst: TreeXForm =>
+              val theSubst = mkTypedSubst(List(patBinder), List(CODE.REF(prevBinder)), unsafe = true)
+              def nextSubst(tree: Tree): Tree = outerSubst(theSubst.transform(tree))
+              (nestedTree => nextSubst(nestedTree), nextSubst)
+          })
 
       // def tryInstantiateType(tparams: List[Symbol], tp: Type, pt: Type): Type = if(tparams isEmpty) tp else {
       //   val tvars = tparams map freshVar
@@ -205,7 +251,14 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       //   else tp
       // }
 
-      def doUnapply(args: List[Tree], binderTypes: List[Type], extractor: Symbol, prevBinder: Symbol, pos: Position): (List[Symbol], List[Tree]) = {
+      def binderOfExpectedType(prevBinder: Symbol, pt: Type, pos: Position)(implicit res: ListBuffer[ProtoTreeMaker]): Symbol =
+          if(!(prevBinder.info <:< pt)) { 
+            val castedBinder = freshSym(currentOwner, pos, "cp") setInfo pt 
+            res += simpleProtoTreeMaker(mkCast(pt, prevBinder), castedBinder) // chain a cast before the actual extractor call
+            castedBinder
+          } else prevBinder
+
+      def doUnapply(args: List[Tree], binderTypes: List[Type], extractor: Symbol, prevBinder: Symbol, pos: Position)(implicit res: ListBuffer[ProtoTreeMaker]): (List[Symbol], List[Tree]) = {
         val tp = prevBinder.info
         val extractorParamTp0 = extractor.tpe.paramTypes.head
         // val tparams = extractorParamTp0.typeArgs map (_.typeSymbol) // why are these different from extractorParamTp0.typeSymbol.typeParams?
@@ -218,13 +271,9 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
         val extractorParamTp = extractorParamTp0.instantiateTypeParams(extractorParamTp0.baseType(tp.typeSymbol).typeArgs map (_.typeSymbol), tp.typeArgs) // TODO: hack! use asSeenFrom? inference?
 
         // println("ASF "+ (extractorParamTp, tp.memberType(extractorParamTp0.baseType(tp.typeSymbol))))
-        
-        val prevBinderOrCasted = 
-          if(!(tp <:< extractorParamTp)) { // example check: List[Int] <:< ::[B] (where B is ::'s type parameter) -- it's expected this fails, but that B in there should go away (ideally become Int)
-            val castedBinder = freshSym(currentOwner, pos, "cp") setInfo extractorParamTp 
-            res += simpleProtoTreeMaker(mkCast(extractorParamTp, prevBinder), castedBinder) // chain a cast before the actual extractor call
-            castedBinder
-          } else prevBinder
+
+        // example check: List[Int] <:< ::[B] (where B is ::'s type parameter) -- it's expected this fails, but that B in there should go away (ideally become Int)
+        val prevBinderOrCasted = binderOfExpectedType(prevBinder, extractorParamTp, pos) // this may add to res
 
         // binderTypes != args map (_.tpe) since the args may have more specific types than the constructor's parameter types
         val sub@(patBinders, _) = 
@@ -240,8 +289,10 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
       /** Decompose the pattern in `tree`, of shape C(p_1, ..., p_N), into a list of N symbols, and a list of its N sub-trees
         * The list of N symbols contains symbols for every bound name as well as the un-named sub-patterns (fresh symbols are generated here for these)
+        *
+        * @arg prevBinder  symbol used to refer to the result of the previous pattern's extractor (will later be replaced by the outer tree with the correct tree to refer to that patterns result)
         */
-      def transformPat(prevBinder: Symbol, patTree: Tree): (List[Symbol], List[Tree]) = patTree match {
+      def transformPat(prevBinder: Symbol, patTree: Tree)(implicit res: ListBuffer[ProtoTreeMaker]): (List[Symbol], List[Tree]) = patTree match {
         case UnApply(unfun, args) =>
           val binderTypes = analyzer.unapplyTypeList(unfun.symbol, unfun.tpe)
 
@@ -254,10 +305,18 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
           doUnapply(args, binderTypes, extractor, prevBinder, patTree.pos)
 
-        case BoundSym(patBinder, Typed(expr, tpt))     =>
-          println("Typed: expr is wildcard, right? "+ expr)
 
-          res += typedProtoTreeMaker(mkCast(tpt.tpe, prevBinder), patBinder)
+        case BoundSym(patBinder, p)          =>
+          // binding a symbol is like the trivial pattern (corresponding to the extractor x => one(prevBinder)),
+          // just keep it simple here, let optimisations fuse everything together later
+          // res += singleBinderMultiProtoTreeMaker(List(mkSuccess(CODE.REF(prevBinder))), patBinder, prevBinder.info, unsafe = true)
+          res += bindProtoTreeMaker(prevBinder, patBinder) // fused version
+
+          (List(patBinder), List(p)) // the symbols are markers that may be used to refer to the result of the extractor in which the corresponding tree is nested -- it's the responsibility of the treemaker (added to res in the previous line) to replace this symbol by a reference that selects that result on the function symbol of the flatMap call that binds to the result of this extractor
+
+        case Typed(expr, tpt)                 =>
+          println("Typed: expr is wildcard, right? "+ expr)
+          res += singleBinderProtoTreeMaker(mkCast(tpt.tpe, prevBinder), prevBinder)
           
           (Nil, Nil) // a typed pattern never has any subtrees
 
@@ -266,7 +325,14 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
           (Nil, Nil)
           
-        // case x @ Alternative(ps)  => 
+        case Alternative(alts)    => 
+          val resAlts = new ListBuffer[ProtoTreeMaker]
+          alts foreach (traverseDepthFirst(prevBinder, _)(resAlts))
+
+          res += altsProtoTreeMaker(resAlts.toList, prevBinder)
+
+          (Nil, Nil)
+
         // case x: ArrayValue        => // SequencePattern(x)
         // case x: Star              => 
         // case x: This              => 
@@ -277,18 +343,19 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       }
 
 
-      def traverseDepthFirst(prevBinder: Symbol, patTree: Tree): Unit = 
+      def traverseDepthFirst(prevBinder: Symbol, patTree: Tree)(implicit res: ListBuffer[ProtoTreeMaker]): Unit = 
         if (!isWildcardPattern(patTree)) // skip wildcard trees -- no point in checking them
           transformPat(prevBinder, patTree).zipped foreach traverseDepthFirst
 
-      traverseDepthFirst(scrutSym, pattern)
+      val res = new ListBuffer[ProtoTreeMaker]
+      traverseDepthFirst(scrutSym, pattern)(res)
       res.toList
     }
 
     def Xguard(guard: Tree): List[ProtoTreeMaker] = {
       if (guard == EmptyTree) List()
       else List(
-        (mkCheck(X(guard)), 
+        (List(mkCheck(X(guard))),
           { outerSubst => 
             val binder = freshSym(currentOwner, guard.pos) setInfo UnitClass.tpe
             (nestedTree => mkFun(binder, outerSubst(nestedTree)), outerSubst) // guard does not bind any variables, so next subst is the current one
@@ -327,10 +394,10 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
     // we must explicitly type the trees that we replace inside some other tree, since the latter may already have been typed, and will thus not be retyped
     // thus, we might end up with untyped subtrees inside bigger, typed trees
-    def mkTypedSubst(from: List[Symbol], toMaybeUntyped: List[Tree]) = {
+    def mkTypedSubst(from: List[Symbol], toMaybeUntyped: List[Tree], unsafe: Boolean = false) = {
       val toTyped = (from, toMaybeUntyped).zipped map { case (sym, tree) =>
         // if tree happened to be typed already, typed will bail out early -- that's ok
-        typed(tree, EXPRmode, sym.info) // when swapping out a symbol for a new tree, that tree must conform to the symbol's type
+        if(unsafe) typed(tree) else typed(tree, EXPRmode, sym.info) // when swapping out a symbol for a new tree, that tree must conform to the symbol's type
       }
       new TreeSubstituter(from, toTyped)
     }
@@ -343,8 +410,8 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     import CODE._
     // TODO: lift out this call and cache the result?
     def mkImplicitMatcher: Tree = TypeApply(REF(Predef_implicitly), List(TypeTree(appliedType(matchingStrategyTycon.typeConstructor, List(matcherTycon)))))  // implicitly[MatchingStrategy[matcherTycon]].fail
-    def mkFail: Tree = mkImplicitMatcher DOT "fail".toTermName 
-    def mkSuccess(res: Tree): Tree = (mkImplicitMatcher DOT "success".toTermName)(res)
+    def mkFail: Tree = mkImplicitMatcher DOT "zero".toTermName 
+    def mkSuccess(res: Tree): Tree = (mkImplicitMatcher DOT "one".toTermName)(res)
     def mkOrElse(thisCase: Tree, elseCase: Tree): Tree = (thisCase DOT "orElse".toTermName)(elseCase)
     def mkApply(fun: Tree, arg: Tree): Tree = fun APPLY arg
     def mkApply(fun: Symbol, arg: Symbol): Tree = REF(fun) APPLY REF(arg)
@@ -352,10 +419,10 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     def mkFun(arg: Symbol, body: Tree): Tree = Function(List(ValDef(arg)), body)
     def mkPatBinderTupleSel(binder: Symbol)(i: Int): Tree = (REF(binder) DOT ("_"+i).toTermName) // make tree that accesses the i'th component of the tuple referenced by binder
     
-    def mkCheck(t: Tree): Tree = (mkImplicitMatcher DOT "check".toTermName)(t)
-    def mkCast(expectedTp: Type, binder: Symbol): Tree = mkFlatMap(
-      mkCheck(REF(binder) IS_OBJ expectedTp), 
-      mkFun(freshSym(currentOwner, NoPosition) setInfo UnitClass.tpe, mkSuccess(REF(binder) AS expectedTp)))
+    def mkCheck(t: Tree, then: Tree = UNIT): Tree = (mkImplicitMatcher DOT "guard".toTermName)(t, then)
+    def mkCast(expectedTp: Type, binder: Symbol): Tree = 
+      mkCheck((REF(binder) setType binder.info) IS_OBJ expectedTp, (REF(binder) setType binder.info) AS expectedTp)
+    def mkOr(as: List[Tree], f: Tree): Tree = (mkImplicitMatcher DOT "or".toTermName)((f :: as): _*)
 
     def mkEquals(binder: Symbol, other: Tree): Tree = REF(binder) MEMBER_== other
     // def mkApplyUnapply(fun: Tree, arg: Symbol): Tree = 
