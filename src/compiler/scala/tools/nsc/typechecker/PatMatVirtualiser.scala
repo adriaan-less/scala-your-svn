@@ -202,7 +202,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       }
 
       // since alternatives may not bind variables (except wildcards), only the trees in `alts`' ProtoTreeMakers matter
-      def altsProtoTreeMaker(alts: List[ProtoTreeMaker], patBinder: Symbol): ProtoTreeMaker = singleBinderMultiProtoTreeMaker(alts.flatMap(_._1), patBinder, UnitClass.tpe) // alternative pattern
+      def altsProtoTreeMaker(alts: List[ProtoTreeMaker], patBinder: Symbol): ProtoTreeMaker = singleBinderMultiProtoTreeMaker(alts.flatMap(_._1), patBinder, patBinder.info) // alternative pattern
 
       def singleBinderProtoTreeMaker(patTree: Tree, patBinder: Symbol): ProtoTreeMaker = singleBinderMultiProtoTreeMaker(List(patTree), patBinder, patBinder.info)
 
@@ -321,7 +321,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
           (Nil, Nil) // a typed pattern never has any subtrees
 
         case Literal(Constant(_)) | Ident(_) | Select(_, _) =>
-          res += patProtoTreeMaker(mkCheck(mkEquals(prevBinder, patTree)), List())
+          res += singleBinderProtoTreeMaker(mkCheck(mkEquals(prevBinder, patTree), CODE.REF(prevBinder)), prevBinder)
 
           (Nil, Nil)
           
