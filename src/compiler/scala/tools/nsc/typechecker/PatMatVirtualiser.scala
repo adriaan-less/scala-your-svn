@@ -289,6 +289,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
             castedBinder
           } else prevBinder
 
+      // TODO: unapplySeq
       def doUnapply(args: List[Tree], binderTypes: List[Type], extractor: Symbol, prevBinder: Symbol, pos: Position)(implicit res: ListBuffer[ProtoTreeMaker]): (List[Symbol], List[Tree]) = {
         val tp = prevBinder.info.widen
         val extractorParamTp0 = extractor.tpe.paramTypes.head
@@ -448,20 +449,9 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     def mkOrElse(thisCase: Tree, elseCase: Tree): Tree = (thisCase DOT "orElse".toTermName)(elseCase)
 
     // misc
-    def mkThrowMatchError(a: Tree): Tree = CODE.MATCHERROR(a)
-    def mkApply(fun: Tree, arg: Tree): Tree = fun APPLY arg
     def mkApply(fun: Symbol, arg: Symbol): Tree = REF(fun) APPLY REF(arg)
     def mkFun(arg: Symbol, body: Tree): Tree = Function(List(ValDef(arg)), body)
     def mkPatBinderTupleSel(binder: Symbol)(i: Int): Tree = (REF(binder) DOT ("_"+i).toTermName) // make tree that accesses the i'th component of the tuple referenced by binder
-
-    def mkEquals(binder: Symbol, other: Tree): Tree = {
-      assert(binder.pos ne NoPosition); assert(other.pos ne NoPosition)
-      REF(binder) MEMBER_== other
-    }
-    // def mkApplyUnapply(fun: Tree, arg: Symbol): Tree = 
-    //   (fun match {
-    //     case UnApply(t, _) => REF(treeInfo.methPart(t).symbol)
-    //     case t => t
-    //   }) APPLY REF(arg)
+    def mkEquals(binder: Symbol, other: Tree): Tree = REF(binder) MEMBER_== other
   }
 }
