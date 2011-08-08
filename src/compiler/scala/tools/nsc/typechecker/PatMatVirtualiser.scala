@@ -54,7 +54,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     typed(xTree, mode, pt)
   }
   
-  private class MatchTranslator(typer: Typer) {
+  private class MatchTranslator(typer: Typer) { translator =>
     import typer._
     val currentOwner: Symbol = context.owner
     
@@ -78,8 +78,8 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       */
     def X(tree: Tree): Tree = tree match {
       case Match(scrut, cases) => 
-        val scrutSym = freshSym(currentOwner, tree.pos) setInfo scrut.tpe
-        mkApply(mkFun(scrutSym, ((cases map Xcase(scrutSym)) ++ List(mkFail)) reduceLeft mkOrElse), scrut)
+        val scrutSym = freshSym(currentOwner, tree.pos) setInfo scrut.tpe // TODO: deal with scrut == EmptyTree
+        mkApply(mkFun(scrutSym, ((cases map Xcase(scrutSym)) ++ (List(atPos(tree.pos)(mkFail)))) reduceLeft mkOrElse) setPos tree.pos, scrut) setPos tree.pos
       case t => t
     }
 
@@ -103,15 +103,15 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     }
 
     abstract class NoTreeMaker extends TreeMaker {
-      def flatMap(tree: Tree) = mkFunAndSubst(tree) // doesn't make a fun, only does substitution
+      def mkFlatMap(tree: Tree) = mkFunAndSubst(tree) // doesn't make a fun, only does substitution
     }
 
     abstract class SingleTreeMaker(extractor: Tree) extends TreeMaker {
-      def flatMap(tree: Tree) = mkFlatMap(extractor, mkFunAndSubst(tree))
+      def mkFlatMap(tree: Tree) = translator.mkFlatMap(extractor, mkFunAndSubst(tree)) setPos extractor.pos
     }
 
     abstract class AlternativeTreeMaker(alts: List[Tree]) extends TreeMaker {
-      def flatMap(tree: Tree) = mkOr(alts, mkFunAndSubst(tree))
+      def mkFlatMap(tree: Tree) = mkOr(alts, mkFunAndSubst(tree)) setPos alts.head.pos
     }
 
     /**  The translation of `pat if guard => body` has two aspects: 
@@ -151,7 +151,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
       tree match {
         case CaseDef(pattern, guard, body) => 
-          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkSuccess(X(body)))(_.flatMap(_)) 
+          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkSuccess(X(body)))(_ mkFlatMap _) setPos tree.pos
           // TODO: if we want to support a generalisation of Kotlin's patmat continue, must not hard-wire lifting into the monad (mkSuccess), so that user can generate failure when needed -- use implicit conversion to lift into monad on-demand
       }
     }
@@ -282,7 +282,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
               case (p, tp) => (freshSym(currentOwner, pos, "p") setInfo tp, p)
             } unzip 
 
-        res += patProtoTreeMaker(mkApply(extractor, prevBinderOrCasted), patBinders)
+        res += patProtoTreeMaker(atPos(pos)(mkApply(extractor, prevBinderOrCasted)), patBinders)
 
         sub
       }
@@ -316,12 +316,12 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
         case Typed(expr, tpt)                 =>
           println("Typed: expr is wildcard, right? "+ expr)
-          res += singleBinderProtoTreeMaker(mkCast(tpt.tpe, prevBinder), prevBinder)
+          res += singleBinderProtoTreeMaker(atPos(patTree.pos)(mkCast(tpt.tpe, prevBinder)), prevBinder)
           
           (Nil, Nil) // a typed pattern never has any subtrees
 
         case Literal(Constant(_)) | Ident(_) | Select(_, _) =>
-          res += singleBinderProtoTreeMaker(mkCheck(mkEquals(prevBinder, patTree), CODE.REF(prevBinder)), prevBinder)
+          res += singleBinderProtoTreeMaker(atPos(patTree.pos)(mkCheck(mkEquals(prevBinder, patTree), CODE.REF(prevBinder))), prevBinder)
 
           (Nil, Nil)
           
