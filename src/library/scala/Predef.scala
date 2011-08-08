@@ -395,6 +395,7 @@ object Predef extends LowPriorityImplicits {
     // find the first alternative to successfully flatMap f
     def or[T, U](f: T => M[U], alts: M[T]*) = (alts foldLeft (zero: M[U]))(altFlatMap(f))
     def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] // = a orElse b.flatMap(f) -- can't easily&efficiently express M[T] should have flatMap and orElse
+    def runOrElse[T, U](x: T)(f: T => M[U]): U
   }
 
   implicit object OptionMatching extends MatchingStrategy[Option] {
@@ -402,5 +403,6 @@ object Predef extends LowPriorityImplicits {
     def zero: M[Nothing] = None
     def one[T](x: T): M[T] = Some(x)
     def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] = a orElse b.flatMap(f)
+    def runOrElse[T, U](x: T)(f: T => M[U]): U = f(x) getOrElse (throw new MatchError(x))
   }
 }

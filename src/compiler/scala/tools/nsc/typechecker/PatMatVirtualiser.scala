@@ -50,7 +50,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
     val selector1 = typed(selector, EXPRmode | BYVALmode, WildcardType) // TODO: handle empty selector (just remove outer apply node from xTree?)
     val xTree = new MatchTranslator(typer).X(treeCopy.Match(tree, selector1, typedCases(tree, cases, selector1.tpe.widen, pt)))
-    println("xformed patmat: "+ xTree)
+    // println("xformed patmat: "+ xTree)
     typed(xTree, mode, pt)
   }
   
@@ -79,13 +79,9 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     def X(tree: Tree): Tree = tree match {
       case Match(scrut, cases) => 
         val scrutSym = freshSym(currentOwner, tree.pos) setInfo scrut.tpe // TODO: deal with scrut == EmptyTree
-        mkGetOrElse(
-            mkApply(
-                mkFun(
-                    scrutSym, 
-                    ((cases map Xcase(scrutSym)) ++ (List(atPos(tree.pos)(mkZero)))) reduceLeft mkOrElse) setPos tree.pos, 
-                scrut) setPos tree.pos,
-            mkThrowMatchError(scrut) setPos tree.pos) setPos tree.pos
+        mkRunOrElse(scrut,
+                    mkFun(scrutSym, 
+                          ((cases map Xcase(scrutSym)) ++ (List(atPos(tree.pos)(mkZero)))) reduceLeft mkOrElse) setPos tree.pos) setPos tree.pos
       case t => t
     }
 
@@ -217,7 +213,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
             { outerSubst: TreeXForm =>
                 val binder = freshSym(currentOwner, patTrees.head.pos) setInfo binderTp
                 val theSubst = mkTypedSubst(List(binderToSubst), List(CODE.REF(binder)), unsafe)
-                println("theSubst: "+ theSubst)
+                // println("theSubst: "+ theSubst)
                 def nextSubst(tree: Tree): Tree = outerSubst(theSubst.transform(tree))
                 (nestedTree => mkFun(binder, nextSubst(nestedTree)), nextSubst)
             })
@@ -321,7 +317,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
           (List(patBinder), List(p)) // the symbols are markers that may be used to refer to the result of the extractor in which the corresponding tree is nested -- it's the responsibility of the treemaker (added to res in the previous line) to replace this symbol by a reference that selects that result on the function symbol of the flatMap call that binds to the result of this extractor
 
         case Typed(expr, tpt)                 =>
-          println("Typed: expr is wildcard, right? "+ expr)
+          // println("Typed: expr is wildcard, right? "+ expr)
           res += singleBinderProtoTreeMaker(atPos(patTree.pos)(mkCast(tpt.tpe, prevBinder)), prevBinder)
           
           (Nil, Nil) // a typed pattern never has any subtrees
@@ -423,11 +419,11 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     def mkGuard(t: Tree, then: Tree = UNIT): Tree = (mkImplicitMatcher DOT "guard".toTermName)(t, then) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
     def mkCast(expectedTp: Type, binder: Symbol): Tree = 
       mkGuard((REF(binder) setType binder.info.widen) IS_OBJ expectedTp, (REF(binder) setType binder.info.widen) AS expectedTp) // implicitly[MatchingStrategy[matcherTycon]].guard(binder.isInstanceOf[expectedTp], binder.asInstanceOf[expectedTp])
+    def mkRunOrElse(scrut: Tree, matcher: Tree): Tree = (mkImplicitMatcher DOT "runOrElse".toTermName)(scrut) APPLY (matcher) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
 
     // methods in the monad
     def mkFlatMap(a: Tree, b: Tree): Tree = (a DOT "flatMap".toTermName)(b)
     def mkOrElse(thisCase: Tree, elseCase: Tree): Tree = (thisCase DOT "orElse".toTermName)(elseCase)
-    def mkGetOrElse(a: Tree, b: Tree): Tree = (a DOT "getOrElse".toTermName)(b)
 
     // misc
     def mkThrowMatchError(a: Tree): Tree = CODE.MATCHERROR(a)
