@@ -1795,10 +1795,10 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
       if (phase.id <= currentRun.typerPhase.id) {
         val allParams = meth.paramss.flatten
         for (p <- allParams) {
-          deprecatedName(p).foreach(n => {
-            if (allParams.exists(p1 => p1.name == n || (p != p1 && deprecatedName(p1) == Some(n))))
+          for (n <- p.deprecatedParamName) {            
+            if (allParams.exists(p1 => p1.name == n || (p != p1 && p1.deprecatedParamName.exists(_ == n))))
               error(p.pos, "deprecated parameter name "+ n +" has to be distinct from any other parameter name (deprecated or not).")
-          })
+          }
         }
       }
 
@@ -2101,7 +2101,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
     def typedStats(stats: List[Tree], exprOwner: Symbol): List[Tree] = {
       val inBlock = exprOwner == context.owner
       def includesTargetPos(tree: Tree) = 
-        tree.pos.isRange && context.unit != null && (tree.pos includes context.unit.targetPos)
+        tree.pos.isRange && context.unit.exists && (tree.pos includes context.unit.targetPos)
       val localTarget = stats exists includesTargetPos
       def typedStat(stat: Tree): Tree = {
         if (context.owner.isRefinementClass && !treeInfo.isDeclarationOrTypeDef(stat))
@@ -3801,7 +3801,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
             // compilation units. Defined symbols take precedence over erroneous imports.
             if (defSym.definedInPackage && 
                 (!currentRun.compiles(defSym) ||
-                 (context.unit ne null) && defSym.sourceFile != context.unit.source.file))
+                 context.unit.exists && defSym.sourceFile != context.unit.source.file))
               defSym = NoSymbol
             else if (impSym.isError || impSym.name == nme.CONSTRUCTOR)
               impSym = NoSymbol
@@ -3852,7 +3852,9 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
                 log(context.imports)//debug
               }
               if (inaccessibleSym eq NoSymbol) {
-                error(tree.pos, "not found: "+decodeWithKind(name, context.owner))
+                // Avoiding some spurious error messages: see SI-2388.
+                if (reporter.hasErrors && (name startsWith tpnme.ANON_CLASS_NAME)) ()
+                else error(tree.pos, "not found: "+decodeWithKind(name, context.owner))
               }
               else new AccessError(
                 tree, inaccessibleSym, context.enclClass.owner.thisType, 
@@ -4331,8 +4333,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         case ex: Exception =>
           if (settings.debug.value) // @M causes cyclic reference error
             Console.println("exception when typing "+tree+", pt = "+pt)
-          if ((context ne null) && (context.unit ne null) &&
-              (context.unit.source ne null) && (tree ne null))
+          if (context != null && context.unit.exists && tree != null)
             logError("AT: " + (tree.pos).dbgString, ex)
           throw ex
       }
