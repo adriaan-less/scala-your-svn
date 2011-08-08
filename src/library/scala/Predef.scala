@@ -53,7 +53,7 @@ object Predef extends LowPriorityImplicits {
 
   // Minor variations on identity functions
   def identity[A](x: A): A         = x    // @see `conforms` for the implicit version
-  def implicitly[T](implicit e: T) = e    // for summoning implicit values from the nether world
+  @inline def implicitly[T](implicit e: T) = e    // for summoning implicit values from the nether world -- TODO: when dependent method types are on by default, give this result type `e.type`, so that inliner has better chance of knowing which method to inline in calls like `implicitly[MatchingStrategy[Option]].zero`
   @inline def locally[T](x: T): T  = x    // to communicate intent and avoid unmoored statements
 
   // Apparently needed for the xml library
@@ -391,7 +391,7 @@ object Predef extends LowPriorityImplicits {
   trait MatchingStrategy[M[+x]] {
     def zero: M[Nothing]
     def one[T](x: T): M[T]
-    def guard[T](cond: Boolean, then: => T): M[T] = if(cond) one(then) else zero
+    def guard[T](cond: Boolean, then: => T): M[T] // = if(cond) one(then) else zero
     // find the first alternative to successfully flatMap f
     def or[T, U](f: T => M[U], alts: M[T]*) = (alts foldLeft (zero: M[U]))(altFlatMap(f))
     def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] // = a orElse b.flatMap(f) -- can't easily&efficiently express M[T] should have flatMap and orElse
@@ -400,9 +400,10 @@ object Predef extends LowPriorityImplicits {
 
   implicit object OptionMatching extends MatchingStrategy[Option] {
     type M[+x] = Option[x]
-    def zero: M[Nothing] = None
-    def one[T](x: T): M[T] = Some(x)
-    def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] = a orElse b.flatMap(f)
-    def runOrElse[T, U](x: T)(f: T => M[U]): U = f(x) getOrElse (throw new MatchError(x))
+    @inline def guard[T](cond: Boolean, then: => T): M[T] = if(cond) Some(then) else None
+    @inline def zero: M[Nothing] = None
+    @inline def one[T](x: T): M[T] = Some(x)
+    @inline def altFlatMap[T, U](f: T => M[U])(a: M[U], b: M[T]): M[U] = a orElse b.flatMap(f)
+    @inline def runOrElse[T, U](x: T)(f: T => M[U]): U = f(x) getOrElse (throw new MatchError(x))
   }
 }

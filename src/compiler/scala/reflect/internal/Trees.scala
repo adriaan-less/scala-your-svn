@@ -257,7 +257,7 @@ trait Trees extends api.Trees { self: SymbolTable =>
     override def traverse(t: Tree) {
       if (t != EmptyTree && t.pos == NoPosition) {
         t.setPos(pos)
-        super.traverse(t)
+        super.traverse(t) // TODO: bug? shouldn't the traverse be outside of the if?
       }
     }
   }
