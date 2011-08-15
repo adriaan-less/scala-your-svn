@@ -1640,10 +1640,10 @@ self =>
       val point = in.offset
       val hasEq = in.token == EQUALS
 
-      if (hasVal && !hasEq)
-        syntaxError(in.offset, "val in for comprehension must be followed by assignment")
-      if (!hasVal && hasEq)
-        syntaxError(in.offset, "assignment in for comprehension must be preceded by `val`")
+      if (hasVal) {
+        if (hasEq) deprecationWarning(in.offset, "val keyword in for comprehension is deprecated")
+        else syntaxError(in.offset, "val in for comprehension must be followed by assignment")
+      }
 
       if (hasEq && eqOK) in.nextToken()
       else accept(LARROW)
