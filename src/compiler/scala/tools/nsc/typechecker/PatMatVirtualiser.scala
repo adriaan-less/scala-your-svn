@@ -126,12 +126,27 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     }
 
     abstract class SingleTreeMaker(extractor: Tree) extends TreeMaker {
-      def mkFlatMap(tree: Tree) = translator.mkFlatMap(extractor, mkFunAndSubst(tree)) setPos extractor.pos
+      def mkFlatMap(tree: Tree) = 
+        if(tree == EmptyTree) extractor  // when combining treemakers in an alternative
+        else translator.mkFlatMap(extractor, mkFunAndSubst(tree)) setPos extractor.pos
     }
 
     abstract class AlternativeTreeMaker(alts: List[Tree]) extends TreeMaker {
       def mkFlatMap(tree: Tree) = mkOr(alts, mkFunAndSubst(tree)) setPos alts.head.pos
     }
+
+    // (o => (o(foo), newO)) :: (o => (o(foo), newO')) :: (o => (o(foo), newO'')) :: (o => (o(foo), newO'''))
+    // (identity(foo), newO) :: (newO(foo), newO') :: (newO'(foo), newO'') :: (newO''(foo), newO''')
+    def threadSubstitution(protoTreeMakers: List[ProtoTreeMaker]): (List[TreeMaker], TreeXForm) = {
+      val (treeMakers, subst) = protoTreeMakers.foldLeft((List[TreeMaker](), identity[Tree](_))){ 
+        case ((accumTreeMakers, accumSubst), (extractors, substTreeMaker)) => 
+          val (nestedTreeMaker, newSubst) = substTreeMaker(accumSubst)
+          (TreeMaker(extractors, nestedTreeMaker) :: accumTreeMakers, newSubst)
+      }
+
+      (treeMakers.reverse, subst)
+    }
+
 
     /**  The translation of `pat if guard => body` has two aspects: 
       *     1) the substitution due to the variables bound by patterns
@@ -161,18 +176,9 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
       *    will substitute each bound pattern variable in the whole case.
       */
     def Xcase(scrutSym: Symbol)(tree: Tree): Tree = {
-      // (o => (o(foo), newO)) :: (o => (o(foo), newO')) :: (o => (o(foo), newO'')) :: (o => (o(foo), newO'''))
-      // (identity(foo), newO) :: (newO(foo), newO') :: (newO'(foo), newO'') :: (newO''(foo), newO''')
-      def threadSubstitution(protoTreeMakers: List[ProtoTreeMaker]): List[TreeMaker] = 
-        protoTreeMakers.foldLeft((List[TreeMaker](), identity[Tree](_))){ 
-          case ((accumTreeMakers, accumSubst), (extractors, substTreeMaker)) => 
-            val (nestedTreeMaker, newSubst) = substTreeMaker(accumSubst)
-            (TreeMaker(extractors, nestedTreeMaker) :: accumTreeMakers, newSubst)
-        }._1.reverse // ._2 is the state we accumulated while traversing the original list to build the result in _.1
-
       tree match {
         case CaseDef(pattern, guard, body) => 
-          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard)).foldRight(mkOne(X(body)))(_ mkFlatMap _) setPos tree.pos
+          threadSubstitution(Xpat(scrutSym)(pattern) ++ Xguard(guard))._1.foldRight(mkOne(X(body)))(_ mkFlatMap _) setPos tree.pos
           // TODO: if we want to support a generalisation of Kotlin's patmat continue, must not hard-wire lifting into the monad (mkOne), so that user can generate failure when needed -- use implicit conversion to lift into monad on-demand
       }
     }
@@ -251,7 +257,9 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
         sub
       }
 
-      def singleBinderProtoTreeMaker(binderToSubst: Symbol, patTrees: Tree*): ProtoTreeMaker = 
+      def singleBinderProtoTreeMaker(binderToSubst: Symbol, patTrees: Tree*): ProtoTreeMaker = {
+        assert(patTrees.head.pos != NoPosition, "proto-tree for "+(binderToSubst, patTrees.toList))
+
         (patTrees.toList, 
             { outerSubst: TreeXForm =>
                 val binder = freshSym(currentOwner, patTrees.head.pos) setInfo binderToSubst.info.widen
@@ -260,6 +268,7 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
                 def nextSubst(tree: Tree): Tree = outerSubst(theSubst.transform(tree))
                 (nestedTree => mkFun(binder, nextSubst(nestedTree)), nextSubst)
             })
+      }
 
       /** Decompose the pattern in `tree`, of shape C(p_1, ..., p_N), into a list of N symbols, and a list of its N sub-trees
         * The list of N symbols contains symbols for every bound name as well as the un-named sub-patterns (fresh symbols are generated here for these)
@@ -300,15 +309,25 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
           (Nil, Nil) // a typed pattern never has any subtrees
 
         case Literal(Constant(_)) | Ident(_) | Select(_, _) =>
-          res += singleBinderProtoTreeMaker(prevBinder, atPos(patTree.pos)(mkGuard(mkEquals(prevBinder, patTree), CODE.REF(prevBinder))))
+          res += singleBinderProtoTreeMaker(prevBinder, atPos(patTree.pos)(
+                    mkGuard(mkEquals(prevBinder, patTree), 
+                            CODE.REF(prevBinder) setType prevBinder.info)))
 
           (Nil, Nil)
           
-        case Alternative(alts)    => 
-          val resAlts = new ListBuffer[ProtoTreeMaker]
-          alts foreach (traverseDepthFirst(prevBinder, _)(resAlts))
-          // currently, since alternatives may not bind variables (except wildcards), only the trees in `alts`' ProtoTreeMakers matter
-          res += singleBinderProtoTreeMaker(prevBinder, resAlts.toList.flatMap(_._1): _*) 
+        case Alternative(alts)    =>
+          val altTrees = alts map { alt =>
+            // one alternative may still generate multiple trees (e.g., an extractor call + equality test)
+            val resAlts = new ListBuffer[ProtoTreeMaker]
+            traverseDepthFirst(prevBinder, alt)(resAlts)
+
+            // currently we ignore subst, since alternatives may not bind variables (except wildcards)
+            val (treeMakers, subst) = threadSubstitution(resAlts.toList) 
+
+            atPos(alt.pos)(treeMakers.foldRight (EmptyTree: Tree) (_ mkFlatMap _)) // EmptyTree is treated specially in mkFlatMap in SingleTreeMaker (fuses flatMap'ing the identity)
+          }
+
+          res += singleBinderProtoTreeMaker(prevBinder, altTrees : _*) 
 
       /* TODO: Paul says about future version: I think this should work, and always intended to implement if I can get away with it.
           case class Foo(x: Int, y: String)
@@ -376,7 +395,11 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 // code gen
 
     var ctr = 0
-    def freshSym(owner: Symbol, pos: Position, prefix: String = "x") = {ctr += 1; assert(owner ne null); assert(owner ne NoSymbol); assert(pos ne NoPosition); new TermSymbol(owner, pos, (prefix+ctr).toTermName)}
+    def freshSym(owner: Symbol, pos: Position, prefix: String = "x") = {ctr += 1; 
+      assert(owner ne null)
+      assert(owner ne NoSymbol)
+      new TermSymbol(owner, pos, (prefix+ctr).toTermName)
+    }
 
     // we must explicitly type the trees that we replace inside some other tree, since the latter may already have been typed, and will thus not be retyped
     // thus, we might end up with untyped subtrees inside bigger, typed trees
@@ -393,7 +416,10 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
     def mkZero: Tree = matchStrategy DOT "zero".toTermName                                          // implicitly[MatchingStrategy[matcherTycon]].zero
     def mkOne(res: Tree): Tree = (matchStrategy DOT "one".toTermName)(res)                          // implicitly[MatchingStrategy[matcherTycon]].one(res)
     def mkOr(as: List[Tree], f: Tree): Tree = (matchStrategy DOT "or".toTermName)((f :: as): _*)    // implicitly[MatchingStrategy[matcherTycon]].or(f, as)
-    def mkGuard(t: Tree, then: Tree = UNIT): Tree = (matchStrategy DOT "guard".toTermName)(t, then) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
+    def mkGuard(t: Tree, then: Tree = UNIT): Tree = {
+      (matchStrategy DOT "guard".toTermName)(t, then) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
+     }
+    
     def mkCast(expectedTp: Type, binder: Symbol): Tree = 
       mkGuard((REF(binder) setType binder.info.widen) IS_OBJ expectedTp, (REF(binder) setType binder.info.widen) AS expectedTp) // implicitly[MatchingStrategy[matcherTycon]].guard(binder.isInstanceOf[expectedTp], binder.asInstanceOf[expectedTp])
     def mkRunOrElse(scrut: Tree, matcher: Tree): Tree = (matchStrategy DOT "runOrElse".toTermName)(scrut) APPLY (matcher) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
