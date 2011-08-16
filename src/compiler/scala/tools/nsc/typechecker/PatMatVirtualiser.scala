@@ -403,12 +403,17 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
     // we must explicitly type the trees that we replace inside some other tree, since the latter may already have been typed, and will thus not be retyped
     // thus, we might end up with untyped subtrees inside bigger, typed trees
-    def mkTypedSubst(from: List[Symbol], toMaybeUntyped: List[Tree], unsafe: Boolean = false) = {
-      val toTyped = (from, toMaybeUntyped).zipped map { case (sym, tree) =>
-        // if tree happened to be typed already, typed will bail out early -- that's ok
-        if(unsafe) typed(tree) else typed(tree, EXPRmode, sym.info.widen) // when swapping out a symbol for a new tree, that tree must conform to the symbol's type
+    def mkTypedSubst(from: List[Symbol], to: List[Tree], unsafe: Boolean = false) = new Transformer {
+      override def transform(tree: Tree): Tree = tree match {
+        case Ident(_) =>
+          def subst(from: List[Symbol], to: List[Tree]): Tree =
+            if (from.isEmpty) tree
+            else if (tree.symbol == from.head) (if(tree.tpe != null && tree.tpe != NoType) typed(to.head, EXPRmode, tree.tpe) else to.head).shallowDuplicate
+            else subst(from.tail, to.tail);
+          subst(from, to)
+        case _ =>
+          super.transform(tree)
       }
-      new TreeSubstituter(from, toTyped)
     }
 
     import CODE._
