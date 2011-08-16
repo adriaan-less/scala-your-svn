@@ -418,16 +418,14 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
 
     import CODE._
     // methods in MatchingStrategy (the monad companion)
-    def mkZero: Tree = matchStrategy DOT "zero".toTermName                                          // implicitly[MatchingStrategy[matcherTycon]].zero
-    def mkOne(res: Tree): Tree = (matchStrategy DOT "one".toTermName)(res)                          // implicitly[MatchingStrategy[matcherTycon]].one(res)
-    def mkOr(as: List[Tree], f: Tree): Tree = (matchStrategy DOT "or".toTermName)((f :: as): _*)    // implicitly[MatchingStrategy[matcherTycon]].or(f, as)
-    def mkGuard(t: Tree, then: Tree = UNIT): Tree = {
-      (matchStrategy DOT "guard".toTermName)(t, then) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
-     }
-    
+    def mkZero: Tree = matchStrategy DOT "zero".toTermName                                          // matchStrategy.zero
+    def mkOne(res: Tree): Tree = (matchStrategy DOT "one".toTermName)(res)                          // matchStrategy.one(res)
+    def mkOr(as: List[Tree], f: Tree): Tree = (matchStrategy DOT "or".toTermName)((f :: as): _*)    // matchStrategy.or(f, as)
+    def mkGuard(t: Tree, then: Tree = UNIT): Tree = (matchStrategy DOT "guard".toTermName)(t, then) // matchStrategy.guard(t, then)
+    def mkRunOrElse(scrut: Tree, matcher: Tree): Tree = (matchStrategy DOT "runOrElse".toTermName)(scrut) APPLY (matcher) // matchStrategy.runOrElse(scrut)(matcher)
     def mkCast(expectedTp: Type, binder: Symbol): Tree = 
-      mkGuard((REF(binder) setType binder.info.widen) IS_OBJ expectedTp, (REF(binder) setType binder.info.widen) AS expectedTp) // implicitly[MatchingStrategy[matcherTycon]].guard(binder.isInstanceOf[expectedTp], binder.asInstanceOf[expectedTp])
-    def mkRunOrElse(scrut: Tree, matcher: Tree): Tree = (matchStrategy DOT "runOrElse".toTermName)(scrut) APPLY (matcher) // implicitly[MatchingStrategy[matcherTycon]].guard(t, then)
+      mkGuard(gen.mkIsInstanceOf(REF(binder), expectedTp, true, false), gen.mkAsInstanceOf(REF(binder), expectedTp, true, false))
+
 
     // methods in the monad instance
     def mkFlatMap(a: Tree, b: Tree): Tree = (a DOT "flatMap".toTermName)(b)
