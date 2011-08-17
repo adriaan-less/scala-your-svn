@@ -408,7 +408,10 @@ trait PatMatVirtualiser extends ast.TreeDSL { self: Analyzer =>
         case Ident(_) =>
           def subst(from: List[Symbol], to: List[Tree]): Tree =
             if (from.isEmpty) tree
-            else if (tree.symbol == from.head) (if(tree.tpe != null && tree.tpe != NoType) typed(to.head, EXPRmode, tree.tpe) else to.head).shallowDuplicate
+            else if (tree.symbol == from.head) {
+              if(tree.tpe != null && tree.tpe != NoType) typed(to.head.shallowDuplicate, EXPRmode, if(unsafe) WildcardType else tree.tpe.widen) 
+              else to.head.shallowDuplicate
+            }
             else subst(from.tail, to.tail);
           subst(from, to)
         case _ =>
