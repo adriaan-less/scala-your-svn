@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -26,13 +25,13 @@ import script._
  *  @since   1
  */
 trait ObservableMap[A, B] extends Map[A, B] with Publisher[Message[(A, B)] with Undoable]
-{ 
-  
+{
+
   type Pub <: ObservableMap[A, B]
 
   abstract override def += (kv: (A, B)): this.type = {
     val (key, value) = kv
-    
+
     get(key) match {
       case None =>
         super.+=(kv)
@@ -62,8 +61,8 @@ trait ObservableMap[A, B] extends Map[A, B] with Publisher[Message[(A, B)] with 
 
   abstract override def clear(): Unit = {
     super.clear
-    publish(new Reset with Undoable { 
-      def undo: Unit = throw new UnsupportedOperationException("cannot undo") 
+    publish(new Reset with Undoable {
+      def undo(): Unit = throw new UnsupportedOperationException("cannot undo")
     })
   }
 }
