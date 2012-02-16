@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,8 +13,8 @@ package scala.swing
 import javax.swing._
 
 /**
- * A two state button that is usually used in a <code>ButtonGroup</code> 
- * together with other <code>RadioButton</code>s, in order to indicate 
+ * A two state button that is usually used in a <code>ButtonGroup</code>
+ * together with other <code>RadioButton</code>s, in order to indicate
  * that at most one of them can be selected.
  *
  * @see javax.swing.JRadioButton

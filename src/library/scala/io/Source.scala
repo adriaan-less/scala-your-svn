@@ -1,15 +1,14 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.io
 
+import scala.collection.AbstractIterator
 import java.io.{ FileInputStream, InputStream, PrintStream, File => JFile }
 import java.net.{ URI, URL }
 
@@ -21,11 +20,11 @@ import java.net.{ URI, URL }
  */
 object Source {
   val DefaultBufSize = 2048
-  
-  /** Creates a <code>Source</code> from System.in.
+
+  /** Creates a `Source` from System.in.
    */
   def stdin = fromInputStream(System.in)
-  
+
   /** Creates a Source from an Iterable.
    *
    *  @param    iterable  the Iterable
@@ -46,7 +45,7 @@ object Source {
   /** creates Source from a String, with no description.
    */
   def fromString(s: String): Source = fromIterable(s)
-  
+
   /** creates Source from file with given name, setting its description to
    *  filename.
    */
@@ -59,7 +58,7 @@ object Source {
   def fromFile(name: String, enc: String): BufferedSource =
     fromFile(name)(Codec(enc))
 
-  /** creates <code>Source</code> from file with given file: URI
+  /** creates `ource` from file with given file `URI`.
    */
   def fromFile(uri: URI)(implicit codec: Codec): BufferedSource =
     fromFile(new JFile(uri))(codec)
@@ -77,15 +76,15 @@ object Source {
 
   /** same as fromFile(file, enc, Source.DefaultBufSize)
    */
-  def fromFile(file: JFile, enc: String): BufferedSource = 
+  def fromFile(file: JFile, enc: String): BufferedSource =
     fromFile(file)(Codec(enc))
 
   def fromFile(file: JFile, enc: String, bufferSize: Int): BufferedSource =
     fromFile(file, bufferSize)(Codec(enc))
 
-  /** Creates Source from <code>file</code>, using given character encoding,
-   *  setting its description to filename. Input is buffered in a buffer of
-   *  size <code>bufferSize</code>.
+  /** Creates Source from `file`, using given character encoding, setting
+   *  its description to filename. Input is buffered in a buffer of size
+   *  `bufferSize`.
    */
   def fromFile(file: JFile, bufferSize: Int)(implicit codec: Codec): BufferedSource = {
     val inputStream = new FileInputStream(file)
@@ -98,12 +97,12 @@ object Source {
     )(codec) withDescription ("file:" + file.getAbsolutePath)
   }
 
-  /** Create a <code>Source</code> from array of bytes, decoding
+  /** Create a `Source` from array of bytes, decoding
    *  the bytes according to codec.
    *
    *  @param bytes ...
    *  @param enc   ...
-   *  @return      the created <code>Source</code> instance.
+   *  @return      the created `Source` instance.
    */
   def fromBytes(bytes: Array[Byte])(implicit codec: Codec): Source =
     fromString(new String(bytes, codec.name))
@@ -111,13 +110,13 @@ object Source {
   def fromBytes(bytes: Array[Byte], enc: String): Source =
     fromBytes(bytes)(Codec(enc))
 
-  /** Create a <code>Source</code> from array of bytes, assuming
+  /** Create a `Source` from array of bytes, assuming
    *  one byte per character (ISO-8859-1 encoding.)
    */
   def fromRawBytes(bytes: Array[Byte]): Source =
     fromString(new String(bytes, Codec.ISO8859.name))
 
-  /** creates <code>Source</code> from file with given file: URI
+  /** creates `Source` from file with given file: URI
    */
   def fromURI(uri: URI)(implicit codec: Codec): BufferedSource =
     fromFile(new JFile(uri))(codec)
@@ -140,11 +139,11 @@ object Source {
   /** same as fromInputStream(url.openStream())(codec)
    */
   def fromURL(url: URL)(implicit codec: Codec): BufferedSource =
-    fromInputStream(url.openStream())(codec)  
+    fromInputStream(url.openStream())(codec)
 
   /** Reads data from inputStream with a buffered reader, using the encoding
    *  in implicit parameter codec.
-   * 
+   *
    *  @param  inputStream  the input stream from which to read
    *  @param  bufferSize   buffer size (defaults to Source.DefaultBufSize)
    *  @param  reset        a () => Source which resets the stream (if unset, reset() will throw an Exception)
@@ -160,20 +159,20 @@ object Source {
   )(implicit codec: Codec): BufferedSource = {
     // workaround for default arguments being unable to refer to other parameters
     val resetFn = if (reset == null) () => createBufferedSource(inputStream, bufferSize, reset, close)(codec) else reset
-    
+
     new BufferedSource(inputStream, bufferSize)(codec) withReset resetFn withClose close
   }
-  
+
   def fromInputStream(is: InputStream, enc: String): BufferedSource =
     fromInputStream(is)(Codec(enc))
-  
+
   def fromInputStream(is: InputStream)(implicit codec: Codec): BufferedSource =
     createBufferedSource(is, reset = () => fromInputStream(is)(codec), close = () => is.close())(codec)
 }
 
-/** The class <code>Source</code> implements an iterable representation
- *  of source data.  Calling method <code>reset</code> returns an identical,
- *  resetted source, where possible.
+/** The class `Source` implements an iterable representation of source data.
+ *  Calling method `reset` returns an identical, resetted source, where
+ *  possible.
  *
  *  @author  Burak Emir
  *  @version 1.0
@@ -186,22 +185,12 @@ abstract class Source extends Iterator[Char] {
 
   /** description of this source, default empty */
   var descr: String = ""
-
   var nerrors = 0
   var nwarnings = 0
 
-  /** Convenience method, returns given line (not including newline)
-   *  from Source.
-   *
-   *  @param line the line index, first line is 1
-   *  @return     the specified line.
-   *
-   */
-  @deprecated("Use a collections method such as getLines().toIndexedSeq for random access.")
-  def getLine(line: Int): String = lineNum(line)
-  private def lineNum(line: Int): String = getLines() drop (line - 1) next
-  
-  class LineIterator() extends Iterator[String] {
+  private def lineNum(line: Int): String = getLines() drop (line - 1) take 1 mkString
+
+  class LineIterator extends AbstractIterator[String] with Iterator[String] {
     private[this] val sb = new StringBuilder
 
     lazy val iter: BufferedIterator[Char] = Source.this.iter.buffered
@@ -234,15 +223,16 @@ abstract class Source extends Iterator[Char] {
    */
   def getLines(): Iterator[String] = new LineIterator()
 
-  /** Returns <code>true</code> if this source has more characters.
+  /** Returns `'''true'''` if this source has more characters.
    */
   def hasNext = iter.hasNext
 
   /** Returns next character.
    */
-  def next: Char = positioner.next
+  def next(): Char = positioner.next
 
-  class Positioner {
+  class Positioner(encoder: Position) {
+    def this() = this(RelaxedPosition)
     /** the last character returned by next. */
     var ch: Char = _
 
@@ -256,9 +246,9 @@ abstract class Source extends Iterator[Char] {
     /** default col increment for tabs '\t', set to 4 initially */
     var tabinc = 4
 
-    def next: Char = {
+    def next(): Char = {
       ch = iter.next
-      pos = Position.encode(cline, ccol)
+      pos = encoder.encode(cline, ccol)
       ch match {
         case '\n' =>
           ccol = 1
@@ -271,21 +261,28 @@ abstract class Source extends Iterator[Char] {
       ch
     }
   }
-  object NoPositioner extends Positioner {
-    override def next: Char = iter.next
+  /** A Position implementation which ignores errors in
+   *  the positions.
+   */
+  object RelaxedPosition extends Position {
+    def checkInput(line: Int, column: Int): Unit = ()
+  }
+  object RelaxedPositioner extends Positioner(RelaxedPosition) { }
+  object NoPositioner extends Positioner(Position) {
+    override def next(): Char = iter.next
   }
   def ch = positioner.ch
   def pos = positioner.pos
 
-  /** Reports an error message to the output stream <code>out</code>.
+  /** Reports an error message to the output stream `out`.
    *
    *  @param pos the source position (line/column)
    *  @param msg the error message to report
-   *  @param out PrintStream to use (optional: defaults to <code>Console.err</code>)
+   *  @param out PrintStream to use (optional: defaults to `Console.err`)
    */
   def reportError(
-    pos: Int, 
-    msg: String, 
+    pos: Int,
+    msg: String,
     out: PrintStream = Console.err)
   {
     nerrors += 1
@@ -308,21 +305,21 @@ abstract class Source extends Iterator[Char] {
   /**
    *  @param pos the source position (line/column)
    *  @param msg the warning message to report
-   *  @param out PrintStream to use (optional: defaults to <code>Console.out</code>)
+   *  @param out PrintStream to use (optional: defaults to `Console.out`)
    */
   def reportWarning(
-    pos: Int, 
-    msg: String, 
+    pos: Int,
+    msg: String,
     out: PrintStream = Console.out)
   {
     nwarnings += 1
     report(pos, "warning! " + msg, out)
   }
-  
+
   private[this] var resetFunction: () => Source = null
   private[this] var closeFunction: () => Unit = null
-  private[this] var positioner: Positioner = new Positioner
-  
+  private[this] var positioner: Positioner = RelaxedPositioner
+
   def withReset(f: () => Source): this.type = {
     resetFunction = f
     this
@@ -335,10 +332,13 @@ abstract class Source extends Iterator[Char] {
     descr = text
     this
   }
-  // we'd like to default to no positioning, but for now we break
-  // less by defaulting to status quo.
+  /** Change or disable the positioner. */
   def withPositioning(on: Boolean): this.type = {
-    positioner = if (on) new Positioner else NoPositioner
+    positioner = if (on) RelaxedPositioner else NoPositioner
+    this
+  }
+  def withPositioning(pos: Positioner): this.type = {
+    positioner = pos
     this
   }
 
@@ -348,7 +348,7 @@ abstract class Source extends Iterator[Char] {
   }
 
   /** The reset() method creates a fresh copy of this Source. */
-  def reset(): Source = 
+  def reset(): Source =
     if (resetFunction != null) resetFunction()
     else throw new UnsupportedOperationException("Source's reset() method was not set.")
 }
