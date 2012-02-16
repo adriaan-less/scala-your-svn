@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2002-2010 LAMP/EPFL
+ * Copyright 2002-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
@@ -13,8 +13,6 @@ import scala.tools.util.AbstractTimer
  * timings.
  */
 class ReporterTimer(reporter: Reporter) extends AbstractTimer {
-
   def issue(msg: String, duration: Long) =
     reporter.info(null, "[" + msg + " in " + duration + "ms]", false)
-
 }
