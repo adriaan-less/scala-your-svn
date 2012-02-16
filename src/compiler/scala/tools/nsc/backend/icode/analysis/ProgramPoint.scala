@@ -1,9 +1,8 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
@@ -15,4 +14,5 @@ package backend.icode.analysis
 trait ProgramPoint[a <: ProgramPoint[a]] {
   def predecessors: List[a]
   def successors: List[a]
+  def exceptionHandlerStart: Boolean
 }
