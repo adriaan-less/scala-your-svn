@@ -49,7 +49,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
   /**
-   * Adds a new field to the class, with the given name, attributes and (field type , custom mods) combination. 
+   * Adds a new field to the class, with the given name, attributes and (field type , custom mods) combination.
    */
   def DefineField(name: String, fieldTypeWithMods: PECustomMod, attrs: Short): FieldBuilder = {
     val field: FieldBuilder = new FieldBuilder(name, this, attrs, fieldTypeWithMods)
@@ -58,7 +58,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
   }
 
     /**
-     * Adds a new method to the class, with the given name and 
+     * Adds a new method to the class, with the given name and
      * method signature.
      */
     def DefineMethod(name: String, attrs: Short, returnType: Type, paramTypes: Array[Type]): MethodBuilder = {
@@ -75,7 +75,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Adds a new constructor to the class, with the given attributes 
+     * Adds a new constructor to the class, with the given attributes
      * and signature.
      */
     def DefineConstructor(attrs: Short, callingConvention: Short, paramTypes: Array[Type]): ConstructorBuilder = {
@@ -138,7 +138,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Searches for the specified public method whose parameters 
+     * Searches for the specified public method whose parameters
      * match the specified argument types.
      */
     override def GetMethod(name: String, params: Array[Type]): MethodInfo = {
@@ -222,7 +222,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
 object TypeBuilder {
     def types2String(types: Array[Type]): String = {
     var s = new StringBuffer("(")
-    for(val i <- 0 until types.length) {
+    for(i <- 0 until types.length) {
         if (i > 0) s.append(", ")
         s.append(types(i))
     }
@@ -239,7 +239,7 @@ object TypeBuilder {
     val p2 = m2.GetParameters()
     if (p1.length != p2.length)
         return false
-    for(val i <- 0 until p1.length)
+    for(i <- 0 until p1.length)
         if (p1(i).ParameterType != p2(i).ParameterType)
         return false
     return true
@@ -252,7 +252,7 @@ object TypeBuilder {
       val p2 = c2.GetParameters()
       if (p1.length != p2.length)
           return false
-      for(val i <- 0 until p1.length)
+      for(i <- 0 until p1.length)
           if (p1(i).ParameterType != p2(i).ParameterType)
           return false
       return true
