@@ -1,30 +1,32 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
 
 import symtab.Flags._
-import scala.tools.nsc.util.{Position,NoPosition}
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{LinkedHashSet, Set}
+import annotation.tailrec
 
-/** This trait ...
- *
+/**
  *  @author  Martin Odersky
- *  @version 1.0 
+ *  @version 1.0
  */
 trait Contexts { self: Analyzer =>
   import global._
 
-  val NoContext = new Context {
-    override def implicitss: List[List[ImplicitInfo]] = List()
-    outer = this
+  object NoContext extends Context {
+    outer      = this
+    enclClass  = this
+    enclMethod = this
+    
+    override def nextEnclosing(p: Context => Boolean): Context = this
+    override def enclosingContextChain: List[Context] = Nil
+    override def implicitss: List[List[ImplicitInfo]] = Nil
+    override def toString = "NoContext"
   }
-  NoContext.enclClass = NoContext
-  NoContext.enclMethod = NoContext
 
   private val startContext = {
     NoContext.make(
@@ -33,48 +35,38 @@ trait Contexts { self: Analyzer =>
     global.definitions.RootClass.info.decls)
   }
 
-  /** List of objects and packages to import from in
-   *  a root context.  This list is sensitive to the
-   *  compiler settings.
+  var lastAccessCheckDetails: String = ""
+
+  /** List of symbols to import from in a root context.  Typically that
+   *  is `java.lang`, `scala`, and [[scala.Predef]], in that order.  Exceptions:
+   *
+   *  - if option `-Yno-imports` is given, nothing is imported
+   *  - if the unit is java defined, only `java.lang` is imported
+   *  - if option `-Yno-predef` is given, if the unit body has an import of Predef
+   *    among its leading imports, or if the tree is [[scala.ScalaObject]]
+   *    or [[scala.Predef]], `Predef` is not imported.
    */
-  protected def rootImports(unit: CompilationUnit, tree: Tree): List[Symbol] = {
+  protected def rootImports(unit: CompilationUnit): List[Symbol] = {
     import definitions._
-    val imps = new ListBuffer[Symbol]
-    if (!settings.noimports.value) {
-      assert(isDefinitionsInitialized)
-      imps += JavaLangPackage
-      if (!unit.isJava) {
-        assert(ScalaPackage ne null, "Scala package is null")
-        imps += ScalaPackage
-        if (!(treeInfo.isUnitInScala(unit.body, nme.Predef) ||
-              treeInfo.isUnitInScala(unit.body, nme.ScalaObject) ||
-              treeInfo.containsLeadingPredefImport(List(unit.body))))
-          imps += PredefModule
-      }
-    }
-    imps.toList
+    assert(isDefinitionsInitialized, "definitions uninitialized")
+
+    if (settings.noimports.value) Nil
+    else if (unit.isJava) List(JavaLangPackage)
+    else if (settings.nopredef.value || treeInfo.noPredefImportForUnit(unit.body)) List(JavaLangPackage, ScalaPackage)
+    else List(JavaLangPackage, ScalaPackage, PredefModule)
   }
 
-  def rootContext(unit: CompilationUnit): Context =
-    rootContext(unit, EmptyTree, false)
-
+  def rootContext(unit: CompilationUnit): Context             = rootContext(unit, EmptyTree, false)
+  def rootContext(unit: CompilationUnit, tree: Tree): Context = rootContext(unit, tree, false)
   def rootContext(unit: CompilationUnit, tree: Tree, erasedTypes: Boolean): Context = {
     import definitions._
     var sc = startContext
-    def addImport(pkg: Symbol) {
-      assert(pkg ne null)
-      val qual = gen.mkAttributedStableRef(pkg)
-      sc = sc.makeNewImport(
-        Import(qual, List(ImportSelector(nme.WILDCARD, -1, null, -1)))
-        .setSymbol(NoSymbol.newImport(NoPosition).setFlag(SYNTHETIC).setInfo(ImportType(qual)))
-        .setType(NoType))
+    for (sym <- rootImports(unit)) {
+      sc = sc.makeNewImport(sym)
       sc.depth += 1
     }
-    for (imp <- rootImports(unit, tree))
-      addImport(imp)
     val c = sc.make(unit, tree, sc.owner, sc.scope, sc.imports)
-    c.reportAmbiguousErrors = !erasedTypes
-    c.reportGeneralErrors = !erasedTypes
+    if (erasedTypes) c.setThrowErrors() else c.setReportErrors()
     c.implicitsEnabled = !erasedTypes
     c
   }
@@ -89,10 +81,21 @@ trait Contexts { self: Analyzer =>
       sc = sc.outer
     }
   }
+
+  private object Errors {
+    final val ReportErrors     = 1 << 0
+    final val BufferErrors     = 1 << 1
+    final val AmbiguousErrors  = 1 << 2
+    final val notThrowMask     = ReportErrors | BufferErrors
+    final val AllMask          = ReportErrors | BufferErrors | AmbiguousErrors
+  }
+
   class Context private[typechecker] {
-    var unit: CompilationUnit = _
-    var tree: Tree = _ // Tree associated with this context
-    var owner: Symbol = NoSymbol// The current owner
+    import Errors._
+
+    var unit: CompilationUnit = NoCompilationUnit
+    var tree: Tree = _                      // Tree associated with this context
+    var owner: Symbol = NoSymbol            // The current owner
     var scope: Scope = _                    // The current scope
     var outer: Context = _                  // The next outer context
     var enclClass: Context = _              // The next outer context whose tree is a
@@ -103,7 +106,7 @@ trait Contexts { self: Analyzer =>
                                                     // not inherited to child contexts
     var depth: Int = 0
     var imports: List[ImportInfo] = List()   // currently visible imports
-    var openImplicits: List[Type] = List()   // types for which implicit arguments
+    var openImplicits: List[(Type,Symbol)] = List()   // types for which implicit arguments
                                              // are currently searched
     // for a named application block (Tree) the corresponding NamedApplyInfo
     var namedApplyBlockInfo: Option[(Tree, NamedApplyInfo)] = None
@@ -111,9 +114,10 @@ trait Contexts { self: Analyzer =>
     var inConstructorSuffix = false         // are we in a secondary constructor
                                             // after the this constructor call?
     var returnsSeen = false                 // for method context: were returns encountered?
-    var inSelfSuperCall = false             // is this a context for a constructor self or super call?
-    var reportAmbiguousErrors = false
-    var reportGeneralErrors = false
+    var inSelfSuperCall = false             // is this context (enclosed in) a constructor call?
+    // (the call to the super or self constructor in the first line of a constructor)
+    // in this context the object's fields should not be in scope
+
     var diagnostic: List[String] = Nil      // these messages are printed when issuing an error
     var implicitsEnabled = false
     var checking = false
@@ -122,45 +126,18 @@ trait Contexts { self: Analyzer =>
     var savedTypeBounds: List[(Symbol, Type)] = List() // saved type bounds
        // for type parameters which are narrowed in a GADT
 
-    def intern0 : Context = {
-      if (this eq NoContext) return this
-      val txt = new Context
-      txt.unit = unit
-      txt.tree = tree
-      txt.owner = owner
-      txt.scope = scope
-      assert(outer ne this) // stupid
-      txt.outer = outer // already interned
-      def fix(what : Context) = 
-        if (what eq this) txt
-        else what
-      txt.enclClass = fix(enclClass)
-      txt.enclMethod = fix(enclMethod)
-      txt.implicitsEnabled = implicitsEnabled
-      txt.variance = variance
-      txt._undetparams = _undetparams
-      txt.depth = depth
-      txt.imports = imports
-      txt.openImplicits = openImplicits
-      txt.prefix = prefix
-      txt.inConstructorSuffix = inConstructorSuffix
-      txt.returnsSeen = returnsSeen
-      txt.reportGeneralErrors = reportGeneralErrors
-      txt.checking = checking
-      txt.retyping = retyping
-      txt.savedTypeBounds = savedTypeBounds
-      txt
-    }
-    override def equals(that: Any): Boolean = that match {
-      case that: AnyRef if this eq that => true
-      case that                         => super.equals(that)
-    }
+    var typingIndentLevel: Int = 0
+    def typingIndent = "  " * typingIndentLevel
 
+    def enclClassOrMethod: Context =
+      if ((owner eq NoSymbol) || (owner.isClass) || (owner.isMethod)) this
+      else outer.enclClassOrMethod
+
+    def undetparamsString =
+      if (undetparams.isEmpty) ""
+      else undetparams.mkString("undetparams=", ", ", "")
     def undetparams = _undetparams
-    def undetparams_=(ps: List[Symbol]) = {
-      //System.out.println("undetparams = " + ps);//debug
-      _undetparams = ps
-    }
+    def undetparams_=(ps: List[Symbol]) = { _undetparams = ps }
 
     def extractUndetparams() = {
       val tparams = undetparams
@@ -168,35 +145,65 @@ trait Contexts { self: Analyzer =>
       tparams
     }
 
-    /**
-     *  @param unit    ...
-     *  @param tree    ...
-     *  @param owner   ...
-     *  @param scope   ...
-     *  @param imports ...
-     *  @return        ...
-     */
+    private[this] var mode = 0
+    private[this] val buffer = LinkedHashSet[AbsTypeError]()
+
+    def errBuffer = buffer
+    def hasErrors = buffer.nonEmpty
+
+    def state: Int = mode
+    def restoreState(state0: Int) = mode = state0
+
+    def reportErrors    = (state & ReportErrors)     != 0
+    def bufferErrors    = (state & BufferErrors)     != 0
+    def ambiguousErrors = (state & AmbiguousErrors)  != 0
+    def throwErrors     = (state & notThrowMask)     == 0
+
+    def setReportErrors()    = mode = (ReportErrors | AmbiguousErrors)
+    def setBufferErrors()    = {
+      assert(bufferErrors || !hasErrors, "When entering the buffer state, context has to be clean. Current buffer: " + buffer)
+      mode = BufferErrors
+    }
+    def setThrowErrors()     = mode &= (~AllMask)
+    def setAmbiguousErrors(report: Boolean) = if (report) mode |= AmbiguousErrors else mode &= notThrowMask
+
+    def updateBuffer(errors: Set[AbsTypeError]) = buffer ++= errors
+    def condBufferFlush(removeP: AbsTypeError => Boolean) {
+      val elems = buffer.filter(removeP)
+      buffer --= elems
+    }
+    def flushBuffer() { buffer.clear() }
+    def flushAndReturnBuffer(): Set[AbsTypeError] = {
+      val current = buffer.clone()
+      buffer.clear()
+      current
+    }
+    
+    def logError(err: AbsTypeError) = buffer += err
+
+    def withImplicitsDisabled[T](op: => T): T = {
+      val saved = implicitsEnabled
+      implicitsEnabled = false
+      try op
+      finally implicitsEnabled = saved
+    }
+
     def make(unit: CompilationUnit, tree: Tree, owner: Symbol,
              scope: Scope, imports: List[ImportInfo]): Context = {
-      val c = new Context
-      c.unit = unit
-      c.tree = sanitize(tree)
+      val c   = new Context
+      c.unit  = unit
+      c.tree  = tree
       c.owner = owner
       c.scope = scope
-      
-      c.outer = intern(this)
-      def internIf(txt : Context) = {
-        if (txt eq this) c.outer // already interned!
-        else txt
-      }
-      
+      c.outer = this
+
       tree match {
         case Template(_, _, _) | PackageDef(_, _) =>
           c.enclClass = c
           c.prefix = c.owner.thisType
           c.inConstructorSuffix = false
         case _ =>
-          c.enclClass = internIf(this.enclClass)
+          c.enclClass = this.enclClass
           c.prefix =
             if (c.owner != this.owner && c.owner.isTerm) NoPrefix
             else this.prefix
@@ -206,46 +213,48 @@ trait Contexts { self: Analyzer =>
         case DefDef(_, _, _, _, _, _) =>
           c.enclMethod = c
         case _ =>
-          c.enclMethod = internIf(this.enclMethod)
+          c.enclMethod = this.enclMethod
       }
       c.variance = this.variance
       c.depth = if (scope == this.scope) this.depth else this.depth + 1
       c.imports = imports
-      c.reportAmbiguousErrors = this.reportAmbiguousErrors
-      c.reportGeneralErrors = this.reportGeneralErrors
+      c.inSelfSuperCall = inSelfSuperCall
+      c.restoreState(this.state)
       c.diagnostic = this.diagnostic
+      c.typingIndentLevel = typingIndentLevel
       c.implicitsEnabled = this.implicitsEnabled
       c.checking = this.checking
       c.retyping = this.retyping
       c.openImplicits = this.openImplicits
       registerContext(c.asInstanceOf[analyzer.Context])
+      debuglog("[context] ++ " + c.unit + " / " + tree.summaryString)
       c
     }
 
+    // TODO: remove? Doesn't seem to be used
     def make(unit: CompilationUnit): Context = {
       val c = make(unit, EmptyTree, owner, scope, imports)
-      c.reportAmbiguousErrors = true
-      c.reportGeneralErrors = true
+      c.setReportErrors()
       c.implicitsEnabled = true
       c
     }
+    
+    def makeNewImport(sym: Symbol): Context =
+      makeNewImport(gen.mkWildcardImport(sym))
 
     def makeNewImport(imp: Import): Context =
       make(unit, imp, owner, scope, new ImportInfo(imp, depth) :: imports)
-      
-      
 
-    def make(tree: Tree, owner: Symbol, scope: Scope): Context = {
+    def make(tree: Tree, owner: Symbol, scope: Scope): Context =
       if (tree == this.tree && owner == this.owner && scope == this.scope) this
       else make0(tree, owner, scope)
-    }
-    private def make0(tree : Tree, owner : Symbol, scope : Scope) : Context = {
+
+    private def make0(tree: Tree, owner: Symbol, scope: Scope): Context =
       make(unit, tree, owner, scope, imports)
-    }
 
     def makeNewScope(tree: Tree, owner: Symbol): Context =
-      make(tree, owner, new Scope(scope))
-    // IDE stuff: distinguish between scopes created for typing and scopes created for naming. 
+      make(tree, owner, newNestedScope(scope))
+    // IDE stuff: distinguish between scopes created for typing and scopes created for naming.
 
     def make(tree: Tree, owner: Symbol): Context =
       make0(tree, owner, scope)
@@ -253,10 +262,10 @@ trait Contexts { self: Analyzer =>
     def make(tree: Tree): Context =
       make(tree, owner)
 
-    def makeSilent(reportAmbiguousErrors: Boolean): Context = {
-      val c = make(tree)
-      c.reportGeneralErrors = false
-      c.reportAmbiguousErrors = reportAmbiguousErrors
+    def makeSilent(reportAmbiguousErrors: Boolean, newtree: Tree = tree): Context = {
+      val c = make(newtree)
+      c.setBufferErrors()
+      c.setAmbiguousErrors(reportAmbiguousErrors)
       c
     }
 
@@ -268,13 +277,11 @@ trait Contexts { self: Analyzer =>
 
     def makeConstructorContext = {
       var baseContext = enclClass.outer
-      //todo: find out why we need next line
       while (baseContext.tree.isInstanceOf[Template])
         baseContext = baseContext.outer
       val argContext = baseContext.makeNewScope(tree, owner)
       argContext.inSelfSuperCall = true
-      argContext.reportGeneralErrors = this.reportGeneralErrors
-      argContext.reportAmbiguousErrors = this.reportAmbiguousErrors
+      argContext.restoreState(this.state)
       def enterElems(c: Context) {
         def enterLocalElems(e: ScopeEntry) {
           if (e != null && e.owner == c.scope) {
@@ -291,112 +298,141 @@ trait Contexts { self: Analyzer =>
       argContext
     }
 
-    //todo: remove
-    def makeConstructorSuffixContext = {
-      val c = make(tree)
-      c.inConstructorSuffix = true
-      c
+    private def addDiagString(msg: String) = {
+      val ds =
+        if (diagnostic.isEmpty) ""
+        else diagnostic.mkString("\n","\n", "")
+      if (msg endsWith ds) msg else msg + ds
     }
 
-    private def diagString =
-      if (diagnostic.isEmpty) ""
-      else diagnostic.mkString("\n","\n", "")
+    private def unitError(pos: Position, msg: String) =
+      unit.error(pos, if (checking) "\n**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
 
-    def error(pos: Position, err: Error) {
-      val msg = err.getMessage() + diagString
-      if (reportGeneralErrors)
-        unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg else msg)
-      else
-        throw err
+    def issue(err: AbsTypeError) {
+      if (reportErrors) unitError(err.errPos, addDiagString(err.errMsg))
+      else if (bufferErrors) { buffer += err }
+      else throw new TypeError(err.errPos, err.errMsg)
     }
 
-    def error(pos: Position, msg: String) {
-      val msg1 = msg + diagString
-      if (reportGeneralErrors)
-        unit.error(pos, if (checking) "**** ERROR DURING INTERNAL CHECKING ****\n" + msg1 else msg1)
-      else
-        throw new TypeError(pos, msg1)
-    }
-
-    def warning(pos:  Position, msg: String) {
-      if (reportGeneralErrors) unit.warning(pos, msg)
-    }
- 
-    /**
-     *  @param pos  ...
-     *  @param pre  ...
-     *  @param sym1 ...
-     *  @param sym2 ...
-     *  @param rest ...
-     */
-    def ambiguousError(pos: Position, pre: Type, sym1: Symbol,
-                       sym2: Symbol, rest: String) {
-      val msg =
-        ("ambiguous reference to overloaded definition,\n" +
-         "both " + sym1 + sym1.locationString + " of type " + pre.memberType(sym1) +
-         "\nand  " + sym2 + sym2.locationString + " of type " + pre.memberType(sym2) +
-         "\nmatch " + rest)
-      if (reportAmbiguousErrors) {
+    def issueAmbiguousError(pre: Type, sym1: Symbol, sym2: Symbol, err: AbsTypeError) {
+      if (ambiguousErrors) {
         if (!pre.isErroneous && !sym1.isErroneous && !sym2.isErroneous)
-          unit.error(pos, msg)
-      } else throw new TypeError(pos, msg)
+          unitError(err.errPos, err.errMsg)
+      } else if (bufferErrors) { buffer += err }
+      else throw new TypeError(err.errPos, err.errMsg)
     }
 
-    def outerContext(clazz: Symbol): Context = {
-      var c = this
-      while (c != NoContext && c.owner != clazz) c = c.outer.enclClass
-      c
+    def issueAmbiguousError(err: AbsTypeError) {
+      if (ambiguousErrors)
+        unitError(err.errPos, addDiagString(err.errMsg))
+      else if (bufferErrors) { buffer += err }
+      else throw new TypeError(err.errPos, err.errMsg)
+    }
+
+    // TODO remove
+    def error(pos: Position, err: Throwable) =
+      if (reportErrors) unitError(pos, addDiagString(err.getMessage()))
+      else throw err
+
+    def error(pos: Position, msg: String) = {
+      val msg1 = addDiagString(msg)
+      if (reportErrors) unitError(pos, msg1)
+      else throw new TypeError(pos, msg1)
+    }
+
+    def warning(pos: Position, msg: String): Unit = warning(pos, msg, false)
+    def warning(pos: Position, msg: String, force: Boolean) {
+      if (reportErrors || force) unit.warning(pos, msg)
     }
 
     def isLocal(): Boolean = tree match {
-      case Block(_,_) => true
+      case Block(_,_)       => true
       case PackageDef(_, _) => false
-      case EmptyTree => false
-      case _ => outer.isLocal()
+      case EmptyTree        => false
+      case _                => outer.isLocal()
+    }
+
+    // nextOuter determines which context is searched next for implicits
+    // (after `this`, which contributes `newImplicits` below.) In
+    // most cases, it is simply the outer context: if we're owned by
+    // a constructor, the actual current context and the conceptual
+    // context are different when it comes to scoping. The current
+    // conceptual scope is the context enclosing the blocks which
+    // represent the constructor body (TODO: why is there more than one
+    // such block in the outer chain?)
+    private def nextOuter = {
+      // Drop the constructor body blocks, which come in varying numbers.
+      // -- If the first statement is in the constructor, scopingCtx == (constructor definition)
+      // -- Otherwise, scopingCtx == (the class which contains the constructor)
+      val scopingCtx =
+        if (owner.isConstructor) nextEnclosing(c => !c.tree.isInstanceOf[Block])
+        else this
+
+      scopingCtx.outer
     }
 
     def nextEnclosing(p: Context => Boolean): Context =
-      if (this == NoContext || p(this)) this else outer.nextEnclosing(p)
+      if (p(this)) this else outer.nextEnclosing(p)
 
-    override def toString(): String = {
-      if (this == NoContext) "NoContext"
-      else owner.toString() + " @ " + tree.getClass() +
-           " " + tree.toString() + ", scope = " + scope.hashCode() +
-           " " + scope.toList + "\n:: " + outer.toString()
-    }
+    def enclosingContextChain: List[Context] = this :: outer.enclosingContextChain
 
-    /** Return closest enclosing context that defines a superclass of `clazz', or a 
-     *  companion module of a superclass of `clazz', or NoContext if none exists */
+    override def toString = "Context(%s@%s unit=%s scope=%s errors=%b)".format(
+      owner.fullName, tree.shortClass, unit, scope.##, hasErrors
+    )
+    /** Is `sub` a subclass of `base` or a companion object of such a subclass?
+     */
+    def isSubClassOrCompanion(sub: Symbol, base: Symbol) =
+      sub.isNonBottomSubClass(base) ||
+      sub.isModuleClass && sub.linkedClassOfClass.isNonBottomSubClass(base)
+
+    /** Return closest enclosing context that defines a superclass of `clazz`, or a
+     *  companion module of a superclass of `clazz`, or NoContext if none exists */
     def enclosingSuperClassContext(clazz: Symbol): Context = {
       var c = this.enclClass
-      while (c != NoContext && 
+      while (c != NoContext &&
              !clazz.isNonBottomSubClass(c.owner) &&
-             !(c.owner.isModuleClass && clazz.isNonBottomSubClass(c.owner.linkedClassOfModule)))
+             !(c.owner.isModuleClass && clazz.isNonBottomSubClass(c.owner.companionClass)))
         c = c.outer.enclClass
       c
     }
 
-    /** Return closest enclosing context that defines a subclass of `clazz', or NoContext
-     *  if none exists */
+    /** Return the closest enclosing context that defines a subclass of `clazz`
+     *  or a companion object thereof, or `NoContext` if no such context exists.
+     */
     def enclosingSubClassContext(clazz: Symbol): Context = {
       var c = this.enclClass
-      while (c != NoContext && !c.owner.isNonBottomSubClass(clazz))
+      while (c != NoContext && !isSubClassOrCompanion(c.owner, clazz))
         c = c.outer.enclClass
       c
     }
 
-    /** Is <code>sym</code> accessible as a member of tree `site' with type
-     *  <code>pre</code> in current context?
-     *
-     *  @param sym         ...
-     *  @param pre         ...
-     *  @param superAccess ...
-     *  @return            ...
+    /** Is `sym` accessible as a member of tree `site` with type
+     *  `pre` in current context?
      */
-    def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean): Boolean = {
+    def isAccessible(sym: Symbol, pre: Type, superAccess: Boolean = false): Boolean = {
+      lastAccessCheckDetails = ""
+      // Console.println("isAccessible(%s, %s, %s)".format(sym, pre, superAccess))
 
-      /** Are we inside definition of `sym'? */
-      def accessWithin(sym: Symbol): Boolean = this.owner.ownersIterator contains sym
+      @inline def accessWithinLinked(ab: Symbol) = {
+        val linked = ab.linkedClassOfClass
+        // don't have access if there is no linked class
+        // (before adding the `ne NoSymbol` check, this was a no-op when linked eq NoSymbol,
+        //  since `accessWithin(NoSymbol) == true` whatever the symbol)
+        (linked ne NoSymbol) && accessWithin(linked)
+      }
+
+      /** Are we inside definition of `ab`? */
+      def accessWithin(ab: Symbol) = {
+        // #3663: we must disregard package nesting if sym isJavaDefined
+        if (sym.isJavaDefined) {
+          // is `o` or one of its transitive owners equal to `ab`?
+          // stops at first package, since further owners can only be surrounding packages
+          @tailrec def abEnclosesStopAtPkg(o: Symbol): Boolean =
+            (o eq ab) || (!o.isPackageClass && (o ne NoSymbol) && abEnclosesStopAtPkg(o.owner))
+          abEnclosesStopAtPkg(owner)
+        } else (owner hasTransOwner ab)
+      }
+
 /*
         var c = this
         while (c != NoContext && c.owner != owner) {
@@ -407,7 +443,7 @@ trait Contexts { self: Analyzer =>
         c != NoContext
       }
 */
-      /** Is `clazz' a subclass of an enclosing class? */
+      /** Is `clazz` a subclass of an enclosing class? */
       def isSubClassOfEnclosing(clazz: Symbol): Boolean =
         enclosingSuperClassContext(clazz) != NoContext
 
@@ -416,19 +452,51 @@ trait Contexts { self: Analyzer =>
         case _ => false
       }
 
+      /** Is protected access to target symbol permitted */
+      def isProtectedAccessOK(target: Symbol) = {
+        val c = enclosingSubClassContext(sym.owner)
+        if (c == NoContext)
+          lastAccessCheckDetails =
+            "\n Access to protected "+target+" not permitted because"+
+            "\n "+"enclosing "+this.enclClass.owner+
+            this.enclClass.owner.locationString+" is not a subclass of "+
+            "\n "+sym.owner+sym.owner.locationString+" where target is defined"
+        c != NoContext &&
+        {
+          target.isType || { // allow accesses to types from arbitrary subclasses fixes #4737
+            val res =
+              isSubClassOrCompanion(pre.widen.typeSymbol, c.owner) ||
+              c.owner.isModuleClass &&
+              isSubClassOrCompanion(pre.widen.typeSymbol, c.owner.linkedClassOfClass)
+            if (!res)
+              lastAccessCheckDetails =
+                "\n Access to protected "+target+" not permitted because"+
+                "\n prefix type "+pre.widen+" does not conform to"+
+                "\n "+c.owner+c.owner.locationString+" where the access take place"
+              res
+          }
+        }
+      }
+
       (pre == NoPrefix) || {
         val ab = sym.accessBoundary(sym.owner)
-        ((ab.isTerm || ab == definitions.RootClass)
-         ||
-         (accessWithin(ab) || accessWithin(ab.linkedClassOfClass)) &&
-         (!sym.hasFlag(LOCAL) || 
-          (sym hasFlag PROTECTED) && isSubThisType(pre, sym.owner) ||
-          pre =:= sym.owner.thisType)
-         ||
-         (sym hasFlag PROTECTED) &&
-         (superAccess ||
-          (pre.widen.typeSymbol.isNonBottomSubClass(sym.owner) && 
-           (isSubClassOfEnclosing(pre.widen.typeSymbol) || phase.erasedTypes))))
+
+        (  (ab.isTerm || ab == definitions.RootClass)
+        || (accessWithin(ab) || accessWithinLinked(ab)) &&
+             (  !sym.hasLocalFlag
+             || sym.owner.isImplClass // allow private local accesses to impl classes
+             || sym.isProtected && isSubThisType(pre, sym.owner)
+             || pre =:= sym.owner.thisType
+             )
+        || sym.isProtected &&
+             (  superAccess
+             || pre.isInstanceOf[ThisType]
+             || phase.erasedTypes
+             || isProtectedAccessOK(sym)
+             || (sym.allOverriddenSymbols exists isProtectedAccessOK)
+                // that last condition makes protected access via self types work.
+             )
+        )
         // note: phase.erasedTypes disables last test, because after addinterfaces
         // implementation classes are not in the superclass chain. If we enable the
         // test, bug780 fails.
@@ -436,17 +504,17 @@ trait Contexts { self: Analyzer =>
     }
 
     def pushTypeBounds(sym: Symbol) {
-      savedTypeBounds = (sym, sym.info) :: savedTypeBounds
+      savedTypeBounds ::= ((sym, sym.info))
     }
 
     def restoreTypeBounds(tp: Type): Type = {
       var current = tp
       for ((sym, info) <- savedTypeBounds) {
-        if (settings.debug.value) log("resetting " + sym + " to " + info);
+        debuglog("resetting " + sym + " to " + info);
         sym.info match {
-          case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) => 
+          case TypeBounds(lo, hi) if (hi <:< lo && lo <:< hi) =>
             current = current.instantiateTypeParams(List(sym), List(lo))
-//@M TODO: when higher-kinded types are inferred, probably need a case PolyType(_, TypeBounds(...)) if ... =>            
+//@M TODO: when higher-kinded types are inferred, probably need a case PolyType(_, TypeBounds(...)) if ... =>
           case _ =>
         }
         sym.setInfo(info)
@@ -457,159 +525,148 @@ trait Contexts { self: Analyzer =>
 
     private var implicitsCache: List[List[ImplicitInfo]] = null
     private var implicitsRunId = NoRunId
-    
-    def resetCache : Unit = {
+
+    def resetCache() {
       implicitsRunId = NoRunId
       implicitsCache = null
-      if (outer != null && outer != this) outer.resetCache
+      if (outer != null && outer != this) outer.resetCache()
     }
-    private def collectImplicits(syms: List[Symbol], pre: Type): List[ImplicitInfo] =
-      for (sym <- syms if sym.hasFlag(IMPLICIT) && isAccessible(sym, pre, false))
-      yield new ImplicitInfo(sym.name, pre, sym)
+
+    /** A symbol `sym` qualifies as an implicit if it has the IMPLICIT flag set,
+     *  it is accessible, and if it is imported there is not already a local symbol
+     *  with the same names. Local symbols override imported ones. This fixes #2866.
+     */
+    private def isQualifyingImplicit(sym: Symbol, pre: Type, imported: Boolean) =
+      sym.isImplicit &&
+      isAccessible(sym, pre) &&
+      !(imported && {
+        val e = scope.lookupEntry(sym.name)
+        (e ne null) && (e.owner == scope)
+      })
+
+    private def collectImplicits(syms: List[Symbol], pre: Type, imported: Boolean = false): List[ImplicitInfo] =
+      for (sym <- syms if isQualifyingImplicit(sym, pre, imported)) yield
+        new ImplicitInfo(sym.name, pre, sym)
 
     private def collectImplicitImports(imp: ImportInfo): List[ImplicitInfo] = {
       val pre = imp.qual.tpe
       def collect(sels: List[ImportSelector]): List[ImplicitInfo] = sels match {
-        case List() => List()
-        case List(ImportSelector(nme.WILDCARD, _, _, _)) => collectImplicits(pre.implicitMembers, pre)
-        case ImportSelector(from, _, to, _) :: sels1 => 
+        case List() =>
+          List()
+        case List(ImportSelector(nme.WILDCARD, _, _, _)) =>
+          collectImplicits(pre.implicitMembers, pre, imported = true)
+        case ImportSelector(from, _, to, _) :: sels1 =>
           var impls = collect(sels1) filter (info => info.name != from)
           if (to != nme.WILDCARD) {
             for (sym <- imp.importedSymbol(to).alternatives)
-              if (sym.hasFlag(IMPLICIT) && isAccessible(sym, pre, false)) 
+              if (isQualifyingImplicit(sym, pre, imported = true))
                 impls = new ImplicitInfo(to, pre, sym) :: impls
           }
           impls
       }
-      if (settings.debug.value)
-        log("collect implicit imports " + imp + "=" + collect(imp.tree.selectors))//debug
+      //debuglog("collect implicit imports " + imp + "=" + collect(imp.tree.selectors))//DEBUG
       collect(imp.tree.selectors)
     }
 
     def implicitss: List[List[ImplicitInfo]] = {
-      val nextOuter = 
-        if (owner.isConstructor) {
-          if (outer.tree.isInstanceOf[Template]) outer.outer.outer
-          else outer.outer.outer
-        } else outer
-        // can we can do something smarter to bring back the implicit cache?
       if (implicitsRunId != currentRunId) {
         implicitsRunId = currentRunId
         implicitsCache = List()
         val newImplicits: List[ImplicitInfo] =
           if (owner != nextOuter.owner && owner.isClass && !owner.isPackageClass && !inSelfSuperCall) {
             if (!owner.isInitialized) return nextOuter.implicitss
-            if (settings.debug.value)
-              log("collect member implicits " + owner + ", implicit members = " +
-                  owner.thisType.implicitMembers)//debug
+            // debuglog("collect member implicits " + owner + ", implicit members = " + owner.thisType.implicitMembers)//DEBUG
             val savedEnclClass = enclClass
             this.enclClass = this
             val res = collectImplicits(owner.thisType.implicitMembers, owner.thisType)
             this.enclClass = savedEnclClass
             res
           } else if (scope != nextOuter.scope && !owner.isPackageClass) {
-            if (settings.debug.value)
-              log("collect local implicits " + scope.toList)//debug
+            debuglog("collect local implicits " + scope.toList)//DEBUG
             collectImplicits(scope.toList, NoPrefix)
           } else if (imports != nextOuter.imports) {
-            assert(imports.tail == nextOuter.imports)
+            assert(imports.tail == nextOuter.imports, (imports, nextOuter.imports))
             collectImplicitImports(imports.head)
+          } else if (owner.isPackageClass) {
+            // the corresponding package object may contain implicit members.
+            collectImplicits(owner.tpe.implicitMembers, owner.tpe)
           } else List()
         implicitsCache = if (newImplicits.isEmpty) nextOuter.implicitss
                          else newImplicits :: nextOuter.implicitss
       }
       implicitsCache
     }
-    override def hashCode = {
-      var hc = 0
-      implicit def b2i(b : Boolean) = if (b) 1 else 0
-      // assum enclClass/enclMethod/outer are all interned already.
-      hc += tree.hashCodeStructure
-      def f(txt : Context) = if (txt eq this) 0 else System.identityHashCode(txt)
-      hc += f(enclClass)
-      hc += f(enclMethod)
-      hc += f(outer)
-      hc += owner.hashCode
-      hc += scope.hashCode
-      hc += variance.hashCode
-      hc += _undetparams.hashCode
-      hc += depth
-      hc += imports.hashCode
-      hc += prefix.hashCode
-      hc += inConstructorSuffix
-      hc += checking
-      hc += retyping
-      hc += savedTypeBounds.hashCode
-      hc += (if (unit eq null) 0 else unit.hashCode)
-      hc
+
+    /**
+     * Find a symbol in this context or one of its outers.
+     *
+     * Used to find symbols are owned by methods (or fields), they can't be
+     * found in some scope.
+     *
+     * Examples: companion module of classes owned by a method, default getter
+     * methods of nested methods. See NamesDefaults.scala
+     */
+    def lookup(name: Name, expectedOwner: Symbol) = {
+      var res: Symbol = NoSymbol
+      var ctx = this
+      while (res == NoSymbol && ctx.outer != ctx) {
+        val s = ctx.scope lookup name
+        if (s != NoSymbol && s.owner == expectedOwner)
+          res = s
+        else
+          ctx = ctx.outer
+      }
+      res
     }
-    
-  }
+  } //class Context
+
   class ImportInfo(val tree: Import, val depth: Int) {
     /** The prefix expression */
     def qual: Tree = tree.symbol.info match {
       case ImportType(expr) => expr
-      case ErrorType => tree
-      case _ => throw new FatalError("symbol " + tree.symbol + " has bad type: " + tree.symbol.info);//debug
+      case ErrorType => tree setType NoType // fix for #2870
+      case _ => throw new FatalError("symbol " + tree.symbol + " has bad type: " + tree.symbol.info) //debug
     }
 
     /** Is name imported explicitly, not via wildcard? */
     def isExplicitImport(name: Name): Boolean =
       tree.selectors exists (_.rename == name.toTermName)
 
-    /** The symbol with name <code>name</code> imported from import clause
-     *  <code>tree</code>.
+    /** The symbol with name `name` imported from import clause `tree`.
      */
     def importedSymbol(name: Name): Symbol = {
       var result: Symbol = NoSymbol
       var renamed = false
       var selectors = tree.selectors
       while (selectors != Nil && result == NoSymbol) {
-        if (selectors.head.name != nme.WILDCARD)
-          notifyImport(name, qual.tpe, selectors.head.name, selectors.head.rename)
-
         if (selectors.head.rename == name.toTermName)
-          result = qual.tpe.member(
+          result = qual.tpe.nonLocalMember( // new to address #2733: consider only non-local members for imports
             if (name.isTypeName) selectors.head.name.toTypeName else selectors.head.name)
         else if (selectors.head.name == name.toTermName)
           renamed = true
         else if (selectors.head.name == nme.WILDCARD && !renamed)
-          result = qual.tpe.member(name)
+          result = qual.tpe.nonLocalMember(name)
         selectors = selectors.tail
       }
       result
     }
 
-    def allImportedSymbols: List[Symbol] = 
+    def allImportedSymbols: List[Symbol] =
       qual.tpe.members flatMap (transformImport(tree.selectors, _))
 
     private def transformImport(selectors: List[ImportSelector], sym: Symbol): List[Symbol] = selectors match {
       case List() => List()
       case List(ImportSelector(nme.WILDCARD, _, _, _)) => List(sym)
-      case ImportSelector(from, _, to, _) :: _ if (from == sym.name) => 
+      case ImportSelector(from, _, to, _) :: _ if from == sym.name =>
         if (to == nme.WILDCARD) List()
         else { val sym1 = sym.cloneSymbol; sym1.name = to; List(sym1) }
       case _ :: rest => transformImport(rest, sym)
     }
 
     override def toString() = tree.toString()
-    
-    override def hashCode = tree.hashCodeStructure + depth
-    override def equals(that : Any) = that match {
-      case that : ImportInfo =>
-        depth == that.depth && (tree equalsStructure that.tree)
-      case _ => false
-    }
   }
 
   case class ImportType(expr: Tree) extends Type {
-    override def equals(that : Any) = that match {
-      case ImportType(expr) => this.expr == expr
-      case _                => false
-    }
-    override def hashCode = expr.hashCode
     override def safeToString = "ImportType("+expr+")"
   }
-  protected def intern(txt : Context) = txt
-  
 }
