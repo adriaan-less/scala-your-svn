@@ -6,10 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala.actors
-
-import scala.annotation.unique.unique
 
 /**
  * A common interface for all channels to which values can be sent.
@@ -21,30 +18,30 @@ import scala.annotation.unique.unique
 trait OutputChannel[-Msg] {
 
   /**
-   * Sends <code>msg</code> to this $actor (asynchronous).
+   * Sends `msg` to this $actor (asynchronous).
    *
    * @param  msg      the message to send
    */
-  def !(msg: Msg @unique): Unit
+  def !(msg: Msg): Unit
 
   /**
-   * Sends <code>msg</code> to this $actor (asynchronous) supplying
+   * Sends `msg` to this $actor (asynchronous) supplying
    * explicit reply destination.
    *
    * @param  msg      the message to send
    * @param  replyTo  the reply destination
    */
-  def send(msg: Msg @unique, replyTo: OutputChannel[Any]): Unit
+  def send(msg: Msg, replyTo: OutputChannel[Any]): Unit
 
   /**
-   * Forwards <code>msg</code> to this $actor (asynchronous).
+   * Forwards `msg` to this $actor (asynchronous).
    *
    * @param  msg      the message to forward
    */
-  def forward(msg: Msg @unique): Unit
+  def forward(msg: Msg): Unit
 
   /**
-   * Returns the <code>Actor</code> that is receiving from this $actor.
+   * Returns the `Actor` that is receiving from this $actor.
    */
   def receiver: Actor
 }

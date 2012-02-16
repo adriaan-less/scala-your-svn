@@ -18,8 +18,8 @@ object Lexer {
   /** The class of tokens, i.e. descriptions of input words (or: lexemes).
    *  @param str    the characters making up this token
    */
-  class Token(val str: String) { 
-    override def toString = str 
+  class Token(val str: String) {
+    override def toString = str
   }
 
   /** A subclass of `Token` representing single-character delimiters
@@ -30,12 +30,12 @@ object Lexer {
   /** A subclass of token representing integer literals */
   case class IntLit(override val str: String) extends Token(str)
 
-  /** A subclass of token representaing floating point literals */
+  /** A subclass of token representing floating point literals */
   case class FloatLit(override val str: String) extends Token(str)
 
-  /** A subclass of token represenating string literals */
-  case class StringLit(override val str: String) extends Token(str) { 
-    override def toString = quoted(str) 
+  /** A subclass of token representing string literals */
+  case class StringLit(override val str: String) extends Token(str) {
+    override def toString = quoted(str)
   }
 
   /** The `true` token */
@@ -107,7 +107,7 @@ object Lexer {
     buf += '\"'
     buf.toString
   }
-  
+
   private val BUF_SIZE = 2 << 16
 }
 
@@ -125,7 +125,7 @@ import Lexer._
  *
  * @param rd   the reader from which characters are read.
  */
-class Lexer(rd: Reader) { 
+class Lexer(rd: Reader) {
 
   /** The last-read character */
   var ch: Char = 0
@@ -148,7 +148,7 @@ class Lexer(rd: Reader) {
   def nextChar() {
     assert(!atEOF)
     if (bp == nread) {
-      nread = rd.read(buf) 
+      nread = rd.read(buf)
       bp = 0
       if (nread <= 0) { ch = 0; atEOF = true; return }
     }
@@ -170,9 +170,9 @@ class Lexer(rd: Reader) {
     sb += ch; nextChar()
   }
 
-  private def putAcceptString(str: String) { 
+  private def putAcceptString(str: String) {
     str foreach acceptChar
-    sb ++= str 
+    sb ++= str
   }
 
   /** Skips whitespace and reads next lexeme into `token`
@@ -220,8 +220,8 @@ class Lexer(rd: Reader) {
       if (ch == '\\') {
         nextChar()
         ch match {
-          case '\'' => sb += '\'' 
-          case '"' => sb += '"' 
+          case '\'' => sb += '\''
+          case '"' => sb += '"'
           case '\\' => sb += '\\'
           case '/' => sb += '/'
           case 'b' => sb += '\b'
@@ -281,7 +281,7 @@ class Lexer(rd: Reader) {
   /** The current token is a delimiter consisting of given character, reads next token,
    *  otherwise raises an error.
    *  @param  c   the given delimiter character to compare current token with
-   *  @throws MalformedInput  if the the current token `token` is not a delimiter, or
+   *  @throws MalformedInput  if the current token `token` is not a delimiter, or
    *                          consists of a character different from `c`.
    */
   def accept(ch: Char) {
