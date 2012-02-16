@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2010 LAMP/EPFL
+ * Copyright 2006-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -19,7 +19,7 @@ trait ClassPathSettings {
 //   val f = File("/tmp/path-resolve-log.txt")
 //   if (f.exists) f.truncate()
 //   else f.createFile()
-//   
+//
 //   val res = f.bufferedWriter()
 //   res write ("Started debug log: %s\n".format(new java.util.Date))
 //   res
