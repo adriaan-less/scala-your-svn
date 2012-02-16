@@ -1,4 +1,3 @@
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.tests;
 
@@ -40,7 +39,7 @@ public class TableDump extends PEFile {
 	out.println("#GUID stream");    GUID.dump(out);    out.println();
 	out.println("#Blob stream");    Blob.dump(out);    out.println();
 
-	out.println("Heap Sizes Vector = 0x0" + Integer.toHexString(heapSizes));
+	out.println("Heap Sizes IndexedSeq = 0x0" + Integer.toHexString(heapSizes));
 	out.println();
 
  	for(int i = 0; i < Table.MAX_NUMBER; i++)

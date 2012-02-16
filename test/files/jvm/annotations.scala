@@ -94,26 +94,37 @@ object Test4 {
   }
   class Foo8(@SourceAnnotation("constructor val") val n: Int) {}
   class Foo9 {
-    import scala.annotation.target._
-    import scala.reflect.BeanProperty
+    import scala.annotation.meta._
+    import scala.beans.BeanProperty
     @(SourceAnnotation @getter)("http://apple.com") val x = 0
     @BeanProperty @(SourceAnnotation @beanSetter)("http://uppla.com") var y = 0
 
     type myAnn = SourceAnnotation @beanGetter @field
     @BeanProperty @myAnn("http://eppli.com") var z = 0
   }
+  class Foo10(@SourceAnnotation("on param 1") val name: String)
+  class Foo11(@(SourceAnnotation @scala.annotation.meta.field)("on param 2") val name: String)
+  class Foo12(@(SourceAnnotation @scala.annotation.meta.setter)("on param 3") var name: String)
   def run {
     import java.lang.annotation.Annotation
     import java.lang.reflect.AnnotatedElement
+    def printSourceAnnotation(a: Annotation) {
+      val ann = a.asInstanceOf[SourceAnnotation]
+      println("@test.SourceAnnotation(mails=" + ann.mails.deep.mkString("{", ",", "}") +
+              ", value=" + ann.value + ")")
+    }
     def printSourceAnnotations(target: AnnotatedElement) {
       //print SourceAnnotation in a predefined way to insure
       // against difference in the JVMs (e.g. Sun's vs IBM's)
-      def printSourceAnnotation(a: Annotation) {
-        val ann = a.asInstanceOf[SourceAnnotation]
-        println("@test.SourceAnnotation(mails=" + ann.mails.deepMkString("{", ",", "}") +
-                ", value=" + ann.value + ")")
-      }
       val anns = target.getAnnotations()
+      anns foreach printSourceAnnotation
+      if (anns.length > 0) {
+        println(target)
+        println
+      }
+    }
+    def printParamSourceAnnotations(target: { def getParameterAnnotations(): Array[Array[Annotation]] }) {
+      val anns = target.getParameterAnnotations().flatten
       anns foreach printSourceAnnotation
       if (anns.length > 0) {
         println(target)
@@ -130,13 +141,23 @@ object Test4 {
     classOf[Foo7].getDeclaredConstructors foreach printSourceAnnotations
     classOf[Foo8].getDeclaredFields  foreach printSourceAnnotations
     classOf[Foo8].getDeclaredMethods foreach printSourceAnnotations
+    classOf[Foo8].getDeclaredConstructors foreach printParamSourceAnnotations
     classOf[Foo9].getDeclaredFields.sortWith((x, y) => x.toString < y.toString)  foreach printSourceAnnotations
     classOf[Foo9].getDeclaredMethods.sortWith((x, y) => x.toString < y.toString) foreach printSourceAnnotations
+    classOf[Foo10].getDeclaredFields.sortWith((x, y) => x.toString < y.toString)  foreach printSourceAnnotations
+    classOf[Foo10].getDeclaredMethods.sortWith((x, y) => x.toString < y.toString) foreach printSourceAnnotations
+    classOf[Foo10].getDeclaredConstructors foreach printParamSourceAnnotations
+    classOf[Foo11].getDeclaredFields.sortWith((x, y) => x.toString < y.toString)  foreach printSourceAnnotations
+    classOf[Foo11].getDeclaredMethods.sortWith((x, y) => x.toString < y.toString) foreach printSourceAnnotations
+    classOf[Foo11].getDeclaredConstructors foreach printParamSourceAnnotations
+    classOf[Foo12].getDeclaredFields.sortWith((x, y) => x.toString < y.toString)  foreach printSourceAnnotations
+    classOf[Foo12].getDeclaredMethods.sortWith((x, y) => x.toString < y.toString) foreach printSourceAnnotations
+    classOf[Foo12].getDeclaredConstructors foreach printParamSourceAnnotations
   }
 }
 
 object Test5 {
-  import scala.reflect.BeanProperty
+  import scala.beans.BeanProperty
   import java.lang.Integer
 
   class Count {
@@ -160,6 +181,27 @@ object Test5 {
   }
 }
 
+object Test6 {
+  import scala.beans.BeanProperty
+  import scala.beans.BooleanBeanProperty
+  class C(@BeanProperty var text: String)
+  class D(@BooleanBeanProperty var prop: Boolean) {
+    @BeanProperty val m: Int = if (prop) 1 else 2
+  }
+
+  def run {
+    val c = new C("bob")
+    c.setText("dylan")
+    println(c.getText())
+    if (new D(true).isProp()) {
+      println(new D(false).getM())
+    }
+  }
+}
+
+// #3345
+class A3345(@volatile private var i:Int)
+
 object Test {
   def main(args: Array[String]) {
     Test1.run
@@ -167,5 +209,6 @@ object Test {
     Test3.run     // requires the use of -target:jvm-1.5
     Test4.run
     Test5.run
+    Test6.run
   }
 }

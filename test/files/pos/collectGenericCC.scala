@@ -1,4 +1,4 @@
-import scala.collection.generic._
+import scala.collection.generic.CanBuildFrom
 import scala.collection._
 
 object Test {
