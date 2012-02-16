@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -14,15 +14,15 @@ package scala.dbc;
 /** An ISO-9075:2003 (SQL) data type. Mappings between SQL types and
  *  database specific types should be provided by the database driver.
  */
-abstract class DataType {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class DataType {
+
   /** Tests whether this datatype is equivalent to another. Usually, two
    *  types are defined as equivalent if they are equal. Two types can be
    *  equivalent without being equal if values of those types will be
    *  encoded in the same native Scala type.
    */
   def isEquivalent(datatype: DataType): Boolean;
-  
+
   /** Tests whether this datatype is equivalent or a subtype of another
    *  datatype. Type <code>A</code> is said to be subtype of type
    *  <code>B</code> if any value of type <code>A</code> can be
@@ -50,7 +50,7 @@ abstract class DataType {
 
 }
 
-object DataType {
+@deprecated(DbcIsDeprecated, "2.9.0") object DataType {
 
   type Id = Int;
 
