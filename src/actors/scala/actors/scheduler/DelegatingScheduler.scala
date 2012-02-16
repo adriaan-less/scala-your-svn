@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -48,11 +48,26 @@ private[actors] trait DelegatingScheduler extends IScheduler {
     }
   }
 
-  def newActor(actor: Reactor) = impl.newActor(actor)
+  def newActor(actor: TrackedReactor) = synchronized {
+    val createNew = if (sched eq null)
+      true
+    else sched.synchronized {
+      if (!sched.isActive)
+        true
+      else {
+        sched.newActor(actor)
+        false
+      }
+    }
+    if (createNew) {
+      sched = makeNewScheduler()
+      sched.newActor(actor)
+    }
+  }
 
-  def terminated(actor: Reactor) = impl.terminated(actor)
+  def terminated(actor: TrackedReactor) = impl.terminated(actor)
 
-  def onTerminate(actor: Reactor)(f: => Unit) = impl.onTerminate(actor)(f)
+  def onTerminate(actor: TrackedReactor)(f: => Unit) = impl.onTerminate(actor)(f)
 
   override def managedBlock(blocker: ManagedBlocker): Unit =
     impl.managedBlock(blocker)
