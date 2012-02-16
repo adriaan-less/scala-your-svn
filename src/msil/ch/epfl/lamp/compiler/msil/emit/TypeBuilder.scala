@@ -6,6 +6,9 @@
 package ch.epfl.lamp.compiler.msil.emit
 
 import ch.epfl.lamp.compiler.msil._
+
+import ch.epfl.lamp.compiler.msil.util.PECustomMod
+
 import java.io.IOException
 
 /**
@@ -38,17 +41,24 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Adds a new field to the class, with the given name, 
-     * attributes and field type.
+     * Adds a new field to the class, with the given name, attributes and field type. The location has no custom mods.
      */
-    def DefineField(name: String, `type`: Type, attrs: Short): FieldBuilder = {
-	val field: FieldBuilder = new FieldBuilder(name, this, attrs, `type`)
-	fieldBuilders += field
-	return field
+    def DefineField(name: String, fieldType: Type, attrs: Short): FieldBuilder = {
+      val fieldTypeWithCustomMods = new PECustomMod(fieldType, null)
+      DefineField(name, fieldTypeWithCustomMods, attrs)
     }
 
+  /**
+   * Adds a new field to the class, with the given name, attributes and (field type , custom mods) combination.
+   */
+  def DefineField(name: String, fieldTypeWithMods: PECustomMod, attrs: Short): FieldBuilder = {
+    val field: FieldBuilder = new FieldBuilder(name, this, attrs, fieldTypeWithMods)
+    fieldBuilders += field
+    return field
+  }
+
     /**
-     * Adds a new method to the class, with the given name and 
+     * Adds a new method to the class, with the given name and
      * method signature.
      */
     def DefineMethod(name: String, attrs: Short, returnType: Type, paramTypes: Array[Type]): MethodBuilder = {
@@ -65,7 +75,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Adds a new constructor to the class, with the given attributes 
+     * Adds a new constructor to the class, with the given attributes
      * and signature.
      */
     def DefineConstructor(attrs: Short, callingConvention: Short, paramTypes: Array[Type]): ConstructorBuilder = {
@@ -128,7 +138,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Searches for the specified public method whose parameters 
+     * Searches for the specified public method whose parameters
      * match the specified argument types.
      */
     override def GetMethod(name: String, params: Array[Type]): MethodInfo = {
@@ -212,7 +222,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
 object TypeBuilder {
     def types2String(types: Array[Type]): String = {
     var s = new StringBuffer("(")
-    for(val i <- 0 until types.length) {
+    for(i <- 0 until types.length) {
         if (i > 0) s.append(", ")
         s.append(types(i))
     }
@@ -229,7 +239,7 @@ object TypeBuilder {
     val p2 = m2.GetParameters()
     if (p1.length != p2.length)
         return false
-    for(val i <- 0 until p1.length)
+    for(i <- 0 until p1.length)
         if (p1(i).ParameterType != p2(i).ParameterType)
         return false
     return true
@@ -242,7 +252,7 @@ object TypeBuilder {
       val p2 = c2.GetParameters()
       if (p1.length != p2.length)
           return false
-      for(val i <- 0 until p1.length)
+      for(i <- 0 until p1.length)
           if (p1(i).ParameterType != p2(i).ParameterType)
           return false
       return true

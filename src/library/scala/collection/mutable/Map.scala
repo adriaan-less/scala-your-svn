@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -19,20 +19,35 @@ import generic._
  *  @since 1.0
  *  @author  Matthias Zenger
  */
-trait Map[A, B] 
+trait Map[A, B]
   extends Iterable[(A, B)]
-     with scala.collection.Map[A, B] 
+//     with GenMap[A, B]
+     with scala.collection.Map[A, B]
      with MapLike[A, B, Map[A, B]] {
-  
+
   override def empty: Map[A, B] = Map.empty
-  
-  /** The same map with a given default function */
+
+  override def seq: Map[A, B] = this
+
+  /** The same map with a given default function.
+   *
+   *  Invoking transformer methods (e.g. `map`) will not preserve the default value.
+   *
+   *  @param d     the function mapping keys to values, used for non-present keys
+   *  @return      a wrapper of the map with a default value
+   */
   def withDefault(d: A => B): mutable.Map[A, B] = new Map.WithDefault[A, B](this, d)
-  
-  /** The same map with a given default value */
+
+  /** The same map with a given default value.
+   *
+   *  Invoking transformer methods (e.g. `map`) will not preserve the default value.
+   *
+   *  @param d     the function mapping keys to values, used for non-present keys
+   *  @return      a wrapper of the map with a default value
+   */
   def withDefaultValue(d: B): mutable.Map[A, B] = new Map.WithDefault[A, B](this, x => d)
-  
-  /** Return a read-only projection of this map.  !!! or just use an (immutable) MapProxy? 
+
+  /** Return a read-only projection of this map.  !!! or just use an (immutable) MapProxy?
   def readOnly : scala.collection.Map[A, B] = new scala.collection.Map[A, B] {
     override def size = self.size
     override def update(key: A, value: B) = self.update(key, value)
@@ -53,7 +68,7 @@ trait Map[A, B]
 object Map extends MutableMapFactory[Map] {
   /** $canBuildFromInfo */
   implicit def canBuildFrom[A, B]: CanBuildFrom[Coll, (A, B), Map[A, B]] = new MapCanBuildFrom[A, B]
-  
+
   def empty[A, B]: Map[A, B] = new HashMap[A, B]
 
   class WithDefault[A, B](underlying: Map[A, B], d: A => B) extends collection.Map.WithDefault(underlying, d) with Map[A, B] {
@@ -69,5 +84,8 @@ object Map extends MutableMapFactory[Map] {
      */
     override def withDefault(d: A => B): mutable.Map[A, B] = new WithDefault[A, B](underlying, d)
     override def withDefaultValue(d: B): mutable.Map[A, B] = new WithDefault[A, B](underlying, x => d)
-  } 
+  }
 }
+
+/** Explicit instantiation of the `Map` trait to reduce class file size in subclasses. */
+private[scala] abstract class AbstractMap[A, B] extends scala.collection.AbstractMap[A, B] with Map[A, B]
