@@ -1,7 +1,7 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
 **    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
-**  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
@@ -23,7 +23,7 @@ import Proxy.Typed
 abstract class ScalaNumberProxy[T: Numeric] extends ScalaNumericConversions with Typed[T] with OrderedProxy[T] {
   private val num = implicitly[Numeric[T]]
   protected val ord: Ordering[T] = num
-  
+
   def underlying()  = self.asInstanceOf[AnyRef]
   def doubleValue() = num.toDouble(self)
   def floatValue()  = num.toFloat(self)
@@ -71,7 +71,7 @@ trait OrderedProxy[T] extends Typed[T] with Ordered[T] {
 }
 trait RangedProxy[T] extends Typed[T] {
   type ResultWithoutStep
-  
+
   def until(end: T): ResultWithoutStep
   def until(end: T, step: T): immutable.IndexedSeq[T]
   def to(end: T): ResultWithoutStep

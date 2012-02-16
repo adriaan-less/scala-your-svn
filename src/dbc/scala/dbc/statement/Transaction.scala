@@ -13,12 +13,12 @@ package statement;
 
 
 /** A statement that changes the status of the database. */
-case class Transaction [ResultType] (
+@deprecated(DbcIsDeprecated, "2.9.0") case class Transaction [ResultType] (
   transactionBody: (scala.dbc.Database=>ResultType),
   accessMode: Option[AccessMode],
   isolationLevel: Option[IsolationLevel]
 ) extends Statement {
-  
+
   /** A SQL-99 compliant string representation of the statement. */
   def sqlStartString: String = (
     "START TRANSACTION" +
@@ -29,27 +29,27 @@ case class Transaction [ResultType] (
       case Pair(Some(am),Some(il)) => " " + am.sqlString + ", " + il.sqlString
     })
   );
-  
+
   def sqlCommitString: String = {
     "COMMIT"
   }
-  
+
   def sqlAbortString: String = {
     "ROLLBACK"
   }
-  
+
   //def transactionBody: (()=>Unit);
-  
+
   //def accessMode: Option[AccessMode];
-  
+
   //def isolationLevel: Option[IsolationLevel];
-  
+
   def execute (database: scala.dbc.Database): scala.dbc.result.Status[ResultType] = {
     database.executeStatement(this);
   }
-  
+
   def execute (database: scala.dbc.Database, debug: Boolean): scala.dbc.result.Status[ResultType] = {
     database.executeStatement(this,debug);
   }
-  
+
 }

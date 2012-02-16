@@ -43,7 +43,7 @@ object RemoteRef { /*extends Thread {
               if (isTerminated) throw new QuitException
           }
           remoteGC.gc()
-          if (remoteGC.allClosed) 
+          if (remoteGC.allClosed)
             throw new QuitException
         } // synchronized
 
@@ -169,7 +169,7 @@ object RemoteRef { /*extends Thread {
   private def warning(msg: String) { Debug.warning("[RemoteRef] "+msg) }
   private def error(msg: String) { Debug.error("[RemoteRef] "+msg) }
 
-  private def printDebugInfos {
+  private def printDebugInfos() {
     def property(name: String): String =
       name+"="+(
       try { System.getProperty(name, "") }

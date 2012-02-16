@@ -6,67 +6,72 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala
 
 import scala.compat.Platform.currentTime
-import scala.collection.mutable.ListBuffer
 
 /** The `Application` trait can be used to quickly turn objects
- *  into executable programs. Here is an example:
+ *  into executable programs, but is ''not recommended''.
+ *  Here is an example:
  *  {{{
- *    object Main extends Application {
- *      Console.println("Hello World: " + (arguments mkString ", "))
- *    }
+ *  object Main extends Application {
+ *    Console.println("Hello World!")
+ *  }
  *  }}}
  *  Here, object `Main` inherits the `main` method of `Application`.
+ *  The body of the `Main` object defines the main program. This technique
+ *  does not work if the main program depends on command-line arguments
+ *  (which are not accessible with the technique presented here).
  *
- *  `arguments` returns the current command line arguments as an array.
- *    
- *  Note: The use of Application was discouraged prior to 2.9 because
- *  application code would be run in the object constructor. This is no longer true.
- *  Application code is now stored and run in the main method. As a consequence,
- *  extending `Application` is now recommended over implementing `main` explicitly.
- * 
- *  @author  Martin Odersky
- *  @version 2.0, 14/12/2010
+ *  It is possible to time the execution of objects that inherit from class
+ *  `Application` by setting the global `scala.time`
+ *  property. Here is an example for benchmarking object `Main`:
+ *  {{{
+ *  java -Dscala.time Main
+ *  }}}
+ *  In practice the `Application` trait has a number of serious pitfalls:
+ *
+ *  - Threaded code that references the object will block until static
+ *    initialization is complete.  However, because the entire execution
+ *    of an `object` extending `Application` takes place during
+ *    static initialization, concurrent code will ''always'' deadlock if
+ *    it must synchronize with the enclosing object.
+ *  - As described above, there is no way to obtain the
+ *    command-line arguments because all code in body of an `object`
+ *    extending `Application` is run as part of the static initialization
+ *    which occurs before `Application`'s `main` method
+ *    even begins execution.
+ *  - Static initializers are run only once during program execution, and
+ *    JVM authors usually assume their execution to be relatively short.
+ *    Therefore, certain JVM configurations may become confused, or simply
+ *    fail to optimize or JIT the code in the body of an `object` extending
+ *    `Application`.  This can lead to a significant performance degradation.
+ *
+ *  It is recommended to use the [[scala.App]] trait instead.
+ *  {{{
+ *  object Main {
+ *    def main(args: Array[String]) {
+ *      //..
+ *    }
+ *  }
+ *  }}}
+ *
+ *  @author  Matthias Zenger
+ *  @version 1.0, 10/09/2003
  */
-trait Application extends DelayedInit {
+@deprecated("use App instead", "2.9.0")
+trait Application {
 
-  /** The time when the execution of this program started, in milliseconds since 1
-    * January 1970 UTC. */
+  /** The time when the execution of this program started,
+    * in milliseconds since 1 January 1970 UTC. */
   val executionStart: Long = currentTime
 
-  /** The command line arguments passed to the application's `main` method.
-   */
-  protected def arguments: Array[String] = args
-
-  private var args: Array[String] = _
-
-  private val initCode = new ListBuffer[() => Unit]
-
-  /** The init hook. This saves all initialization code for execution within `main`.
-   *  This methos is normally never called directly from user code.
-   *  Instead it is called as compiler-generated code for those classes, objects, and traits
-   *  that inherit from the `DelayedInit` trait and that do not themselves define
-   *  a `delayedInit` method.
-   *  @param body the initialization code to be stored for later execution
-   */
-  override def delayedInit(body: => Unit) {
-    initCode += (() => body)
-  }
-
-  /** The main method.
-   *  This stores all argument so that they can be retrieved with `arguments`
-   *  and the executes all initialization code segements in the order they were
-   *  passed to `delayedInit`
+  /** The default main method.
+   *
    *  @param args the arguments passed to the main method
    */
-  def main(args: Array[String]) = {
-    this.args = args
-    for (proc <- initCode) proc()
-    if (util.Properties.propIsSet("scala.time")) {
+  def main(args: Array[String]) {
+    if (util.Properties propIsSet "scala.time") {
       val total = currentTime - executionStart
       Console.println("[total " + total + "ms]")
     }
