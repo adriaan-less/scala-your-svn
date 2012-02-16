@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -23,17 +23,17 @@ trait DataFlowAnalysis[L <: SemiLattice] {
 
   /** collect statistics? */
   var stat = true
-  
+
   /** the number of times we iterated before reaching a fixpoint. */
   var iterations = 0
-  
+
   /* Implement this function to initialize the worklist.  */
   def init(f: => Unit): Unit = {
     iterations = 0
     in.clear; out.clear; worklist.clear; visited.clear;
     f
   }
-  
+
   /** Reinitialize, but keep the old solutions. Should be used when reanalyzing the
    *  same method, after some code transformation.
    */
@@ -43,10 +43,10 @@ trait DataFlowAnalysis[L <: SemiLattice] {
     f
   }
 
-  def run: Unit
+  def run(): Unit
 
-  /** Implements forward dataflow analysis: the transfer function is 
-   *  applied when inputs to a Program point change, to obtain the new 
+  /** Implements forward dataflow analysis: the transfer function is
+   *  applied when inputs to a Program point change, to obtain the new
    *  output value.
    *
    *  @param f the transfer function.
@@ -60,8 +60,8 @@ trait DataFlowAnalysis[L <: SemiLattice] {
       val output = f(point, in(point))
 
       if ((lattice.bottom == out(point)) || output != out(point)) {
-//        Console.println("Output changed at " + point 
-//                        + " from: " + out(point) + " to: " + output 
+//        Console.println("Output changed at " + point
+//                        + " from: " + out(point) + " to: " + output
 //                        + " for input: " + in(point) + " and they are different: " + (output != out(point)))
         out(point) = output
         val succs = point.successors
@@ -78,11 +78,11 @@ trait DataFlowAnalysis[L <: SemiLattice] {
       }
     }
   } catch {
-    case e: NoSuchElementException => 
+    case e: NoSuchElementException =>
       Console.println("in: " + in.mkString("", "\n", ""))
       Console.println("out: " + out.mkString("", "\n", ""))
       e.printStackTrace
-      system.error("Could not find element " + e.getMessage)
+      sys.error("Could not find element " + e.getMessage)
   }
 
   /** ...

@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -14,28 +14,28 @@ import Spec.Info
  */
 object Simple {
   type CommandLineTransform = SimpleCommandLine => SimpleCommandLine
-  
+
   abstract class SimpleSpec(val programInfo: Info) extends Spec with Meta.StdOpts with Interpolation
-  
+
   trait SimpleInstance extends SimpleSpec with Instance {
     val parsed: CommandLine
   }
-  
+
   class SimpleReference(
     programInfo: Info,
-    unary: List[(String, String)] = Nil, 
+    unary: List[(String, String)] = Nil,
     binary: List[(String, String)] = Nil,
     postCreation: CommandLineTransform = null
   ) extends SimpleSpec(programInfo) with Reference {
 
-    spec => 
-    
+    spec =>
+
     if (programInfo.usage != "") help(programInfo.usage)
     unary foreach   { case (option, help) => option / help --? }
     binary foreach  { case (option, help) => option / help --| }
-    
+
     type ThisCommandLine = SimpleCommandLine
-  
+
     def creator(args: List[String]) = new SimpleCommandLine(spec, args)
     def instance(args: Array[String]): SimpleInstance = instance(args.toList)
     def instance(args: List[String]): SimpleInstance =
@@ -44,10 +44,10 @@ object Simple {
       } with SimpleSpec(programInfo) with SimpleInstance {
         lazy val referenceSpec = spec
       }
-    
-    lazy val referenceSpec = spec    
+
+    lazy val referenceSpec = spec
   }
-  
+
   def apply(info: Info, unary: List[(String, String)], binary: List[(String, String)], postCreation: CommandLineTransform): SimpleReference = {
     new SimpleReference(info, unary, binary, postCreation) {
       override def creator(args: List[String]) = {
@@ -57,7 +57,7 @@ object Simple {
       }
     }
   }
-  
+
   def scalaProgramInfo(name: String, help: String) =
     Spec.Info(name, help, "scala.tools.cmd.program." + name.capitalize)
 
@@ -66,8 +66,8 @@ object Simple {
    *  inaccessible due to the overriding var.
    */
   trait Ticket2338WontFixWorkaround {
-    def enforceArity_=(x: Boolean): Unit = system.error("unreachable")
-    def onlyKnownOptions_=(x: Boolean): Unit = system.error("unreachable")
+    def enforceArity_=(x: Boolean): Unit = sys.error("unreachable")
+    def onlyKnownOptions_=(x: Boolean): Unit = sys.error("unreachable")
   }
 
   /** Configurability simplicity achieved by turning defs into vars and letting
