@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -16,52 +15,142 @@ import generic._
 import annotation.tailrec
 
 /** This extensible class may be used as a basis for implementing linked
- *  list. Type variable <code>A</code> refers to the element type of the
- *  list, type variable <code>This</code> is used to model self types of
+ *  list. Type variable `A` refers to the element type of the
+ *  list, type variable `This` is used to model self types of
  *  linked lists.
+ *
+ *  $singleLinkedListExample
+ *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
- *  @version 2.8
+ *  @version 1.0, 08/07/2003
  *  @since   2.8
+ *
+ *  @tparam A    type of the elements contained in the linked list
+ *  @tparam This the type of the actual linked list holding the elements
+ *
+ *  @define Coll LinkedList
+ *  @define coll linked list
+ *
+ *  @define singleLinkedListExample
+ *  If the list is empty `next` must be set to `this`. The last node in every
+ *  mutable linked list is empty.
+ *
+ *  Examples (`_` represents no value):
+ *
+ *  {{{
+ *
+ *     Empty:
+ *
+ *     [ _ ] --,
+ *     [   ] <-`
+ *
+ *     Single element:
+ *
+ *     [ x ] --> [ _ ] --,
+ *               [   ] <-`
+ *
+ *     More elements:
+ *
+ *     [ x ] --> [ y ] --> [ z ] --> [ _ ] --,
+ *                                   [   ] <-`
+ *
+ *  }}}
  */
-trait LinkedListLike[A, This >: Null <: Seq[A] with LinkedListLike[A, This]] extends SeqLike[A, This] { self =>
-  
+trait LinkedListLike[A, This <: Seq[A] with LinkedListLike[A, This]] extends SeqLike[A, This] { self =>
+
   var elem: A = _
   var next: This = _
 
-  override def isEmpty = false
+  override def isEmpty = next eq this
 
-  override def length: Int = 1 + (if (next eq null) 0 else next.length)
+  /** Determines the length of this $coll by traversing and counting every
+    * node.
+    */
+  override def length: Int = length0(repr, 0)
 
-  override def head: A    = elem
-  override def tail: This = next
+  @tailrec private def length0(elem: This, acc: Int): Int =
+    if (elem.isEmpty) acc else length0(elem.next, acc + 1)
 
-  def append(that: This): Unit = {
-    @tailrec
-    def loop(x: This): Unit = {
-      if (x.next eq null) x.next = that
-      else loop(x.next)
-    }
-    loop(repr)
+  override def head: A =
+    if (isEmpty) throw new NoSuchElementException
+    else elem
+
+  override def tail: This = {
+    require(nonEmpty, "tail of empty list")
+    next
   }
 
-  def insert(that: This): Unit = if (that ne null) {
-    that.append(next)
-    next = that
+  /** If `this` is empty then it does nothing and returns `that`. Otherwise, appends `that` to `this`. The append
+   * requires a full traversal of `this`.
+   *
+   * Examples:
+   *
+   * {{{
+   *      scala> val a = LinkedList(1, 2)
+   *      a: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2)
+   *
+   *      scala> val b = LinkedList(1, 2)
+   *      b: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2)
+   *
+   *      scala> a.append(b)
+   *      res0: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2, 1, 2)
+   *
+   *      scala> println(a)
+   *      LinkedList(1, 2, 1, 2)
+   * }}}
+   *
+   * {{{
+   *    scala> val a = new LinkedList[Int]()
+   *    a: scala.collection.mutable.LinkedList[Int] = LinkedList()
+   *
+   *    scala> val b = LinkedList(1, 2)
+   *    b: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2)
+   *
+   *    scala> val c = a.append(b)
+   *    c: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2)
+   *
+   *    scala> println(a)
+   *    LinkedList()
+   * }}}
+   *
+   *  @return the list after append (this is the list itself if nonempty,
+   *  or list `that` if list this is empty. )
+   */
+  def append(that: This): This = {
+    @tailrec
+    def loop(x: This) {
+      if (x.next.isEmpty) x.next = that
+      else loop(x.next)
+    }
+    if (isEmpty) that
+    else { loop(repr); repr }
+  }
+
+  /** Insert linked list `that` at current position of this linked list
+   *  @note this linked list must not be empty
+   */
+  def insert(that: This): Unit = {
+    require(nonEmpty, "insert into empty list")
+    if (that.nonEmpty) {
+      that append next
+      next = that
+    }
   }
 
   override def drop(n: Int): This = {
     var i = 0
     var these: This = repr
-    while (i < n && (these ne null)) {
-      these = these.next.asInstanceOf[This] // !!! concrete overrides abstract problem
+    while (i < n && !these.isEmpty) {
+      these = these.next
       i += 1
     }
     these
   }
+
   private def atLocation[T](n: Int)(f: This => T) = {
     val loc = drop(n)
-    if (loc ne null) f(loc)
+    if (loc.nonEmpty) f(loc)
     else throw new IndexOutOfBoundsException(n.toString)
   }
 
@@ -70,24 +159,24 @@ trait LinkedListLike[A, This >: Null <: Seq[A] with LinkedListLike[A, This]] ext
 
   def get(n: Int): Option[A] = {
     val loc = drop(n)
-    if (loc ne null) Some(loc.elem)
+    if (loc.nonEmpty) Some(loc.elem)
     else None
   }
 
-  override def iterator: Iterator[A] = new Iterator[A] {
+  override def iterator: Iterator[A] = new AbstractIterator[A] {
     var elems = self
-    def hasNext = (elems ne null)
+    def hasNext = elems.nonEmpty
     def next = {
       val res = elems.elem
       elems = elems.next
-      res;
+      res
     }
   }
 
   override def foreach[B](f: A => B) {
     var these = this
-    while (these ne null) {
-      f(these.elem);
+    while (these.nonEmpty) {
+      f(these.elem)
       these = these.next
     }
   }
