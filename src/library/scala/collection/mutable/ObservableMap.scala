@@ -1,36 +1,37 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
 import script._
 
 
 /** This class is typically used as a mixin. It adds a subscription
- *  mechanism to the <code>Map</code> class into which this abstract
- *  class is mixed in. Class <code>ObservableMap</code> publishes
- *  events of the type <code>Message</code>.
+ *  mechanism to the `Map` class into which this abstract
+ *  class is mixed in. Class `ObservableMap` publishes
+ *  events of the type `Message`.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.0, 31/12/2006
+ *  @since   1
  */
-trait ObservableMap[A, B, This <: ObservableMap[A, B, This]] 
-      extends Map[A, B]
-      with Publisher[Message[(A, B)] with Undoable, This]
-{ self: This =>
+trait ObservableMap[A, B] extends Map[A, B] with Publisher[Message[(A, B)] with Undoable]
+{
+
+  type Pub <: ObservableMap[A, B]
 
   abstract override def += (kv: (A, B)): this.type = {
     val (key, value) = kv
-    
+
     get(key) match {
       case None =>
         super.+=(kv)
@@ -60,8 +61,8 @@ trait ObservableMap[A, B, This <: ObservableMap[A, B, This]]
 
   abstract override def clear(): Unit = {
     super.clear
-    publish(new Reset with Undoable { 
-      def undo: Unit = throw new UnsupportedOperationException("cannot undo") 
+    publish(new Reset with Undoable {
+      def undo(): Unit = throw new UnsupportedOperationException("cannot undo")
     })
   }
 }

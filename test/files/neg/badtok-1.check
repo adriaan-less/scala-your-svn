@@ -1,4 +1,4 @@
-badtok-1.scala:2: error: expected class or object definition
+badtok-1.scala:2: error: unclosed character literal
 '42'
 ^
 badtok-1.scala:2: error: unclosed character literal

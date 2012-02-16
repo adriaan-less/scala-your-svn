@@ -1,42 +1,45 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
-// $Id$
-
-package scala.tools.nsc.backend.icode
+package scala.tools.nsc
+package backend
+package icode
 
 /** This trait ...
  *
  *  @author  Iulian Dragos
  *  @version 1.0
  */
-trait TypeStacks { self: ICodes =>
-  import opcodes._
-  import global.{Symbol, Type, definitions}
+trait TypeStacks {
+  self: ICodes =>
 
-  /* This class simulates the type of the opperand
+  import opcodes._
+
+  /* This class simulates the type of the operand
    * stack of the ICode.
    */
   type Rep = List[TypeKind]
+  
+  object NoTypeStack extends TypeStack(Nil) { }
 
-  class TypeStack {
-    var types: Rep = Nil
+  class TypeStack(var types: Rep) {
+    if (types.nonEmpty)
+      checkerDebug("Created " + this)
 
-    def this(stack: Rep) = {
-      this()
-      this.types = stack
-    }
-
+    def this() = this(Nil)
     def this(that: TypeStack) = this(that.types)
 
     def length: Int = types.length
+    def isEmpty     = length == 0
+    def nonEmpty    = length != 0
 
     /** Push a type on the type stack. UNITs are ignored. */
-    def push(t: TypeKind) =
+    def push(t: TypeKind) = {
       if (t != UNIT)
         types = t :: types
+    }
 
     def head: TypeKind = types.head
 
@@ -65,40 +68,27 @@ trait TypeStacks { self: ICodes =>
       types = types.drop(n)
       prefix
     }
-    
+
     def apply(n: Int): TypeKind = types(n)
 
     /**
-     * A TypeStack aggress with another one if they have the same
-     * length and each type kind agrees position-wise. Two 
+     * A TypeStack agrees with another one if they have the same
+     * length and each type kind agrees position-wise. Two
      * types agree if one is a subtype of the other.
      */
     def agreesWith(other: TypeStack): Boolean =
-      (types.length == other.types.length) &&
-      List.forall2(types, other.types) ((t1, t2) => t1 <:< t2 || t2 <:< t1)
-
-    def mergeWith(that: TypeStack): TypeStack = {
-      def merge(a: TypeStack, b: TypeStack): TypeStack = {
-        val lst = List.map2(a.types, b.types) ((k1, k2) => k1 match {
-          case REFERENCE(cls1) =>
-            val REFERENCE(cls2) = k2
-            lub(k1,k2)
-          case _ => k1
-        })
-        new TypeStack(lst)
-      }
-
-      assert(this agreesWith that,
-             "Incompatible type stacks: " + this + ", " + that)
-      merge(this, that)
-    }
+      (types corresponds other.types)((t1, t2) => t1 <:< t2 || t2 <:< t1)
 
     /* This method returns a String representation of the stack */
-    override def toString() = types.mkString("<", ",", ">")
+    override def toString() =
+      if (types.isEmpty) "[]"
+      else types.mkString("[", " ", "]")
 
-    override def equals(other: Any): Boolean =
-      other.isInstanceOf[TypeStack] &&
-      List.forall2(other.asInstanceOf[TypeStack].types, types)((a, b) => a == b)
+    override def hashCode() = types.hashCode()
+    override def equals(other: Any): Boolean = other match {
+      case x: TypeStack => x.types == types
+      case _            => false
+    }
   }
 
 }

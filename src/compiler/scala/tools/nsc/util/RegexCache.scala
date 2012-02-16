@@ -1,10 +1,10 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Lex Spoon
  */
-// $Id$
 
-package scala.tools.nsc.util
+package scala.tools.nsc
+package util
 import java.util.regex.Pattern
 import scala.collection.mutable
 
@@ -14,7 +14,7 @@ object RegexCache {
 
   /** Lists the regexes that have been recorded in order */
   private val regexList = new mutable.Queue[String]
-  
+
   private val regexesToCache = 1000
 
   /** Compile a regex and add it to the cache */

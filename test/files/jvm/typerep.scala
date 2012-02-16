@@ -1,11 +1,10 @@
 //############################################################################
 // Type Representation at runtime
 //############################################################################
-// $Id:  $
 
 import TypeRep._
 
-object Test extends Application {
+object Test extends App {
   testPrimitives
   testOptions
   testLists
