@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -26,33 +26,23 @@ final class RichChar(val self: Char) extends IntegralProxy[Char] {
   def isUnicodeIdentifierPart: Boolean  = Character.isUnicodeIdentifierPart(self)
   def isIdentifierIgnorable: Boolean    = Character.isIdentifierIgnorable(self)
   def isMirrored: Boolean               = Character.isMirrored(self)
-  
+
   def isLower: Boolean                  = Character.isLowerCase(self)
   def isUpper: Boolean                  = Character.isUpperCase(self)
   def isTitleCase: Boolean              = Character.isTitleCase(self)
-  
+
   def toLower: Char                     = Character.toLowerCase(self)
   def toUpper: Char                     = Character.toUpperCase(self)
   def toTitleCase: Char                 = Character.toTitleCase(self)
-  
+
   def getType: Int                      = Character.getType(self)
   def getNumericValue: Int              = Character.getNumericValue(self)
   def getDirectionality: Byte           = Character.getDirectionality(self)
   def reverseBytes: Char                = Character.reverseBytes(self)
-  
+
   // Java 5 Character methods not added:
   //
   // public static boolean isDefined(char ch)
   // public static boolean isJavaIdentifierStart(char ch)
   // public static boolean isJavaIdentifierPart(char ch)
-
-  @deprecated("Use ch.toLower instead")
-  def toLowerCase: Char = toLower
-  @deprecated("Use ch.toUpper instead")
-  def toUpperCase: Char = toUpper
-  
-  @deprecated("Use ch.isLower instead")
-  def isLowerCase: Boolean = isLower
-  @deprecated("Use ch.isUpper instead")
-  def isUpperCase: Boolean = isUpper
 }
