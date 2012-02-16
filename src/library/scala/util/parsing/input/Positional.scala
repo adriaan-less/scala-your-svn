@@ -8,7 +8,7 @@
 
 package scala.util.parsing.input
 
-/** A trait for objects that have a source position. 
+/** A trait for objects that have a source position.
  *
  * @author Martin Odersky, Adriaan Moors
  */
@@ -18,12 +18,12 @@ trait Positional {
   var pos: Position = NoPosition
 
   /** If current source position is undefined, update it with given position `newpos`
-   *  @return  the object itself 
+   *  @return  the object itself
    */
   def setPos(newpos: Position): this.type = {
     if (pos eq NoPosition) pos = newpos
     this
   }
 }
-  
+
 

@@ -17,14 +17,14 @@ class StatBase {
       val total2 = System.nanoTime() - start
       println("Enabling statistics, measuring overhead = "+
               total/10000.0+"ns to "+total2/10000.0+"ns per timer")
-      _enabled = true 
+      _enabled = true
     }
   }
 
-  def currentTime() = 
+  def currentTime() =
     if (_enabled) System.nanoTime() else 0L
 
-  def showPercent(x: Double, base: Double) = 
+  def showPercent(x: Double, base: Double) =
     if (base == 0) "" else " ("+"%2.1f".format(x / base * 100)+"%)"
 
   def incCounter(c: Counter) {
@@ -32,7 +32,7 @@ class StatBase {
   }
 
   def incCounter(c: Counter, delta: Int) {
-    if (_enabled) c.value += delta 
+    if (_enabled) c.value += delta
   }
 
   def startCounter(sc: SubCounter): IntPair =
@@ -42,7 +42,7 @@ class StatBase {
     if (_enabled) sc.stop(start)
   }
 
-  def startTimer(tm: Timer): LongPair = 
+  def startTimer(tm: Timer): LongPair =
     if (_enabled) tm.start() else null
 
   def stopTimer(tm: Timer, start: LongPair) {
@@ -67,17 +67,17 @@ class StatBase {
         value = value0 + c.value - cvalue0
       }
     }
-    override def toString = 
+    override def toString =
       value+showPercent(value, c.value)
   }
 
   class Timer {
     var nanos: Long = 0
     var timings = 0
-    def start(): LongPair = 
+    def start(): LongPair =
       if (_enabled) {
         timings += 1
-        LongPair(nanos, System.nanoTime()) 
+        LongPair(nanos, System.nanoTime())
       } else null
     def stop(prev: LongPair) {
       if (_enabled) {
@@ -88,7 +88,7 @@ class StatBase {
     }
     override def toString = (timings/2)+" spans, "+nanos.toString+"ns"
   }
-  
+
   import Predef.Class
 
   class ClassCounts extends scala.collection.mutable.HashMap[Class[_], Int] {

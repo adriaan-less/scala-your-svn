@@ -9,6 +9,8 @@ package internal
 trait InfoTransformers {
   self: SymbolTable =>
 
+  /* Syncnote: This should not need to be protected, as reflection does not run in multiple phases.
+   */
   abstract class InfoTransformer {
     var prev: InfoTransformer = this
     var next: InfoTransformer = this
@@ -31,7 +33,7 @@ trait InfoTransformers {
       }
     }
 
-    /** The InfoTransformer whose (pid == from). 
+    /** The InfoTransformer whose (pid == from).
      *  If no such exists, the InfoTransformer with the next
      *  higher pid.
      */

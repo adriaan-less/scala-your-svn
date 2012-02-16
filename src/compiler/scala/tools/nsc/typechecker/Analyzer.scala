@@ -9,7 +9,7 @@ package typechecker
 import util.Statistics._
 
 /** The main attribution phase.
- */ 
+ */
 trait Analyzer extends AnyRef
             with Contexts
             with Namers
@@ -18,10 +18,12 @@ trait Analyzer extends AnyRef
             with Implicits
             with Variances
             with EtaExpansion
-            with SyntheticMethods 
+            with SyntheticMethods
             with Unapplies
+            with Macros
             with NamesDefaults
             with TypeDiagnostics
+            with ContextErrors
 {
   val global : Global
   import global._
@@ -55,7 +57,7 @@ trait Analyzer extends AnyRef
         override def traverse(tree: Tree): Unit = tree match {
           case ModuleDef(_, _, _) =>
             if (tree.symbol.name == nme.PACKAGEkw) {
-              loaders.openPackageModule(tree.symbol)()
+              openPackageModule(tree.symbol, tree.symbol.owner)
             }
           case ClassDef(_, _, _, _) => () // make it fast
           case _ => super.traverse(tree)
@@ -75,12 +77,12 @@ trait Analyzer extends AnyRef
     val runsRightAfter = Some("packageobjects")
     def newPhase(_prev: Phase): StdPhase = new StdPhase(_prev) {
       override def keepsTypeParams = false
-      resetTyper() 
-      // the log accumulates entries over time, even though it should not (Adriaan, Martin said so). 
-      // Lacking a better fix, we clear it here (before the phase is created, meaning for each 
+      resetTyper()
+      // the log accumulates entries over time, even though it should not (Adriaan, Martin said so).
+      // Lacking a better fix, we clear it here (before the phase is created, meaning for each
       // compiler run). This is good enough for the resident compiler, which was the most affected.
       undoLog.clear()
-      override def run() { 
+      override def run() {
         val start = startTimer(typerNanos)
         global.echoPhaseSummary(this)
         currentRun.units foreach applyPhase

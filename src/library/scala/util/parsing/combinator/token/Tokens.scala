@@ -24,9 +24,9 @@ trait Tokens {
   abstract class Token {
     def chars: String
   }
-  
+
   /** A class of error tokens. Error tokens are used to communicate
-   *  errors detected during lexical analysis 
+   *  errors detected during lexical analysis
    */
   case class ErrorToken(msg: String) extends Token {
     def chars = "*** error: "+msg
@@ -38,5 +38,5 @@ trait Tokens {
   }
 
   /** This token is produced by a scanner `Scanner` when scanning failed. */
-  def errorToken(msg: String): Token = new ErrorToken(msg)  
+  def errorToken(msg: String): Token = new ErrorToken(msg)
 }
