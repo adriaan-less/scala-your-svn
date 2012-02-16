@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -23,9 +23,9 @@ trait EtaExpansion { self: Analyzer =>
       case Ident(name)  => vparam.name == name
       case _            => false
     }
-      
+
     def unapply(tree: Tree): Option[(List[ValDef], Tree, List[Tree])] = tree match {
-      case Function(vparams, Apply(fn, args)) if (vparams corresponds args)(isMatch) => // @PP: corresponds
+      case Function(vparams, Apply(fn, args)) if (vparams corresponds args)(isMatch) =>
         Some((vparams, fn, args))
       case _ =>
         None
@@ -52,7 +52,7 @@ trait EtaExpansion { self: Analyzer =>
     var cnt = 0 // for NoPosition
     def freshName() = {
       cnt += 1
-      newTermName(unit.fresh.newName("eta$" + (cnt - 1) + "$"))
+      unit.freshTermName("eta$" + (cnt - 1) + "$")
     }
     val defs = new ListBuffer[Tree]
 
@@ -64,12 +64,12 @@ trait EtaExpansion { self: Analyzer =>
      */
     def liftoutPrefix(tree: Tree): Tree = {
       def liftout(tree: Tree): Tree =
-        if (treeInfo.isPureExpr(tree)) tree
+        if (treeInfo.isExprSafeToInline(tree)) tree
         else {
           val vname: Name = freshName()
-          // Problem with ticket #2351 here 
+          // Problem with ticket #2351 here
           defs += atPos(tree.pos) {
-            ValDef(Modifiers(SYNTHETIC), vname, TypeTree(), tree)
+            ValDef(Modifiers(SYNTHETIC), vname.toTermName, TypeTree(), tree)
           }
           Ident(vname) setPos tree.pos.focus
         }
@@ -80,7 +80,7 @@ trait EtaExpansion { self: Analyzer =>
         //   [...]
         //   val x$n = argn
         //   qual$1.fun(x$1, ..)..(.., x$n) }
-        // Eta-expansion has to be performed on `fun'
+        // Eta-expansion has to be performed on `fun`
         case Block(stats, fun) =>
           defs ++= stats
           liftoutPrefix(fun)
@@ -94,7 +94,7 @@ trait EtaExpansion { self: Analyzer =>
           tree
       }
       if (tree1 ne tree) tree1 setPos tree1.pos.makeTransparent
-      tree1 
+      tree1
     }
 
     /** Eta-expand lifted tree.
@@ -102,8 +102,8 @@ trait EtaExpansion { self: Analyzer =>
     def expand(tree: Tree, tpe: Type): Tree = tpe match {
       case mt @ MethodType(paramSyms, restpe) if !mt.isImplicit =>
         val params = paramSyms map (sym =>
-          ValDef(Modifiers(SYNTHETIC | PARAM), 
-                 sym.name, TypeTree(sym.tpe) , EmptyTree))
+          ValDef(Modifiers(SYNTHETIC | PARAM),
+                 sym.name.toTermName, TypeTree(sym.tpe) , EmptyTree))
         atPos(tree.pos.makeTransparent) {
           Function(params, expand(Apply(tree, params map gen.paramToArg), restpe))
         }

@@ -1,5 +1,5 @@
 // ticket #421
-object Test extends Application {
+object Test extends App {
 
   def transpose[A: ClassManifest](xss: Array[Array[A]]) = {
     for (i <- Array.range(0, xss(0).length)) yield
@@ -22,9 +22,9 @@ object Test extends Application {
   }
 
   val a1 = Array(Array(0, 2, 4), Array(1, 3, 5))
-  println(transpose(a1).deepMkString("[", ",", "]"))
+  println(transpose(a1).deep.mkString("[", ",", "]"))
 
-  println(matmul(Array(Array(2, 3)), Array(Array(5), Array(7))).deepMkString("[", ",", "]"))
+  println(matmul(Array(Array(2, 3)), Array(Array(5), Array(7))).deep.mkString("[", ",", "]"))
   
-  println(matmul(Array(Array(4)), Array(Array(6, 8))).deepMkString("[", ",", "]"))
+  println(matmul(Array(Array(4)), Array(Array(6, 8))).deep.mkString("[", ",", "]"))
 }
