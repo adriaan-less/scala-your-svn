@@ -2,9 +2,10 @@
  * System.Reflection-like API for access to .NET assemblies (DLL & EXE)
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil;
+
+import java.util.Iterator;
 
 /**
  * Discovers the attributes of a method and provides access to method metadata.
@@ -13,6 +14,17 @@ package ch.epfl.lamp.compiler.msil;
  * @version 1.0
  */
 public class MethodInfo extends MethodBase {
+
+    public boolean HasPtrParamOrRetType() {
+        if(ReturnType.IsByRef() && !(ReturnType.GetElementType().IsValueType())) {
+            /* A method returning ByRef won't pass peverify, so I guess this is dead code. */
+            return true;
+        }
+        if(ReturnType.IsPointer()) {
+            return true;
+        }
+        return super.HasPtrParamOrRetType();
+    }
 
     //##########################################################################
     // public members
