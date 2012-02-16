@@ -1,26 +1,32 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
 package scala
+
+import Specializable._
 
 /** Annotate type parameters on which code should be automatically
  *  specialized. For example:
- *  <code>
+ *  {{{
  *    class MyList[@specialized T] ...
- *  </code>
+ *  }}}
  *
  *  Type T can be specialized on a subset of the primitive types by
- *  specifying a comma-separated string argument:
- *
- *  <code>
- *   class MyList[@specialized("Int, Double, Boolean") T] ..
- *  </code>
- *  Only primitive types are supported and no name resolution is currently
- *  done on the string arguments (meaning imports and type aliases are
- *  not resolved).
+ *  specifying a list of primitive types to specialize at:
+ *  {{{
+ *    class MyList[@specialized(Int, Double, Boolean) T] ..
+ *  }}}
  *
  *  @since 2.8
  */
-class specialized(types: String) extends StaticAnnotation {
-  def this() {
-    this("Boolean, Byte, Short, Char, Int, Long, Float, Double")
-  }
+// class tspecialized[T](group: Group[T]) extends annotation.StaticAnnotation {
+ 
+class specialized(group: SpecializedGroup) extends annotation.StaticAnnotation {
+  def this(types: Specializable*) = this(new Group(types.toList))
+  def this() = this(Everything)
 }
-
