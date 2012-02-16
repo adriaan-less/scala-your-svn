@@ -21,13 +21,13 @@ import scala.collection.generic.GenericCompanion
 import scala.collection.immutable.{ HashSet, TrieIterator }
 
 /** Immutable parallel hash set, based on hash tries.
- *  
+ *
  *  $paralleliterableinfo
- *  
+ *
  *  $sideeffects
- *  
+ *
  *  @tparam T    the element type of the set
- *  
+ *
  *  @author Aleksandar Prokopec
  *  @since 2.9
  *
@@ -42,35 +42,32 @@ extends ParSet[T]
    with Serializable
 {
 self =>
-  
+
   def this() = this(HashSet.empty[T])
-  
+
   override def companion: GenericCompanion[ParHashSet] with GenericParCompanion[ParHashSet] = ParHashSet
-  
+
   override def empty: ParHashSet[T] = new ParHashSet[T]
-  
-  def splitter: IterableSplitter[T] = new ParHashSetIterator(trie.iterator, trie.size) with SCPI
-  
+
+  def splitter: IterableSplitter[T] = new ParHashSetIterator(trie.iterator, trie.size)
+
   override def seq = trie
-  
+
   def -(e: T) = new ParHashSet(trie - e)
-  
+
   def +(e: T) = new ParHashSet(trie + e)
 
   def contains(e: T): Boolean = trie.contains(e)
-  
+
   override def size = trie.size
-  
+
   protected override def reuse[S, That](oldc: Option[Combiner[S, That]], newc: Combiner[S, That]) = oldc match {
     case Some(old) => old
     case None => newc
   }
-  
-  type SCPI = SignalContextPassingIterator[ParHashSetIterator]
-  
+
   class ParHashSetIterator(var triter: Iterator[T], val sz: Int)
-  extends super.ParIterator {
-  self: SignalContextPassingIterator[ParHashSetIterator] =>
+  extends IterableSplitter[T] {
     var i = 0
     def dup = triter match {
       case t: TrieIterator[_] =>
@@ -81,26 +78,26 @@ self =>
         dupFromIterator(buff.iterator)
     }
     private def dupFromIterator(it: Iterator[T]) = {
-      val phit = new ParHashSetIterator(it, sz) with SCPI
+      val phit = new ParHashSetIterator(it, sz)
       phit.i = i
-      phit      
+      phit
     }
-    def split: Seq[ParIterator] = if (remaining < 2) Seq(this) else triter match {
+    def split: Seq[IterableSplitter[T]] = if (remaining < 2) Seq(this) else triter match {
       case t: TrieIterator[_] =>
         val previousRemaining = remaining
         val ((fst, fstlength), snd) = t.split
         val sndlength = previousRemaining - fstlength
         Seq(
-          new ParHashSetIterator(fst, fstlength) with SCPI,
-          new ParHashSetIterator(snd, sndlength) with SCPI
+          new ParHashSetIterator(fst, fstlength),
+          new ParHashSetIterator(snd, sndlength)
         )
       case _ =>
         // iterator of the collision map case
         val buff = triter.toBuffer
         val (fp, sp) = buff.splitAt(buff.length / 2)
-        Seq(fp, sp) map { b => new ParHashSetIterator(b.iterator, b.length) with SCPI }
+        Seq(fp, sp) map { b => new ParHashSetIterator(b.iterator, b.length) }
     }
-    def next: T = {
+    def next(): T = {
       i += 1
       triter.next
     }
@@ -109,7 +106,6 @@ self =>
     }
     def remaining = sz - i
   }
-  
 }
 
 
@@ -119,10 +115,10 @@ self =>
  */
 object ParHashSet extends ParSetFactory[ParHashSet] {
   def newCombiner[T]: Combiner[T, ParHashSet[T]] = HashSetCombiner[T]
-  
+
   implicit def canBuildFrom[T]: CanCombineFrom[Coll, T, ParHashSet[T]] =
     new GenericCanCombineFrom[T]
-  
+
   def fromTrie[T](t: HashSet[T]) = new ParHashSet(t)
 }
 
@@ -133,7 +129,7 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
   import HashSetCombiner._
   import collection.parallel.tasksupport._
   val emptyTrie = HashSet.empty[T]
-  
+
   def +=(elem: T) = {
     sz += 1
     val hc = emptyTrie.computeHash(elem)
@@ -146,13 +142,13 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
     buckets(pos) += elem
     this
   }
-  
+
   def result = {
     val bucks = buckets.filter(_ != null).map(_.headPtr)
     val root = new Array[HashSet[T]](bucks.length)
-    
+
     executeAndWaitResult(new CreateTrie(bucks, root, 0, bucks.length))
-    
+
     var bitmap = 0
     var i = 0
     while (i < rootsize) {
@@ -160,7 +156,7 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
       i += 1
     }
     val sz = root.foldLeft(0)(_ + _.size)
-    
+
     if (sz == 0) new ParHashSet[T]
     else if (sz == 1) new ParHashSet[T](root(0))
     else {
@@ -168,9 +164,9 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
       new ParHashSet[T](trie)
     }
   }
-  
+
   /* tasks */
-  
+
   class CreateTrie(bucks: Array[Unrolled[Any]], root: Array[HashSet[T]], offset: Int, howmany: Int)
   extends Task[Unit, CreateTrie] {
     var result = ()
@@ -184,7 +180,7 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
     }
     private def createTrie(elems: Unrolled[Any]): HashSet[T] = {
       var trie = new HashSet[T]
-      
+
       var unrolled = elems
       var i = 0
       while (unrolled ne null) {
@@ -199,7 +195,7 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
         i = 0
         unrolled = unrolled.next
       }
-      
+
       trie
     }
     def split = {
@@ -208,55 +204,12 @@ extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, HashSetCombine
     }
     def shouldSplitFurther = howmany > collection.parallel.thresholdFromSize(root.length, parallelismLevel)
   }
-  
 }
 
 
 object HashSetCombiner {
   def apply[T] = new HashSetCombiner[T] {} // was: with EnvironmentPassingCombiner[T, ParHashSet[T]] {}
-  
+
   private[immutable] val rootbits = 5
   private[immutable] val rootsize = 1 << 5
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
