@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -41,7 +41,7 @@ class TreeSet[T >: Null <: AnyRef](less: (T, T) => Boolean) extends Set[T] {
   }
 
   def iterator = {
-    def elems(t: Tree): Iterator[T] = {      
+    def elems(t: Tree): Iterator[T] = {
       if (t eq null) Iterator.empty
       else elems(t.l) ++ (Iterator single t.elem) ++ elems(t.r)
     }
