@@ -2,7 +2,6 @@
  * System.Reflection-like API for acces to .NET assemblies (DLL & EXE)
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.util;
 
@@ -153,7 +152,7 @@ public final class PEStream implements Signature {
 	    assert length == 2 : "length == " + length;
 	    return new Character(buffer.getChar());
 	case ELEMENT_TYPE_I1:
-	case ELEMENT_TYPE_U1:
+	case ELEMENT_TYPE_U1:       // TODO U1 not the same as I1
 	    assert length == 1;
 	    return new Byte(buffer.get());
 	case ELEMENT_TYPE_I2:
