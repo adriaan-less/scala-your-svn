@@ -17,7 +17,7 @@ import java.math.{BigDecimal, BigInteger};
 /** This class ..
  *
  */
-object Syntax {
+@deprecated(DbcIsDeprecated, "2.9.0") object Syntax {
 
   import syntax.DataTypeUtil;
 
@@ -38,7 +38,7 @@ object Syntax {
   def characterLargeObject = DataTypeUtil.characterLargeObject;
 
   /* Statements */
-  //def select 
+  //def select
 
   /* Other stuff */
   def database (server: String, username: String, password: String): dbc.Database =

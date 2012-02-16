@@ -2,7 +2,7 @@
  * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
- 
+
 package scala.tools.nsc
 package interpreter
 
@@ -17,16 +17,18 @@ import io.{ Directory, Path }
  *  than delegate to new objects on each '/' in the path, we treat the
  *  buffer like a path and process it directly.
  */
-object FileCompletion {  
+object FileCompletion {
   def executionFor(buffer: String): Option[Path] = {
-    val p = Path(buffer)
-    if (p.exists) Some(p) else None
+    Some(Directory.Home match {
+      case Some(d) if buffer startsWith "~" => d / buffer.tail
+      case _                                => Path(buffer)
+    }) filter (_.exists)
   }
 
   private def fileCompletionForwarder(buffer: String, where: Directory): List[String] = {
     completionsFor(where.path + buffer) map (_ stripPrefix where.path) toList
   }
-  
+
   private def homeCompletions(buffer: String): List[String] = {
     require(buffer startsWith "~/")
     val home = Directory.Home getOrElse (return Nil)
@@ -37,7 +39,7 @@ object FileCompletion {
     val cwd = Directory.Current getOrElse (return Nil)
     fileCompletionForwarder(buffer.tail, cwd) map ("." + _)
   }
-  
+
   def completionsFor(buffer: String): List[String] =
     if (buffer startsWith "~/") homeCompletions(buffer)
     else if (buffer startsWith "./") cwdCompletions(buffer)

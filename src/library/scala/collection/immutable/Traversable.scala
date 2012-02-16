@@ -18,11 +18,13 @@ import mutable.Builder
  *  $traversableInfo
  *  @define mutability immutable
  */
-trait Traversable[+A] extends scala.collection.Traversable[A] 
-                         with GenericTraversableTemplate[A, Traversable] 
+trait Traversable[+A] extends scala.collection.Traversable[A]
+//                         with GenTraversable[A]
+                         with GenericTraversableTemplate[A, Traversable]
                          with TraversableLike[A, Traversable[A]]
-                         with Immutable { 
+                         with Immutable {
   override def companion: GenericCompanion[Traversable] = Traversable
+  override def seq: Traversable[A] = this
 }
 
 /** $factoryInfo
@@ -31,6 +33,6 @@ trait Traversable[+A] extends scala.collection.Traversable[A]
  *  @define Coll immutable.Traversable
  */
 object Traversable extends TraversableFactory[Traversable] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = new GenericCanBuildFrom[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   def newBuilder[A]: Builder[A, Traversable[A]] = new mutable.ListBuffer
 }
