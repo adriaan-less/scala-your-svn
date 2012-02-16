@@ -10,7 +10,7 @@
 package scala
 
 object Product19 {
-  def unapply[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19](x: Product19[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19]): Option[Product19[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19]] = 
+  def unapply[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19](x: Product19[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19]): Option[Product19[T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19]] =
     Some(x)
 }
 
@@ -27,10 +27,10 @@ trait Product19[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10, +T11, +T12, +
   /** Returns the n-th projection of this product if 0 < n <= productArity,
    *  otherwise throws an `IndexOutOfBoundsException`.
    *
-   *  @param n number of the projection to be returned 
+   *  @param n number of the projection to be returned
    *  @return  same as `._(n+1)`, for example `productElement(1)` is the same as `._1`.
    *  @throws  IndexOutOfBoundsException
-   */  
+   */
 
   @throws(classOf[IndexOutOfBoundsException])
   override def productElement(n: Int) = n match { 
@@ -54,7 +54,7 @@ trait Product19[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10, +T11, +T12, +
     case 17 => _18
     case 18 => _19
     case _ => throw new IndexOutOfBoundsException(n.toString())
- }  
+ }
 
   /** A projection of element 1 of this Product.
    *  @return   A projection of element 1.

@@ -50,6 +50,15 @@ trait Entity {
 
 }
 
+object Entity {
+  private def isDeprecated(x: Entity) = x match {
+    case x: MemberEntity  => x.deprecation.isDefined
+    case _                => false
+  }
+  /** Ordering deprecated things last. */
+  implicit lazy val EntityOrdering: Ordering[Entity] =
+    Ordering[(Boolean, String)] on (x => (isDeprecated(x), x.name))
+}
 
 /** A template, which is either a class, trait, object or package. Depending on whether documentation is available
   * or not, the template will be modeled as a [scala.tools.nsc.doc.model.NoDocTemplate] or a
@@ -79,7 +88,7 @@ trait TemplateEntity extends Entity {
 
   /** The self-type of this template, if it differs from the template type. */
   def selfType : Option[TypeEntity]
-  
+
 }
 
 
@@ -118,7 +127,10 @@ trait MemberEntity extends Entity {
   /** Some deprecation message if this member is deprecated, or none otherwise. */
   def deprecation: Option[Body]
 
-  @deprecated("Use `inDefinitionTemplates` instead")
+  /** Some migration warning if this member has a migration annotation, or none otherwise. */
+  def migration: Option[Body]
+
+  @deprecated("Use `inDefinitionTemplates` instead", "2.9.0")
   def inheritedFrom: List[TemplateEntity]
 
   /** For members representing values: the type of the value returned by this member; for members
@@ -152,11 +164,15 @@ trait MemberEntity extends Entity {
   /** Whether this member is implicit.  */
   def isImplicit: Boolean
 
-  /** Whether this member is abtract. */
+  /** Whether this member is abstract. */
   def isAbstract: Boolean
 
 }
-
+object MemberEntity {
+  // Oh contravariance, contravariance, wherefore art thou contravariance?
+  // Note: the above works for both the commonly misunderstood meaning of the line and the real one.
+  implicit lazy val MemberEntityOrdering: Ordering[MemberEntity] = Entity.EntityOrdering on (x => x)
+}
 
 /** An entity that is parameterized by types */
 trait HigherKinded extends Entity {
@@ -191,7 +207,7 @@ trait DocTemplateEntity extends TemplateEntity with MemberEntity {
   /** The direct super-type of this template. */
   def parentType: Option[TypeEntity]
 
-  @deprecated("Use `linearizationTemplates` and `linearizationTypes` instead")
+  @deprecated("Use `linearizationTemplates` and `linearizationTypes` instead", "2.9.0")
   def linearization: List[(TemplateEntity, TypeEntity)]
 
   /** All class, trait and object templates which are part of this template's linearization, in lineratization order.
@@ -247,9 +263,9 @@ trait Class extends Trait with HigherKinded {
   def constructors: List[Constructor]
 
   /** The value parameters of this case class, or an empty list if this class is not a case class. As case class value
-    * paramters cannot be curried, the outer list has exactly one element. */
+    * parameters cannot be curried, the outer list has exactly one element. */
   def valueParams: List[List[ValueParam]]
-  
+
 }
 
 
@@ -275,7 +291,7 @@ trait Package extends Object {
 
 /** The root package, which contains directly or indirectly all members in the universe. A universe
   * contains exactly one root package. */
-trait RootPackage extends Package 
+trait RootPackage extends Package
 
 
 /** A non-template member (method, value, lazy value, variable, constructor, alias type, and abstract type). */
@@ -284,6 +300,14 @@ trait NonTemplateMemberEntity extends MemberEntity {
   /** Whether this member is a use case. A use case is a member which does not exist in the documented code.
     * It corresponds to a real member, and provides a simplified, yet compatible signature for that member. */
   def isUseCase: Boolean
+
+  /** If this symbol is a use case, the useCaseOf will contain the member it was derived from, containing the full
+    * signature and the complete parameter descriptions. */
+  def useCaseOf: Option[MemberEntity]
+
+  /** Whether this member is a bridge member. A bridge member does only exist for binary compatibility reasons
+    * and should not appear in ScalaDoc. */
+  def isBridge: Boolean
 
 }
 
@@ -345,14 +369,14 @@ trait ParameterEntity extends Entity {
 
   /** Whether this parameter is a value parameter. */
   def isValueParam: Boolean
-  
+
 }
 
 
 /** A type parameter to a class, trait, or method. */
 trait TypeParam extends ParameterEntity with HigherKinded {
 
-  /** The variance of this type type parameter. Valid values are "+", "-", and the empty string. */
+  /** The variance of this type parameter. Valid values are "+", "-", and the empty string. */
   def variance: String
 
   /** The lower bound for this type parameter, if it has been defined. */
@@ -387,5 +411,5 @@ trait Annotation extends Entity {
 
   /** The arguments passed to the constructor of the annotation class. */
   def arguments: List[ValueArgument]
-  
+
 }

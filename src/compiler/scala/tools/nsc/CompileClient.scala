@@ -16,33 +16,37 @@ import sys.SystemProperties.preferIPv4Stack
 class StandardCompileClient extends HasCompileSocket with CompileOutputCommon {
   lazy val compileSocket: CompileSocket = CompileSocket
 
-  val versionMsg  = "Fast " + Properties.versionMsg
-  var verbose = false
+  val versionMsg = "Fast " + Properties.versionMsg
+  var verbose    = false
 
-  def process(args: Array[String]): Int = {
-    val fscArgs = args.toList
-    val settings = new FscSettings
-    val command  = new CompilerCommand(fscArgs, settings)
-    verbose = settings.verbose.value
-    val shutdown = settings.shutdown.value
-    val vmArgs = settings.jvmargs.unparse ++ settings.defines.unparse ++ (
-      if (settings.preferIPv4.value) List("-D%s=true".format(preferIPv4Stack.key)) else Nil
-    )
-    
+  def process(args: Array[String]): Boolean = {
+    // Trying to get out in front of the log messages in case we're
+    // going from verbose to not verbose.
+    verbose = (args contains "-verbose")
+
+    val settings     = new FscSettings(Console.println)
+    val command      = new OfflineCompilerCommand(args.toList, settings)
+    val shutdown     = settings.shutdown.value
+    val extraVmArgs  = if (settings.preferIPv4.value) List("-D%s=true".format(preferIPv4Stack.key)) else Nil
+
+    val vmArgs  = settings.jvmargs.unparse ++ settings.defines.unparse ++ extraVmArgs
+    val fscArgs = args.toList ++ command.extraFscArgs
+
     if (settings.version.value) {
       Console println versionMsg
-      return 0
+      return true
     }
-      
+
     info(versionMsg)
-    info(fscArgs.mkString("[Given arguments: ", " ", "]"))
+    info(args.mkString("[Given arguments: ", " ", "]"))
+    info(fscArgs.mkString("[Transformed arguments: ", " ", "]"))
     info(vmArgs.mkString("[VM arguments: ", " ", "]"))
 
     val socket =
       if (settings.server.value == "") compileSocket.getOrCreateSocket(vmArgs mkString " ", !shutdown)
       else Some(compileSocket.getSocket(settings.server.value))
-    
-    val success = socket match {
+
+    socket match {
       case Some(sock) => compileOnServer(sock, fscArgs)
       case _          =>
         echo(
@@ -51,13 +55,12 @@ class StandardCompileClient extends HasCompileSocket with CompileOutputCommon {
         )
         shutdown
     }
-    if (success) 1 else 0
   }
 }
 
 object CompileClient extends StandardCompileClient {
   def main(args: Array[String]): Unit = sys exit {
-    try process(args)
+    try   { if (process(args)) 0 else 1 }
     catch { case _: Exception => 1 }
   }
 }

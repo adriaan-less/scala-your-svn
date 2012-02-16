@@ -6,13 +6,15 @@
 package scala.tools.nsc
 package interpreter
 
+import scala.collection.{ mutable, immutable }
+
 /** Mix this into an object and use it as a phasing
  *  swiss army knife.
  */
 trait Phased {
   val global: Global
   import global._
-  
+
   private var active: PhaseName = NoPhaseName
   private var multi: Seq[PhaseName] = Nil
 
@@ -29,7 +31,7 @@ trait Phased {
       true
     }
   }
-  
+
   private def parsePhaseChange(str: String): Option[Int] = {
     if (str == "") Some(0)
     else if (str startsWith ".prev") parsePhaseChange(str drop 5) map (_ - 1)
@@ -43,7 +45,7 @@ trait Phased {
         None
     }
   }
-  
+
   /** Takes a string like 4, typer+2, typer.next, etc.
    *  and turns it into a PhaseName instance.
    */
@@ -54,7 +56,7 @@ trait Phased {
       val (name, rest) = str.toLowerCase span (_.isLetter)
       val start        = PhaseName(name)
       val change       = parsePhaseChange(rest)
-    
+
       if (start.isEmpty || change.isEmpty) NoPhaseName
       else PhaseName(start.id + change.get)
     }
@@ -62,38 +64,42 @@ trait Phased {
   def parse(str: String): PhaseName =
     try parseInternal(str)
     catch { case _: Exception => NoPhaseName }
-  
-  def apply[T](body: => T): T = atPhase(get)(body)
+
+  def apply[T](body: => T) = immutable.SortedMap[PhaseName, T](atMap(PhaseName.all)(body): _*)
+
+  def atCurrent[T](body: => T): T = atPhase(get)(body)
   def multi[T](body: => T): Seq[T] = multi map (ph => at(ph)(body))
-  def all[T](body: => T): Seq[T] = ats(PhaseName.all)(body)
-  def allshow[T](body: => T): Seq[T] = {
-    val pairs = atz(PhaseName.all)(body)
+  def all[T](body: => T): Seq[T] = atMulti(PhaseName.all)(body)
+  def show[T](body: => T): Seq[T] = {
+    val pairs = atMap(PhaseName.all)(body)
     pairs foreach { case (ph, op) => Console.println("%15s -> %s".format(ph, op.toString take 240)) }
     pairs map (_._2)
   }
-  
+
   def at[T](ph: PhaseName)(body: => T): T = {
     val saved = get
     set(ph)
-    try apply(body)
+    try atCurrent(body)
     finally set(saved)
   }
-  def ats[T](phs: Seq[PhaseName])(body: => T): Seq[T] = {
+  def atMulti[T](phs: Seq[PhaseName])(body: => T): Seq[T] = {
     val saved = multi
     setMulti(phs)
     try multi(body)
     finally setMulti(saved)
   }
 
-  def atshow[T](phs: Seq[PhaseName])(body: => T): Unit =
-    atz[T](phs)(body) foreach {
+  def showAt[T](phs: Seq[PhaseName])(body: => T): Unit =
+    atMap[T](phs)(body) foreach {
       case (ph, op) => Console.println("%15s -> %s".format(ph, op.toString take 240))
     }
 
-  def atz[T](phs: Seq[PhaseName])(body: => T): Seq[(PhaseName, T)] =
-    phs zip ats(phs)(body)
-  
+  def atMap[T](phs: Seq[PhaseName])(body: => T): Seq[(PhaseName, T)] =
+    phs zip atMulti(phs)(body)
+
   object PhaseName {
+    implicit lazy val phaseNameOrdering: Ordering[PhaseName] = Ordering[Int] on (_.id)
+
     lazy val all = List(
       Parser, Namer, Packageobjects, Typer, Superaccessors, Pickler, Refchecks,
       Selectiveanf, Liftcode, Selectivecps, Uncurry, Tailcalls, Specialize,
@@ -116,7 +122,7 @@ trait Phased {
     // Execute some code during this phase.
     def apply[T](body: => T): T = atPhase(phase)(body)
   }
-  
+
   case object Parser extends PhaseName
   case object Namer extends PhaseName
   case object Packageobjects extends PhaseName
@@ -149,7 +155,7 @@ trait Phased {
     override lazy val name = phase.name
     override def phase     = NoPhase
   }
-  
+
   implicit def phaseEnumToPhase(name: PhaseName): Phase = name.phase
-  implicit def phaseNameToPhase(name: String): Phase = currentRun.phaseNamed(name)  
+  implicit def phaseNameToPhase(name: String): Phase = currentRun.phaseNamed(name)
 }
