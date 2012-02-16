@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -12,10 +12,11 @@ import java.io.{File, FilenameFilter, IOException, StringWriter,
                 FileInputStream, FileOutputStream, BufferedReader,
                 FileReader, PrintWriter, FileWriter}
 import java.net.URI
-import scala.tools.nsc.io.{ Path, Directory }
-import scala.collection.mutable.HashMap
+import scala.tools.nsc.io.{ Path, Directory, File => SFile }
+import sys.process._
+import scala.collection.mutable
 
-trait FileManager {  
+trait FileUtil {
   /**
    * Compares two files using a Java implementation of the GNU diff
    * available at http://www.bmsi.com/java/#diff.
@@ -26,13 +27,31 @@ trait FileManager {
    */
   def compareFiles(f1: File, f2: File): String = {
     val diffWriter = new StringWriter
-    val args = Array(f1.getCanonicalPath(), f2.getCanonicalPath())
-    
+    val args = Array(f1.getAbsolutePath(), f2.getAbsolutePath())
+
     DiffPrint.doDiff(args, diffWriter)
     val res = diffWriter.toString
     if (res startsWith "No") "" else res
   }
-  
+  def compareContents(lines1: Seq[String], lines2: Seq[String]): String = {
+    val xs1 = lines1.toArray[AnyRef]
+    val xs2 = lines2.toArray[AnyRef]
+
+    val diff   = new Diff(xs1, xs2)
+    val change = diff.diff_2(false)
+    val writer = new StringWriter
+    val p      = new DiffPrint.NormalPrint(xs1, xs2, writer)
+
+    p.print_script(change)
+    val res = writer.toString
+    if (res startsWith "No ") ""
+    else res
+  }
+}
+object FileUtil extends FileUtil { }
+
+trait FileManager extends FileUtil {
+
   def testRootDir: Directory
   def testRootPath: String
 
@@ -41,60 +60,66 @@ trait FileManager {
 
   var CLASSPATH: String
   var LATEST_LIB: String
+  var LATEST_COMP: String
+  var LATEST_PARTEST: String
 
   var showDiff = false
+  var updateCheck = false
   var showLog = false
   var failed = false
 
-  var SCALAC_OPTS = PartestDefaults.scalacOpts
+  var SCALAC_OPTS = PartestDefaults.scalacOpts.split(' ').toSeq
   var JAVA_OPTS   = PartestDefaults.javaOpts
   var timeout     = PartestDefaults.timeout
-  
+  // how can 15 minutes not be enough? What are you doing, run/lisp.scala?
+  // You complete in 11 seconds on my machine.
+  var oneTestTimeout = 60 * 60 * 1000
+
   /** Only when --debug is given. */
-  lazy val testTimings = new HashMap[String, Long]
+  lazy val testTimings = new mutable.HashMap[String, Long]
   def recordTestTiming(name: String, milliseconds: Long) =
     synchronized { testTimings(name) = milliseconds }
   def showTestTimings() {
     testTimings.toList sortBy (-_._2) foreach { case (k, v) => println("%s: %s".format(k, v)) }
   }
 
-  def getLogFile(dir: File, fileBase: String, kind: String): LogFile =
-    new LogFile(dir, fileBase + "-" + kind + ".log")
+  def getLogFile(dir: File, fileBase: String, kind: String): File =
+    new File(dir, fileBase + "-" + kind + ".log")
 
-  def getLogFile(file: File, kind: String): LogFile = {
-    val dir = file.getParentFile
+  def getLogFile(file: File, kind: String): File = {
+    val dir      = file.getParentFile
     val fileBase = basename(file.getName)
+
     getLogFile(dir, fileBase, kind)
   }
 
   def logFileExists(file: File, kind: String) =
     getLogFile(file, kind).canRead
-  
+
   def overwriteFileWith(dest: File, file: File) =
     dest.isFile && copyFile(file, dest)
-  
-  def copyFile(from: File, to: File): Boolean =
-    try {
-      val appender = StreamAppender(from, to)
-      appender.run()
-      appender.closeAll()
-      true
-    }
-    catch {
-      case _: IOException => false
-    }
 
-  def mapFile(file: File, suffix: String, dir: File, replace: String => String) {
-    val tmpFile = File.createTempFile("tmp", suffix, dir) // prefix required by API
-    
-    val appender = StreamAppender(file, tmpFile)    
-    appender.runAndMap(replace)
-    appender.closeAll()
+  def copyFile(from: File, dest: File): Boolean = {
+    if (from.isDirectory) {
+      assert(dest.isDirectory, "cannot copy directory to file")
+      val subDir:Directory = Path(dest) / Directory(from.getName)
+      subDir.createDirectory()
+      from.listFiles.toList forall (copyFile(_, subDir))
+    }
+    else {
+      val to = if (dest.isDirectory) new File(dest, from.getName) else dest
 
-    val appender2 = StreamAppender(tmpFile, file)
-    appender2.run()
-    appender2.closeAll()
-    
-    tmpFile.delete()
+      try {
+        SFile(to) writeAll SFile(from).slurp()
+        true
+      }
+      catch { case _: IOException => false }
+    }
+  }
+
+  def mapFile(file: File, replace: String => String) {
+    val f = SFile(file)
+
+    f.printlnAll(f.lines.toList map replace: _*)
   }
 }

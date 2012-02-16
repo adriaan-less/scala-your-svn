@@ -1,19 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
-**  __\ \/ /__/ __ |/ /__/ __ |                                         **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
-
-// $Id$
-
 
 package scala.collection
 package mutable
 
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
+ *
+ *  @tparam A   type of the elements in this stack proxy.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 10/05/2004
@@ -23,9 +22,9 @@ trait StackProxy[A] extends Stack[A] with Proxy {
 
   def self: Stack[A]
 
-  /** Access element number <code>n</code>.
+  /** Access element number `n`.
    *
-   *  @return  the element at index <code>n</code>.
+   *  @return  the element at index `n`.
    */
   override def apply(n: Int): A = self.apply(n)
 
@@ -48,37 +47,7 @@ trait StackProxy[A] extends Stack[A] with Proxy {
     this
   }
 
-  override def pushAll(elems: Iterator[A]): this.type = {
-    self pushAll elems
-    this
-  }
-
-  override def pushAll(elems: scala.collection.Traversable[A]): this.type = {
-    self pushAll elems
-    this
-  }
-
-  /** Pushes all elements provided by an <code>Iterable</code> object
-   *  on top of the stack. The elements are pushed in the order they
-   *  are given out by the iterator.
-   *
-   *  @param  iter        an iterable object
-   */
-  @deprecated("use pushAll") override def ++=(iter: scala.collection.Iterable[A]): this.type = {
-    self ++= iter
-    this
-  }
-
-  /** Pushes all elements provided by an iterator
-   *  on top of the stack. The elements are pushed in the order they
-   *  are given out by the iterator.
-   *
-   *  @param  iter        an iterator
-   */
-  @deprecated("use pushAll") override def ++=(it: Iterator[A]): this.type = {
-    self ++= it
-    this
-  }
+  override def pushAll(xs: TraversableOnce[A]): this.type = { self pushAll xs; this }
 
   override def push(elem1: A, elem2: A, elems: A*): this.type = {
     self.push(elem1).push(elem2).pushAll(elems)

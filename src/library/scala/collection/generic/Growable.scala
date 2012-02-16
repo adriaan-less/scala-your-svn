@@ -1,20 +1,19 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
-package generic 
+package generic
 
 /** This trait forms part of collections that can be augmented
  *  using a `+=` operator and that can be cleared of all elements using
  *  a `clear` method.
- *        
+ *
  *  @author   Martin Odersky
  *  @version 2.8
  *  @since   2.8
@@ -23,7 +22,7 @@ package generic
  *  @define add  add
  *  @define Add  add
  */
-trait Growable[-A] { 
+trait Growable[-A] {
 
   /** ${Add}s a single element to this $coll.
    *
@@ -41,26 +40,15 @@ trait Growable[-A] {
    */
   def +=(elem1: A, elem2: A, elems: A*): this.type = this += elem1 += elem2 ++= elems
 
-  /** ${Add}s all elements produced by an iterator to this $coll.
+  /** ${Add}s all elements produced by a TraversableOnce to this $coll.
    *
-   *  @param iter  the iterator producing the elements to $add.
-   *  @return  the $coll itself. 
+   *  @param iter  the TraversableOnce producing the elements to $add.
+   *  @return  the $coll itself.
    */
-  def ++=(iter: Iterator[A]): this.type = { iter foreach += ; this }
-
-  /** ${Add}s all elements contained in a traversable collection to this $coll.
-   *
-   *  @param elems  the collection containing the elements to $add.
-   *  @return  the $coll itself. 
-   */
-  def ++=(elems: Traversable[A]): this.type = { elems foreach +=; this }
+  def ++=(xs: TraversableOnce[A]): this.type = { xs.seq foreach += ; this }
 
   /** Clears the $coll's contents. After this operation, the
    *  $coll is empty.
    */
   def clear()
 }
-  
-
-  
-
