@@ -11,8 +11,7 @@ import scala.tools.nsc._
 /** A tool for identifying which classfile is being used.
  *  under the given conditions.
  */
-object Which
-{
+object Which {
   def main(args: Array[String]): Unit = {
     val settings = new Settings()
     val names = settings.processArguments(args.toList, true)._2
@@ -20,9 +19,9 @@ object Which
     val cp = global.classPath
 
     import cp._
-    
+
     for (name <- names) {
-      def fail = println("Could not find: %s".format(name))
+      def fail() = println("Could not find: %s".format(name))
       (cp findClass name) match {
         case Some(classRep) => classRep.binary match {
           case Some(f)  => println("%s is %s".format(name, f))

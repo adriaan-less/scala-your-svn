@@ -17,14 +17,14 @@ abstract class Generator {
     * confirm that they have been correctly initialised before allowing generation to proceed. */
   protected val checks: mutable.Set[()=>Boolean] =
     mutable.Set.empty[()=>Boolean]
-  
+
   /** Outputs documentation (as a side effect). */
-  def generate: Unit = {
+  def generate(): Unit = {
     assert(checks forall { check => check() })
     generateImpl
   }
 
   /** Outputs documentation (as a side effect). This method is called only if all `checks` are true. */
-  protected def generateImpl: Unit
+  protected def generateImpl(): Unit
 
 }

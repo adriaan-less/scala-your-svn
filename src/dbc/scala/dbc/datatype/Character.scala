@@ -15,8 +15,8 @@ package datatype;
 /** A SQL type for a string of characters of arbitrary length with
  *  arbitrary character set.
  */
-@deprecated(DbcIsDeprecated) abstract class Character extends CharacterString {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Character extends CharacterString {
+
   def isEquivalent(datatype: DataType) = datatype match {
     case dt: Character =>
       length == dt.length && encoding == dt.encoding

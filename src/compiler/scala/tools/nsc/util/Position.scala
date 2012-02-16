@@ -9,10 +9,33 @@ package util
 
 object Position {
   val tabInc = 8
+
+  /** Prints the message with the given position indication. */
+  def formatMessage(posIn: Position, msg: String, shortenFile: Boolean): String = {
+    val pos = (
+      if (posIn eq null) NoPosition
+      else if (posIn.isDefined) posIn.inUltimateSource(posIn.source)
+      else posIn
+    )
+    def file   = pos.source.file
+    def prefix = if (shortenFile) file.name else file.path
+
+    pos match {
+      case FakePos(fmsg) => fmsg+" "+msg
+      case NoPosition    => msg
+      case _             =>
+        List(
+          "%s:%s: %s".format(prefix, pos.line, msg),
+          pos.lineContent.stripLineEnd,
+          " " * (pos.column - 1) + "^"
+        ) mkString "\n"
+    }
+  }
 }
+
 /** The Position class and its subclasses represent positions of ASTs and symbols.
  *  Except for NoPosition and FakePos, every position refers to a SourceFile
- *  and to an offset in the sourcefile (its `point'). For batch compilation,
+ *  and to an offset in the sourcefile (its `point`). For batch compilation,
  *  that's all. For interactive IDE's there are also RangePositions
  *  and TransparentPositions. A RangePosition indicates a start and an end
  *  in addition to its point. TransparentPositions are a subclass of RangePositions.
@@ -71,13 +94,13 @@ trait Position {
 
   /** Is this position a range position? */
   def isRange: Boolean = false
-  
+
   /** Is this position a non-transparent range position? */
   def isOpaqueRange: Boolean = false
 
   /** if opaque range, make this position transparent */
   def makeTransparent: Position = this
-  
+
   /** The start of the position's range, error if not a range position */
   def start: Int = throw new UnsupportedOperationException("Position.start")
 
@@ -87,7 +110,7 @@ trait Position {
   /**  The point (where the ^ is) of the position */
   def point: Int = throw new UnsupportedOperationException("Position.point")
 
-  /**  The point (where the ^ is) of the position, or else `default' if undefined */
+  /**  The point (where the ^ is) of the position, or else `default` if undefined */
   def pointOrElse(default: Int): Int = default
 
   /** The end of the position's range, error if not a range position */
@@ -96,7 +119,7 @@ trait Position {
   /** The end of the position's range, or point if not a range position */
   def endOrPoint: Int = point
 
-  @deprecated("use point instead")
+  @deprecated("use point instead", "2.9.0")
   def offset: Option[Int] = if (isDefined) Some(point) else None
 
   /** The same position with a different start value (if a range) */
@@ -120,19 +143,19 @@ trait Position {
    *  Otherwise the position itself
    */
   def focusStart = this
-  
+
   /** If this is a range position, the offset position of its point.
    *  Otherwise the position itself
    */
   def focus = this
-  
+
   /** If this is a range position, the offset position of its end.
    *  Otherwise the position itself
    */
   def focusEnd = this
-  
+
   /** Does this position include the given position `pos`.
-   *  This holds if `this` is a range position and its range [start..end] 
+   *  This holds if `this` is a range position and its range [start..end]
    *  is the same or covers the range of the given position, which may or may not be a range position.
    */
   def includes(pos: Position) = false
@@ -140,14 +163,14 @@ trait Position {
   /** Does this position properly include the given position `pos` ("properly" meaning their
    *  ranges are not the same)?
    */
-  def properlyIncludes(pos: Position) = 
+  def properlyIncludes(pos: Position) =
     includes(pos) && (start < pos.startOrPoint || pos.endOrPoint < end)
-  
+
   /** Does this position precede that position?
    *  This holds if both positions are defined and the end point of this position
    *  is not larger than the start point of the given position.
    */
-  def precedes(pos: Position) = 
+  def precedes(pos: Position) =
     isDefined && pos.isDefined && endOrPoint <= pos.startOrPoint
 
   /** Does this position properly precede the given position `pos` ("properly" meaning their ranges
@@ -160,14 +183,14 @@ trait Position {
    *  This holds if both positions are ranges and there is an interval of
    *  non-zero length that is shared by both position ranges.
    */
-  def overlaps(pos: Position) = 
-    isRange && pos.isRange && 
+  def overlaps(pos: Position) =
+    isRange && pos.isRange &&
     ((pos.start < end && start < pos.end) || (start < pos.end && pos.start < end))
-  
+
   /** Does this position cover the same range as that position?
    *  Holds only if both position are ranges
    */
-  def sameRange(pos: Position) = 
+  def sameRange(pos: Position) =
     isRange && pos.isRange && start == pos.start && end == pos.end
 
   def line: Int = throw new UnsupportedOperationException("Position.line")
@@ -176,7 +199,7 @@ trait Position {
 
   /** Convert this to a position around `point` that spans a single source line */
   def toSingleLine: Position = this
-  
+
   def lineContent: String =
     if (isDefined) source.lineToString(line - 1)
     else "NO_LINE"
@@ -185,10 +208,11 @@ trait Position {
    * file.  If the SourceFile is a normal SourceFile, simply
    * return this.
    */
-  def inUltimateSource(source : SourceFile) = 
+  def inUltimateSource(source : SourceFile) =
     if (source == null) this else source.positionInUltimateSource(this)
-  
+
   def dbgString = toString
+  def safeLine = try line catch { case _: UnsupportedOperationException => -1 }
 
   def show: String = "["+toString+"]"
 }
@@ -208,7 +232,7 @@ class OffsetPosition(override val source: SourceFile, override val point: Int) e
   override def withSource(source: SourceFile, shift: Int) = new OffsetPosition(source, point + shift)
 
   override def line: Int = source.offsetToLine(point) + 1
-  
+
   override def column: Int = {
     var idx = source.lineToOffset(source.offsetToLine(point))
     var col = 0
@@ -219,11 +243,11 @@ class OffsetPosition(override val source: SourceFile, override val point: Int) e
     col + 1
   }
 
-  override def union(pos: Position) = 
+  override def union(pos: Position) =
     if (pos.isRange) pos else this
 
   override def equals(that : Any) = that match {
-    case that : OffsetPosition => point == that.point && source.file == that.source.file 
+    case that : OffsetPosition => point == that.point && source.file == that.source.file
     case that => false
   }
   override def hashCode = point * 37 + source.file.hashCode
@@ -236,7 +260,7 @@ class OffsetPosition(override val source: SourceFile, override val point: Int) e
 }
 
 /** new for position ranges */
-class RangePosition(source: SourceFile, override val start: Int, point: Int, override val end: Int) 
+class RangePosition(source: SourceFile, override val start: Int, point: Int, override val end: Int)
 extends OffsetPosition(source, point) {
   if (start > end) assert(false, "bad position: "+show)
   override def isRange: Boolean = true
@@ -255,17 +279,17 @@ extends OffsetPosition(source, point) {
   override def focusEnd = new OffsetPosition(source, end)
   override def makeTransparent = new TransparentPosition(source, start, point, end)
   override def includes(pos: Position) = pos.isDefined && start <= pos.startOrPoint && pos.endOrPoint <= end
-  override def union(pos: Position) = 
+  override def union(pos: Position) =
     if (pos.isRange) new RangePosition(source, start min pos.start, point, end max pos.end) else this
 
   override def toSingleLine: Position = source match {
-    case bs: BatchSourceFile 
+    case bs: BatchSourceFile
     if end > 0 && bs.offsetToLine(start) < bs.offsetToLine(end - 1) =>
       val pointLine = bs.offsetToLine(point)
       new RangePosition(source, bs.lineToOffset(pointLine), point, bs.lineToOffset(pointLine + 1))
     case _ => this
   }
-  
+
   override def toString = "RangePosition("+source+", "+start+", "+point+", "+end+")"
   override def show = "["+start+":"+end+"]"
   private var focusCache: Position = NoPosition
@@ -280,6 +304,6 @@ class TransparentPosition(source: SourceFile, start: Int, point: Int, end: Int) 
 
 
 
-  
 
-  
+
+

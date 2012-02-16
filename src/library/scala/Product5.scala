@@ -10,7 +10,7 @@
 package scala
 
 object Product5 {
-  def unapply[T1, T2, T3, T4, T5](x: Product5[T1, T2, T3, T4, T5]): Option[Product5[T1, T2, T3, T4, T5]] = 
+  def unapply[T1, T2, T3, T4, T5](x: Product5[T1, T2, T3, T4, T5]): Option[Product5[T1, T2, T3, T4, T5]] =
     Some(x)
 }
 
@@ -27,10 +27,10 @@ trait Product5[+T1, +T2, +T3, +T4, +T5] extends Product {
   /** Returns the n-th projection of this product if 0 < n <= productArity,
    *  otherwise throws an `IndexOutOfBoundsException`.
    *
-   *  @param n number of the projection to be returned 
+   *  @param n number of the projection to be returned
    *  @return  same as `._(n+1)`, for example `productElement(1)` is the same as `._1`.
    *  @throws  IndexOutOfBoundsException
-   */  
+   */
 
   @throws(classOf[IndexOutOfBoundsException])
   override def productElement(n: Int) = n match { 
@@ -40,7 +40,7 @@ trait Product5[+T1, +T2, +T3, +T4, +T5] extends Product {
     case 3 => _4
     case 4 => _5
     case _ => throw new IndexOutOfBoundsException(n.toString())
- }  
+ }
 
   /** A projection of element 1 of this Product.
    *  @return   A projection of element 1.
