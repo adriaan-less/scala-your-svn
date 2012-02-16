@@ -7,7 +7,7 @@ package scala.tools.nsc
 package javac
 
 import scala.tools.nsc.util._
-import Chars._
+import scala.reflect.internal.Chars._
 import JavaTokens._
 import scala.annotation.switch
 
@@ -60,10 +60,10 @@ trait JavaScanners extends ast.parser.ScannersCommon {
 
     /** the last error position
      */
-    var errpos: ScanPosition 
+    var errpos: ScanPosition
     var lastPos: ScanPosition
     def skipToken: ScanPosition
-    def nextToken: Unit
+    def nextToken(): Unit
     def next: AbstractJavaTokenData
     def intVal(negated: Boolean): Long
     def floatVal(negated: Boolean): Double
@@ -130,7 +130,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
       javanme.VOLATILEkw     -> VOLATILE,
       javanme.WHILEkw        -> WHILE
     )
-    
+
     private var kwOffset = -1
     private val kwArray: Array[Int] = {
       val (offset, arr) = createKeywordArray(allKeywords, IDENTIFIER)
@@ -217,7 +217,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
         }
     }
   }
-  
+
   /** A scanner for Java.
    *
    *  @author     Martin Odersky
@@ -237,7 +237,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
     }
 
     /** character buffer for literals
-     */  
+     */
     val cbuf = new StringBuilder()
 
     /** append Unicode character to "lit" buffer
@@ -259,8 +259,8 @@ trait JavaScanners extends ast.parser.ScannersCommon {
       docBuffer = null
       ret
     }
-  
-    /** add the given character to the documentation buffer 
+
+    /** add the given character to the documentation buffer
      */
     protected def putDocChar(c: Char) {
       if (docBuffer ne null) docBuffer.append(c)
@@ -281,8 +281,8 @@ trait JavaScanners extends ast.parser.ScannersCommon {
       val p = pos; nextToken
       p - 1
     }
-    
-    def nextToken {
+
+    def nextToken() {
       if (next.token == EMPTY) {
         fetchToken()
       }
@@ -305,14 +305,14 @@ trait JavaScanners extends ast.parser.ScannersCommon {
      */
     private def fetchToken() {
       if (token == EOF) return
-      lastPos = in.cpos - 1 // Position.encode(in.cline, in.ccol)
+      lastPos = in.cpos - 1
       //var index = bp
       while (true) {
         in.ch match {
           case ' ' | '\t' | CR | LF | FF =>
             in.next
           case _ =>
-            pos = in.cpos // Position.encode(in.cline, in.ccol)
+            pos = in.cpos
             (in.ch: @switch) match {
               case 'A' | 'B' | 'C' | 'D' | 'E' |
                    'F' | 'G' | 'H' | 'I' | 'J' |
@@ -341,7 +341,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                   base = 8
                 }
                 getNumber
-                return   
+                return
 
               case '1' | '2' | '3' | '4' |
                    '5' | '6' | '7' | '8' | '9' =>
@@ -349,7 +349,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 getNumber
                 return
 
-              case '\"' => 
+              case '\"' =>
                 in.next
                 while (in.ch != '\"' && (in.isUnicode || in.ch != CR && in.ch != LF && in.ch != SU)) {
                   getlitch()
@@ -381,9 +381,9 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 if (in.ch == '=') {
                   token = EQEQ
                   in.next
-                } 
+                }
                 return
-              
+
               case '>' =>
                 token = GT
                 in.next
@@ -406,7 +406,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                   }
                 }
                 return
-              
+
               case '<' =>
                 token = LT
                 in.next
@@ -429,9 +429,9 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 if (in.ch == '=') {
                   token = BANGEQ
                   in.next
-                } 
+                }
                 return
-                
+
               case '~' =>
                 token = TILDE
                 in.next
@@ -441,7 +441,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 token = QMARK
                 in.next
                 return
-                
+
               case ':' =>
                 token = COLON
                 in.next
@@ -461,7 +461,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 } else if (in.ch == '=') {
                   token = AMPEQ
                   in.next
-                } 
+                }
                 return
 
               case '|' =>
@@ -473,7 +473,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 } else if (in.ch == '=') {
                   token = BAREQ
                   in.next
-                } 
+                }
                 return
 
               case '+' =>
@@ -485,7 +485,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 } else if (in.ch == '=') {
                   token = PLUSEQ
                   in.next
-                } 
+                }
                 return
 
               case '-' =>
@@ -497,7 +497,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 } else if (in.ch == '=') {
                   token = MINUSEQ
                   in.next
-                } 
+                }
                 return
 
               case '*' =>
@@ -506,7 +506,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 if (in.ch == '=') {
                   token = ASTERISKEQ
                   in.next
-                } 
+                }
                 return
 
               case '/' =>
@@ -517,26 +517,26 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                   if (in.ch == '=') {
                     token = SLASHEQ
                     in.next
-                  } 
+                  }
                   return
                 }
-              
+
               case '^' =>
                 token = HAT
                 in.next
                 if (in.ch == '=') {
                   token = HATEQ
                   in.next
-                } 
+                }
                 return
-              
+
               case '%' =>
                 token = PERCENT
                 in.next
                 if (in.ch == '=') {
                   token = PERCENTEQ
                   in.next
-                } 
+                }
                 return
 
               case '.' =>
@@ -553,7 +553,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 }
                 return
 
-              case ';' => 
+              case ';' =>
                 token = SEMI
                 in.next
                 return
@@ -563,7 +563,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                 in.next
                 return
 
-              case '(' =>   
+              case '(' =>
                 token = LPAREN
                 in.next
                 return
@@ -648,7 +648,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
 
 // Identifiers ---------------------------------------------------------------
 
-    private def getIdentRest {
+    private def getIdentRest() {
       while (true) {
         (in.ch: @switch) match {
           case 'A' | 'B' | 'C' | 'D' | 'E' |
@@ -667,7 +667,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
                '5' | '6' | '7' | '8' | '9' =>
             putChar(in.ch)
             in.next
-            
+
           case '_' =>
             putChar(in.ch)
             in.next
@@ -734,7 +734,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
     /** read fractional part and exponent of floating point number
      *  if one is present.
      */
-    protected def getFraction {
+    protected def getFraction() {
       token = DOUBLELIT
       while ('0' <= in.ch && in.ch <= '9') {
         putChar(in.ch)
@@ -808,22 +808,22 @@ trait JavaScanners extends ast.parser.ScannersCommon {
     /** convert name, base to double value
     */
     def floatVal(negated: Boolean): Double = {
-      val limit: Double = 
+      val limit: Double =
         if (token == DOUBLELIT) Double.MaxValue else Float.MaxValue
       try {
-        val value: Double = java.lang.Double.valueOf(name.toString()).doubleValue()
+        val value: Double = java.lang.Double.valueOf(name.toString).doubleValue()
         if (value > limit)
           syntaxError("floating point number too large")
         if (negated) -value else value
       } catch {
-        case _: NumberFormatException => 
+        case _: NumberFormatException =>
           syntaxError("malformed floating point number")
           0.0
       }
     }
     /** read a number into name and set base
     */
-    protected def getNumber {
+    protected def getNumber() {
       while (digit2int(in.ch, if (base < 10) 10 else base) >= 0) {
         putChar(in.ch)
         in.next
@@ -833,7 +833,7 @@ trait JavaScanners extends ast.parser.ScannersCommon {
         val lookahead = in.copy
         lookahead.next
         lookahead.ch match {
-          case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | 
+          case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' |
                '8' | '9' | 'd' | 'D' | 'e' | 'E' | 'f' | 'F' =>
             putChar(in.ch)
             in.next
@@ -845,8 +845,8 @@ trait JavaScanners extends ast.parser.ScannersCommon {
               return getFraction
             }
         }
-      } 
-      if (base <= 10 && 
+      }
+      if (base <= 10 &&
           (in.ch == 'e' || in.ch == 'E' ||
            in.ch == 'f' || in.ch == 'F' ||
            in.ch == 'd' || in.ch == 'D')) {
@@ -903,22 +903,23 @@ trait JavaScanners extends ast.parser.ScannersCommon {
         JavaScannerConfiguration.token2string(token)
     }
 
-    /** INIT: read lookahead character and token. 
+    /** INIT: read lookahead character and token.
      */
-    def init {
+    def init() {
       in.next
       nextToken
     }
   }
 
   /** ...
-   */   
+   */
   class JavaUnitScanner(unit: CompilationUnit) extends JavaScanner {
     in = new JavaCharArrayReader(unit.source.content, !settings.nouescape.value, syntaxError)
     init
     def warning(pos: Int, msg: String) = unit.warning(pos, msg)
     def error  (pos: Int, msg: String) = unit.  error(pos, msg)
     def incompleteInputError(pos: Int, msg: String) = unit.incompleteInputError(pos, msg)
+    def deprecationWarning(pos: Int, msg: String) = unit.deprecationWarning(pos, msg)
     implicit def p2g(pos: Position): Int = if (pos.isDefined) pos.point else -1
     implicit def g2p(pos: Int): Position = new OffsetPosition(unit.source, pos)
   }

@@ -10,7 +10,7 @@ package model
 import scala.collection._
 
 object IndexModelFactory {
-  
+
   def makeIndex(universe: Universe): Index = new Index {
 
     lazy val firstLetterIndex: Map[Char, SymbolMap] = {
@@ -18,23 +18,22 @@ object IndexModelFactory {
       val result = new mutable.HashMap[Char,SymbolMap] {
 
         /* Owner template ordering */
-        implicit def orderingSet = math.Ordering.String.on { x: TemplateEntity => x.name.toLowerCase }
+        implicit def orderingSet = math.Ordering.String.on { x: MemberEntity => x.name.toLowerCase }
         /* symbol name ordering */
         implicit def orderingMap = math.Ordering.String.on { x: String => x.toLowerCase }
 
         def addMember(d: MemberEntity) = {
           val firstLetter = {
             val ch = d.name.head.toLower
-            if(ch.isLetterOrDigit) ch else '#'
+            if(ch.isLetterOrDigit) ch else '_'
           }
-          this(firstLetter) =
-          if(this.contains(firstLetter)) {
-            val letter = this(firstLetter)
-            val value = this(firstLetter).get(d.name).getOrElse(SortedSet.empty[TemplateEntity]) + d.inDefinitionTemplates.head
-              letter + ((d.name, value))
-          } else {
-            immutable.SortedMap( (d.name, SortedSet(d.inDefinitionTemplates.head)) )
+          val letter = this.get(firstLetter).getOrElse {
+            immutable.SortedMap[String, SortedSet[MemberEntity]]()
           }
+          val members = letter.get(d.name).getOrElse {
+            SortedSet.empty[MemberEntity](Ordering.by { _.toString })
+          } + d
+          this(firstLetter) = letter + (d.name -> members)
         }
 
       }
@@ -62,5 +61,5 @@ object IndexModelFactory {
     }
 
   }
-  
+
 }

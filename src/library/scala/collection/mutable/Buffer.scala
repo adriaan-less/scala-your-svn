@@ -17,19 +17,19 @@ import generic._
  *  appending, prepending, or inserting new elements. It is also
  *  possible to access and modify elements in a random access fashion
  *  via the index of the element in the current sequence.
- *  
+ *
  *  @author Matthias Zenger
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   1
- *  
+ *
  *  @tparam A    type of the elements contained in this buffer.
- *  
+ *
  *  @define Coll Buffer
  *  @define coll buffer
  */
 @cloneable
-trait Buffer[A] extends Seq[A] 
+trait Buffer[A] extends Seq[A]
                    with GenericTraversableTemplate[A, Buffer]
                    with BufferLike[A, Buffer[A]] {
   override def companion: GenericCompanion[Buffer] = Buffer
@@ -40,7 +40,9 @@ trait Buffer[A] extends Seq[A]
  *  @define Coll Buffer
  */
 object Buffer extends SeqFactory[Buffer] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Buffer[A]] = new GenericCanBuildFrom[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Buffer[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   def newBuilder[A]: Builder[A, Buffer[A]] = new ArrayBuffer
 }
 
+/** Explicit instantiation of the `Buffer` trait to reduce class file size in subclasses. */
+private[scala] abstract class AbstractBuffer[A] extends AbstractSeq[A] with Buffer[A]
