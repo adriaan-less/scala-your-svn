@@ -1,13 +1,10 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
-
-// $Id$
-
 
 package scala.collection
 package immutable
@@ -15,9 +12,10 @@ package immutable
 import generic._
 import mutable.Builder
 import scala.util.matching.Regex
+import scala.math.ScalaNumber
 
-/**
- * @since 2.8
+/** A companion object for the `StringLike` containing some constants.
+ *  @since 2.8
  */
 object StringLike {
 
@@ -30,17 +28,26 @@ object StringLike {
 
 import StringLike._
 
-/**
- * @since 2.8
+/** A trait describing stringlike collections.
+ *
+ *  @tparam Repr   The type of the actual collection inheriting `StringLike`.
+ *
+ *  @since 2.8
+ *  @define Coll String
+ *  @define coll string
+ *  @define orderDependent
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-trait StringLike[+Repr] extends VectorLike[Char, Repr] with Ordered[String] {
+trait StringLike[+Repr] extends collection.IndexedSeqOptimized[Char, Repr] with Ordered[String] {
 self =>
 
   /** Creates a string builder buffer as builder for this class */
   protected[this] def newBuilder: Builder[Char, Repr]
 
   /** Return element at index `n`
-   *  @throws   IndexOutofBoundsException if the index is not valid
+   *  @throws   IndexOutOfBoundsException if the index is not valid
    */
   def apply(n: Int): Char = toString charAt n
 
@@ -48,7 +55,15 @@ self =>
 
   override def mkString = toString
 
-  /** return n times the current string 
+  override def slice(from: Int, until: Int): Repr = {
+    val start = from max 0
+    val end   = until min length
+
+    if (start >= end) newBuilder.result
+    else newBuilder ++= toString.substring(start, end) result
+  }
+
+  /** Return the current string concatenated `n` times.
    */
   def * (n: Int): String = {
     val buf = new StringBuilder
@@ -60,18 +75,15 @@ self =>
 
   private def isLineBreak(c: Char) = c == LF || c == FF
 
-  /** <p>
-   *    Strip trailing line end character from this string if it has one.
-   *    A line end character is one of
-   *  </p>
-   *  <ul style="list-style-type: none;">
-   *    <li>LF - line feed   (0x0A hex)</li>
-   *    <li>FF - form feed   (0x0C hex)</li>
-   *  </ul>
-   *  <p>
-   *    If a line feed character LF is preceded by a carriage return CR
-   *    (0x0D hex), the CR character is also stripped (Windows convention).
-   *  </p>
+  /**
+   *  Strip trailing line end character from this string if it has one.
+   *
+   *  A line end character is one of
+   *  - `LF` - line feed   (`0x0A` hex)
+   *  - `FF` - form feed   (`0x0C` hex)
+   *
+   *  If a line feed character `LF` is preceded by a carriage return `CR`
+   *  (`0x0D` hex), the `CR` character is also stripped (Windows convention).
    */
   def stripLineEnd: String = {
     val len = toString.length
@@ -80,26 +92,21 @@ self =>
       val last = apply(len - 1)
       if (isLineBreak(last))
         toString.substring(0, if (last == LF && len >= 2 && apply(len - 2) == CR) len - 2 else len - 1)
-      else 
+      else
         toString
     }
   }
 
-  /** <p>
-   *    Return all lines in this string in an iterator, including trailing
-   *    line end characters.
-   *  </p>
-   *  <p>
-   *    The number of strings returned is one greater than the number of line
-   *    end characters in this string. For an empty string, a single empty
-   *    line is returned. A line end character is one of
-   *  </p>
-   *  <ul style="list-style-type: none;">
-   *    <li>LF - line feed   (0x0A hex)</li>
-   *    <li>FF - form feed   (0x0C hex)</li>
-   *  </ul>
+  /** Return all lines in this string in an iterator, including trailing
+   *  line end characters.
+   *
+   *  The number of strings returned is one greater than the number of line
+   *  end characters in this string. For an empty string, a single empty
+   *  line is returned. A line end character is one of
+   *  - `LF` - line feed   (`0x0A` hex)
+   *  - `FF` - form feed   (`0x0C` hex)
    */
-  def linesWithSeparators: Iterator[String] = new Iterator[String] {
+  def linesWithSeparators: Iterator[String] = new AbstractIterator[String] {
     val str = self.toString
     private val len = str.length
     private var index = 0
@@ -114,17 +121,17 @@ self =>
   }
 
   /** Return all lines in this string in an iterator, excluding trailing line
-   *  end characters, i.e. apply <code>.stripLineEnd</code> to all lines
-   *  returned by <code>linesWithSeparators</code>.
+   *  end characters, i.e. apply `.stripLineEnd` to all lines
+   *  returned by `linesWithSeparators`.
    */
-  def lines: Iterator[String] = 
+  def lines: Iterator[String] =
     linesWithSeparators map (line => new WrappedString(line).stripLineEnd)
 
   /** Return all lines in this string in an iterator, excluding trailing line
-   *  end characters, i.e. apply <code>.stripLineEnd</code> to all lines
-   *  returned by <code>linesWithSeparators</code>.
+   *  end characters, i.e. apply `.stripLineEnd` to all lines
+   *  returned by `linesWithSeparators`.
    */
-  def linesIterator: Iterator[String] = 
+  def linesIterator: Iterator[String] =
     linesWithSeparators map (line => new WrappedString(line).stripLineEnd)
 
   /** Returns this string with first character converted to upper case */
@@ -137,23 +144,36 @@ self =>
       new String(chars)
     }
 
-  /** Returns this string with the given <code>prefix</code> stripped. */
+  /** Returns this string with the given `prefix` stripped. */
   def stripPrefix(prefix: String) =
     if (toString.startsWith(prefix)) toString.substring(prefix.length)
     else toString
 
-  /** Returns this string with the given <code>suffix</code> stripped. */
+  /** Returns this string with the given `suffix` stripped. If this string does not
+    * end with `suffix`, it is returned unchanged. */
   def stripSuffix(suffix: String) =
     if (toString.endsWith(suffix)) toString.substring(0, toString.length() - suffix.length)
     else toString
 
-  /** <p>
-   *    For every line in this string:
-   *  </p>
-   *  <blockquote>
-   *     Strip a leading prefix consisting of blanks or control characters
-   *     followed by <code>marginChar</code> from the line.
-   *  </blockquote>
+  /** Replace all literal occurrences of `literal` with the string `replacement`.
+   *  This is equivalent to [[java.lang.String#replaceAll]] except that both arguments
+   *  are appropriately quoted to avoid being interpreted as metacharacters.
+   *
+   *  @param    literal     the string which should be replaced everywhere it occurs
+   *  @param    replacement the replacement string
+   *  @return               the resulting string
+   */
+  def replaceAllLiterally(literal: String, replacement: String): String = {
+    val arg1 = java.util.regex.Pattern.quote(literal)
+    val arg2 = java.util.regex.Matcher.quoteReplacement(replacement)
+
+    toString.replaceAll(arg1, arg2)
+  }
+
+  /** For every line in this string:
+   *
+   *  Strip a leading prefix consisting of blanks or control characters
+   *  followed by `marginChar` from the line.
    */
   def stripMargin(marginChar: Char): String = {
     val buf = new StringBuilder
@@ -167,13 +187,10 @@ self =>
     buf.toString
   }
 
-  /** <p>
-   *    For every line in this string:
-   *  </p>
-   *  <blockquote>
-   *     Strip a leading prefix consisting of blanks or control characters
-   *     followed by <code>|</code> from the line.
-   *  </blockquote>
+  /** For every line in this string:
+   *
+   *  Strip a leading prefix consisting of blanks or control characters
+   *  followed by `|` from the line.
    */
   def stripMargin: String = stripMargin('|')
 
@@ -188,13 +205,12 @@ self =>
     toString.split(re)
   }
 
-  /** You can follow a string with `.r', turning
-   *  it into a Regex. E.g.
+  /** You can follow a string with `.r`, turning it into a `Regex`. E.g.
    *
-   *  """A\w*""".r   is the regular expression for identifiers starting with `A'.
+   *  """A\w*""".r   is the regular expression for identifiers starting with `A`.
    */
   def r: Regex = new Regex(toString)
-  
+
   def toBoolean: Boolean = parseBoolean(toString)
   def toByte: Byte       = java.lang.Byte.parseByte(toString)
   def toShort: Short     = java.lang.Short.parseShort(toString)
@@ -207,51 +223,50 @@ self =>
     if (s != null) s.toLowerCase match {
       case "true" => true
       case "false" => false
-      case _ => throw new NumberFormatException("For input string: \""+s+"\"")
+      case _ => throw new IllegalArgumentException("For input string: \""+s+"\"")
     }
     else
-      throw new NumberFormatException("For input string: \"null\"")
+      throw new IllegalArgumentException("For input string: \"null\"")
 
-  /* !!! causes crash?
-  def toArray: Array[Char] = {
-    val result = new Array[Char](length)
-    toString.getChars(0, length, result, 0)
-    result
+  override def toArray[B >: Char : ClassManifest]: Array[B] =
+    toString.toCharArray.asInstanceOf[Array[B]]
+
+  private def unwrapArg(arg: Any): AnyRef = arg match {
+    case x: ScalaNumber => x.underlying
+    case x              => x.asInstanceOf[AnyRef]
   }
-  */
 
-  /** <p>
-   *  Uses the underlying string as a pattern (in a fashion similar to
+  /** Uses the underlying string as a pattern (in a fashion similar to
    *  printf in C), and uses the supplied arguments to fill in the
    *  holes.
-   *  </p>
-   *  <p>
+   *
    *    The interpretation of the formatting patterns is described in
    *    <a href="" target="contentFrame" class="java/util/Formatter">
-   *    <code>java.util.Formatter</code></a>.
-   *  </p>
+   *    `java.util.Formatter`</a>, with the addition that
+   *    classes deriving from `ScalaNumber` (such as [[scala.BigInt]] and
+   *    [[scala.BigDecimal]]) are unwrapped to pass a type which `Formatter`
+   *    understands.
    *
    *  @param args the arguments used to instantiating the pattern.
-   *  @throws java.lang.IllegalArgumentException
+   *  @throws `java.lang.IllegalArgumentException`
    */
-  def format(args : Any*) : String =
-    java.lang.String.format(toString, args.asInstanceOf[Seq[AnyRef]]: _*)
+  def format(args : Any*): String =
+    java.lang.String.format(toString, args map unwrapArg: _*)
 
-  /** <p>
-   *  Like format(args*) but takes an initial Locale parameter
-   *  which influences formatting as in java.lang.String's format.
-   *  </p>
-   *  <p>
+  /** Like `format(args*)` but takes an initial `Locale` parameter
+   *  which influences formatting as in `java.lang.String`'s format.
+   *
    *    The interpretation of the formatting patterns is described in
    *    <a href="" target="contentFrame" class="java/util/Formatter">
-   *    <code>java.util.Formatter</code></a>.
-   *  </p>
+   *    `java.util.Formatter`</a>, with the addition that
+   *    classes deriving from `ScalaNumber` (such as `scala.BigInt` and
+   *    `scala.BigDecimal`) are unwrapped to pass a type which `Formatter`
+   *    understands.
    *
-   *  @param locale an instance of java.util.Locale
+   *  @param locale an instance of `java.util.Locale`
    *  @param args the arguments used to instantiating the pattern.
-   *  @throws java.lang.IllegalArgumentException
+   *  @throws `java.lang.IllegalArgumentException`
    */
-  def format(l: java.util.Locale, args: Any*): String =
-    java.lang.String.format(l, toString, args.asInstanceOf[Seq[AnyRef]]: _*)
+  def formatLocal(l: java.util.Locale, args: Any*): String =
+    java.lang.String.format(l, toString, args map unwrapArg: _*)
 }
-

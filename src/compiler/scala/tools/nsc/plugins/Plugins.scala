@@ -1,9 +1,8 @@
 /* NSC -- new Scala compiler
- * Copyright 2007-2009 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Lex Spoon
  * Updated by Anders Bach Nielsen
  */
-// $Id$
 
 package scala.tools.nsc
 package plugins
@@ -12,12 +11,11 @@ import io.{ File, Path }
 
 /** Support for run-time loading of compiler plugins.
  *
- *  @author Lex Spoon 
+ *  @author Lex Spoon
  *  @version 1.1, 2009/1/2
  *  Updated 2009/1/2 by Anders Bach Nielsen: Added features to implement SIP 00002
  */
-trait Plugins
-{
+trait Plugins {
   self: Global =>
 
   /** Load a rough list of the plugins.  For speed, it
@@ -29,11 +27,11 @@ trait Plugins
     val jars = settings.plugin.value map Path.apply
     val dirs = (settings.pluginsDir.value split File.pathSeparator).toList map Path.apply
     val classes = Plugin.loadAllFrom(jars, dirs, settings.disable.value)
-    
-    classes foreach (c => Plugin.instantiate(c, this))
 
-    for (plugClass <- Plugin.loadAllFrom(jars, dirs, settings.disable.value))
-    yield Plugin.instantiate(plugClass, this)
+    // Each plugin must only be instantiated once. A common pattern
+    // is to register annotation checkers during object construction, so
+    // creating multiple plugin instances will leave behind stale checkers.
+    classes map (Plugin.instantiate(_, this))
   }
 
   protected lazy val roughPluginsList: List[Plugin] = loadRoughPluginsList
@@ -45,21 +43,21 @@ trait Plugins
   protected def loadPlugins(): List[Plugin] = {
     // remove any with conflicting names or subcomponent names
     def pick(
-      plugins: List[Plugin], 
-      plugNames: Set[String], 
+      plugins: List[Plugin],
+      plugNames: Set[String],
       phaseNames: Set[String]): List[Plugin] =
     {
       if (plugins.isEmpty) return Nil // early return
-      
+
       val plug :: tail      = plugins
       val plugPhaseNames    = Set(plug.components map (_.phaseName): _*)
       def withoutPlug       = pick(tail, plugNames, plugPhaseNames)
       def withPlug          = plug :: pick(tail, plugNames + plug.name, phaseNames ++ plugPhaseNames)
       lazy val commonPhases = phaseNames intersect plugPhaseNames
-      
+
       def note(msg: String): Unit = if (settings.verbose.value) inform(msg format plug.name)
       def fail(msg: String)       = { note(msg) ; withoutPlug }
-      
+
       if (plugNames contains plug.name)
         fail("[skipping a repeated plugin: %s]")
       else if (settings.disable.value contains plug.name)
@@ -73,10 +71,10 @@ trait Plugins
     }
 
     val plugs = pick(roughPluginsList, Set(), phasesSet map (_.phaseName) toSet)
-    
+
     /** Verify requirements are present. */
     for (req <- settings.require.value ; if !(plugs exists (_.name == req)))
-      error("Missing required plugin: " + req)
+      globalError("Missing required plugin: " + req)
 
     /** Process plugin options. */
     def namec(plug: Plugin) = plug.name + ":"
@@ -87,12 +85,12 @@ trait Plugins
     for (p <- plugs) {
       val opts = doOpts(p)
       if (!opts.isEmpty)
-        p.processOptions(opts, error)
+        p.processOptions(opts, globalError)
     }
-      
-    /** Verify no non-existent plugin given with -P */      
+
+    /** Verify no non-existent plugin given with -P */
     for (opt <- settings.pluginOptions.value ; if plugs forall (p => optList(List(opt), p).isEmpty))
-      error("bad option: -P:" + opt)
+      globalError("bad option: -P:" + opt)
 
     plugs
   }
@@ -113,6 +111,6 @@ trait Plugins
   /** Summary of the options for all loaded plugins */
   def pluginOptionsHelp: String =
     (for (plug <- roughPluginsList ; help <- plug.optionsHelp) yield {
-      "Options for plugin %s:\n%s\n".format(plug.name, help)
+      "\nOptions for plugin '%s':\n%s\n".format(plug.name, help)
     }) mkString
 }
