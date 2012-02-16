@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -81,10 +81,6 @@ object RemoteActor {
     kern
   }
 
-  @deprecated("this member is going to be removed in a future release")
-  def createKernelOnPort(port: Int): NetKernel =
-    createNetKernelOnPort(port)
-
   /**
    * Registers <code>a</code> under <code>name</code> on this
    * node.
@@ -120,10 +116,6 @@ object RemoteActor {
 
   private[remote] def someNetKernel: NetKernel =
     kernels.valuesIterator.next
-
-  @deprecated("this member is going to be removed in a future release")
-  def someKernel: NetKernel =
-    someNetKernel
 }
 
 
