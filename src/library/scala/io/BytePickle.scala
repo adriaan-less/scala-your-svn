@@ -1,16 +1,14 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.io
 
-import scala.collection.mutable.{HashMap, ArrayBuffer}
+import scala.collection.mutable
 
 /**
  * Pickler combinators.
@@ -44,12 +42,12 @@ object BytePickle {
   def uunpickle[T](p: PU[T], stream: Array[Byte]): T =
     p.appU(stream)._1
 
-  class PicklerEnv extends HashMap[Any, Int] {
+  class PicklerEnv extends mutable.HashMap[Any, Int] {
     private var cnt: Int = 64
     def nextLoc() = { cnt += 1; cnt }
   }
 
-  class UnPicklerEnv extends HashMap[Int, Any] {
+  class UnPicklerEnv extends mutable.HashMap[Int, Any] {
     private var cnt: Int = 64
     def nextLoc() = { cnt += 1; cnt }
   }
@@ -110,11 +108,11 @@ object BytePickle {
         case None =>
           val sPrime = refDef.appP(Def(), state.stream)
           val l = pe.nextLoc()
-          
+
           val sPrimePrime = pa.appP(v, new PicklerState(sPrime, pe))
-          
+
           pe.update(v, l)
-          
+
           return sPrimePrime
         case Some(l) =>
           val sPrime = refDef.appP(Ref(), state.stream)
@@ -144,7 +142,7 @@ object BytePickle {
         case Ref() =>
           val res2 = unat.appU(res._2)  // read location
           upe.get(res2._1) match {     // lookup value in unpickler env
-            case None => throw new IllegalArgumentException("invalid unpickler environment"); return null
+            case None => throw new IllegalArgumentException("invalid unpickler environment")
             case Some(v) => return (v.asInstanceOf[a], new UnPicklerState(res2._2, upe))
           }
       }
@@ -153,7 +151,7 @@ object BytePickle {
 
   def ulift[t](x: t): PU[t] = new PU[t] {
     def appP(a: t, state: Array[Byte]): Array[Byte] =
-      if (x != a) { throw new IllegalArgumentException("value to be pickled (" + a + ") != " + x); state }
+      if (x != a) throw new IllegalArgumentException("value to be pickled (" + a + ") != " + x)
       else state;
     def appU(state: Array[Byte]) = (x, state)
   }
@@ -231,7 +229,7 @@ object BytePickle {
     Array.concat(a, Array(b.toByte))
 
   def nat2Bytes(x: Int): Array[Byte] = {
-    val buf = new ArrayBuffer[Byte]
+    val buf = new mutable.ArrayBuffer[Byte]
     def writeNatPrefix(x: Int) {
       val y = x >>> 7;
       if (y != 0) writeNatPrefix(y);
@@ -271,8 +269,8 @@ object BytePickle {
   }
 
   def string: SPU[String] = share(wrap(
-    (a: Array[Byte]) => Codec toUTF8 a mkString,
-    (s: String) => Codec fromUTF8 s,
+    (a: Array[Byte]) => Codec fromUTF8 a mkString,
+    (s: String) => Codec toUTF8 s,
     bytearray
   ))
 
