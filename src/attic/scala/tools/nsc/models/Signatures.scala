@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -10,7 +10,6 @@ import scala.collection.mutable.{HashMap, HashSet}
 import scala.tools.nsc.{Global => Compiler}
 import scala.tools.nsc.symtab.{Flags, Names}
 import scala.tools.nsc.util.{ Position, SourceFile }
-import scala.reflect.NameTransformer
 
 /** This class ...
  *
@@ -45,9 +44,9 @@ class Signatures(val compiler: Compiler) {
    */
   def signature(tree0: Tree, rest: List[Signature]): List[Signature] = tree0 match {
     case tree: MemberDef => if (!tree.mods.isPrivate) {
-      val name = "" + tree.name + "::" + 
+      val name = "" + tree.name + "::" +
         (tree.mods &~ Flags.SYNTHETIC)
-      
+
       val children: List[Signature] = tree match {
           case impl: ImplDef
             //if (!impl.name.toString.contains("$anonfun$")) =>

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -38,15 +38,14 @@ private[actors] object Reactor {
     }
   }
 
-  val waitingForNone = new PartialFunction[Any, Unit] {
-    def isDefinedAt(x: Any) = false
+  val waitingForNone: PartialFunction[Any, Unit] = new scala.runtime.AbstractPartialFunction[Any, Unit] {
+    def _isDefinedAt(x: Any) = false
     def apply(x: Any) {}
   }
-
 }
 
 /**
- * The Reactor trait provides lightweight actors.
+ * Super trait of all actor traits.
  *
  * @author Philipp Haller
  *
@@ -215,21 +214,36 @@ trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
     scheduler executeFromActor makeReaction(null, handler, msg)
   }
 
+  // guarded by this
+  private[actors] def dostart() {
+    _state = Actor.State.Runnable
+    scheduler newActor this
+    scheduler execute makeReaction(() => act(), null, null)
+  }
+
   /**
-   * Starts this $actor.
+   * Starts this $actor. This method is idempotent.
    */
   def start(): Reactor[Msg] = synchronized {
-    if (_state == Actor.State.New) {
-      _state = Actor.State.Runnable
-      scheduler newActor this
-      scheduler execute makeReaction(() => act())
-      this
-    } else
-      this
+    if (_state == Actor.State.New)
+      dostart()
+    this
+  }
+
+  /**
+   * Restarts this $actor.
+   *
+   * @throws java.lang.IllegalStateException  if the $actor is not in state `Actor.State.Terminated`
+   */
+  def restart(): Unit = synchronized {
+    if (_state == Actor.State.Terminated)
+      dostart()
+    else
+      throw new IllegalStateException("restart only in state "+Actor.State.Terminated)
   }
 
   /** Returns the execution state of this $actor.
-   *  
+   *
    *  @return the execution state
    */
   def getState: Actor.State.Value = synchronized {

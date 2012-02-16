@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -30,14 +30,14 @@ trait TraversableProxyLike[+A, +Repr <: TraversableLike[A, Repr] with Traversabl
   override def nonEmpty: Boolean = self.nonEmpty
   override def size: Int = self.size
   override def hasDefiniteSize = self.hasDefiniteSize
-  override def ++[B >: A, That](xs: TraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = self.++(xs)(bf)
+  override def ++[B >: A, That](xs: GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = self.++(xs)(bf)
   override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = self.map(f)(bf)
-  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = self.flatMap(f)(bf)
+  override def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = self.flatMap(f)(bf)
   override def filter(p: A => Boolean): Repr = self.filter(p)
   override def filterNot(p: A => Boolean): Repr = self.filterNot(p)
   override def collect[B, That](pf: PartialFunction[A, B])(implicit bf: CanBuildFrom[Repr, B, That]): That = self.collect(pf)(bf)
   override def partition(p: A => Boolean): (Repr, Repr) = self.partition(p)
-  override def groupBy[K](f: A => K): Map[K, Repr] = self.groupBy(f)
+  override def groupBy[K](f: A => K): immutable.Map[K, Repr] = self.groupBy(f)
   override def forall(p: A => Boolean): Boolean = self.forall(p)
   override def exists(p: A => Boolean): Boolean = self.exists(p)
   override def count(p: A => Boolean): Int = self.count(p)
@@ -77,9 +77,10 @@ trait TraversableProxyLike[+A, +Repr <: TraversableLike[A, Repr] with Traversabl
   override def toList: List[A] = self.toList
   override def toIterable: Iterable[A] = self.toIterable
   override def toSeq: Seq[A] = self.toSeq
-  override def toIndexedSeq[B >: A]: mutable.IndexedSeq[B] = self.toIndexedSeq
+  override def toIndexedSeq: immutable.IndexedSeq[A] = self.toIndexedSeq
+  override def toBuffer[B >: A] = self.toBuffer
   override def toStream: Stream[A] = self.toStream
-  override def toSet[B >: A]: immutable.Set[B] = self.toSet  
+  override def toSet[B >: A]: immutable.Set[B] = self.toSet
   override def toMap[T, U](implicit ev: A <:< (T, U)): immutable.Map[T, U] = self.toMap(ev)
   override def toTraversable: Traversable[A] = self.toTraversable
   override def toIterator: Iterator[A] = self.toIterator
