@@ -1,9 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-
-// $Id$
 
 package scala.tools.nsc
 package backend
@@ -14,31 +12,34 @@ package icode
  *  @author  Iulian Dragos
  *  @version 1.0
  */
-trait TypeStacks { self: ICodes =>
+trait TypeStacks {
+  self: ICodes =>
+
   import opcodes._
-  import global.{Symbol, Type, definitions}
 
   /* This class simulates the type of the operand
    * stack of the ICode.
    */
   type Rep = List[TypeKind]
+  
+  object NoTypeStack extends TypeStack(Nil) { }
 
-  class TypeStack {
-    var types: Rep = Nil
+  class TypeStack(var types: Rep) {
+    if (types.nonEmpty)
+      checkerDebug("Created " + this)
 
-    def this(stack: Rep) = {
-      this()
-      this.types = stack
-    }
-
+    def this() = this(Nil)
     def this(that: TypeStack) = this(that.types)
 
     def length: Int = types.length
+    def isEmpty     = length == 0
+    def nonEmpty    = length != 0
 
     /** Push a type on the type stack. UNITs are ignored. */
-    def push(t: TypeKind) =
+    def push(t: TypeKind) = {
       if (t != UNIT)
         types = t :: types
+    }
 
     def head: TypeKind = types.head
 
@@ -67,24 +68,25 @@ trait TypeStacks { self: ICodes =>
       types = types.drop(n)
       prefix
     }
-    
+
     def apply(n: Int): TypeKind = types(n)
 
     /**
      * A TypeStack agrees with another one if they have the same
-     * length and each type kind agrees position-wise. Two 
+     * length and each type kind agrees position-wise. Two
      * types agree if one is a subtype of the other.
      */
     def agreesWith(other: TypeStack): Boolean =
-      (types.length == other.types.length) &&
-      ((types, other.types).zipped forall ((t1, t2) => t1 <:< t2 || t2 <:< t1))
+      (types corresponds other.types)((t1, t2) => t1 <:< t2 || t2 <:< t1)
 
     /* This method returns a String representation of the stack */
-    override def toString() = types.mkString("\n", "\n", "\n")
+    override def toString() =
+      if (types.isEmpty) "[]"
+      else types.mkString("[", " ", "]")
 
     override def hashCode() = types.hashCode()
     override def equals(other: Any): Boolean = other match {
-      case x: TypeStack => x.types sameElements types
+      case x: TypeStack => x.types == types
       case _            => false
     }
   }
