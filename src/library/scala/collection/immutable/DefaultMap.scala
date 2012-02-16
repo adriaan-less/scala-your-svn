@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: DefaultMap.scala 20028 2009-12-07 11:49:19Z cunei $
 
 
 package scala.collection
@@ -19,20 +18,20 @@ import generic._
  *  maps defined in the `Map` object.
  *  Instances that inherit from `DefaultMap[A, B]` still have to
  *  define:
- *  
+ *
  *  {{{
  *    def get(key: A): Option[B]
  *    def iterator: Iterator[(A, B)]
  *  }}}
- *  
+ *
  *  It refers back to the original map.
- *  
+ *
  *  It might also be advisable to override `foreach` or
  *  `size` if efficient implementations can be found.
- *  
+ *
  *  @tparam A    the type of the keys contained in this map.
  *  @tparam B    the type of the values associated with the keys.
- *  
+ *
  *  @since 2.8
  */
 trait DefaultMap[A, +B] extends Map[A, B] { self =>
@@ -50,7 +49,7 @@ trait DefaultMap[A, +B] extends Map[A, B] { self =>
    */
   override def - (key: A): Map[A, B] = {
     val b = newBuilder
-    b ++= this filter (key !=)
+    for (kv <- this.seq ; if kv._1 != key) b += kv
     b.result
   }
 }

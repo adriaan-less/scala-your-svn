@@ -1,38 +1,33 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 package scala.actors
 
+import scala.concurrent.SyncVar
 
-/** <p>
- *    This class is used to pattern match on values that were sent
- *    to some channel <code>Chan<sub>n</sub></code> by the current
- *    actor <code>self</code>.
- *  </p>
- *  <p>
- *    The following example demonstrates its usage:
- *  </p><pre>
+/**
+ * Used to pattern match on values that were sent to some channel `Chan,,n,,`
+ * by the current actor `self`.
+ *
+ *  @example {{{
  *  receive {
- *    <b>case</b> Chan1 ! msg1 => ...
- *    <b>case</b> Chan2 ! msg2 => ...
+ *    case Chan1 ! msg1 => ...
+ *    case Chan2 ! msg2 => ...
  *  }
- *  </pre>
+ *  }}}
  *
  * @author Philipp Haller
  */
 case class ! [a](ch: Channel[a], msg: a)
 
 /**
- * This class provides a means for typed communication among
- * actors. Only the actor creating an instance of a
- * <code>Channel</code> may receive from it.
+ * Provides a means for typed communication among actors. Only the
+ * actor creating an instance of a `Channel` may receive from it.
  *
  * @author Philipp Haller
  *
@@ -40,6 +35,8 @@ case class ! [a](ch: Channel[a], msg: a)
  * @define channel channel
  */
 class Channel[Msg](val receiver: Actor) extends InputChannel[Msg] with OutputChannel[Msg] with CanReply[Msg, Any] {
+
+  type Future[+P] = scala.actors.Future[P]
 
   def this() = this(Actor.self)
 
@@ -57,8 +54,7 @@ class Channel[Msg](val receiver: Actor) extends InputChannel[Msg] with OutputCha
 
   def receive[R](f: PartialFunction[Msg, R]): R = {
     val C = this.asInstanceOf[Channel[Any]]
-    val recvActor = receiver.asInstanceOf[Actor]
-    recvActor.receive {
+    receiver.receive {
       case C ! msg if (f.isDefinedAt(msg.asInstanceOf[Msg])) => f(msg.asInstanceOf[Msg])
     }
   }
@@ -69,8 +65,7 @@ class Channel[Msg](val receiver: Actor) extends InputChannel[Msg] with OutputCha
 
   def receiveWithin[R](msec: Long)(f: PartialFunction[Any, R]): R = {
     val C = this.asInstanceOf[Channel[Any]]
-    val recvActor = receiver.asInstanceOf[Actor]
-    recvActor.receiveWithin(msec) {
+    receiver.receiveWithin(msec) {
       case C ! msg if (f.isDefinedAt(msg)) => f(msg)
       case TIMEOUT => f(TIMEOUT)
     }
@@ -85,8 +80,7 @@ class Channel[Msg](val receiver: Actor) extends InputChannel[Msg] with OutputCha
 
   def reactWithin(msec: Long)(f: PartialFunction[Any, Unit]): Nothing = {
     val C = this.asInstanceOf[Channel[Any]]
-    val recvActor = receiver.asInstanceOf[Actor]
-    recvActor.reactWithin(msec) {
+    receiver.reactWithin(msec) {
       case C ! msg if (f.isDefinedAt(msg)) => f(msg)
       case TIMEOUT => f(TIMEOUT)
     }
@@ -107,6 +101,34 @@ class Channel[Msg](val receiver: Actor) extends InputChannel[Msg] with OutputCha
       case TIMEOUT => None
       case x => Some(x)
     }
+  }
+
+  def !![A](msg: Msg, handler: PartialFunction[Any, A]): Future[A] = {
+    val c = new Channel[A](Actor.self(receiver.scheduler))
+    val fun = (res: SyncVar[A]) => {
+      val ftch = new Channel[A](Actor.self(receiver.scheduler))
+      receiver.send(scala.actors.!(this, msg), new OutputChannel[Any] {
+        def !(msg: Any) =
+          ftch ! handler(msg)
+        def send(msg: Any, replyTo: OutputChannel[Any]) =
+          ftch.send(handler(msg), replyTo)
+        def forward(msg: Any) =
+          ftch.forward(handler(msg))
+        def receiver =
+          ftch.receiver
+      })
+      ftch.react {
+        case any => res.set(any)
+      }
+    }
+    val a = new FutureActor[A](fun, c)
+    a.start()
+    a
+  }
+
+  def !!(msg: Msg): Future[Any] = {
+    val noTransform: PartialFunction[Any, Any] = { case x => x }
+    this !! (msg, noTransform)
   }
 
 }

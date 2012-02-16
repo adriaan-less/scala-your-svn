@@ -1,23 +1,24 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
 /**
- * The ReactorCanReply trait provides message send operations that
+ * Provides message send operations that
  * may result in a response from the receiver.
  *
  * @author Philipp Haller
  */
 private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
   _: ReplyReactor =>
+
+  type Future[+P] = scala.actors.Future[P]
 
   def !?(msg: Any): Any =
     (this !! msg)()
@@ -39,10 +40,10 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
     res.get(msec)
   }
 
-  override def !!(msg: Any): Future[Any] =
+  def !!(msg: Any): Future[Any] =
     this !! (msg, { case x => x })
 
-  override def !![A](msg: Any, handler: PartialFunction[Any, A]): Future[A] = {
+  def !![A](msg: Any, handler: PartialFunction[Any, A]): Future[A] = {
     val myself = Actor.rawSelf(this.scheduler)
     val ftch = new ReactChannel[A](myself)
     val res = new scala.concurrent.SyncVar[A]
@@ -69,11 +70,11 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
 
     this.send(msg, out)
 
-    new Future[A](ftch) {
+    new Future[A] {
       def apply() = {
         if (!isSet)
           fvalue = Some(res.get)
-        
+
         fvalueTyped
       }
       def respond(k: A => Unit): Unit =
@@ -83,6 +84,7 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
         }
       def isSet =
         !fvalue.isEmpty
+      def inputChannel = ftch
     }
   }
 }

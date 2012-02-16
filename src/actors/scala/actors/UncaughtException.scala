@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,17 +13,18 @@ package scala.actors
  *
  * @param actor   the actor that threw the exception
  * @param message the message the actor was processing, or None if no message (e.g. on initial startup)
+ * @param sender  the sender of the most recent message
  * @param thread  the thread on which the actor was running
  * @param cause   the uncaught exception
  *
  * @author Philipp Haller
  * @author Erik Engbrecht
  */
-class UncaughtException[Msg >: Null](val actor: Reactor[Msg],
-                                     val message: Option[Msg],
-                                     val sender: Option[OutputChannel[Any]],
-                                     val thread: Thread,
-                                     cause: Exception)
+case class UncaughtException(actor: Actor,
+                             message: Option[Any],
+                             sender: Option[OutputChannel[Any]],
+                             thread: Thread,
+                             cause: Throwable)
 extends Exception(cause) {
 
   override def toString() =

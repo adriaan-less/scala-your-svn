@@ -1,19 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package generic
 
 import scala.collection._
-import mutable.{Builder, AddingBuilder}
+import mutable.Builder
 
 /** @define coll collection
  *  @define Coll Traversable
@@ -27,9 +26,9 @@ import mutable.{Builder, AddingBuilder}
  *  @define bitsetCanBuildFrom
  *    The standard `CanBuildFrom` instance for bitsets.
  */
-trait BitSetFactory[Coll <: BitSet with BitSetLike[Coll]] { 
-  def newBuilder: Builder[Int, Coll] = new AddingBuilder[Int, Coll](empty)
+trait BitSetFactory[Coll <: BitSet with BitSetLike[Coll]] {
   def empty: Coll
+  def newBuilder: Builder[Int, Coll]
   def apply(elems: Int*): Coll = (empty /: elems) (_ + _)
   def bitsetCanBuildFrom = new CanBuildFrom[Coll, Int, Coll] {
     def apply(from: Coll) = newBuilder

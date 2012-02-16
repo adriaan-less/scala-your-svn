@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -8,9 +8,9 @@ package cmd
 
 /** A sample command specification for illustrative purposes.
  *  First take advantage of the meta-options:
- *  
+ *
  *    // this command creates an executable runner script "demo"
- *    % scala scala.tools.cmd.Demo --generate-runner demo
+ *    % scala scala.tools.cmd.Demo --self-update demo
  *
  *    // this one creates and sources a completion file - note backticks
  *    % `./demo --bash`
@@ -19,20 +19,20 @@ package cmd
  *    % ./demo --<tab>
  *       --action           --defint           --int
  *       --bash             --defstr           --str
- *       --defenv           --generate-runner  --unary
+ *       --defenv           --self-update      --unary
  *
  *  The normal option configuration is plausibly self-explanatory.
  */
 trait DemoSpec extends Spec with Meta.StdOpts with Interpolation {
   lazy val referenceSpec  = DemoSpec
-  lazy val programInfo    = Spec.Names("demo", "scala.tools.cmd.Demo")
+  lazy val programInfo    = Spec.Info("demo", "Usage: demo [<options>]", "scala.tools.cmd.Demo")
 
   help("""Usage: demo [<options>]""")
   heading("Unary options:")
 
   val optIsUnary      = "unary"         / "a unary option"              --?  ;
   ("action" / "a body which may be run") --> println("Hello, I am the --action body.")
-  
+
   heading("Binary options:")
   val optopt          = "str"       / "an optional String"        --|
   val optoptInt       = ("int"      / "an optional Int") .        --^[Int]
@@ -48,8 +48,7 @@ object DemoSpec extends DemoSpec with Property {
   type ThisCommandLine = SpecCommandLine
   def creator(args: List[String]) =
     new SpecCommandLine(args) {
-      override def onlyKnownOptions     = true
-      override def errorFn(msg: String) = { println("Error: " + msg) ; System.exit(0) }
+      override def errorFn(msg: String) = { println("Error: " + msg) ; sys.exit(0) }
     }
 }
 
@@ -60,16 +59,16 @@ class Demo(args: List[String]) extends {
 
   def helpMsg = DemoSpec.helpMsg
   def demoSpecMethods = this.getClass.getMethods.toList
-  private def isDemo(m: Method) = (m.getName startsWith "opt") && !(m.getName contains "$") && (m.getParameterTypes.isEmpty)  
+  private def isDemo(m: Method) = (m.getName startsWith "opt") && !(m.getName contains "$") && (m.getParameterTypes.isEmpty)
 
   def demoString(ms: List[Method]) = {
     val longest   = ms map (_.getName.length) max
     val formatStr = "    %-" + longest + "s: %s"
     val xs        = ms map (m => formatStr.format(m.getName, m.invoke(this)))
-    
+
     xs mkString ("Demo(\n  ", "\n  ", "\n)\n")
   }
-    
+
   override def toString = demoString(demoSpecMethods filter isDemo)
 }
 
@@ -79,7 +78,7 @@ object Demo {
 
     if (args.isEmpty)
       println(runner.helpMsg)
-    
+
     println(runner)
   }
 }
