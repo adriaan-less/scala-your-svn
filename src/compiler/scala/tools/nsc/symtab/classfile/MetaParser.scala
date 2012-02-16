@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -49,7 +49,7 @@ abstract class MetaParser{
     val sym = locals.lookup(newTypeName(str))
     if (sym != NoSymbol) sym.tpe
     else {
-      val tp = definitions.getClass(str).tpe;
+      val tp = definitions.getRequiredClass(str).tpe;
       if (token != "[") tp
       else {
         val args = new ListBuffer[Type];
@@ -63,12 +63,12 @@ abstract class MetaParser{
   }
 
   protected def parseTypeParam(): Symbol = {
-    val vflag = 
+    val vflag =
       if (token == "+") { nextToken(); Flags.COVARIANT }
       else if (token == "-") { nextToken(); Flags.CONTRAVARIANT }
       else 0;
     assert(token startsWith "?", token)
-    val sym = owner.newTypeParameter(NoPosition, newTypeName(token)).setFlag(vflag)
+    val sym = owner.newTypeParameter(newTypeName(token)).setFlag(vflag)
     nextToken()
     val lo =
       if (token == ">") { nextToken(); parseType() }
@@ -108,7 +108,7 @@ abstract class MetaParser{
   }
 
   protected def parseClass() {
-    locals = new Scope
+    locals = newScope
     def parse(): Type = {
       nextToken()
       if (token == "[") {
@@ -130,7 +130,7 @@ abstract class MetaParser{
 
   protected def parseMethod() {
     val globals = locals
-    locals = if (locals eq null) new Scope else new Scope(locals)
+    locals = if (locals eq null) newScope else newNestedScope(locals)
     def parse(): Type = {
       nextToken();
       if (token == "[") PolyType(parseTypeParams(), parse())
