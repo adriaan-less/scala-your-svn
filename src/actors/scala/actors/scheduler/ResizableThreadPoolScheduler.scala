@@ -1,12 +1,10 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
-
-// $Id: ThreadPoolScheduler.scala 18948 2009-10-06 17:30:27Z phaller $
 
 package scala.actors.scheduler
 
@@ -16,14 +14,12 @@ import scala.actors.{Debug, IScheduler}
 import scala.concurrent.ManagedBlocker
 
 /**
- * This scheduler class uses a <code>ThreadPoolExecutor</code>
- * to execute <code>Actor</code>s.
- * 
+ * This scheduler class uses a `ThreadPoolExecutor` to execute `Actor`s.
+ *
  * The scheduler attempts to shut down itself and the underlying
- * <code>ThreadPoolExecutor</code> only if <code>terminate</code>
- * is set to true. Otherwise, the scheduler must be shut down
- * explicitly.
- * 
+ * `ThreadPoolExecutor` only if `terminate` is set to true. Otherwise,
+ * the scheduler must be shut down explicitly.
+ *
  * @author Philipp Haller
  */
 class ResizableThreadPoolScheduler(protected val terminate: Boolean,
@@ -127,7 +123,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
               if (executor.getActiveCount() == 0) {
                 Debug.info(this+": initiating shutdown...")
                 Debug.info(this+": corePoolSize = "+coreSize+", maxPoolSize = "+maxSize)
-                
+
                 terminating = true
                 throw new QuitControl
               }
@@ -177,14 +173,14 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
   }
 
   /** Resumes the execution of the scheduler if it was previously
-   *  suspended using <code>snapshot</code>.
+   *  suspended using `snapshot`.
    */
   def restart() {
     synchronized {
       if (!suspending)
-        error("snapshot has not been invoked")
+        sys.error("snapshot has not been invoked")
       else if (isActive)
-        error("scheduler is still active")
+        sys.error("scheduler is still active")
       else
         suspending = false
 

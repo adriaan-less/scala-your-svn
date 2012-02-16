@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -26,10 +25,10 @@ object MakeValidationException {
   def fromNonEmptyElement() =
     new ValidationException("element should be *empty*")
 
-  def fromUndefinedElement(label: String) = 
+  def fromUndefinedElement(label: String) =
     new ValidationException("element \""+ label +"\" not allowed here")
 
-  def fromUndefinedAttribute(key: String) = 
+  def fromUndefinedAttribute(key: String) =
     new ValidationException("attribute " + key +" not allowed here")
 
   def fromMissingAttribute(allKeys: Set[String]) = {
