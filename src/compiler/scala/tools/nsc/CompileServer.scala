@@ -11,7 +11,7 @@ import scala.tools.nsc.util.FakePos //Position
 import scala.tools.util.SocketServer
 import settings.FscSettings
 
-/** 
+/**
  *  The server part of the fsc offline compiler.  It awaits compilation
  *  commands and executes them.  It caches a compiler instance so
  *  that it can respond more quickly.
@@ -29,9 +29,7 @@ class StandardCompileServer extends SocketServer {
   var shutdown = false
   var verbose = false
 
-  val versionMsg = "Fast Scala compiler " +
-    Properties.versionString + " -- " +
-    Properties.copyrightString
+  val versionMsg = "Fast " + Properties.versionMsg
 
   val MaxCharge = 0.8
 
@@ -45,16 +43,16 @@ class StandardCompileServer extends SocketServer {
     }
 
   override def timeout() {
-    if (!compileSocket.portFile(port).exists)    
+    if (!compileSocket.portFile(port).exists)
       fatal("port file no longer exists; skipping cleanup")
   }
-  
+
   def printMemoryStats() {
     def mb(bytes: Long) = "%dMB".format(bytes / 1000000)
     info("New session: total memory = %s, max memory = %s, free memory = %s".format(
       mb(totalMemory), mb(maxMemory), mb(freeMemory)))
   }
-  
+
   def isMemoryFullEnough() = {
     runtime.gc()
     (totalMemory - freeMemory).toDouble / maxMemory.toDouble > MaxCharge
@@ -62,7 +60,7 @@ class StandardCompileServer extends SocketServer {
 
   protected def newOfflineCompilerCommand(arguments: List[String], settings: FscSettings): OfflineCompilerCommand =
     new OfflineCompilerCommand(arguments, settings)
-    
+
   /** Problematically, Settings are only considered equal if every setting
    *  is exactly equal.  In fsc this immediately breaks down because the randomly
    *  chosen temporary outdirs differ between client and server.  Among other
@@ -77,7 +75,7 @@ class StandardCompileServer extends SocketServer {
     )
     val ss1 = trim(s1)
     val ss2 = trim(s2)
-    
+
     (ss1 union ss2) -- (ss1 intersect ss2)
   }
 
@@ -87,12 +85,11 @@ class StandardCompileServer extends SocketServer {
     val input           = in.readLine()
 
     def fscError(msg: String): Unit = out println (
-      FakePos("fsc"),
-      msg + "\n  fsc -help  gives more information"
+      FakePos("fsc") + msg + "\n  fsc -help  gives more information"
     )
     if (input == null || password != guessedPassword)
       return
-    
+
     val args        = input.split("\0", -1).toList
     val newSettings = new FscSettings(fscError)
     this.verbose    = newSettings.verbose.value
@@ -100,13 +97,13 @@ class StandardCompileServer extends SocketServer {
 
     info("Settings after normalizing paths: " + newSettings)
     printMemoryStats()
-    
+
     // Update the idle timeout if given
     if (!newSettings.idleMins.isDefault) {
       val mins = newSettings.idleMins.value
       if (mins == 0) echo("Disabling idle timeout on compile server.")
       else echo("Setting idle timeout to " + mins + " minutes.")
-      
+
       this.idleMinutes = mins
     }
     if (newSettings.shutdown.value) {
@@ -137,11 +134,11 @@ class StandardCompileServer extends SocketServer {
       }
       unequal.isEmpty
     }
-    
+
     if (command.shouldStopWithInfo)
-      reporter.info(null, command.getInfoMessage(newGlobal(newSettings, reporter)), true)
+      reporter.echo(command.getInfoMessage(newGlobal(newSettings, reporter)))
     else if (command.files.isEmpty)
-      reporter.info(null, command.usageMsg, true)
+      reporter.echo(command.usageMsg)
     else {
       if (isCompilerReusable) {
         info("[Reusing existing Global instance.]")
@@ -176,12 +173,13 @@ object CompileServer extends StandardCompileServer {
   /** A directory holding redirected output */
   private lazy val redirectDir = (compileSocket.tmpDir / "output-redirects").createDirectory()
 
-  private def redirect(setter: PrintStream => Unit, filename: String): Unit =
+  private def redirect(setter: PrintStream => Unit, filename: String) {
     setter(new PrintStream((redirectDir / filename).createFile().bufferedOutput()))
-  
+  }
+
   def main(args: Array[String]) {
     val debug = args contains "-v"
-    
+
     if (debug) {
       echo("Starting CompileServer on port " + port)
       echo("Redirect dir is " + redirectDir)
@@ -191,10 +189,10 @@ object CompileServer extends StandardCompileServer {
     redirect(System.setErr, "scala-compile-server-err.log")
     System.err.println("...starting server on socket "+port+"...")
     System.err.flush()
-    compileSocket.setPort(port)
+    compileSocket setPort port
     run()
 
-    compileSocket.deletePort(port)
-    sys.exit(0)
+    compileSocket deletePort port
+    sys exit 0
   }
 }

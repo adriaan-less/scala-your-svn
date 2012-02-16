@@ -5,13 +5,14 @@
 
 package scala.tools.nsc
 
-import java.io.IOException
 import scala.collection.mutable.ListBuffer
 import io.File
 
 /** A class representing command line info for scalac */
 class CompilerCommand(arguments: List[String], val settings: Settings) {
   def this(arguments: List[String], error: String => Unit) = this(arguments, new Settings(error))
+  def this(arguments: List[String], settings: Settings, error: String => Unit) = this(arguments, settings withErrorFn error)
+
   type Setting = Settings#Setting
 
   /** file extensions of files that the compiler can process */
@@ -31,7 +32,7 @@ class CompilerCommand(arguments: List[String], val settings: Settings) {
     |Boolean settings are always false unless set.
     |Where multiple values are accepted, they should be comma-separated.
     |  example: -Xplugin:plugin1,plugin2
-    |<phase> means one or a list of:
+    |<phases> means one or a comma-separated list of:
     |  (partial) phase names, phase ids, phase id ranges, or the string "all".
     |  example: -Xprint:all prints all phases.
     |  example: -Xprint:expl,24-26 prints phases explicitouter, closelim, dce, jvm.
@@ -55,14 +56,14 @@ class CompilerCommand(arguments: List[String], val settings: Settings) {
         case _         => ""
       }
       str + suffix
-    }    
+    }
     val debugs      = baseList filter (_.isForDebug)
     val deprecateds = baseList filter (_.isDeprecated)
     val theRest     = baseList filterNot (debugs.toSet ++ deprecateds)
-    
+
     def sstring(msg: String, xs: List[Setting]) =
       if (xs.isEmpty) None else Some(msg :: xs.map(helpStr) mkString "\n  ")
-   
+
     List(
       sstring("", theRest),
       sstring("\nAdditional debug settings:", debugs),
@@ -76,7 +77,7 @@ class CompilerCommand(arguments: List[String], val settings: Settings) {
       Some(explainAdvanced) filter (_ => shouldExplain),
       Some(label + " options include:")
     ).flatten mkString "\n"
-    
+
     prefix + createUsageMsg(cond)
   }
 
@@ -113,20 +114,20 @@ class CompilerCommand(arguments: List[String], val settings: Settings) {
     val file = File(arg stripPrefix "@")
     if (!file.exists)
       throw new java.io.FileNotFoundException("argument file %s could not be found" format file.name)
-    
+
     settings splitParams (file.lines() map stripComment mkString " ")
   }
-  
+
   // override this if you don't want arguments processed here
   def shouldProcessArguments: Boolean = true
-  
+
   def processArguments: (Boolean, List[String]) = {
     // expand out @filename to the contents of that filename
     val expandedArguments = arguments flatMap {
       case x if x startsWith "@"  => expandArg(x)
       case x                      => List(x)
     }
-  
+
     settings.processArguments(expandedArguments, true)
   }
 }
