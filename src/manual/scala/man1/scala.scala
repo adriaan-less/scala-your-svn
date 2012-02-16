@@ -5,6 +5,10 @@
 
 package scala.man1
 
+/**
+ *  @author Stephane Micheloud
+ *  @version 1.0
+ */
 object scala extends Command {
   import _root_.scala.tools.docutil.ManPage._
 
@@ -13,7 +17,7 @@ object scala extends Command {
   val name = Section("NAME",
 
     MBold(command) & " " & NDash & " Run code in the " &
-    Link("Scala 2", "http://scala-lang.org/") & 
+    Link("Scala 2", "http://scala-lang.org/") &
     " language")
 
   val synopsis = Section("SYNOPSIS",
@@ -32,36 +36,36 @@ object scala extends Command {
         Link(Bold("scalac") & "(1)", "scalac.html") & "."),
 
       Definition(
-        Mono("-howtorun:") & Argument("how"),
+        CmdOptionBound("howtorun:", Argument("how")),
         "How to execute " & Argument("torun") & ", if it is present. " &
         "Options for " & Argument("how") & " are " & Mono("guess") &
         " (the default), " & Mono("script") & ", and " & Mono("object") &
         "."),
 
       Definition(
-        Mono("-i"),
+        CmdOption("i"),
         "Requests that a file be pre-loaded.  It is only " &
         "meaningful for interactive shells."),
 
       Definition(
-        Mono("-e"),
+        CmdOption("e"),
         "Requests that its argument be executed as Scala code."),
 
       Definition(
-        Mono("-savecompiled"),
+        CmdOption("savecompiled"),
         "Save this compiled version of scripts in order to speed up " &
         "later executions of the same script.  When running a script, " &
         "save the compiled version of in a file with the same name as the " &
         "script but with an extension of " & Mono(".jar") & ".  On subsequent " &
         "runs of the same script, the pre-compiled " & Mono(".jar") & " file " &
         "will be used if it is newer than the script file."),
-        
+
       Definition(
-        Mono("-nocompdaemon"),
-        "Do not use the " & Bold("fsc") & " offline compiler."),     
-          
+        CmdOption("nocompdaemon"),
+        "Do not use the " & MBold("fsc") & " offline compiler."),
+
       Definition(
-        Mono("-D") & Argument("property=value"),
+        CmdOptionBound("D", "property=value"),
         "Set a Java system property.  If no value is specified, " &
         "then the property is set to the empty string."),
 
@@ -75,8 +79,8 @@ object scala extends Command {
 
   val description = Section("DESCRIPTION",
 
-    "The "&MBold(command)&" utility runs Scala code using a Java runtime "&
-    "environment.  The Scala code to run is " &
+    "The " & MBold(command) & " utility runs Scala code using a Java " &
+    "runtime environment.  The Scala code to run is " &
     "specified in one of three ways:",
 
     NumberedList(
@@ -102,7 +106,7 @@ object scala extends Command {
 
     "In all three cases, arbitrary scalac options may be specified. "&
     "The most common option is to specify a classpath with " &
-    Mono("-classpath") & ", but see the " & 
+    Mono("-classpath") & ", but see the " &
     Link(Bold("scalac") & "(1)", "scalac.html") & " page for " &
     "full details.   ",
 
@@ -134,7 +138,7 @@ object scala extends Command {
     "If " & Mono("scala") & " is run from an sbaz(1) directory, " &
     "then it will add to its classpath any jars installed in the " &
     "lib directory of the sbaz directory.  Additionally, if no " &
-    "-classpath option is specified, then " & Mono("scala") & 
+    "-classpath option is specified, then " & Mono("scala") &
     " will add " & Quote(".") & ", the current directory, to the " &
     "end of the classpath.")
 
@@ -168,11 +172,11 @@ object scala extends Command {
         SeqPara(
           "Specify the options to be passed to the " & MBold("java") &
           " command defined by " & MBold("JAVACMD") & ".",
-        
+
           "With Java 1.5 (or newer) one may for example configure the " &
           "memory usage of the JVM as follows: " &
           Mono("JAVA_OPTS=\"-Xmx512M -Xms16M -Xss16M\""),
-        
+
           "With " & Link("GNU Java", "http://gcc.gnu.org/java/") & " one " &
           "may configure the memory usage of the GIJ as follows: " &
           Mono("JAVA_OPTS=\"--mx512m --ms16m\"")
@@ -223,11 +227,11 @@ object scala extends Command {
       "::!#\n" +
       "Console.println(\"Hello, world!\")\n" +
       "argv.toList foreach Console.println"),
-      
+
     "If you want to use the compilation cache to speed up multiple executions " +
     "of the script, then add " & Mono("-savecompiled") & " to the scala " +
     "command:",
-    
+
     CodeSample(
       "#!/bin/sh\n" +
       "exec scala -savecompiled \"$0\" \"$@\"\n" +
@@ -253,7 +257,7 @@ object scala extends Command {
 
   def manpage = new Document {
     title = command
-    date = lastModified
+    date = "April 2007"
     author = "Stephane Micheloud"
     version = "0.5"
     sections = List(

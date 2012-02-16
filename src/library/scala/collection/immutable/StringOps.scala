@@ -17,13 +17,13 @@ import mutable.StringBuilder
  *  This class serves as a wrapper providing `String`s with all the operations
  *  found in indexed sequences. Where needed, instances of `String` object
  *  are implicitly converted into this class.
- *  
+ *
  *  The difference between this class and `WrappedString` is that calling transformer
- *  methods such as `filter` and `map` will yield a `String` object, whereas a 
+ *  methods such as `filter` and `map` will yield a `String` object, whereas a
  *  `WrappedString` will remain a `WrappedString`.
- *  
+ *
  *  @param repr     the actual representation of this string operations object.
- *  
+ *
  *  @since 2.8
  *  @define Coll StringOps
  *  @define coll string
@@ -35,17 +35,18 @@ final class StringOps(override val repr: String) extends StringLike[String] {
 
   /** Creates a string builder buffer as builder for this class */
   override protected[this] def newBuilder = StringBuilder.newBuilder
-  
-  override def slice(from: Int, until: Int): String = {
-    /** Slice must be forgiving on all out of bounds indices and
-     *  substring is not.
-     */
-    val start = from max 0
-    val end   = until min repr.length
-    
-    if (start >= end) ""
-    else repr.substring(start, end)
-  }
 
+  override def apply(index: Int): Char = repr charAt index
+  override def slice(from: Int, until: Int): String = {
+    val start = if (from < 0) 0 else from
+    if (until <= start || start >= repr.length)
+      return ""
+
+    val end = if (until > length) length else until
+    repr.substring(start, end)
+  }
   override def toString = repr
-}  
+  override def length = repr.length
+
+  def seq = new WrappedString(repr)
+}
