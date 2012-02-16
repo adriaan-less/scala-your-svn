@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -11,8 +11,7 @@
 package scala.xml
 package parsing
 
-import collection.mutable
-import mutable.HashMap
+import scala.collection.mutable
 import scala.io.Source
 import scala.util.logging.Logged
 import scala.xml.dtd._
@@ -32,12 +31,12 @@ abstract class MarkupHandler extends Logged
   val isValidating: Boolean = false
 
   var decls: List[Decl] = Nil
-  var ent: mutable.Map[String, EntityDecl] = new HashMap[String, EntityDecl]()
+  var ent: mutable.Map[String, EntityDecl] = new mutable.HashMap[String, EntityDecl]()
 
   def lookupElemDecl(Label: String): ElemDecl = {
     for (z @ ElemDecl(Label, _) <- decls)
       return z
-      
+
     null
   }
 
@@ -103,7 +102,7 @@ abstract class MarkupHandler extends Logged
   def elemDecl(n: String, cmstr: String): Unit = ()
 
   def attListDecl(name: String, attList: List[AttrDecl]): Unit = ()
-  
+
   private def someEntityDecl(name: String, edef: EntityDef, f: (String, EntityDef) => EntityDecl): Unit =
     edef match {
       case _: ExtDef if !isValidating =>  // ignore (cf REC-xml 4.4.1)
@@ -116,7 +115,7 @@ abstract class MarkupHandler extends Logged
   def parameterEntityDecl(name: String, edef: EntityDef): Unit =
     someEntityDecl(name, edef, ParameterEntityDecl.apply _)
 
-  def parsedEntityDecl(name: String, edef: EntityDef): Unit = 
+  def parsedEntityDecl(name: String, edef: EntityDef): Unit =
     someEntityDecl(name, edef, ParsedEntityDecl.apply _)
 
   def peReference(name: String) { decls ::= PEReference(name) }
