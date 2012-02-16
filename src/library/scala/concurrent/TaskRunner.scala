@@ -1,29 +1,25 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
 package scala.concurrent
 
-/** The <code>TaskRunner</code> trait...
- *  
+/** The `TaskRunner` trait...
+ *
  *  @author Philipp Haller
  */
-trait TaskRunner[T] extends AsyncInvokable[() => T, T] {
+trait TaskRunner {
 
-  def submit(task: () => T): Future[T]
+  type Task[T]
+
+  implicit def functionAsTask[S](fun: () => S): Task[S]
+
+  def execute[S](task: Task[S]): Unit
 
   def shutdown(): Unit
-
-  def !!(task: () => T): Future[T] =
-    submit(task)
-
-  def managedBlock(blocker: ManagedBlocker): Unit
-
-  /** If expression computed successfully return it in <code>Left</code>,
-   *  otherwise return exception in <code>Right</code>.
-   */
-  protected def tryCatch[A](left: => A): Either[A, Exception] = {
-    try {
-      Left(left)
-    } catch {
-      case e: Exception => Right(e)
-    }
-  }
 
 }

@@ -1,48 +1,51 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id:$
-
 package scala.actors
 package scheduler
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 
-trait TerminationMonitor {
+private[scheduler] trait TerminationMonitor {
+  _: IScheduler =>
 
-  private var pendingReactions = 0
-  private val termHandlers = new HashMap[Reactor, () => Unit]
+  protected var activeActors = 0
+  protected val terminationHandlers = new mutable.HashMap[TrackedReactor, () => Unit]
   private var started = false
 
   /** newActor is invoked whenever a new actor is started. */
-  def newActor(a: Reactor) = synchronized {
-    pendingReactions += 1
+  def newActor(a: TrackedReactor) = synchronized {
+    activeActors += 1
     if (!started)
       started = true
   }
 
   /** Registers a closure to be executed when the specified
    *  actor terminates.
-   * 
+   *
    *  @param  a  the actor
    *  @param  f  the closure to be registered
    */
-  def onTerminate(a: Reactor)(f: => Unit): Unit = synchronized {
-    termHandlers += (a -> (() => f))
+  def onTerminate(a: TrackedReactor)(f: => Unit): Unit = synchronized {
+    terminationHandlers += (a -> (() => f))
   }
 
-  def terminated(a: Reactor) = synchronized {
+  /** Registers that the specified actor has terminated.
+   *
+   *  @param  a  the actor that has terminated
+   */
+  def terminated(a: TrackedReactor) = {
     // obtain termination handler (if any)
     val todo = synchronized {
-      termHandlers.get(a) match {
+      terminationHandlers.get(a) match {
         case Some(handler) =>
-          termHandlers -= a
-          () => handler
+          terminationHandlers -= a
+          handler
         case None =>
           () => { /* do nothing */ }
       }
@@ -52,12 +55,15 @@ trait TerminationMonitor {
     todo()
 
     synchronized {
-      pendingReactions -= 1
+      activeActors -= 1
     }
   }
 
-  protected def allTerminated: Boolean = synchronized {
-    started && pendingReactions <= 0
+  /** Checks whether all actors have terminated. */
+  private[actors] def allActorsTerminated: Boolean = synchronized {
+    started && activeActors <= 0
   }
 
+  /** Checks for actors that have become garbage. */
+  protected def gc() {}
 }
