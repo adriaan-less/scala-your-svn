@@ -1,24 +1,20 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.xml
 
-/**
- * This object provides methods ...
+/** This singleton object contains the `unapplySeq` method for
+ *  convenient deconstruction.
  *
- * @author  Burak Emir
- * @version 1.0
+ *  @author  Burak Emir
+ *  @version 1.0
  */
 object Node {
-
   /** the constant empty attribute sequence */
   final def NoAttributes: MetaData = Null
 
@@ -26,7 +22,6 @@ object Node {
   val EmptyNamespace = ""
 
   def unapplySeq(n: Node) = Some((n.label, n.attributes, n.child))
-
 }
 
 /**
@@ -45,9 +40,9 @@ abstract class Node extends NodeSeq {
   def label: String
 
   /** used internally. Atom/Molecule = -1 PI = -2 Comment = -3 EntityRef = -5
-   */ 
+   */
   def isAtom = this.isInstanceOf[Atom[_]]
-  
+
   /** The logic formerly found in typeTag$, as best I could infer it. */
   def doCollectNamespaces = true  // if (tag >= 0) DO collect namespaces
   def doTransform         = true  // if (tag < 0) DO NOT transform
@@ -65,8 +60,8 @@ abstract class Node extends NodeSeq {
   def namespace = getNamespace(this.prefix)
 
   /**
-   * Convenience method, same as <code>scope.getURI(pre)</code> but additionally
-   * checks if scope is <code>null</code>.
+   * Convenience method, same as `scope.getURI(pre)` but additionally
+   * checks if scope is `'''null'''`.
    *
    * @param pre the prefix whose namespace name we would like to obtain
    * @return    the namespace if <code>scope != null</code> and prefix was
@@ -76,7 +71,7 @@ abstract class Node extends NodeSeq {
 
   /**
    * Convenience method, looks up an unprefixed attribute in attributes of this node.
-   * Same as <code>attributes.getValue(key)</code>
+   * Same as `attributes.getValue(key)`
    *
    * @param  key of queried attribute.
    * @return value of <code>UnprefixedAttribute</code> with given key
@@ -86,20 +81,20 @@ abstract class Node extends NodeSeq {
 
   /**
    * Convenience method, looks up a prefixed attribute in attributes of this node.
-   * Same as <code>attributes.getValue(uri, this, key)</code>
+   * Same as `attributes.getValue(uri, this, key)`-
    *
    * @param  uri namespace of queried attribute (may not be null).
    * @param  key of queried attribute.
-   * @return value of <code>PrefixedAttribute</code> with given namespace
-   *         and given key, otherwise <code>null</code>.
+   * @return value of `PrefixedAttribute` with given namespace
+   *         and given key, otherwise `'''null'''`.
    */
   final def attribute(uri: String, key: String): Option[Seq[Node]] =
     attributes.get(uri, this, key)
 
   /**
    * Returns attribute meaning all attributes of this node, prefixed and
-   * unprefixed, in no particular order. In class <code>Node</code>, this
-   * defaults to <code>Null</code> (the empty attribute list).
+   * unprefixed, in no particular order. In class `Node`, this
+   * defaults to `Null` (the empty attribute list).
    *
    * @return all attributes of this node
    */
@@ -112,54 +107,43 @@ abstract class Node extends NodeSeq {
    */
   def child: Seq[Node]
 
+  /** Children which do not stringify to "" (needed for equality)
+   */
+  def nonEmptyChildren: Seq[Node] = child filterNot (_.toString == "")
+
   /**
-   * Descendant axis (all descendants of this node, not including node itself) 
+   * Descendant axis (all descendants of this node, not including node itself)
    * includes all text nodes, element nodes, comments and processing instructions.
    */
   def descendant: List[Node] =
     child.toList.flatMap { x => x::x.descendant }
 
   /**
-   * Descendant axis (all descendants of this node, including thisa node) 
+   * Descendant axis (all descendants of this node, including thisa node)
    * includes all text nodes, element nodes, comments and processing instructions.
    */
   def descendant_or_self: List[Node] = this :: descendant
 
-  /**
-   * Returns true if x is structurally equal to this node. Compares prefix,
-   * label, attributes and children.
-   *
-   * @param x ...
-   * @return  <code>true</code> if ..
-   */
-  override def equals(x: Any): Boolean = x match {
-    case g: Group   => false
-    case that: Node =>
-      this.prefix == that.prefix &&
-      this.label == that.label && 
-      this.attributes == that.attributes &&
-      equalChildren(that)
+  override def canEqual(other: Any) = other match {
+    case x: Group   => false
+    case x: Node    => true
     case _          => false
   }
 
-  // children comparison has to be done carefully - see bug #1773.
-  // It would conceivably be a better idea for a scala block which
-  // generates the empty string not to generate a child rather than
-  // our having to filter it later, but that approach would be more
-  // delicate to implement.    
-  private def equalChildren(that: Node) = {
-    def noEmpties(xs: Seq[Node]) = xs filter (_.toString() != "")
-    noEmpties(this.child) sameElements noEmpties(that.child)
-  }
+  override protected def basisForHashCode: Seq[Any] =
+    prefix :: label :: attributes :: nonEmptyChildren.toList
 
-  /** <p>
-   *    Returns a hashcode. The default implementation here calls only
-   *    super.hashcode (which is the same as for objects). A more useful
-   *    implementation can be invoked by calling 
-   *  <code>Utility.hashCode(pre, label, attributes.hashCode(), child)</code>.
-   *  </p>
-   */
-  override def hashCode(): Int = super.hashCode
+  override def strict_==(other: Equality) = other match {
+    case _: Group => false
+    case x: Node  =>
+      (prefix == x.prefix) &&
+      (label == x.label) &&
+      (attributes == x.attributes) &&
+      // (scope == x.scope)               // note - original code didn't compare scopes so I left it as is.
+      (nonEmptyChildren sameElements x.nonEmptyChildren)
+    case _        =>
+      false
+  }
 
   // implementations of NodeSeq methods
 
@@ -178,28 +162,28 @@ abstract class Node extends NodeSeq {
     Utility.toXML(this, stripComments = stripComments).toString
 
   /**
-   * Same as <code>toString(false)</code>.
+   * Same as `toString('''false''')`.
    *
    * @see <code><a href="#toString">toString(Boolean)</a></code>
    */
   override def toString(): String = buildString(false)
 
   /**
-   * Appends qualified name of this node to <code>StringBuilder</code>.
+   * Appends qualified name of this node to `StringBuilder`.
    *
    * @param sb ...
    * @return   ...
    */
   def nameToString(sb: StringBuilder): StringBuilder = {
     if (null != prefix) {
-      sb.append(prefix)
-      sb.append(':')
+      sb append prefix
+      sb append ':'
     }
-    sb.append(label)
+    sb append label
   }
 
   /**
-   * Returns a type symbol (e.g. DTD, XSD), default <code>null</code>.
+   * Returns a type symbol (e.g. DTD, XSD), default `'''null'''`.
    */
   def xmlType(): TypeSymbol = null
 
@@ -210,9 +194,10 @@ abstract class Node extends NodeSeq {
    *  Martin to Burak: to do: if you make this method abstract, the compiler will now
    *  complain if there's no implementation in a subclass. Is this what we want? Note that
    *  this would break doc/DocGenator and doc/ModelToXML, with an error message like:
-doc\DocGenerator.scala:1219: error: object creation impossible, since there is a deferred declaration of method text in class Node of type => String which is not implemented in a subclass
-    new SpecialNode {
-    ^
-   */
+   * {{{
+   * doc\DocGenerator.scala:1219: error: object creation impossible, since there is a deferred declaration of method text in class Node of type => String which is not implemented in a subclass
+   * new SpecialNode {
+   * ^
+   * }}} */
   override def text: String = super.text
 }

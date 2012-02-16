@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -78,7 +77,7 @@ object Label {
             // 	    : "this.stacksize = " + stacksize + " that.stacksize = "
             // 	    + that.stacksize
             // 	stacksize = that.stacksize
-            val ss: Int = Math.max(stacksize, that.getStacksize())
+            val ss: Int = math.max(stacksize, that.getStacksize())
             stacksize = ss
             that.setStacksize(ss)
         }
