@@ -1,12 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
 package scala.tools.nsc
 package transform
 
-import scala.collection.mutable.{Map, HashMap}
+import scala.collection.{ mutable, immutable }
 
 /** A base class for transforms.
  *  A transform contains a compiler phase which applies a tree transformer.

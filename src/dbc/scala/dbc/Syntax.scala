@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -17,7 +17,7 @@ import java.math.{BigDecimal, BigInteger};
 /** This class ..
  *
  */
-object Syntax {
+@deprecated(DbcIsDeprecated, "2.9.0") object Syntax {
 
   import syntax.DataTypeUtil;
 
@@ -38,7 +38,7 @@ object Syntax {
   def characterLargeObject = DataTypeUtil.characterLargeObject;
 
   /* Statements */
-  //def select 
+  //def select
 
   /* Other stuff */
   def database (server: String, username: String, password: String): dbc.Database =
