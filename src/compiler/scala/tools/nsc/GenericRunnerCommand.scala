@@ -12,20 +12,20 @@ class GenericRunnerCommand(
   args: List[String],
   override val settings: GenericRunnerSettings)
 extends CompilerCommand(args, settings) {
-  
+
   def this(args: List[String], error: String => Unit) =
     this(args, new GenericRunnerSettings(error))
 
-  def this(args: List[String]) = 
+  def this(args: List[String]) =
     this(args, str => Console.println("Error: " + str))
 
   /** name of the associated compiler command */
   override def cmdName = "scala"
   def compCmdName = "scalac"
-  
+
   // change CompilerCommand behavior
   override def shouldProcessArguments: Boolean = false
-  
+
   private lazy val (_ok, targetAndArguments) = settings.processArguments(args, false)
   override def ok = _ok
   private def guessHowToRun(target: String): GenericRunnerCommand.HowToRun = {
@@ -35,7 +35,10 @@ extends CompilerCommand(args, settings) {
     else {
       val f = io.File(target)
       if (!f.hasExtension("class", "jar", "zip") && f.canRead) AsScript
-      else sys.error("Cannot figure out how to run target: " + target)
+      else {
+        Console.err.println("No such file or class on classpath: " + target)
+        Error
+      }
     }
   }
   /** String with either the jar file, class name, or script file name. */
@@ -87,7 +90,7 @@ scala source.
   """) + "\n"
 }
 
-object GenericRunnerCommand {  
+object GenericRunnerCommand {
   sealed abstract class HowToRun(val name: String) { }
   case object AsJar extends HowToRun("jar")
   case object AsObject extends HowToRun("object")
