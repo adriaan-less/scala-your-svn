@@ -1,12 +1,10 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
-
-
 
 package scala.reflect
 
@@ -14,6 +12,12 @@ package scala.reflect
  *  @author  Martin Odersky
  */
 object NameTransformer {
+  // XXX Short term: providing a way to alter these without having to recompile
+  // the compiler before recompiling the compiler.
+  val MODULE_SUFFIX_STRING = sys.props.getOrElse("SCALA_MODULE_SUFFIX_STRING", "$")
+  val NAME_JOIN_STRING     = sys.props.getOrElse("SCALA_NAME_JOIN_STRING", "$")
+  val MODULE_INSTANCE_NAME = "MODULE$"
+
   private val nops = 128
   private val ncodes = 26 * 26
 
@@ -21,7 +25,6 @@ object NameTransformer {
 
   private val op2code = new Array[String](nops)
   private val code2op = new Array[OpCodes](ncodes)
-
   private def enterOp(op: Char, code: String) = {
     op2code(op) = code
     val c = (code.charAt(1) - 'a') * 26 + code.charAt(2) - 'a'
@@ -48,10 +51,10 @@ object NameTransformer {
   enterOp('?', "$qmark")
   enterOp('@', "$at")
 
-  /** Replace operator symbols by corresponding "<code>$op_name</code>".
+  /** Replace operator symbols by corresponding `\$opname`.
    *
-   *  @param name ...
-   *  @return     ...
+   *  @param name the string to encode
+   *  @return     the string with all recognized opchars replaced with their encoding
    */
   def encode(name: String): String = {
     var buf: StringBuilder = null
@@ -66,7 +69,7 @@ object NameTransformer {
         }
         buf.append(op2code(c))
       /* Handle glyphs that are not valid Java/JVM identifiers */
-      } 
+      }
       else if (!Character.isJavaIdentifierPart(c)) {
         if (buf eq null) {
           buf = new StringBuilder()
@@ -82,10 +85,10 @@ object NameTransformer {
     if (buf eq null) name else buf.toString()
   }
 
-  /** Replace <code>$op_name</code> by corresponding operator symbol.
+  /** Replace `\$opname` by corresponding operator symbol.
    *
-   *  @param name0 ...
-   *  @return      ...
+   *  @param name0 the string to decode
+   *  @return      the string with all recognized operator symbol encodings replaced with their name
    */
   def decode(name0: String): String = {
     //System.out.println("decode: " + name);//DEBUG
@@ -113,11 +116,11 @@ object NameTransformer {
               buf.append(ops.op)
               i += ops.code.length()
             }
-            /* Handle the decoding of Unicode glyphs that are 
+            /* Handle the decoding of Unicode glyphs that are
              * not valid Java/JVM identifiers */
           } else if ((len - i) >= 6 && // Check that there are enough characters left
-                     ch1 == 'u' && 
-                     ((Character.isDigit(ch2)) || 
+                     ch1 == 'u' &&
+                     ((Character.isDigit(ch2)) ||
                      ('A' <= ch2 && ch2 <= 'F'))) {
             /* Skip past "$u", next four should be hexadecimal */
             val hex = name.substring(i+2, i+6)
@@ -133,20 +136,20 @@ object NameTransformer {
               unicode = true
             } catch {
               case _:NumberFormatException =>
-                /* <code>hex</code> did not decode to a hexadecimal number, so
+                /* `hex` did not decode to a hexadecimal number, so
                  * do nothing. */
             }
-                       }
+          }
         }
       }
       /* If we didn't see an opcode or encoded Unicode glyph, and the
         buffer is non-empty, write the current character and advance
-         one */ 
-      if ((ops eq null) && !unicode) { 
+         one */
+      if ((ops eq null) && !unicode) {
         if (buf ne null)
-          buf.append(c) 
-        i += 1 
-      } 
+          buf.append(c)
+        i += 1
+      }
     }
     //System.out.println("= " + (if (buf == null) name else buf.toString()));//DEBUG
     if (buf eq null) name else buf.toString()

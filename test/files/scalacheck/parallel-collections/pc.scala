@@ -11,34 +11,28 @@ class ParCollProperties extends Properties("Parallel collections") {
   /*   Collections   */
   
   // parallel arrays
-  //include(mutable.IntParallelArrayCheck)
+  include(mutable.IntParallelArrayCheck)
   
   // parallel ranges
-  //include(immutable.ParallelRangeCheck)
+  include(immutable.ParallelRangeCheck)
   
   // parallel immutable hash maps (tries)
-  //include(immutable.IntIntParallelHashMapCheck)
+  include(immutable.IntIntParallelHashMapCheck)
   
   // parallel immutable hash sets (tries)
-  //include(immutable.IntParallelHashSetCheck)
+  include(immutable.IntParallelHashSetCheck)
   
   // parallel mutable hash maps (tables)
-  //include(mutable.IntIntParallelHashMapCheck)
+  include(mutable.IntIntParallelHashMapCheck)
+  
+  // parallel ctrie
+  include(mutable.IntIntParallelCtrieCheck)
   
   // parallel mutable hash sets (tables)
-  //include(mutable.IntParallelHashSetCheck)
+  include(mutable.IntParallelHashSetCheck)
   
   // parallel vectors
-  
-  /*   Views   */
-  
-  // parallel array views
-  
-  // parallel immutable hash map views
-  
-  // parallel mutable hash map views
-  
-  // parallel vector views
+  include(immutable.IntParallelVectorCheck)
 }
 
 
@@ -52,7 +46,7 @@ object Test {
         workers = 1,
         minSize = 0,
         maxSize = 4000,
-        minSuccessfulTests = 150
+        minSuccessfulTests = 5
       ),
       pc
     )

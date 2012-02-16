@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -58,7 +58,7 @@ class Debug(tag: String) {
       case "verbose" => (VERBOSE, b)
       case "info"    => (INFO   , b)
       case _         => (SILENT , false)
-    }      
+    }
   }
 
   def level = lev
@@ -66,7 +66,7 @@ class Debug(tag: String) {
 
   private val tag0: String =
     if (tag != null & tag.length > 0) tag+" " else ""
- 
+
   def info(msg: String) {
     if (lev >= INFO) Console.println(tag0 + "(info): " + msg)
   }

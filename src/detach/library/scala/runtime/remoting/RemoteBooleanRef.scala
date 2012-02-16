@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -46,6 +46,6 @@ extends UnicastRemoteObject with RemoteBooleanRef with Unreferenced {
   override def toString() = x.elem.toString
   def unreferenced() {
     Debug.info("[RemoteBooleanRefImpl] unreferenced: "+this)
-    RemoteRef.unbind(name)  
+    RemoteRef.unbind(name)
   }
 }
