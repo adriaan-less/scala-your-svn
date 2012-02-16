@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -27,7 +26,7 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
   final override val isValidating = true
 
   override def log(msg: String) {}
-  
+
   /*
   override def checkChildren(pos: Int, pre: String, label:String,ns:NodeSeq): Unit = {
     Console.println("checkChildren()");
@@ -36,7 +35,7 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
     val res = decl.contentModel.validate(ns);
     Console.println("res = "+res);
     if(!res)
-      //error("invalid!");
+      //sys.error("invalid!");
   }
   */
 
@@ -51,7 +50,7 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
       log("advanceDFA(trans): " + trans)
       trans.get(ContentModel.ElemName(label)) match {
           case Some(qNew) => qCurrent = qNew
-          case _          => reportValidationError(pos, "DTD says, wrong element, expected one of "+trans.keys.toString());
+          case _          => reportValidationError(pos, "DTD says, wrong element, expected one of "+trans.keys);
         }
     }
     // advance in current automaton
@@ -65,9 +64,9 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
       log("  checking node")
       declCurrent.contentModel match {
         case ANY =>
-        case EMPTY => 
+        case EMPTY =>
           reportValidationError(pos, "DTD says, no elems, no text allowed here")
-        case PCDATA => 
+        case PCDATA =>
           reportValidationError(pos, "DTD says, no elements allowed here")
         case m @ MIXED(r) =>
           advanceDFA(m)
@@ -97,7 +96,7 @@ abstract class ValidatingMarkupHandler extends MarkupHandler with Logged {
   final override def elemDecl(name: String, cmstr: String) {
     decls = ElemDecl(name, ContentModel.parse(cmstr)) :: decls
   }
-    
+
   final override def attListDecl(name: String, attList: List[AttrDecl]) {
     decls = AttListDecl(name, attList) :: decls
   }

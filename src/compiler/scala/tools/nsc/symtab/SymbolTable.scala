@@ -1,13 +1,12 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package symtab
-import ast.Trees
 
+import ast.{Trees, TreePrinters, DocComments}
 import util._
 
 abstract class SymbolTable extends Names
