@@ -16,19 +16,18 @@ import scala.collection.mutable.Set
 import scala.collection.mutable.Builder
 import scala.collection.mutable.Cloneable
 import scala.collection.GenSetLike
-
-
-
+import scala.collection.generic.Growable
+import scala.collection.generic.Shrinkable
 
 
 
 /** A template trait for mutable parallel sets. This trait is mixed in with concrete
  *  parallel sets to override the representation type.
- *  
+ *
  *  $sideeffects
- *  
+ *
  *  @tparam T    the element type of the set
- *  
+ *
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
@@ -38,19 +37,21 @@ trait ParSetLike[T,
 extends GenSetLike[T, Repr]
    with collection.parallel.ParIterableLike[T, Repr, Sequential]
    with collection.parallel.ParSetLike[T, Repr, Sequential]
+   with Growable[T]
+   with Shrinkable[T]
    with Cloneable[Repr]
 {
-self => 
+self =>
   override def empty: Repr
-  
+
   def +=(elem: T): this.type
-  
+
   def -=(elem: T): this.type
-  
+
   def +(elem: T) = this.clone() += elem
-  
+
   def -(elem: T) = this.clone() -= elem
-  
+
   // note: should not override toSet
 }
 

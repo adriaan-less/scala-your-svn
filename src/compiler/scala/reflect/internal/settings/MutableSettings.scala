@@ -10,16 +10,19 @@ package settings
 /** A mutable Settings object.
  */
 abstract class MutableSettings extends AbsSettings {
-  
+
   type Setting <: SettingValue
- 
+  type BooleanSetting <: Setting { type T = Boolean }
+  type IntSetting <: Setting { type T = Int }
+
   // basically this is a value which remembers if it's been modified
   trait SettingValue extends AbsSettingValue {
     protected var v: T
     protected var setByUser: Boolean = false
-    def postSetHook(): Unit
-    
-    def isDefault: Boolean = !setByUser
+
+    def postSetHook(): Unit = ()
+    def isDefault = !setByUser
+    def isSetByUser = setByUser
     def value: T = v
     def value_=(arg: T) = {
       setByUser = true
@@ -27,15 +30,17 @@ abstract class MutableSettings extends AbsSettings {
       postSetHook()
     }
   }
-    
-  def debug: SettingValue { type T = Boolean }
-  def YdepMethTpes: SettingValue { type T = Boolean }
-  def Ynotnull: SettingValue { type T = Boolean }
-  def explaintypes: SettingValue { type T = Boolean }
-  def verbose: SettingValue { type T = Boolean }
-  def uniqid: SettingValue { type T = Boolean }
-  def Xprintpos: SettingValue { type T = Boolean }
-  def printtypes: SettingValue { type T = Boolean }
-  def Yrecursion: SettingValue { type T = Int }
-  def maxClassfileName: SettingValue { type T = Int }
+
+  def overrideObjects: BooleanSetting
+  def printtypes: BooleanSetting
+  def debug: BooleanSetting
+  def Ynotnull: BooleanSetting
+  def explaintypes: BooleanSetting
+  def verbose: BooleanSetting
+  def uniqid: BooleanSetting
+  def Yshowsymkinds: BooleanSetting
+  def Xprintpos: BooleanSetting
+  def Yrecursion: IntSetting
+  def maxClassfileName: IntSetting
+  def Xexperimental: BooleanSetting
 }

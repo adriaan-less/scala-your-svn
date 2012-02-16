@@ -6,6 +6,7 @@
 package scala.tools.nsc
 package interpreter
 
+import util.Position
 import scala.tools.util.SignalManager
 import scala.util.control.Exception.ignoring
 
@@ -24,12 +25,11 @@ trait ILoopInit {
         |Type :help for more information.""" .
     stripMargin.format(versionString, javaVmName, javaVersion)
     echo(welcomeMsg)
-    if (isReplDebug || isReplPower)
-      echo("[info] started at " + new java.util.Date)
+    replinfo("[info] started at " + new java.util.Date)
   }
-  
-  private def asyncMessage(msg: String) {
-    if (isReplDebug || isReplPower)
+
+  protected def asyncMessage(msg: String) {
+    if (isReplInfo || isReplPower)
       echoAndRefresh(msg)
   }
 
@@ -47,7 +47,7 @@ trait ILoopInit {
     }
     ignoring(classOf[Exception]) {
       SignalManager("INT") = {
-        if (intp == null)
+        if (intp == null || intp.lineManager == null)
           onExit()
         else if (intp.lineManager.running)
           intp.lineManager.cancel()
@@ -60,8 +60,15 @@ trait ILoopInit {
       }
     }
   }
+  protected def removeSigIntHandler() {
+    squashAndLog("removeSigIntHandler")(SignalManager("INT") = null)
+  }
 
   private val initLock = new java.util.concurrent.locks.ReentrantLock()
+  private val initCompilerCondition = initLock.newCondition() // signal the compiler is initialized
+  private val initLoopCondition = initLock.newCondition()     // signal the whole repl is initialized
+  private val initStart = System.nanoTime
+
   private def withLock[T](body: => T): T = {
     initLock.lock()
     try body
@@ -69,41 +76,52 @@ trait ILoopInit {
   }
   // a condition used to ensure serial access to the compiler.
   @volatile private var initIsComplete = false
-  private val initCompilerCondition = initLock.newCondition() // signal the compiler is initialized
-  private val initLoopCondition = initLock.newCondition()     // signal the whole repl is initialized
-  private val initStart = System.nanoTime
   private def elapsed() = "%.3f".format((System.nanoTime - initStart).toDouble / 1000000000L)
 
-  // Receives a single message once the interpreter is initialized.
-  private val initializedReactor = io.spawn {
-    withLock(initCompilerCondition.await())   
-    asyncMessage("[info] compiler init time: " + elapsed() + " s.")
-    postInitialization()
-  }
-  
   // the method to be called when the interpreter is initialized.
   // Very important this method does nothing synchronous (i.e. do
   // not try to use the interpreter) because until it returns, the
   // repl's lazy val `global` is still locked.
   protected def initializedCallback() = withLock(initCompilerCondition.signal())
 
+  // Spins off a thread which awaits a single message once the interpreter
+  // has been initialized.
+  protected def createAsyncListener() = {
+    io.spawn {
+      withLock(initCompilerCondition.await())
+      asyncMessage("[info] compiler init time: " + elapsed() + " s.")
+      postInitialization()
+    }
+  }
+
   // called from main repl loop
   protected def awaitInitialized() {
     if (!initIsComplete)
       withLock { while (!initIsComplete) initLoopCondition.await() }
-  }  
-  // called once after init condition is signalled 
-  protected def postInitialization() {
-    addThunk(intp.setContextClassLoader())
-    // do this last to avoid annoying uninterruptible startups
-    addThunk(installSigIntHandler())
-    if (isReplPower)
-      addThunk(enablePowerMode())
+  }
+  // private def warningsThunks = List(
+  //   () => intp.bind("lastWarnings", "" + manifest[List[(Position, String)]], intp.lastWarnings _),
+  // )
 
+  protected def postInitThunks = List[Option[() => Unit]](
+    Some(intp.setContextClassLoader _),
+    if (isReplPower) Some(() => enablePowerMode(true)) else None,
+    // do this last to avoid annoying uninterruptible startups
+    Some(installSigIntHandler _)
+  ).flatten
+  // ++ (
+  //   warningsThunks
+  // )
+  // called once after init condition is signalled
+  protected def postInitialization() {
+    postInitThunks foreach (f => addThunk(f()))
     runThunks()
     initIsComplete = true
-    asyncMessage("[info] total init time: " + elapsed() + " s.")
-    withLock(initLoopCondition.signal())
+
+    if (isAsync) {
+      asyncMessage("[info] total init time: " + elapsed() + " s.")
+      withLock(initLoopCondition.signal())
+    }
   }
   // code to be executed only after the interpreter is initialized
   // and the lazy val `global` can be accessed without risk of deadlock.
@@ -119,6 +137,6 @@ trait ILoopInit {
       val thunk = pendingThunks.head
       pendingThunks = pendingThunks.tail
       thunk()
-    }      
+    }
   }
 }

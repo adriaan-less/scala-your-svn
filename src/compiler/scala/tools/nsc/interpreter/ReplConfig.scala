@@ -2,43 +2,52 @@
  * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
- 
+
 package scala.tools.nsc
 package interpreter
 
-import sys.{ Prop, BooleanProp }
+import util.Exceptional.unwrap
+import util.stackTraceString
 
 trait ReplConfig {
-  class ReplProps {
-    private def bool(name: String) = BooleanProp.keyExists(name)
-    
-    val jlineDebug = bool("scala.tools.jline.internal.Log.debug")
-    val jlineTrace = bool("scala.tools.jline.internal.Log.trace")
-
-    val debug = bool("scala.repl.debug")
-    val trace = bool("scala.repl.trace")
-    val power = bool("scala.repl.power")
-  
-    val replInitCode  = Prop[JFile]("scala.repl.initcode")
-    val powerInitCode = Prop[JFile]("scala.repl.power.initcode")
-    val powerBanner   = Prop[JFile]("scala.repl.power.banner")
-  }
   lazy val replProps = new ReplProps
 
-  /** Debug output */
-  private[nsc] def repldbg(msg: => String)   =
-    if (isReplDebug) {
-      try Console println msg
-      catch { case x: AssertionError => Console.println("Assertion error in repldbg:\n  " + x) }
+  class TapMaker[T](x: T) {
+    def tapInfo(msg: => String): T  = tap(x => replinfo(parens(x)))
+    def tapDebug(msg: => String): T = tap(x => repldbg(parens(x)))
+    def tapTrace(msg: => String): T = tap(x => repltrace(parens(x)))
+    def tap[U](f: T => U): T = {
+      f(x)
+      x
     }
+  }
 
-  private[nsc] def repltrace(msg: => String) =
-    if (isReplTrace) {
-      try Console println msg
-      catch { case x: AssertionError => Console.println("Assertion error in repltrace:\n  " + x) }
-    }
+  private def parens(x: Any) = "(" + x + ")"
+  private def echo(msg: => String) =
+    try Console println msg
+    catch { case x: AssertionError => Console.println("Assertion error printing debugging output: " + x) }
+
+  private[nsc] def repldbg(msg: => String)    = if (isReplDebug) echo(msg)
+  private[nsc] def repltrace(msg: => String)  = if (isReplTrace) echo(msg)
+  private[nsc] def replinfo(msg: => String)   = if (isReplInfo)  echo(msg)
+
+  private[nsc] def logAndDiscard[T](label: String, alt: => T): PartialFunction[Throwable, T] = {
+    case t =>
+      repldbg(label + ": " + unwrap(t))
+      repltrace(stackTraceString(unwrap(t)))
+      alt
+  }
+  private[nsc] def substituteAndLog[T](alt: => T)(body: => T): T =
+    substituteAndLog("" + alt, alt)(body)
+  private[nsc] def substituteAndLog[T](label: String, alt: => T)(body: => T): T = {
+    try body
+    catch logAndDiscard(label, alt)
+  }
+  private[nsc] def squashAndLog(label: String)(body: => Unit): Unit =
+    substituteAndLog(label, ())(body)
 
   def isReplTrace: Boolean = replProps.trace
   def isReplDebug: Boolean = replProps.debug || isReplTrace
+  def isReplInfo: Boolean  = replProps.info || isReplDebug
   def isReplPower: Boolean = replProps.power
 }
