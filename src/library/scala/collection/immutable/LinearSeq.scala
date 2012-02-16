@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,22 +14,24 @@ package immutable
 import generic._
 import mutable.Builder
 
-/** A subtrait of <code>collection.Seq</code> which represents sequences
- *  that cannot be mutated.
- *
- *  @since 2.8
+/** A subtrait of `collection.LinearSeq` which represents sequences that
+ *  are guaranteed immutable.
+ *  $linearSeqInfo
  */
-trait LinearSeq[+A] extends Seq[A] 
-                            with scala.collection.LinearSeq[A] 
+trait LinearSeq[+A] extends Seq[A]
+                            with scala.collection.LinearSeq[A]
                             with GenericTraversableTemplate[A, LinearSeq]
                             with LinearSeqLike[A, LinearSeq[A]] {
   override def companion: GenericCompanion[LinearSeq] = LinearSeq
+  override def seq: LinearSeq[A] = this
 }
 
-/**
- * @since 2.8
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `List`.
+ *  @define coll immutable linear sequence
+ *  @define Coll immutable.LinearSeq
  */
 object LinearSeq extends SeqFactory[LinearSeq] {
-  implicit def builderFactory[A]: BuilderFactory[A, LinearSeq[A], Coll] = new VirtualBuilderFactory[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, LinearSeq[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   def newBuilder[A]: Builder[A, LinearSeq[A]] = new mutable.ListBuffer
 }

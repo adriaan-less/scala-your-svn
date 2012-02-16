@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package util
@@ -43,14 +42,10 @@ class TreeSet[T >: Null <: AnyRef](less: (T, T) => Boolean) extends Set[T] {
 
   def iterator = {
     def elems(t: Tree): Iterator[T] = {
-      var it = Iterator single t.elem
-      if (t.l ne null) it = elems(t.l) append it
-      if (t.r ne null) it = it append elems(t.r)
-      // if (t.l ne null) it = elems(t.l) ++ it
-      // if (t.r ne null) it = it ++ elems(t.r)
-      it
+      if (t eq null) Iterator.empty
+      else elems(t.l) ++ (Iterator single t.elem) ++ elems(t.r)
     }
-    if (tree eq null) Iterator.empty else elems(tree)
+    elems(tree)
   }
 
   override def toString(): String = {
