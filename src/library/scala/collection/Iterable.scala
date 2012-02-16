@@ -17,14 +17,14 @@ import mutable.Builder
 /** A base trait for iterable collections.
  *  $iterableInfo
  */
-trait Iterable[+A] extends Traversable[A] 
+trait Iterable[+A] extends Traversable[A]
                       with GenIterable[A]
                       with GenericTraversableTemplate[A, Iterable]
                       with IterableLike[A, Iterable[A]] {
   override def companion: GenericCompanion[Iterable] = Iterable
- 
+
   override def seq = this
-  
+
   /* The following methods are inherited from trait IterableLike
    *
   override def iterator: Iterator[A]
@@ -36,27 +36,19 @@ trait Iterable[+A] extends Traversable[A]
   */
 
 }
-                                         
+
 /** $factoryInfo
  *  The current default implementation of a $Coll is a `Vector`.
  *  @define coll iterable collection
  *  @define Coll Iterable
  */
 object Iterable extends TraversableFactory[Iterable] {
-  
+
   /** $genericCanBuildFromInfo */
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[A]] = new GenericCanBuildFrom[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
 
   def newBuilder[A]: Builder[A, Iterable[A]] = immutable.Iterable.newBuilder[A]
-  
-  /** The minimum element of a non-empty sequence of ordered elements */
-  @deprecated("use <seq>.min instead, where <seq> is the sequence for which you want to compute the minimum", "2.8.0")
-  def min[A](seq: Iterable[A])(implicit ord: Ordering[A]): A = seq.min
-
-  /** The maximum element of a non-empty sequence of ordered elements */
-  @deprecated("use <seq>.max instead, where <seq> is the sequence for which you want to compute the maximum", "2.8.0")
-  def max[A](seq: Iterable[A])(implicit ord: Ordering[A]): A = seq.max
-
-  @deprecated("use View instead", "2.8.0")
-  type Projection[A] = IterableView[A, Coll]
 }
+
+/** Explicit instantiation of the `Iterable` trait to reduce class file size in subclasses. */
+private[scala] abstract class AbstractIterable[+A] extends AbstractTraversable[A] with Iterable[A]

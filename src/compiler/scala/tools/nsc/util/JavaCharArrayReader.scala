@@ -6,7 +6,7 @@
 package scala.tools.nsc
 package util
 
-import Chars._
+import scala.reflect.internal.Chars._
 
 class JavaCharArrayReader(buf: IndexedSeq[Char], start: Int, /* startline: int, startcol: int, */
                       decodeUni: Boolean, error: String => Unit) extends Iterator[Char] with Cloneable {
@@ -29,7 +29,7 @@ class JavaCharArrayReader(buf: IndexedSeq[Char], start: Int, /* startline: int, 
   var bp = start
   var oldBp = -1
   var oldCh: Char = _
-  
+
   //private var cline: Int = _
   //private var ccol: Int = _
   def cpos = bp
@@ -51,20 +51,20 @@ class JavaCharArrayReader(buf: IndexedSeq[Char], start: Int, /* startline: int, 
     //nextcol = 1
   }
 
-  def hasNext: Boolean = if (bp < buf.length) true 
+  def hasNext: Boolean = if (bp < buf.length) true
   else {
     false
   }
 
   def last: Char = if (bp > start + 2) buf(bp - 2) else ' ' // XML literals
 
-  def next: Char = {
+  def next(): Char = {
     //cline = nextline
     //ccol = nextcol
     val buf = this.buf.asInstanceOf[collection.mutable.WrappedArray[Char]].array
     if(!hasNext) {
       ch = SU
-      return SU  // there is an endless stream of SU's at the end 
+      return SU  // there is an endless stream of SU's at the end
     }
     oldBp = bp
     oldCh = ch
