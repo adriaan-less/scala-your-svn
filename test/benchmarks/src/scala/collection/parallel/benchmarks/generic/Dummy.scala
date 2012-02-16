@@ -13,6 +13,10 @@ class Dummy(val in: Int) {
 
 
 object DummyOperators extends Operators[Dummy] {
+  val foreachFun = (a: Dummy) => {
+    a
+    ()
+  }
   val reducer = (a: Dummy, b: Dummy) => {
     var i = 0
     if (a.in > b.in) {
@@ -42,6 +46,10 @@ object DummyOperators extends Operators[Dummy] {
     a.num = a.dummy + a.num + a.in + a.one
     a
   }
+  override val mapper2 = (a: Dummy) => {
+    val x = 1
+    new Dummy(a.in * -2 + x)
+  }
   val heavymapper = (a: Dummy) => {
     var i = -100
     while (i < 0) {
@@ -49,6 +57,9 @@ object DummyOperators extends Operators[Dummy] {
       i += 1
     }
     a
+  }
+  val flatmapper = (a: Dummy) => {
+    List(a, a, a, a, a)
   }
   val taker = (a: Dummy) => {
     a.in >= 0
