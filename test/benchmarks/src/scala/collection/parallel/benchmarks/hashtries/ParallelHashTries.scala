@@ -3,19 +3,18 @@ package scala.collection.parallel.benchmarks.hashtries
 
 
 
-import scala.collection.parallel.benchmarks.generic.StandardParIterableBench
-import scala.collection.parallel.benchmarks.generic.NotBenchmark
+import scala.collection.parallel.benchmarks.generic.StandardParIterableBenches
 import scala.collection.parallel.benchmarks.generic.Dummy
 import scala.collection.parallel.benchmarks.generic.Operators
-import scala.collection.parallel.immutable.ParHashTrie
+import scala.collection.parallel.immutable.ParHashMap
 
 
 
 
 
-trait ParHashTrieBenches[K, V] extends StandardParIterableBench[(K, V), ParHashTrie[K, V]] {
+trait ParHashTrieBenches[K, V] extends StandardParIterableBenches[(K, V), ParHashMap[K, V]] {
   
-  def nameOfCollection = "ParHashTrie"
+  def nameOfCollection = "immutable.ParHashMap"
   def comparisonMap = collection.Map()
   val forkJoinPool = new scala.concurrent.forkjoin.ForkJoinPool
   
@@ -27,7 +26,7 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBench[(K, V), ParHashT
   }
   
   class Map2(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[(K, V), ParHashTrie[K, V]] {
+  extends IterableBench {
     var result: Int = 0
     def comparisonMap = collection.Map("jhashtable" -> runjhashtable _, "hashtable" -> runhashtable _)
     def runseq = {
@@ -36,8 +35,6 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBench[(K, V), ParHashT
     }
     def runpar = {
       result = this.parcoll.map(operators.mapper2).size
-      //println(collection.parallel.immutable.ParHashTrie.totalcombines)
-      //System.exit(1)
     }
     def runjhashtable = {
       val jumap = new java.util.HashMap[K, V]()
@@ -65,7 +62,6 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBench[(K, V), ParHashT
     def companion = Map2
     override def repetitionsPerRun = 50
     override def printResults {
-      println("Total combines: " + collection.parallel.immutable.ParHashTrie.totalcombines)
       println("Size of last result: " + result)
     }
   }
@@ -78,7 +74,7 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBench[(K, V), ParHashT
   }
   
   class Reduce2(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[(K, V), ParHashTrie[K, V]] {
+  extends IterableBench {
     private var ht: collection.mutable.HashMap[K, V] = _
     def comparisonMap = collection.Map("hashtable" -> runhashtable _)
     def runseq = this.seqcoll.reduceLeft(operators.reducer)
@@ -99,7 +95,7 @@ trait ParHashTrieBenches[K, V] extends StandardParIterableBench[(K, V), ParHashT
 
 
 
-object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] with NotBenchmark {
+object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] {
   
   type DPair = (Dummy, Dummy)
   
@@ -119,6 +115,10 @@ object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] with NotBe
       }
       sum
     }
+    val foreachFun = (t: DPair) => {
+      t
+      ()
+    }
     val reducer = (x: DPair, y: DPair) => {
       //y._2.num = x._2.in + y._2.in
       y
@@ -135,6 +135,9 @@ object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] with NotBe
       a.num = a.in % 2
       (a, p._2)
     }
+    val flatmapper = (p: DPair) => {
+      List(p, p, p, p, p)
+    }
     override val mapper2 = (p: DPair) => {
       val a = 1 //heavy(p._1.in)
       (new Dummy(p._1.in * -2 + a), p._2)
@@ -149,6 +152,9 @@ object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] with NotBe
       (a, p._2)
     }
     val taker = (p: DPair) => true
+    val eachFun: DPair => Unit = { dp =>
+      dp._1.dummy
+    }
   }
   
   def createSequential(sz: Int, p: Int) = {
@@ -158,10 +164,10 @@ object RefParHashTrieBenches extends ParHashTrieBenches[Dummy, Dummy] with NotBe
   }
   
   def createParallel(sz: Int, p: Int) = {
-    var pht = new ParHashTrie[Dummy, Dummy]
+    var pht = new ParHashMap[Dummy, Dummy]
     for (i <- 0 until sz) pht += ((new Dummy(i), new Dummy(i)))
     forkJoinPool.setParallelism(p)
-    pht.environment = forkJoinPool
+    collection.parallel.tasksupport.environment = forkJoinPool
     pht
   }
   

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -12,7 +12,7 @@ import scala.collection.mutable.ArrayBuffer
 import annotation.tailrec
 import java.util.regex.Pattern
 import java.io.IOException
-import Chars._
+import scala.reflect.internal.Chars._
 
 /** abstract base class of a source file used in the compiler */
 abstract class SourceFile {
@@ -22,17 +22,19 @@ abstract class SourceFile {
   def isSelfContained: Boolean
   def length : Int
   def position(offset: Int) : Position = {
-    assert(offset < length)
+    assert(offset < length, file + ": " + offset + " >= " + length)
     new OffsetPosition(this, offset)
   }
   def position(line: Int, column: Int) : Position = new OffsetPosition(this, lineToOffset(line) + column)
-  def offsetToLine(offset: Int): Int 
+
+  def offsetToLine(offset: Int): Int
   def lineToOffset(index : Int): Int
+
   /** Map a position to a position in the underlying source file.
    *  For regular source files, simply return the argument.
    */
   def positionInUltimateSource(position: Position) = position
-  override def toString(): String = file.name /* + ":" + content.length */
+  override def toString() = file.name
   def dbg(offset: Int) = (new OffsetPosition(this, offset)).dbgString
   def path = file.path
 
@@ -41,13 +43,28 @@ abstract class SourceFile {
 
   def lineToString(index: Int): String =
     content drop lineToOffset(index) takeWhile (c => !isLineBreakChar(c.toChar)) mkString
-    
+
   @tailrec
-  final def skipWhitespace(offset: Int): Int =  
+  final def skipWhitespace(offset: Int): Int =
     if (content(offset).isWhitespace) skipWhitespace(offset + 1) else offset
-  
-  def identifier(pos: Position, compiler: Global): Option[String] = None  
+
+  def identifier(pos: Position): Option[String] = None
 }
+
+/** An object representing a missing source file.
+ */
+object NoSourceFile extends SourceFile {
+  def content                   = Array()
+  def file                      = NoFile
+  def isLineBreak(idx: Int)     = false
+  def isSelfContained           = true
+  def length                    = -1
+  def offsetToLine(offset: Int) = -1
+  def lineToOffset(index : Int) = -1
+  override def toString = "<no source file>"
+}
+
+object NoFile extends VirtualFile("<no file>", "<no file>")
 
 object ScriptSourceFile {
   /** Length of the script header from the given content, if there is one.
@@ -55,9 +72,9 @@ object ScriptSourceFile {
    *  with "!#" or "::!#".
    */
   def headerLength(cs: Array[Char]): Int = {
-    val headerPattern = Pattern.compile("""^(::)?!#.*(\r|\n|\r\n)""", Pattern.MULTILINE)
+    val headerPattern = Pattern.compile("""((?m)^(::)?!#.*|^.*/env .*)(\r|\n|\r\n)""")
     val headerStarts  = List("#!", "::#!")
-    
+
     if (headerStarts exists (cs startsWith _)) {
       val matcher = headerPattern matcher cs.mkString
       if (matcher.find) matcher.end
@@ -66,18 +83,18 @@ object ScriptSourceFile {
     else 0
   }
   def stripHeader(cs: Array[Char]): Array[Char] = cs drop headerLength(cs)
-  
+
   def apply(file: AbstractFile, content: Array[Char]) = {
     val underlying = new BatchSourceFile(file, content)
     val headerLen = headerLength(content)
     val stripped = new ScriptSourceFile(underlying, content drop headerLen, headerLen)
-    
+
     stripped
   }
 }
 import ScriptSourceFile._
 
-class ScriptSourceFile(underlying: BatchSourceFile, content: Array[Char], override val start: Int) extends BatchSourceFile(underlying.file, content) {  
+class ScriptSourceFile(underlying: BatchSourceFile, content: Array[Char], override val start: Int) extends BatchSourceFile(underlying.file, content) {
   override def isSelfContained = false
 
   override def positionInUltimateSource(pos: Position) =
@@ -85,10 +102,29 @@ class ScriptSourceFile(underlying: BatchSourceFile, content: Array[Char], overri
     else new OffsetPosition(underlying, pos.point + start)
 }
 
-sealed trait LineOffsetMapper {
-  def content : Array[Char]
-  def length : Int
-  def lineIndices : Array[Int]
+/** a file whose contents do not change over time */
+class BatchSourceFile(val file : AbstractFile, val content: Array[Char]) extends SourceFile {
+
+  def this(_file: AbstractFile)                 = this(_file, _file.toCharArray)
+  def this(sourceName: String, cs: Seq[Char])   = this(new VirtualFile(sourceName), cs.toArray)
+  def this(file: AbstractFile, cs: Seq[Char])   = this(file, cs.toArray)
+
+  override def equals(that : Any) = that match {
+    case that : BatchSourceFile => file.path == that.file.path && start == that.start
+    case _ => false
+  }
+  override def hashCode = file.path.## + start.##
+  val length = content.length
+  def start = 0
+  def isSelfContained = true
+
+  override def identifier(pos: Position) =
+    if (pos.isDefined && pos.source == this && pos.point != -1) {
+      def isOK(c: Char) = isIdentifierPart(c) || isOperatorPart(c)
+      Some(new String(content drop pos.point takeWhile isOK))
+    } else {
+      super.identifier(pos)
+    }
 
   def isLineBreak(idx: Int) =
     if (idx >= length) false else {
@@ -104,7 +140,8 @@ sealed trait LineOffsetMapper {
     for (i <- 0 until cs.length) if (isLineBreak(i)) buf += i + 1
     buf += cs.length // sentinel, so that findLine below works smoother
     buf.toArray
-  }  
+  }
+  private lazy val lineIndices: Array[Int] = calculateLineIndices(content)
 
   def lineToOffset(index : Int): Int = lineIndices(index)
 
@@ -122,41 +159,4 @@ sealed trait LineOffsetMapper {
     lastLine = findLine(0, lines.length, lastLine)
     lastLine
   }
-}
-
-/** a file whose contents do not change over time */
-class BatchSourceFile(val file : AbstractFile, val content: Array[Char]) extends SourceFile with LineOffsetMapper {
-  
-  def this(_file: AbstractFile)                 = this(_file, _file.toCharArray)
-  def this(sourceName: String, cs: Seq[Char])   = this(new VirtualFile(sourceName), cs.toArray)
-  def this(file: AbstractFile, cs: Seq[Char])   = this(file, cs.toArray)
-    
-  override def equals(that : Any) = that match {
-    case that : BatchSourceFile => file.path == that.file.path && start == that.start
-    case _ => false
-  }
-  override def hashCode = file.path.## + start.##
-  val length = content.length
-  def start = 0
-  def isSelfContained = true
-  
-  lazy val lineIndices: Array[Int] = calculateLineIndices(content)  
-}
-
-/** a file whose contents do change over time */
-class MutableSourceFile(val file : AbstractFile, var content: Array[Char]) extends SourceFile with LineOffsetMapper {
-  def this(_file: AbstractFile)                 = this(_file, _file.toCharArray)
-  def this(sourceName: String, cs: Seq[Char])   = this(new VirtualFile(sourceName), cs.toArray)
-  def this(file: AbstractFile, cs: Seq[Char])   = this(file, cs.toArray)
-
-  override def equals(that : Any) = that match {
-    case that : MutableSourceFile => file.path == that.file.path && start == that.start
-    case _ => false
-  }
-  override def hashCode = file.path.## + start.##
-  def length = content.length
-  def start = 0
-  def isSelfContained = true
-
-  def lineIndices : Array[Int] =  calculateLineIndices(content)
 }
