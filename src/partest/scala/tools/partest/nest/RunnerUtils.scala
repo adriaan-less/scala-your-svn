@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -10,7 +10,7 @@ package nest
 
 object RunnerUtils {
   def splitArgs(str: String) = str split "\\s" filterNot (_ == "") toList
-  
+
   def searchPath(option: String, as: List[String]): Option[String] = as match {
     case `option` :: r :: _ => Some(r)
     case _ :: rest          => searchPath(option, rest)

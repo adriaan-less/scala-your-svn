@@ -13,6 +13,10 @@ class Dummy(val in: Int) {
 
 
 object DummyOperators extends Operators[Dummy] {
+  val foreachFun = (a: Dummy) => {
+    a
+    ()
+  }
   val reducer = (a: Dummy, b: Dummy) => {
     var i = 0
     if (a.in > b.in) {
@@ -42,6 +46,10 @@ object DummyOperators extends Operators[Dummy] {
     a.num = a.dummy + a.num + a.in + a.one
     a
   }
+  override val mapper2 = (a: Dummy) => {
+    val x = 1
+    new Dummy(a.in * -2 + x)
+  }
   val heavymapper = (a: Dummy) => {
     var i = -100
     while (i < 0) {
@@ -50,11 +58,18 @@ object DummyOperators extends Operators[Dummy] {
     }
     a
   }
+  val flatmapper = (a: Dummy) => {
+    List(a, a, a, a, a)
+  }
   val taker = (a: Dummy) => {
     a.in >= 0
   }
   val eachFun: Dummy => Unit = (d: Dummy) => {
     d.dummy
+  }
+  override val eachPairFun: ((Dummy, Dummy)) => Unit = p => {
+    p._1.dummy
+    p._2.dummy
   }
   override def sequence(sz: Int): Seq[Dummy] = {
     val pa = new collection.parallel.mutable.ParArray[Dummy](sz)
