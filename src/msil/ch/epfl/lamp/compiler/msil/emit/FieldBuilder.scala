@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -10,6 +9,9 @@ import ch.epfl.lamp.compiler.msil.FieldInfo
 import ch.epfl.lamp.compiler.msil.Type
 import ch.epfl.lamp.compiler.msil.FieldAttributes
 import ch.epfl.lamp.compiler.msil.ConstructorInfo
+
+import ch.epfl.lamp.compiler.msil.util.PECustomMod
+
 import java.io.IOException
 
 /**
@@ -18,8 +20,8 @@ import java.io.IOException
  * @author Nikolay Mihaylov
  * @version 1.0
  */
-class FieldBuilder(name: String, declType: Type, attrs: Int, fieldType: Type)
-      extends FieldInfo(name, declType, attrs, fieldType)
+class FieldBuilder(name: String, declType: Type, attrs: Int, fieldTypeWithMods: PECustomMod)
+      extends FieldInfo(name, declType, attrs, fieldTypeWithMods, null)
       with ICustomAttributeSetter
       with Visitable
 {
