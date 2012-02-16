@@ -1,3 +1,8 @@
+/* NSC -- new Scala compiler
+ * Copyright 2009-2011 Scxala Solutions and LAMP/EPFL
+ * @author Iulian Dragos
+ * @author Hubert Plocinicak
+ */
 package scala.tools.nsc
 package interactive
 
@@ -24,11 +29,11 @@ trait BuildManager {
 
   /** Notification that the supplied set of files is being built */
   def buildingFiles(included: Set[AbstractFile]) {}
-  
+
   /** Load saved dependency information. */
   def loadFrom(file: AbstractFile, toFile: String => AbstractFile) : Boolean
-  
-  /** Save dependency information to `file'. */
+
+  /** Save dependency information to `file`. */
   def saveTo(file: AbstractFile, fromFile: AbstractFile => String)
 
   def compiler: scala.tools.nsc.Global
@@ -51,7 +56,7 @@ object BuildManagerTest extends EvalLoop {
 
   def prompt = "builder > "
 
-  def error(msg: String) {
+  private def buildError(msg: String) {
     println(msg + "\n  scalac -help  gives more information")
   }
 
@@ -63,12 +68,13 @@ object BuildManagerTest extends EvalLoop {
       }
       val result =  fs.foldRight((List[AbstractFile](), List[String]()))(partition)
       if (!result._2.isEmpty)
-        println("No such file(s): " + result._2.mkString(","))
+        Console.err.println("No such file(s): " + result._2.mkString(","))
       Set.empty ++ result._1
     }
 
-    val settings = new Settings(error)
-    val command = new CompilerCommand(args.toList, settings, error, false)
+    val settings = new Settings(buildError)
+    settings.Ybuildmanagerdebug.value = true
+    val command = new CompilerCommand(args.toList, settings)
 //    settings.make.value = "off"
 //    val buildManager: BuildManager = new SimpleBuildManager(settings)
     val buildManager: BuildManager = new RefinedBuildManager(settings)
@@ -78,7 +84,7 @@ object BuildManagerTest extends EvalLoop {
     // enter resident mode
     loop { line =>
       val args = line.split(' ').toList
-      val command = new CompilerCommand(args, new Settings(error), error, true)
+      val command = new CompilerCommand(args, settings)
       buildManager.update(command.files, Set.empty)
     }
 

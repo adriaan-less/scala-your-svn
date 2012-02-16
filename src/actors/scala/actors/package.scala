@@ -1,18 +1,22 @@
 package scala
 
+/**
+ * A library that provides both asynchronous and synchronous messaging to allow
+ * for concurrent programming without explicit synchronization.
+ *
+ * == Guide ==
+ *
+ * A detailed guide for the actors library is available
+ * [[http://www.scala-lang.org/docu/files/actors-api/actors_api_guide.html#]].
+ *
+ * == Getting Started ==
+ *
+ * A starting point for using the actors library would be [[scala.actors.Reactor]],
+ * [[scala.actors.ReplyReactor]], or [[scala.actors.Actor]] or their companion objects.
+ *
+ */
 package object actors {
-  @deprecated("use scala.actors.scheduler.ForkJoinScheduler instead")
-  type FJTaskScheduler2 = scala.actors.scheduler.ForkJoinScheduler
 
-  @deprecated("use scala.actors.scheduler.ForkJoinScheduler instead")
-  type TickedScheduler = scala.actors.scheduler.ForkJoinScheduler
-
-  @deprecated("use scala.actors.scheduler.ForkJoinScheduler instead")
-  type WorkerThreadScheduler = scala.actors.scheduler.ForkJoinScheduler
-
-  @deprecated("this class is going to be removed in a future release")
-  type WorkerThread = java.lang.Thread
-
-  @deprecated("this value is going to be removed in a future release")
-  val ActorGC = scala.actors.Scheduler.impl.asInstanceOf[scala.actors.scheduler.ThreadPoolScheduler]
+  // type of Reactors tracked by termination detector
+  private[actors] type TrackedReactor = Reactor[A] forSome { type A >: Null }
 }
