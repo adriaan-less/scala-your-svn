@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala
 
@@ -21,8 +20,7 @@ package scala
  */
 object Responder {
 
-  /** Creates a responder that answer continuations with the constant
-   *  <code>a</code>.
+  /** Creates a responder that answer continuations with the constant `a`.
    *
    *  @param x ...
    *  @return ...
@@ -31,15 +29,15 @@ object Responder {
     def respond(k: A => Unit) = k(x)
   }
 
-  /** Executes <code>x</code> and returns <code>true</code>, useful
-   *  as syntactic convenience in for comprehensions.
+  /** Executes `x` and returns `'''true'''`, useful as syntactic
+   *  convenience in for comprehensions.
    *
    *  @param x ...
    *  @return ...
    */
   def exec[A](x: => Unit): Boolean = { x; true }
 
-  /** runs a responder, returning an optional result
+  /** Runs a responder, returning an optional result.
   */
   def run[A](r: Responder[A]): Option[A] = {
     var result: Option[A] = None
@@ -47,13 +45,12 @@ object Responder {
     result
   }
 
-  def loop[A](r: Responder[Unit]): Responder[Nothing] = 
-    for (_ <- r; val y <- loop(r)) yield y
+  def loop[A](r: Responder[Unit]): Responder[Nothing] =
+    for (_ <- r; y <- loop(r)) yield y
 
-  def loopWhile[A](cond: => Boolean)(r: Responder[Unit]): Responder[Unit] = 
-    if (cond) for (_ <- r; val y <- loopWhile(cond)(r)) yield y
+  def loopWhile[A](cond: => Boolean)(r: Responder[Unit]): Responder[Unit] =
+    if (cond) for (_ <- r; y <- loopWhile(cond)(r)) yield y
     else constant(())
-
 }
 
 /** Instances of responder are the building blocks of small programs
@@ -67,8 +64,7 @@ object Responder {
  *  @version 1.0
  *  @since 2.1
  */
-@serializable
-abstract class Responder[+A] {
+abstract class Responder[+A] extends Serializable {
 
   def respond(k: A => Unit): Unit
 
@@ -94,4 +90,3 @@ abstract class Responder[+A] {
 
   override def toString = "Responder"
 }
-
