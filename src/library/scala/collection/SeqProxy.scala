@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -18,4 +17,4 @@ package scala.collection
  *  @version 2.8
  *  @since   2.8
  */
-trait SeqProxy[+A] extends Seq[A] with SeqProxyLike[A, Seq[A]] 
+trait SeqProxy[+A] extends Seq[A] with SeqProxyLike[A, Seq[A]]
