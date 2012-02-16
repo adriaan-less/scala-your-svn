@@ -1,22 +1,22 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.dbc.datatype;
+package scala.dbc
+package datatype;
 
 
 /** A SQL type for a string of characters of arbitrary length with
  *  arbitrary character set.
  */
-abstract class Character extends CharacterString {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Character extends CharacterString {
+
   def isEquivalent(datatype: DataType) = datatype match {
     case dt: Character =>
       length == dt.length && encoding == dt.encoding

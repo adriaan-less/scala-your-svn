@@ -1,179 +1,167 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2009 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
 // $Id$
 
-package scala.tools.partest.nest
+package scala.tools.partest
+package nest
 
-import scala.tools.nsc.{Global, Settings, CompilerCommand, FatalError}
-import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
+import scala.tools.nsc.{ Global, Settings, CompilerCommand, FatalError, io }
+import scala.tools.nsc.interactive.RangePositions
+import scala.tools.nsc.reporters.{ Reporter, ConsoleReporter }
+import scala.tools.nsc.util.{ ClassPath, FakePos }
+import scala.tools.nsc.Properties.{ setProp, propOrEmpty }
+import scala.tools.util.PathResolver
+import io.Path
+import java.io.{ File, BufferedReader, PrintWriter, FileReader, Writer, FileWriter, StringWriter }
+import File.pathSeparator
 
-import java.io.{File, BufferedReader, PrintWriter, FileReader, FileWriter, StringWriter}
+class ExtConsoleReporter(settings: Settings, val writer: PrintWriter) extends ConsoleReporter(settings, Console.in, writer) {
+  shortname = true
+}
 
-class ExtConsoleReporter(override val settings: Settings, reader: BufferedReader, var writer: PrintWriter) extends ConsoleReporter(settings, reader, writer) {
-  def this(settings: Settings) = {
-    this(settings, Console.in, new PrintWriter(new FileWriter("/dev/null")))
-  }
-  def hasWarnings: Boolean = WARNING.count != 0
+class TestSettings(cp: String, error: String => Unit) extends Settings(error) {
+  def this(cp: String) = this(cp, _ => ())
+
+  deprecation.value = true
+  nowarnings.value  = false
+  encoding.value    = "UTF-8"
+  classpath.value   = cp
 }
 
 abstract class SimpleCompiler {
   def compile(out: Option[File], files: List[File], kind: String, log: File): Boolean
 }
 
-class TestSettings(fileMan: FileManager) extends {
-  override val bootclasspathDefault =
-    System.getProperty("sun.boot.class.path", "") + File.pathSeparator +
-    fileMan.LATEST_LIB
-  override val extdirsDefault =
-    System.getProperty("java.ext.dirs", "")
-} with Settings(x => ())
-
 class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
   def newGlobal(settings: Settings, reporter: Reporter): Global =
-    new Global(settings, reporter)
+    if (settings.Yrangepos.value)
+      new Global(settings, reporter) with RangePositions
+    else
+      new Global(settings, reporter)
 
-  def newGlobal(settings: Settings, logWriter: FileWriter): Global = {
-    val rep = new ExtConsoleReporter(settings,
-                                     Console.in,
-                                     new PrintWriter(logWriter))
-    rep.shortname = true
-    newGlobal(settings, rep)
+  def newGlobal(settings: Settings, logWriter: FileWriter): Global =
+    newGlobal(settings, new ExtConsoleReporter(settings, new PrintWriter(logWriter)))
+
+  def newSettings(): TestSettings = new TestSettings(fileManager.LATEST_LIB)
+  def newSettings(outdir: String): TestSettings = {
+    val cp = ClassPath.join(fileManager.LATEST_LIB, outdir)
+    val s = new TestSettings(cp)
+    s.outdir.value = outdir
+
+    s
   }
-
-  def newSettings = {
-    val settings = new TestSettings(fileManager)
-    settings.deprecation.value = true
-    settings.nowarnings.value = false
-    settings.encoding.value = "iso-8859-1"
-    settings
-  }
-
-  def newReporter(sett: Settings) = new ExtConsoleReporter(sett,
-                                                           Console.in,
-                                                           new PrintWriter(new StringWriter))
 
   private def updatePluginPath(options: String): String = {
-    val (opt1, opt2) =
-      (options split "\\s").toList partition (_ startsWith "-Xplugin:")
-    (opt2 mkString " ")+(
-      if (opt1.isEmpty) ""
-      else {
-        def absolutize(path: String): List[String] = {
-          val args = (path substring 9 split File.pathSeparator).toList
-          val plugins = args map (arg =>
-            if (new File(arg).isAbsolute) arg
-            else fileManager.TESTROOT+File.separator+arg
-          )
-          plugins
-        }
-        " -Xplugin:"+((opt1 flatMap absolutize) mkString File.pathSeparator)
-      }
-    )
+    val dir = fileManager.testRootDir
+    def absolutize(path: String) = Path(path) match {
+      case x if x.isAbsolute  => x.path
+      case x                  => (fileManager.testRootDir / x).toAbsolute.path
+    }
+
+    val (opt1, opt2) = (options split "\\s").toList partition (_ startsWith "-Xplugin:")
+    val plugins = opt1 map (_ stripPrefix "-Xplugin:") flatMap (_ split pathSeparator) map absolutize
+    val pluginOption = if (opt1.isEmpty) Nil else List("-Xplugin:" + (plugins mkString pathSeparator))
+
+    (opt2 ::: pluginOption) mkString " "
   }
 
   def compile(out: Option[File], files: List[File], kind: String, log: File): Boolean = {
-    val testSettings = newSettings
-    val logWriter = new FileWriter(log)
-    
-    // check whether there is a ".flags" file
-    val testBase = {
-      val logBase = fileManager.basename(log.getName)
-      logBase.substring(0, logBase.length-4)
+    val testSettings = out match {
+      case Some(f)  => newSettings(f.getAbsolutePath)
+      case _        => newSettings()
     }
-    val argsFile = new File(log.getParentFile, testBase+".flags")
-    val argString = if (argsFile.exists) {
-      val fileReader = new FileReader(argsFile)
-      val reader = new BufferedReader(fileReader)
-      val options = updatePluginPath(reader.readLine())
-      reader.close()
-      options
-    } else ""
-    val allOpts = fileManager.SCALAC_OPTS+" "+argString
+    val logWriter = new FileWriter(log)
+
+    // check whether there is a ".flags" file
+    val logFile = basename(log.getName)
+    val flagsFileName = "%s.flags" format (logFile.substring(0, logFile.lastIndexOf("-")))
+    val argString = (io.File(log).parent / flagsFileName) ifFile (x => updatePluginPath(x.slurp())) getOrElse ""
+    val allOpts = fileManager.SCALAC_OPTS.toList ::: argString.split(' ').toList.filter(_.length > 0)
+    val args = allOpts.toList
+
     NestUI.verbose("scalac options: "+allOpts)
-    val args = (allOpts split "\\s").toList
-    val command = new CompilerCommand(args, testSettings, x => {}, false)
+
+    val command = new CompilerCommand(args, testSettings)
     val global = newGlobal(command.settings, logWriter)
     val testRep: ExtConsoleReporter = global.reporter.asInstanceOf[ExtConsoleReporter]
 
-    val test: TestFile = kind match {
-      case "pos"      => PosTestFile(files(0), fileManager, out.isEmpty)
-      case "neg"      => NegTestFile(files(0), fileManager, out.isEmpty)
-      case "run"      => RunTestFile(files(0), fileManager, out.isEmpty)
-      case "jvm"      => JvmTestFile(files(0), fileManager, out.isEmpty)
-      case "shootout" => ShootoutTestFile(files(0), fileManager, out.isEmpty)
-      case "scalap"   => ScalapTestFile(files(0), fileManager, out.isEmpty)
-      case "scalacheck" =>
-        ScalaCheckTestFile(files(0), fileManager, out.isEmpty)
+    val testFileFn: (File, FileManager) => TestFile = kind match {
+      case "pos"          => PosTestFile.apply
+      case "neg"          => NegTestFile.apply
+      case "run"          => RunTestFile.apply
+      case "jvm"          => JvmTestFile.apply
+      case "shootout"     => ShootoutTestFile.apply
+      case "scalap"       => ScalapTestFile.apply
+      case "scalacheck"   => ScalaCheckTestFile.apply
+      case "specialized"  => SpecializedTestFile.apply
+      case "presentation" => PresentationTestFile.apply
+      case "ant"          => AntTestFile.apply
     }
-    test.defineSettings(command.settings)
-    out match {
-      case Some(outDir) =>
-        command.settings.outdir.value = outDir.getAbsolutePath
-        command.settings.classpath.value = command.settings.classpath.value+
-          File.pathSeparator+outDir.getAbsolutePath
-      case None =>
-        // do nothing
+    val test: TestFile = testFileFn(files.head, fileManager)
+    if (!test.defineSettings(command.settings, out.isEmpty)) {
+      testRep.error(FakePos("partest"), test.flags match {
+        case Some(flags)  => "bad flags: " + flags
+        case _            => "bad settings: " + command.settings
+      })
     }
 
-    val toCompile = files.map(_.getPath)
+    val toCompile = files map (_.getPath)
+
     try {
       NestUI.verbose("compiling "+toCompile)
-      try {
-        (new global.Run) compile toCompile
-      } catch {
+      NestUI.verbose("with classpath: "+global.classPath.toString)
+      NestUI.verbose("and java classpath: "+ propOrEmpty("java.class.path"))
+      try new global.Run compile toCompile
+      catch {
         case FatalError(msg) =>
           testRep.error(null, "fatal error: " + msg)
       }
-      testRep.printSummary
-      testRep.writer.flush
-      testRep.writer.close
-    } catch {
-      case e =>
-        e.printStackTrace()
-        return false
-    } finally {
-      logWriter.close()
+
+      testRep.printSummary()
+      testRep.writer.close()
     }
+    finally logWriter.close()
+
     !testRep.hasErrors
   }
 }
 
-class ReflectiveCompiler(val fileManager: ConsoleFileManager) extends SimpleCompiler {
-  import fileManager.{latestCompFile, latestPartestFile}
-
-  val sepUrls = Array(latestCompFile.toURL, latestPartestFile.toURL)
-  //NestUI.verbose("constructing URLClassLoader from URLs "+latestCompFile+" and "+latestPartestFile)
-
-  val sepLoader = new java.net.URLClassLoader(sepUrls, null)
-
-  val sepCompilerClass =
-    sepLoader.loadClass("scala.tools.partest.nest.DirectCompiler")
-  val sepCompiler = sepCompilerClass.newInstance()
-
-  // needed for reflective invocation
-  val fileClass = Class.forName("java.io.File")
-  val stringClass = Class.forName("java.lang.String")
-  val sepCompileMethod =
-    sepCompilerClass.getMethod("compile", fileClass, stringClass)
-  val sepCompileMethod2 =
-    sepCompilerClass.getMethod("compile", fileClass, stringClass, fileClass)
-
-  /* This method throws java.lang.reflect.InvocationTargetException
-   * if the compiler crashes.
-   * This exception is handled in the shouldCompile and shouldFailCompile
-   * methods of class CompileManager.
-   */
-  def compile(out: Option[File], files: List[File], kind: String, log: File): Boolean = {
-    val res = sepCompileMethod2.invoke(sepCompiler, out, files, kind, log).asInstanceOf[java.lang.Boolean]
-    res.booleanValue()
-  }
-}
+// class ReflectiveCompiler(val fileManager: ConsoleFileManager) extends SimpleCompiler {
+//   import fileManager.{latestCompFile, latestPartestFile}
+//
+//   val sepUrls = Array(latestCompFile.toURI.toURL, latestPartestFile.toURI.toURL)
+//   //NestUI.verbose("constructing URLClassLoader from URLs "+latestCompFile+" and "+latestPartestFile)
+//
+//   val sepLoader = new java.net.URLClassLoader(sepUrls, null)
+//
+//   val sepCompilerClass =
+//     sepLoader.loadClass("scala.tools.partest.nest.DirectCompiler")
+//   val sepCompiler = sepCompilerClass.newInstance()
+//
+//   // needed for reflective invocation
+//   val fileClass = Class.forName("java.io.File")
+//   val stringClass = Class.forName("java.lang.String")
+//   val sepCompileMethod =
+//     sepCompilerClass.getMethod("compile", fileClass, stringClass)
+//   val sepCompileMethod2 =
+//     sepCompilerClass.getMethod("compile", fileClass, stringClass, fileClass)
+//
+//   /* This method throws java.lang.reflect.InvocationTargetException
+//    * if the compiler crashes.
+//    * This exception is handled in the shouldCompile and shouldFailCompile
+//    * methods of class CompileManager.
+//    */
+//   def compile(out: Option[File], files: List[File], kind: String, log: File): Boolean = {
+//     val res = sepCompileMethod2.invoke(sepCompiler, out, files, kind, log).asInstanceOf[java.lang.Boolean]
+//     res.booleanValue()
+//   }
+// }
 
 class CompileManager(val fileManager: FileManager) {
-  var compiler: SimpleCompiler = new /*ReflectiveCompiler*/ DirectCompiler(fileManager)
+  var compiler: SimpleCompiler = new DirectCompiler(fileManager)
 
   var numSeparateCompilers = 1
   def createSeparateCompiler() = {

@@ -1,29 +1,26 @@
-/* TODO: Reintegrate
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
+package scala.collection
+package mutable
 
-package scala.collection.mutable
-
-
-/** This class implements priority queues using a heap. The
+/** This class servers as a proxy for priority queues. The
  *  elements of the queue have to be ordered in terms of the
- *  <code>Ordered[T]</code> class.
+ *  `Ordered[T]` class.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
+ *  @since   1
  */
-abstract class PriorityQueueProxy[A <% Ordered[A]] extends PriorityQueue[A]
-         with RandomAccessSeqProxy[A]
+abstract class PriorityQueueProxy[A](implicit ord: Ordering[A]) extends PriorityQueue[A]
+         with Proxy
 {
-
   def self: PriorityQueue[A]
 
   /** Creates a new iterator over all elements contained in this
@@ -47,20 +44,16 @@ abstract class PriorityQueueProxy[A <% Ordered[A]] extends PriorityQueue[A]
    *
    *  @param  elem        the element to insert
    */
-  override def +=(elem: A): Unit = self += elem
-
-  /** Adds all elements provided by an <code>Iterable</code> object
-   *  into the priority queue.
-   *
-   *  @param  iter        an iterable object
-   */
-  override def ++=(iter: Iterable[A]): Unit = self ++= iter
+  override def +=(elem: A): this.type = { self += elem; this }
 
   /** Adds all elements provided by an iterator into the priority queue.
    *
    *  @param  it        an iterator
    */
-  override def ++=(it: Iterator[A]): Unit = self ++= it
+  override def ++=(it: TraversableOnce[A]): this.type = {
+    self ++= it
+    this
+  }
 
   /** Adds all elements to the queue.
    *
@@ -80,6 +73,14 @@ abstract class PriorityQueueProxy[A <% Ordered[A]] extends PriorityQueue[A]
    *
    *  @return   the element with the highest priority.
    */
+  override def head: A = self.head
+
+  /** Returns the element with the highest priority in the queue,
+   *  or throws an error if there is no element contained in the queue.
+   *
+   *  @return   the element with the highest priority.
+   */
+  @deprecated("Use `head` instead.", "2.9.0")
   override def max: A = self.max
 
   /** Removes all elements from the queue. After this operation is completed,
@@ -99,4 +100,3 @@ abstract class PriorityQueueProxy[A <% Ordered[A]] extends PriorityQueue[A]
     def self = PriorityQueueProxy.this.self.clone()
   }
 }
-*/

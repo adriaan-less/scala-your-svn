@@ -18,29 +18,20 @@ get: [
 get: 4
 get: @
 4: @
+get: 10
+get: flu
+10: flu
 get: 8
 get: 9
 get: %
 get: 5
 5: %, 17
 12: ', 13, 16
+1: bird, swine, 10
+20
+30
+40
 6: ~
-get: 7
-get: +
-7: +
-get: +
-get: 8
-8: +
-9: ?
-get: 39
-get: 38
-get: |
-10: |, 77
-get: 2.233
-get: <
-get: 13
-get: x
-13: x, 2.233, <
 14: /
 100: 100: nix, nix, 982, 982, 0
 100: overridden, bla, 0, 0, 555
@@ -72,13 +63,17 @@ get: 1
 get: 2
 get: 2
 3
+0
+get: 20
+get: 20
+20
+0
+1
 dlkfj0dlkfj102
 lskf2dkflj2
 dlkd5nixda10nixdadklfj1dklfj
 C(dlkf,234,struct)struct???
 C(dflkj,234,Some(209))None!!
-20020100
-C(dlfkj,11,10)35dlkf
 dflk10
 1-1jupee
 12.39
@@ -88,3 +83,40 @@ Factory(-1,blabla)
 Fact2(ju,1)
 Fact2(1,1)
 Fact2(10,blabla)
+test5
+2
+test5
+3
+test5
+4
+test5
+5
+10: 2
+slkdfj1
+1
+lskfdjlk
+11
+2
+20
+10
+jaa
+kldfj110101
+klfj1
+blublu1
+my text
+List(1, 2)
+3
+1
+2
+3
+3
+3
+3
+3
+3
+3
+3
+3
+3
+3
+(1,0), (1,2)

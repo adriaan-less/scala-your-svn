@@ -1,22 +1,22 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id:Factory.scala 6853 2006-03-20 16:58:47 +0100 (Mon, 20 Mar 2006) dubochet $
 
 
-package scala.dbc.value;
+package scala.dbc
+package value;
 
 
 import java.math.BigInteger;
 import java.math.BigDecimal;
 
-object Factory {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") object Factory {
+
   def create (result: java.sql.ResultSet, index: Int, expectedDataType: DataType): Value = {
     expectedDataType.nativeTypeId match {
       case DataType.OBJECT =>
@@ -88,8 +88,8 @@ object Factory {
           val dataType = expectedDataType.asInstanceOf[datatype.ExactNumeric[BigDecimal]];
           val nativeValue: BigDecimal = result.getBigDecimal(index);
         }
-      
+
     }
   }
-  
+
 }

@@ -1,28 +1,30 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: Map.scala 17537 2009-04-20 18:37:37Z odersky $
 
 
 package scala.collection
 
 import generic._
 
-/* A default map which implements the `updated` and `-` methods of maps.
- * Instances that inherit from DefaultMap[A, B] still have to define:
- * 
- *   def get(key: A): Option[B]
- *   def iterator: Iterator[(A, B)]
+/** A default map which implements the `+` and `-` methods of maps.
  *
- * It refers back to the original map.
+ *  Instances that inherit from `DefaultMap[A, B]` still have to define:
+ *  {{{
+ *    def get(key: A): Option[B]
+ *    def iterator: Iterator[(A, B)]
+ *  }}}
+ *  It refers back to the original map.
  *
- * It might also be advisable to override `foreach` or `size` if efficient
- * implementations can be found. 
+ *  It might also be advisable to override `foreach` or `size` if efficient
+ *  implementations can be found.
+ *
+ *  @since 2.8
  */
 trait DefaultMap[A, +B] extends Map[A, B] { self =>
 
