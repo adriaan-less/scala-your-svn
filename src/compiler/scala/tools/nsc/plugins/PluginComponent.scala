@@ -1,16 +1,15 @@
 /* NSC -- new Scala compiler
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Lex Spoon
  * Updated by Anders Bach Nielsen
  */
-// $Id$
 
 package scala.tools.nsc
 package plugins
 
 /** A component that is part of a Plugin.
  *
- * @author Lex Spoon 
+ * @author Lex Spoon
  * @version 1.1, 2009/1/2
  * Updated 2009/1/2 by Anders Bach Nielsen: Added features to implement SIP 00002
  */

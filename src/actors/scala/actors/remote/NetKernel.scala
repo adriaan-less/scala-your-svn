@@ -1,17 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package remote
 
-import scala.collection.mutable.{HashMap, HashSet}
+import scala.collection.mutable
 
 case class NamedSend(senderLoc: Locator, receiverLoc: Locator, data: Array[Byte], session: Symbol)
 
@@ -40,8 +39,8 @@ private[remote] class NetKernel(service: Service) {
     sendToNode(receiverLoc.node, NamedSend(senderLoc, receiverLoc, bytes, session))
   }
 
-  private val actors = new HashMap[Symbol, OutputChannel[Any]]
-  private val names = new HashMap[OutputChannel[Any], Symbol]
+  private val actors = new mutable.HashMap[Symbol, OutputChannel[Any]]
+  private val names = new mutable.HashMap[OutputChannel[Any], Symbol]
 
   def register(name: Symbol, a: OutputChannel[Any]): Unit = synchronized {
     actors += Pair(name, a)
@@ -84,7 +83,7 @@ private[remote] class NetKernel(service: Service) {
     p
   }
 
-  val proxies = new HashMap[(Node, Symbol), Proxy]
+  val proxies = new mutable.HashMap[(Node, Symbol), Proxy]
 
   def getOrCreateProxy(senderNode: Node, senderName: Symbol): Proxy =
     proxies.synchronized {
@@ -140,7 +139,7 @@ private[remote] class NetKernel(service: Service) {
 
   def terminate() {
     // tell all proxies to terminate
-    proxies.valuesIterator foreach { p => p.send(Terminate, null) }
+    proxies.values foreach { _.send(Terminate, null) }
 
     // tell service to terminate
     service.terminate()

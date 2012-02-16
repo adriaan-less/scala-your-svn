@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package scheduler
@@ -17,7 +16,7 @@ import util.Properties.{ javaVersion, javaVmVendor, isJavaAtLeast, propIsSetTo, 
  * @author Erik Engbrecht
  * @author Philipp Haller
  */
-object ThreadPoolConfig {
+private[actors] object ThreadPoolConfig {
   private val rt = Runtime.getRuntime()
   private val minNumThreads = 4
 
@@ -39,13 +38,15 @@ object ThreadPoolConfig {
   }
 
   private[actors] def useForkJoin: Boolean =
-    try propIsSetTo("actors.enableForkJoin", "true") || {
-      Debug.info(this+": java.version = "+javaVersion)
-      Debug.info(this+": java.vm.vendor = "+javaVmVendor)
-      
-      // on IBM J9 1.6 do not use ForkJoinPool
-      isJavaAtLeast(1.6) && (javaVmVendor contains "Sun")
-    }
+    try !propIsSetTo("actors.enableForkJoin", "false") &&
+      (propIsSetTo("actors.enableForkJoin", "true") || {
+        Debug.info(this+": java.version = "+javaVersion)
+        Debug.info(this+": java.vm.vendor = "+javaVmVendor)
+
+        // on IBM J9 1.6 do not use ForkJoinPool
+        // XXX this all needs to go into Properties.
+        isJavaAtLeast("1.6") && ((javaVmVendor contains "Oracle") || (javaVmVendor contains "Sun") || (javaVmVendor contains "Apple"))
+      })
     catch {
       case _: SecurityException => false
     }

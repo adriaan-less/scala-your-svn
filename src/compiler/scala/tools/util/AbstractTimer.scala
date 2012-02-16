@@ -1,17 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.tools.util
 
 import compat.Platform.currentTime
-import scala.collection.mutable.Stack
+import scala.collection.mutable
 
 /**
  * This abstract class implements the collection of timings. How the
@@ -26,7 +25,7 @@ abstract class AbstractTimer {
   // Private Fields
 
   /** A stack for maintaining start times */
-  private val starts = new Stack[Long]()
+  private val starts = new mutable.Stack[Long]()
 
   //########################################################################
   // Public Methods

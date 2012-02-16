@@ -1,24 +1,58 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
-package scala.tools.nsc
+package scala.tools
+package nsc
 package util
 
-import java.io.{File, FileInputStream, PrintStream, IOException}
+import java.io.{File, FileInputStream, PrintStream}
 import java.lang.Long.toHexString
 import java.lang.Float.intBitsToFloat
 import java.lang.Double.longBitsToDouble
 
-import symtab.{ Flags, Names }
-import scala.reflect.generic.{ PickleBuffer, PickleFormat }
+import cmd.program.Simple
+import scala.reflect.internal.{Flags, Names}
+import scala.reflect.internal.pickling.{ PickleBuffer, PickleFormat }
 import interpreter.ByteCode.scalaSigBytesForPath
 
 object ShowPickled extends Names {
-
   import PickleFormat._
+
+  case class PickleBufferEntry(num: Int, startIndex: Int, tag: Int, bytes: Array[Byte]) {
+    def isName = tag == TERMname || tag == TYPEname
+    def hasName = tag match {
+      case TYPEsym | ALIASsym | CLASSsym | MODULEsym | VALsym | EXTref | EXTMODCLASSref => true
+      case _                                                                            => false
+    }
+    def readName =
+      if (isName) new String(bytes, "UTF-8")
+      else sys.error("%s is no name" format tagName)
+    def nameIndex =
+      if (hasName) readNat(bytes, 0)
+      else sys.error("%s has no name" format tagName)
+
+    def tagName = tag2string(tag)
+    override def toString = "%d,%d: %s".format(num, startIndex, tagName)
+  }
+
+  case class PickleBufferEntryList(entries: IndexedSeq[PickleBufferEntry]) {
+    def nameAt(idx: Int) = {
+      val entry = entries(idx)
+      if (entry.isName) entry.readName
+      else if (entry.hasName) entries(entry.nameIndex).readName
+      else "?"
+    }
+  }
+
+  def makeEntryList(buf: PickleBuffer, index: Array[Int]) = {
+    val entries = buf.toIndexedSeq.zipWithIndex map {
+      case ((tag, data), num) => PickleBufferEntry(num, index(num), tag, data)
+    }
+
+    PickleBufferEntryList(entries)
+  }
 
   def tag2string(tag: Int): String = tag match {
     case TERMname       => "TERMname"
@@ -42,8 +76,8 @@ object ShowPickled extends Names {
     case CLASSINFOtpe   => "CLASSINFOtpe"
     case METHODtpe      => "METHODtpe"
     case POLYtpe        => "POLYtpe"
-    case IMPLICITMETHODtpe => "IMPLICITMETHODtpe"
-    case SUPERtpe       => "SUPERtpe"    
+    case IMPLICITMETHODtpe => "METHODtpe" // IMPLICITMETHODtpe no longer used.
+    case SUPERtpe       => "SUPERtpe"
     case LITERALunit    => "LITERALunit"
     case LITERALboolean => "LITERALboolean"
     case LITERALbyte    => "LITERALbyte"
@@ -62,53 +96,90 @@ object ShowPickled extends Names {
     case ANNOTATEDtpe   => "ANNOTATEDtpe"
     case ANNOTINFO      => "ANNOTINFO"
     case ANNOTARGARRAY  => "ANNOTARGARRAY"
-    case DEBRUIJNINDEXtpe => "DEBRUIJNINDEXtpe"
+    // case DEBRUIJNINDEXtpe => "DEBRUIJNINDEXtpe"
     case EXISTENTIALtpe => "EXISTENTIALtpe"
     case TREE           => "TREE"
     case MODIFIERS      => "MODIFIERS"
-        
+
     case _ => "***BAD TAG***(" + tag + ")"
+  }
+
+  /** Extremely regrettably, essentially copied from PickleBuffer.
+   */
+  def readNat(data: Array[Byte], index: Int): Int = {
+    var idx = index
+    var result = 0L
+    var b = 0L
+    do {
+      b = data(idx)
+      idx += 1
+      result = (result << 7) + (b & 0x7f)
+    } while((b & 0x80) != 0L)
+
+    result.toInt
   }
 
   def printFile(buf: PickleBuffer, out: PrintStream): Unit = printFile(buf, out, false)
   def printFile(buf: PickleBuffer, out: PrintStream, bare: Boolean) {
     out.println("Version " + buf.readNat() + "." + buf.readNat())
     val index = buf.createIndex
-    
+    val entryList = makeEntryList(buf, index)
+    buf.readIndex = 0
+
     /** A print wrapper which discards everything if bare is true.
      */
     def p(s: String) = if (!bare) out print s
 
     def printNameRef() {
-      val x = buf.readNat()
-      val savedIndex = buf.readIndex
-      buf.readIndex = index(x)
-      val tag = buf.readByte()
-      val len = buf.readNat()
-      val name = newTermName(buf.bytes, buf.readIndex, len)
+      val idx = buf.readNat()
+      val name = entryList nameAt idx
+      val toPrint = if (bare) " " + name else " %s(%s)".format(idx, name)
 
-      val toPrint = if (bare) " " + name else " %s(%s)".format(x, name)
       out print toPrint
-      
-      buf.readIndex = savedIndex
     }
 
     def printNat() = p(" " + buf.readNat())
-      
+    def printReadNat(x: Int) = p(" " + x)
+
     def printSymbolRef() = printNat()
     def printTypeRef() = printNat()
     def printConstantRef() = printNat()
     def printAnnotInfoRef() = printNat()
     def printConstAnnotArgRef() = printNat()
     def printAnnotArgRef() = printNat()
-      
-    def printSymInfo() {
+
+    def printSymInfo(end: Int) {
       printNameRef()
       printSymbolRef()
       val pflags = buf.readLongNat()
-      out.print(" " + toHexString(pflags) +
-                "[" + Flags.flagsToString(Flags.pickledToRawFlags(pflags)) + "] ")
-      printTypeRef()
+      def printFlags(privateWithin: Option[Int]) = {
+        val accessBoundary = (
+          for (idx <- privateWithin) yield {
+            val s = entryList nameAt idx
+            if (bare) s else idx + "(" + s + ")"
+          }
+        )
+        val flagString = {
+          val arg1 = Flags.pickledToRawFlags(pflags)
+          accessBoundary match {
+            case Some(pw) => Flags.flagsToString(arg1, pw)
+            case _        => Flags.flagsToString(arg1)
+          }
+        }
+
+        out.print(" %s[%s]".format(toHexString(pflags), flagString))
+      }
+
+      /** Might be info or privateWithin */
+      val x = buf.readNat()
+      if (buf.readIndex == end) {
+        printFlags(None)
+        printReadNat(x)
+      }
+      else {
+        printFlags(Some(x))
+        printTypeRef()
+      }
     }
 
     /** Note: the entries which require some semantic analysis to be correctly
@@ -126,14 +197,14 @@ object ShowPickled extends Names {
       tag match {
         case TERMname =>
           out.print(" ")
-          out.print(newTermName(buf.bytes, buf.readIndex, len).toString())
+          out.print(newTermName(buf.bytes, buf.readIndex, len).toString)
           buf.readIndex = end
         case TYPEname =>
           out.print(" ")
           out.print(newTypeName(buf.bytes, buf.readIndex, len))
           buf.readIndex = end
         case TYPEsym | ALIASsym | CLASSsym | MODULEsym | VALsym =>
-          printSymInfo()
+          printSymInfo(end)
           if (tag == CLASSsym && (buf.readIndex < end)) printTypeRef()
         case EXTref | EXTMODCLASSref =>
           printNameRef()
@@ -192,7 +263,7 @@ object ShowPickled extends Names {
           buf.until(end, printConstAnnotArgRef)
         case EXISTENTIALtpe =>
           printTypeRef(); buf.until(end, printSymbolRef)
-          
+
         case _ =>
       }
       out.println()
@@ -205,27 +276,38 @@ object ShowPickled extends Names {
 
     for (i <- 0 until index.length) printEntry(i)
   }
-  
+
   def fromFile(path: String) = fromBytes(io.File(path).toByteArray)
   def fromName(name: String) = fromBytes(scalaSigBytesForPath(name) getOrElse Array())
   def fromBytes(data: => Array[Byte]): Option[PickleBuffer] =
     try Some(new PickleBuffer(data, 0, data.length))
     catch { case _: Exception => None }
-  
+
   def show(what: String, pickle: PickleBuffer, bare: Boolean) = {
-    Console.println(what + ": ")
+    Console.println(what)
+    val saved = pickle.readIndex
+    pickle.readIndex = 0
     printFile(pickle, Console.out, bare)
+    pickle.readIndex = saved
   }
+
+  private lazy val ShowPickledSpec =
+    Simple(
+      Simple.scalaProgramInfo("showPickled", "Usage: showPickled [--bare] <classname>"),
+      List("--bare" -> "suppress numbers in output"),
+      Nil,
+      null
+    )
 
   /** Option --bare suppresses numbers so the output can be diffed.
    */
   def main(args: Array[String]) {
-    val parsed = new CommandLine(args, List("--bare"))
-    def isBare = parsed isSet "--bare"
-    
-    parsed.residualArgs foreach { arg =>
+    val runner = ShowPickledSpec instance args
+    import runner._
+
+    residualArgs foreach { arg =>
       (fromFile(arg) orElse fromName(arg)) match {
-        case Some(pb) => show(arg, pb, isBare)
+        case Some(pb) => show(arg + ":", pb, parsed isSet "--bare")
         case _        => Console.println("Cannot read " + arg)
       }
     }
