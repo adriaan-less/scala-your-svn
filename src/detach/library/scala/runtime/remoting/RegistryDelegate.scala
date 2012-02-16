@@ -56,13 +56,13 @@ import java.rmi.server.UnicastRemoteObject
  *
  *       <b>val</b> registry = LocateRegistry.createRegistry(REGISTRY_PORT)
  *       registry.bind(DELEGATE_NAME, <b>new</b> RegistryDelegate());
- *    
+ *
  *       do {
  *         <b>try</b> {
  *           Thread.sleep(Long.MAX_VALUE)
  *         } <b>catch</b> {
  *           <b>case</b> e: InterruptedException => // do nothing
- *           <b>case</b> e: Throwable => e.printStackTrace(); system.exit(1)
+ *           <b>case</b> e: Throwable => e.printStackTrace(); sys.exit(1)
  *         }
  *       } while (<b>true</b>)
  *     }
@@ -86,7 +86,7 @@ import java.rmi.server.UnicastRemoteObject
  *
  * @author Genady Beryozkin, rmi-info@genady.net
  */
- 
+
 object RMIDelegate {
   /** The name under which the delegate appears in the registry. */
   val DELEGATE_NAME = "foo"
@@ -115,21 +115,21 @@ object RMIDelegate {
     if (args.length > 0) {
       if (args(0) equals "-help") {
         println("Usage: rmidelegate <options> <port>")
-        system.exit(0)
+        sys.exit(0)
       }
       try {
         port = args(0).toInt
       } catch {
-        case e: NumberFormatException => 
+        case e: NumberFormatException =>
           println("Usage: rmidelegate <options> <port>")
-          system.exit(1)
+          sys.exit(1)
       }
       val opts = args filter (_ startsWith "-J-D")
       for (opt <- opts) {
         val x = opt.substring(4) split "="
         if (x.length == 2) System.setProperty(x(0), x(1))
         else System.setProperty(x(0), "")
-      } 
+      }
     }
 
     if (System.getSecurityManager() == null)
@@ -149,7 +149,7 @@ object RMIDelegate {
          // do nothing
        case e: Throwable =>
          e.printStackTrace()
-         system.exit(1)
+         sys.exit(1)
       }
     } while (true)
   }
