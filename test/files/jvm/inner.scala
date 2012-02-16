@@ -53,8 +53,8 @@ class A {
 }
 
 object Scalatest {
-  private val outputdir = System.getProperty("scalatest.output", "inner-jvm.obj")
-  private val scalalib  = System.getProperty("scalatest.lib", "")
+  private val outputdir = System.getProperty("partest.output", "inner.obj")
+  private val scalalib  = System.getProperty("partest.lib", "")
   private val classpath = outputdir + File.pathSeparator + scalalib
   private val javabin  = {
     val jhome = new File(System.getProperty("java.home"))
@@ -71,15 +71,15 @@ object Scalatest {
     val tmpfile = new FileWriter(tmpfilename)
     tmpfile.write(src)
     tmpfile.close
-    exec(javac + " -d " + outputdir + " -classpath " + classpath + " " + tmpfilename)
+    exec(javac, "-d", outputdir, "-classpath", classpath, tmpfilename)
   }
 
   def java(cname: String) =
-    exec(javacmd + " -cp " + classpath + " " + cname)
+    exec(javacmd, "-cp", classpath, cname)
 
   /** Execute cmd, wait for the process to end and pipe it's output to stdout */
-  private def exec(cmd: String) {
-    val proc = Runtime.getRuntime().exec(cmd)
+  private def exec(args: String*) {
+    val proc = Runtime.getRuntime().exec(args.toArray)
     val inp = new BufferedReader(new InputStreamReader(proc.getInputStream))
     val errp = new BufferedReader(new InputStreamReader(proc.getErrorStream))
     proc.waitFor()
