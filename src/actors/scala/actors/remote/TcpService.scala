@@ -1,22 +1,22 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.actors.remote
+package scala.actors
+package remote
 
 
 import java.io.{DataInputStream, DataOutputStream, IOException}
 import java.lang.{Thread, SecurityException}
 import java.net.{InetAddress, ServerSocket, Socket, UnknownHostException}
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 import scala.util.Random
 
 /* Object TcpService.
@@ -26,7 +26,7 @@ import scala.util.Random
  */
 object TcpService {
   private val random = new Random
-  private val ports = new HashMap[Int, TcpService]
+  private val ports = new mutable.HashMap[Int, TcpService]
 
   def apply(port: Int, cl: ClassLoader): TcpService =
     ports.get(port) match {
@@ -73,11 +73,11 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
   private val internalNode = new Node(InetAddress.getLocalHost().getHostAddress(), port)
   def node: Node = internalNode
 
-  private val pendingSends = new HashMap[Node, List[Array[Byte]]]
+  private val pendingSends = new mutable.HashMap[Node, List[Array[Byte]]]
 
   /**
    * Sends a byte array to another node on the network.
-   * If the node is not yet up, up to <code>TcpService.BufSize</code>
+   * If the node is not yet up, up to `TcpService.BufSize`
    * messages are buffered.
    */
   def send(node: Node, data: Array[Byte]): Unit = synchronized {
@@ -99,16 +99,17 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
         // we are not connected, yet
         try {
           val newWorker = connect(node)
-          newWorker transmit data
 
           // any pending sends?
           pendingSends.get(node) match {
             case None =>
               // do nothing
             case Some(msgs) =>
-              msgs foreach {newWorker transmit _}
+              msgs.reverse foreach {newWorker transmit _}
               pendingSends -= node
           }
+
+          newWorker transmit data
         } catch {
           case uhe: UnknownHostException =>
             bufferMsg(uhe)
@@ -138,7 +139,7 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
     try {
       val socket = new ServerSocket(port)
       while (!shouldTerminate) {
-        Debug.info(this+": waiting for new connection...")
+        Debug.info(this+": waiting for new connection on port "+port+"...")
         val nextClient = socket.accept()
         if (!shouldTerminate) {
           val worker = new TcpServiceWorker(this, nextClient)
@@ -149,25 +150,18 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
           nextClient.close()
       }
     } catch {
-      case ioe: IOException =>
-        Debug.info(this+": caught "+ioe)
-      case sec: SecurityException =>
-        Debug.info(this+": caught "+sec)
       case e: Exception =>
         Debug.info(this+": caught "+e)
     } finally {
       Debug.info(this+": shutting down...")
-
-      var workers: List[TcpServiceWorker] = List()
-      connections.values foreach { w => workers = w :: workers }
-      workers foreach { w => w.halt }
+      connections foreach { case (_, worker) => worker.halt }
     }
   }
 
   // connection management
 
   private val connections =
-    new scala.collection.mutable.HashMap[Node, TcpServiceWorker]
+    new mutable.HashMap[Node, TcpServiceWorker]
 
   private[actors] def addConnection(node: Node, worker: TcpServiceWorker) = synchronized {
     connections += Pair(node, worker)
@@ -182,8 +176,8 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
   }
 
   def connect(n: Node): TcpServiceWorker = synchronized {
-    val sock = new Socket(n.address, n.port)
-    val worker = new TcpServiceWorker(this, sock)
+    val socket = new Socket(n.address, n.port)
+    val worker = new TcpServiceWorker(this, socket)
     worker.sendNode(n)
     worker.start()
     addConnection(n, worker)
@@ -192,13 +186,11 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
 
   def disconnectNode(n: Node) = synchronized {
     connections.get(n) match {
-      case None => {
+      case None =>
         // do nothing
-      }
-      case Some(worker) => {
+      case Some(worker) =>
         connections -= n
         worker.halt
-      }
     }
   }
 
@@ -219,27 +211,23 @@ class TcpService(port: Int, cl: ClassLoader) extends Thread with Service {
 }
 
 
-class TcpServiceWorker(parent: TcpService, so: Socket) extends Thread {
-  val in = so.getInputStream()
-  val out = so.getOutputStream()
-
-  val datain = new DataInputStream(in)
-  val dataout = new DataOutputStream(out)
+private[actors] class TcpServiceWorker(parent: TcpService, so: Socket) extends Thread {
+  val datain = new DataInputStream(so.getInputStream)
+  val dataout = new DataOutputStream(so.getOutputStream)
 
   var connectedNode: Node = _
 
-  def sendNode(n: Node) = {
+  def sendNode(n: Node) {
     connectedNode = n
     parent.serializer.writeObject(dataout, parent.node)
   }
 
-  def readNode = {
+  def readNode() {
     val node = parent.serializer.readObject(datain)
     node match {
-      case n: Node => {
+      case n: Node =>
         connectedNode = n
         parent.addConnection(n, this)
-      }
     }
   }
 
@@ -252,7 +240,7 @@ class TcpServiceWorker(parent: TcpService, so: Socket) extends Thread {
 
   var running = true
 
-  def halt = synchronized {
+  def halt() = synchronized {
     so.close()
     running = false
   }
@@ -272,6 +260,6 @@ class TcpServiceWorker(parent: TcpService, so: Socket) extends Thread {
         Debug.info(this+": caught "+e)
         parent nodeDown connectedNode
     }
-    Debug.info(this+": terminated")
+    Debug.info(this+": service terminated at "+parent.node)
   }
 }

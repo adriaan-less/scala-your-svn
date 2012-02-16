@@ -2,8 +2,6 @@ case class Foo(x: Int)(y: Int)
 
 case class Bar
 
-case class Baz(override val x: Int, y: Int) extends Foo(x)(y)
-
 abstract class Base
 abstract case class Abs(x: Int) extends Base
 
@@ -17,7 +15,7 @@ object M {
   }
 }
 
-object Test extends Application {
+object Test extends App {
 
   def Abs(x: Int) = new Abs(x * 2){}
   Abs(2) match {
@@ -28,10 +26,6 @@ object Test extends Application {
   val f = fn(Foo(1))
   (f(2): AnyRef) match {
     case Foo(1) => Console.println("OK")
-    case Bar() => Console.println("NO")
-  }
-  (Baz(1, 2): AnyRef) match {
-    case Baz(1, 2) => ;
     case Bar() => Console.println("NO")
   }
   try {
