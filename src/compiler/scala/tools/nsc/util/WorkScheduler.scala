@@ -1,44 +1,64 @@
 package scala.tools.nsc
 package util
 
-import scala.collection.mutable.Queue
+import scala.collection.mutable
 
 class WorkScheduler {
 
   type Action = () => Unit
 
-  private var todo = new Queue[Action]
-  private var except = new Queue[Exception]
+  private var todo = new mutable.Queue[Action]
+  private var throwables = new mutable.Queue[Throwable]
+  private var interruptReqs = new mutable.Queue[InterruptReq]
 
-  /** Called from server: block until todo list is nonempty */
+  /** Called from server: block until one of todo list, throwables or interruptReqs is nonempty */
   def waitForMoreWork() = synchronized {
-    while (todo.isEmpty) { wait() } 
+    while (todo.isEmpty && throwables.isEmpty && interruptReqs.isEmpty) { wait() }
   }
 
-  /** called from Server: test whether todo list is nonempty */
-  def moreWork(): Boolean = synchronized {
-    todo.nonEmpty
+  /** called from Server: test whether one of todo list, throwables, or InterruptReqs is nonempty */
+  def moreWork: Boolean = synchronized {
+    todo.nonEmpty || throwables.nonEmpty || interruptReqs.nonEmpty
   }
 
   /** Called from server: get first action in todo list, and pop it off */
   def nextWorkItem(): Option[Action] = synchronized {
-    if (!todo.isEmpty) {
-      Some(todo.dequeue()) 
-    } else None
+    if (todo.isEmpty) None else Some(todo.dequeue())
+  }
+
+  def dequeueAll[T](f: Action => Option[T]): Seq[T] = synchronized {
+    todo.dequeueAll(a => f(a).isDefined).map(a => f(a).get)
   }
 
   /** Called from server: return optional exception posted by client
    *  Reset to no exception.
    */
-  def pollException(): Option[Exception] = synchronized {
-    if (except.isEmpty) 
+  def pollThrowable(): Option[Throwable] = synchronized {
+    if (throwables.isEmpty)
       None
     else {
-      val result = Some(except.dequeue())
-      if (!except.isEmpty)
+      val result = Some(throwables.dequeue())
+      if (!throwables.isEmpty)
         postWorkItem { () => }
       result
     }
+  }
+
+  def pollInterrupt(): Option[InterruptReq] = synchronized {
+    if (interruptReqs.isEmpty) None else Some(interruptReqs.dequeue())
+  }
+
+  /** Called from client: have interrupt executed by server and return result */
+  def doQuickly[A](op: () => A): A = {
+    val ir = new InterruptReq {
+      type R = A
+      val todo = op
+    }
+    synchronized {
+      interruptReqs enqueue ir
+      notify()
+    }
+    ir.getResult()
   }
 
   /** Called from client: have action executed by server */
@@ -46,7 +66,7 @@ class WorkScheduler {
     todo enqueue action
     notify()
   }
-  
+
   /** Called from client: cancel all queued actions */
   def cancelQueued() = synchronized {
     todo.clear()
@@ -55,8 +75,13 @@ class WorkScheduler {
   /** Called from client:
    *  Require an exception to be thrown on next poll.
    */
-  def raise(exc: Exception) = synchronized {
-    except enqueue exc
-    postWorkItem { () => }
+  def raise(exc: Throwable) = synchronized {
+    throwables enqueue exc
+    postWorkItem { new EmptyAction }
   }
 }
+
+class EmptyAction extends (() => Unit) {
+  def apply() {}
+}
+

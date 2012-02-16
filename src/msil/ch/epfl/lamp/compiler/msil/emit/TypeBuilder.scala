@@ -2,14 +2,13 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
 import ch.epfl.lamp.compiler.msil._
-import java.util.HashMap
-import java.util.ArrayList
-import java.util.Iterator
+
+import ch.epfl.lamp.compiler.msil.util.PECustomMod
+
 import java.io.IOException
 
 /**
@@ -30,10 +29,10 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
 
     /** 'Bakes' the type. */
     def CreateType(): Type = {
-	fields = fieldBuilders.toArray(new Array[FieldInfo](fieldBuilders.size())).asInstanceOf[Array[FieldInfo]]
-	methods = methodBuilders.toArray(new Array[MethodInfo](methodBuilders.size())).asInstanceOf[Array[MethodInfo]]
-	constructors = constructorBuilders.toArray(new Array[ConstructorInfo](constructorBuilders.size())).asInstanceOf[Array[ConstructorInfo]]
-	nestedTypes = nestedTypeBuilders.toArray(new Array[Type](nestedTypeBuilders.size())).asInstanceOf[Array[Type]]
+	fields = fieldBuilders.toArray // (new Array[FieldInfo](fieldBuilders.size())).asInstanceOf[Array[FieldInfo]]
+	methods = methodBuilders.toArray // (new Array[MethodInfo](methodBuilders.size())).asInstanceOf[Array[MethodInfo]]
+	constructors = constructorBuilders.toArray // (new Array[ConstructorInfo](constructorBuilders.size())).asInstanceOf[Array[ConstructorInfo]]
+	nestedTypes = nestedTypeBuilders.toArray // (new Array[Type](nestedTypeBuilders.size())).asInstanceOf[Array[Type]]
 
 	raw = false
 	if (DeclaringType == null)
@@ -42,39 +41,53 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Adds a new field to the class, with the given name, 
-     * attributes and field type.
+     * Adds a new field to the class, with the given name, attributes and field type. The location has no custom mods.
      */
-    def DefineField(name: String, `type`: Type, attrs: Short): FieldBuilder = {
-	val field: FieldBuilder = new FieldBuilder(name, this, attrs, `type`)
-	fieldBuilders.add(field)
-	return field
+    def DefineField(name: String, fieldType: Type, attrs: Short): FieldBuilder = {
+      val fieldTypeWithCustomMods = new PECustomMod(fieldType, null)
+      DefineField(name, fieldTypeWithCustomMods, attrs)
     }
 
+  /**
+   * Adds a new field to the class, with the given name, attributes and (field type , custom mods) combination.
+   */
+  def DefineField(name: String, fieldTypeWithMods: PECustomMod, attrs: Short): FieldBuilder = {
+    val field: FieldBuilder = new FieldBuilder(name, this, attrs, fieldTypeWithMods)
+    fieldBuilders += field
+    return field
+  }
+
     /**
-     * Adds a new method to the class, with the given name and 
+     * Adds a new method to the class, with the given name and
      * method signature.
      */
     def DefineMethod(name: String, attrs: Short, returnType: Type, paramTypes: Array[Type]): MethodBuilder = {
 	val method = new MethodBuilder(name, this, attrs, returnType, paramTypes)
-    val methods = methodBuilders.iterator()
-    while(methods.hasNext()) {
+      val methods = methodBuilders.iterator
+      while(methods.hasNext) {
         val m = methods.next().asInstanceOf[MethodInfo]
-	    if (methodsEqual(m, method))
-		throw new RuntimeException("["+ Assembly() +
-                   "] Method has already been defined: " + m)
+        if (methodsEqual(m, method)) {
+          throw new RuntimeException("["+ Assembly() + "] Method has already been defined: " + m)
 	}
-	methodBuilders.add(method)
+      }
+      methodBuilders += method
 	return method
     }
 
     /**
-     * Adds a new constructor to the class, with the given attributes 
+     * Adds a new constructor to the class, with the given attributes
      * and signature.
      */
     def DefineConstructor(attrs: Short, callingConvention: Short, paramTypes: Array[Type]): ConstructorBuilder = {
 	val constr = new ConstructorBuilder(this, attrs, paramTypes)
-	constructorBuilders.add(constr)
+      val iter = constructorBuilders.iterator
+      while(iter.hasNext) {
+        val c = iter.next().asInstanceOf[ConstructorInfo]
+        if (constructorsEqual(c, constr)) {
+          throw new RuntimeException("["+ Assembly() + "] Constructor has already been defined: " + c)
+        }
+      }
+      constructorBuilders += constr
 	return constr
     }
 
@@ -82,16 +95,16 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
      * Defines a nested type given its name.
      */
     def DefineNestedType(name: String, attributes: Int, baseType: Type, interfaces: Array[Type]): TypeBuilder = {
-    val nested = nestedTypeBuilders.iterator()
-    while(nested.hasNext()) {
-        val nt = nested.next().asInstanceOf[TypeBuilder]
+    val nested = nestedTypeBuilders.iterator
+    while(nested.hasNext) {
+        val nt = nested.next
 		if (nt.Name.equals(name)) {
 		    val message = "Nested type " + name + " has already been defined: " + nt
 		    throw new RuntimeException(message)
 		}
 	    }
 	val t = new TypeBuilder(Module, attributes, name, baseType, interfaces, this)
-	nestedTypeBuilders.add(t)
+	nestedTypeBuilders += t
 	return t
     }
 
@@ -125,7 +138,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     }
 
     /**
-     * Searches for the specified public method whose parameters 
+     * Searches for the specified public method whose parameters
      * match the specified argument types.
      */
     override def GetMethod(name: String, params: Array[Type]): MethodInfo = {
@@ -177,10 +190,10 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
     var sourceFilename: String = _
     var sourceFilepath: String = _
 
-    var fieldBuilders = new ArrayList[FieldBuilder]()
-    var methodBuilders = new ArrayList[MethodBuilder]()
-    var constructorBuilders = new ArrayList[ConstructorBuilder]()
-    var nestedTypeBuilders = new ArrayList[TypeBuilder]()
+    var fieldBuilders = scala.collection.mutable.ArrayBuffer.empty[FieldBuilder]
+    var methodBuilders = scala.collection.mutable.ArrayBuffer.empty[MethodBuilder]
+    var constructorBuilders = scala.collection.mutable.ArrayBuffer.empty[ConstructorBuilder]
+    var nestedTypeBuilders = scala.collection.mutable.ArrayBuffer.empty[TypeBuilder]
 
     // shows if the type is 'raw', i.e. still subject to changes
     private var raw = true
@@ -209,7 +222,7 @@ class TypeBuilder (module: Module, attributes: Int, fullName: String, baseType: 
 object TypeBuilder {
     def types2String(types: Array[Type]): String = {
     var s = new StringBuffer("(")
-    for(val i <- 0 until types.length) {
+    for(i <- 0 until types.length) {
         if (i > 0) s.append(", ")
         s.append(types(i))
     }
@@ -226,9 +239,23 @@ object TypeBuilder {
     val p2 = m2.GetParameters()
     if (p1.length != p2.length)
         return false
-    for(val i <- 0 until p1.length)
+    for(i <- 0 until p1.length)
         if (p1(i).ParameterType != p2(i).ParameterType)
         return false
     return true
      }
+
+    def constructorsEqual(c1: ConstructorInfo, c2: ConstructorInfo): Boolean = {
+      if (c1.IsStatic != c2.IsStatic)
+          return false
+      val p1 = c1.GetParameters()
+      val p2 = c2.GetParameters()
+      if (p1.length != p2.length)
+          return false
+      for(i <- 0 until p1.length)
+          if (p1(i).ParameterType != p2(i).ParameterType)
+          return false
+      return true
+}
+
 }
