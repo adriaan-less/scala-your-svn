@@ -12,10 +12,10 @@ object test {
 	def matchAndGetArgFromFoo[a]( e:Foo[a]):a = {e match { case Foo(x) => x }}
 	
 	
-	//  Try the same thing as above but use function as arguemnt to Bar
+	//  Try the same thing as above but use function as argument to Bar
 	// constructor
 	
-	type FunIntToA [a] = (int) => a
+	type FunIntToA [a] = (Int) => a
 	class Bar[a] (var f: FunIntToA[a]) 
 	
 	object Bar {

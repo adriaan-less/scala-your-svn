@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -22,7 +21,7 @@ import generic._
  *  @version 2.8
  *  @since   2.8
  */
-trait SortedMapLike[A, +B, +This <: SortedMapLike[A, B, This] with SortedMap[A, B]] extends Sorted[A, This] with MapLike[A, B, This] { 
+trait SortedMapLike[A, +B, +This <: SortedMapLike[A, B, This] with SortedMap[A, B]] extends Sorted[A, This] with MapLike[A, B, This] {
 self =>
 
   def firstKey : A = head._1
@@ -36,25 +35,23 @@ self =>
   override def keySet : SortedSet[A] = new DefaultKeySortedSet
 
   protected class DefaultKeySortedSet extends super.DefaultKeySet with SortedSet[A] {
-    def ordering = self.ordering;
-    /** We can't give an implementation of +/- here because we do not have a generic sorted set implementation
-     */
-    override def + (elem: A): SortedSet[A] = throw new UnsupportedOperationException("keySet.+")
-    override def - (elem: A): SortedSet[A] = throw new UnsupportedOperationException("keySet.-")
+    implicit def ordering = self.ordering
+    override def + (elem: A): SortedSet[A] = (SortedSet[A]() ++ this + elem)
+    override def - (elem: A): SortedSet[A] = (SortedSet[A]() ++ this - elem)
     override def rangeImpl(from : Option[A], until : Option[A]) : SortedSet[A] = {
       val map = self.rangeImpl(from, until)
       new map.DefaultKeySortedSet
     }
   }
 
-  /** Add a key/value pair to this map. 
+  /** Add a key/value pair to this map.
    *  @param    key the key
    *  @param    value the value
    *  @return   A new map with the new binding added to this map
    */
   override def updated[B1 >: B](key: A, value: B1): SortedMap[A, B1] = this+((key, value))
 
-  /** Add a key/value pair to this map. 
+  /** Add a key/value pair to this map.
    *  @param    kv the key/value pair
    *  @return   A new map with the new binding added to this map
    */
