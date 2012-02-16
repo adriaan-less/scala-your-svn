@@ -1,18 +1,17 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 package factory
 
-import scala.xml.parsing.ValidatingMarkupHandler
+import parsing.ValidatingMarkupHandler
 
 /**
  *  @author Burak Emir
@@ -44,7 +43,7 @@ abstract class Binder(val preserveWS: Boolean) extends ValidatingMarkupHandler {
       result &+ text(0, x.data)
     case x:EntityRef =>
       result &+ entityRef(0, x.entityName)
-    case _ => 
+    case _ =>
       elemStart(0, n.prefix, n.label, n.attributes, n.scope)
       val old = result
       result = new NodeBuffer()
@@ -52,7 +51,7 @@ abstract class Binder(val preserveWS: Boolean) extends ValidatingMarkupHandler {
       result = old &+ elem(0, n.prefix, n.label, n.attributes, n.scope, NodeSeq.fromSeq(result)).toList;
       elemEnd(0, n.prefix, n.label)
   }
-  
+
   final def validate(n: Node): Node = {
     this.rootLabel = n.label
     traverse(n)

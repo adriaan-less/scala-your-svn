@@ -1,17 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package scheduler
 
-import scala.collection.mutable.Queue
+import scala.collection.mutable
 
 /**
  * This scheduler executes actor tasks on the current thread.
@@ -20,7 +19,7 @@ import scala.collection.mutable.Queue
  */
 class SingleThreadedScheduler extends IScheduler {
 
-  private val tasks = new Queue[Runnable]
+  private val tasks = new mutable.Queue[Runnable]
 
   /** The maximum number of nested tasks that are run
    *  without unwinding the call stack.
@@ -54,11 +53,11 @@ class SingleThreadedScheduler extends IScheduler {
     isShutdown = true
   }
 
-  def newActor(actor: Reactor) {}
-  def terminated(actor: Reactor) {}
+  def newActor(actor: TrackedReactor) {}
+  def terminated(actor: TrackedReactor) {}
 
   // TODO: run termination handlers at end of shutdown.
-  def onTerminate(actor: Reactor)(f: => Unit) {}
+  def onTerminate(actor: TrackedReactor)(f: => Unit) {}
 
   def isActive =
     !isShutdown
