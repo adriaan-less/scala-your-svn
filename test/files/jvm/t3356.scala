@@ -38,13 +38,8 @@ object Test {
       react {
         case FutureInput ! (data @ ImageData(_)) =>
           renderImage(data)
-        case Exit(from, ue: UncaughtException[_]) =>
-          ue.message match {
-            case Some(Download(info)) =>
-              println("Couldn't download image "+info+" because of "+ue.getCause())
-            case _ =>
-              println("Couldn't download image because of "+ue.getCause())
-          }
+        case Exit(from, UncaughtException(_, Some(Download(info)), _, _, cause)) =>
+          println("Couldn't download image because of "+cause)
       }
     }
     println("OK, all images rendered.")
@@ -52,6 +47,7 @@ object Test {
 
   def main(args: Array[String]) {
     actor {
+      self.trapExit = true
       renderImages("panorama.epfl.ch")
     }
   }

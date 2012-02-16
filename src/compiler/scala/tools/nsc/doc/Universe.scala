@@ -1,3 +1,8 @@
+/* NSC -- new Scala compiler
+ * Copyright 2005-2011 LAMP/EPFL
+ * @author  Martin Odersky
+ */
+
 package scala.tools.nsc.doc
 
 /**
@@ -5,4 +10,7 @@ package scala.tools.nsc.doc
  * @author Pedro Furlanetto
  * @author Gilles Dubochet
  */
-class Universe(val settings: Settings, val rootPackage: model.Package)
+trait Universe {
+  def settings: Settings
+  def rootPackage: model.Package
+}
