@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
 
@@ -27,7 +27,7 @@ trait TypingTransformers {
 
     /** a typer for each enclosing class */
     val typers: mutable.Map[Symbol, analyzer.Typer] = new mutable.HashMap
-    
+
     override def atOwner[A](owner: Symbol)(trans: => A): A = atOwner(curTree, owner)(trans)
 
     def atOwner[A](tree: Tree, owner: Symbol)(trans: => A): A = {

@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -7,14 +7,15 @@ package scala.tools.nsc
 package javac
 
 import scala.tools.nsc.util._
-import Chars._
+import scala.reflect.internal.Chars._
 import JavaTokens._
 import scala.annotation.switch
 
 // Todo merge these better with Scanners
-trait JavaScanners {
+trait JavaScanners extends ast.parser.ScannersCommon {
   val global : Global
   import global._
+
   abstract class AbstractJavaTokenData {
     def token: Int
     type ScanPosition
@@ -37,7 +38,7 @@ trait JavaScanners {
     var lastPos: Int = 0
 
     /** the name of an identifier or token */
-    var name: Name = null
+    var name: TermName = null
 
     /** the base of a number */
     var base: Int = 0
@@ -56,16 +57,13 @@ trait JavaScanners {
   abstract class AbstractJavaScanner extends AbstractJavaTokenData {
     implicit def p2g(pos: Position): ScanPosition
     implicit def g2p(pos: ScanPosition): Position
-    def warning(pos: ScanPosition, msg: String): Unit
-    def error  (pos: ScanPosition, msg: String): Unit
-    def incompleteInputError(pos: ScanPosition, msg: String): Unit
-    def deprecationWarning(pos: ScanPosition, msg: String): Unit
+
     /** the last error position
      */
-    var errpos: ScanPosition 
+    var errpos: ScanPosition
     var lastPos: ScanPosition
     def skipToken: ScanPosition
-    def nextToken: Unit
+    def nextToken(): Unit
     def next: AbstractJavaTokenData
     def intVal(negated: Boolean): Long
     def floatVal(negated: Boolean): Double
@@ -79,178 +77,152 @@ trait JavaScanners {
 
   object JavaScannerConfiguration {
 //  Keywords -----------------------------------------------------------------
-    /** Keyword array; maps from name indices to tokens */
-    private var key: Array[Byte] = _
-    private var maxKey = 0
-    private var tokenName = new Array[Name](128)
 
-    {
-      var tokenCount = 0
+    private val allKeywords = List[(Name, Int)](
+      javanme.ABSTRACTkw     -> ABSTRACT,
+      javanme.ASSERTkw       -> ASSERT,
+      javanme.BOOLEANkw      -> BOOLEAN,
+      javanme.BREAKkw        -> BREAK,
+      javanme.BYTEkw         -> BYTE,
+      javanme.CASEkw         -> CASE,
+      javanme.CATCHkw        -> CATCH,
+      javanme.CHARkw         -> CHAR,
+      javanme.CLASSkw        -> CLASS,
+      javanme.CONSTkw        -> CONST,
+      javanme.CONTINUEkw     -> CONTINUE,
+      javanme.DEFAULTkw      -> DEFAULT,
+      javanme.DOkw           -> DO,
+      javanme.DOUBLEkw       -> DOUBLE,
+      javanme.ELSEkw         -> ELSE,
+      javanme.ENUMkw         -> ENUM,
+      javanme.EXTENDSkw      -> EXTENDS,
+      javanme.FINALkw        -> FINAL,
+      javanme.FINALLYkw      -> FINALLY,
+      javanme.FLOATkw        -> FLOAT,
+      javanme.FORkw          -> FOR,
+      javanme.IFkw           -> IF,
+      javanme.GOTOkw         -> GOTO,
+      javanme.IMPLEMENTSkw   -> IMPLEMENTS,
+      javanme.IMPORTkw       -> IMPORT,
+      javanme.INSTANCEOFkw   -> INSTANCEOF,
+      javanme.INTkw          -> INT,
+      javanme.INTERFACEkw    -> INTERFACE,
+      javanme.LONGkw         -> LONG,
+      javanme.NATIVEkw       -> NATIVE,
+      javanme.NEWkw          -> NEW,
+      javanme.PACKAGEkw      -> PACKAGE,
+      javanme.PRIVATEkw      -> PRIVATE,
+      javanme.PROTECTEDkw    -> PROTECTED,
+      javanme.PUBLICkw       -> PUBLIC,
+      javanme.RETURNkw       -> RETURN,
+      javanme.SHORTkw        -> SHORT,
+      javanme.STATICkw       -> STATIC,
+      javanme.STRICTFPkw     -> STRICTFP,
+      javanme.SUPERkw        -> SUPER,
+      javanme.SWITCHkw       -> SWITCH,
+      javanme.SYNCHRONIZEDkw -> SYNCHRONIZED,
+      javanme.THISkw         -> THIS,
+      javanme.THROWkw        -> THROW,
+      javanme.THROWSkw       -> THROWS,
+      javanme.TRANSIENTkw    -> TRANSIENT,
+      javanme.TRYkw          -> TRY,
+      javanme.VOIDkw         -> VOID,
+      javanme.VOLATILEkw     -> VOLATILE,
+      javanme.WHILEkw        -> WHILE
+    )
 
-      // Enter keywords
-
-      def enterKeyword(s: String, tokenId: Int) {
-        val n = newTermName(s)
-        while (tokenId >= tokenName.length) {
-          val newTokName = new Array[Name](tokenName.length * 2)
-          Array.copy(tokenName, 0, newTokName, 0, newTokName.length)
-          tokenName = newTokName
-        }
-        tokenName(tokenId) = n
-        if (n.start > maxKey) maxKey = n.start
-        if (tokenId >= tokenCount) tokenCount = tokenId + 1
-      }
-
-      enterKeyword("abstract", ABSTRACT)
-      enterKeyword("assert", ASSERT)
-      enterKeyword("boolean", BOOLEAN)
-      enterKeyword("break", BREAK)
-      enterKeyword("byte", BYTE)
-      enterKeyword("case", CASE)
-      enterKeyword("catch", CATCH)
-      enterKeyword("char", CHAR)
-      enterKeyword("class", CLASS)
-      enterKeyword("const", CONST)
-      enterKeyword("continue", CONTINUE)
-      enterKeyword("default", DEFAULT)
-      enterKeyword("do", DO)
-      enterKeyword("double", DOUBLE)
-      enterKeyword("else", ELSE)
-      enterKeyword("enum", ENUM)
-      enterKeyword("extends", EXTENDS)
-      enterKeyword("final", FINAL)
-      enterKeyword("finally", FINALLY)
-      enterKeyword("float", FLOAT)
-      enterKeyword("for", FOR)
-      enterKeyword("if", IF)
-      enterKeyword("goto", GOTO)
-      enterKeyword("implements", IMPLEMENTS)
-      enterKeyword("import", IMPORT)
-      enterKeyword("instanceof", INSTANCEOF)
-      enterKeyword("int", INT)
-      enterKeyword("interface", INTERFACE)
-      enterKeyword("long", LONG)
-      enterKeyword("native", NATIVE)
-      enterKeyword("new", NEW)
-      enterKeyword("package", PACKAGE)
-      enterKeyword("private", PRIVATE)
-      enterKeyword("protected", PROTECTED)
-      enterKeyword("public", PUBLIC)
-      enterKeyword("return", RETURN)
-      enterKeyword("short", SHORT)
-      enterKeyword("static", STATIC)
-      enterKeyword("strictfp", STRICTFP)
-      enterKeyword("super", SUPER)
-      enterKeyword("switch", SWITCH)
-      enterKeyword("synchronized", SYNCHRONIZED)
-      enterKeyword("this", THIS)
-      enterKeyword("throw", THROW)
-      enterKeyword("throws", THROWS)
-      enterKeyword("transient", TRANSIENT)
-      enterKeyword("try", TRY)
-      enterKeyword("void", VOID)
-      enterKeyword("volatile", VOLATILE)
-      enterKeyword("while", WHILE)
-
-      // Build keyword array
-      key = new Array[Byte](maxKey + 1)
-      for (i <- 0 to maxKey)
-        key(i) = IDENTIFIER
-      for (j <- 0 until tokenCount)
-        if (tokenName(j) ne null)
-          key(tokenName(j).start) = j.toByte
-
+    private var kwOffset = -1
+    private val kwArray: Array[Int] = {
+      val (offset, arr) = createKeywordArray(allKeywords, IDENTIFIER)
+      kwOffset = offset
+      arr
     }
+    final val tokenName = allKeywords map (_.swap) toMap
 
 //Token representation -----------------------------------------------------
 
-  /** Convert name to token */
-  def name2token(name: Name): Int =
-    if (name.start <= maxKey) key(name.start) else IDENTIFIER
+    /** Convert name to token */
+    def name2token(name: Name) = {
+      val idx = name.start - kwOffset
+      if (idx >= 0 && idx < kwArray.length) kwArray(idx)
+      else IDENTIFIER
+    }
 
-  /** Returns the string representation of given token. */
-  def token2string(token: Int): String = token match {
-    case IDENTIFIER =>
-      "identifier"/* + \""+name+"\""*/
-    case CHARLIT =>
-      "character literal"
-    case INTLIT =>
-      "integer literal"
-    case LONGLIT =>
-      "long literal"
-    case FLOATLIT =>
-      "float literal"
-    case DOUBLELIT =>
-      "double literal"
-    case STRINGLIT =>
-      "string literal"
-    case COMMA => "`,'"
-    case SEMI => "`;'"
-    case DOT => "`.'"
-    case AT => "`@'"
-    case COLON => "`:'"
-    case ASSIGN => "`='"
-    case EQEQ => "`=='"
-    case BANGEQ => "`!='"
-    case LT => "`<'"
-    case GT => "`>'"
-    case LTEQ => "`<='"
-    case GTEQ => "`>='"
-    case BANG => "`!'"
-    case QMARK => "`?'"
-    case AMP => "`&'"
-    case BAR => "`|'"
-    case PLUS => "`+'"
-    case MINUS => "`-'"
-    case ASTERISK => "`*'"
-    case SLASH => "`/'"
-    case PERCENT => "`%'"
-    case HAT => "`^'"
-    case LTLT => "`<<'"
-    case GTGT => "`>>'"
-    case GTGTGT => "`>>>'"
-    case AMPAMP => "`&&'"
-    case BARBAR => "`||'"
-    case PLUSPLUS => "`++'"
-    case MINUSMINUS => "`--'"
-    case TILDE => "`~'"
-    case DOTDOTDOT => "`...'"
-    case AMPEQ => "`&='"
-    case BAREQ => "`|='"
-    case PLUSEQ => "`+='"
-    case MINUSEQ => "`-='"
-    case ASTERISKEQ => "`*='"
-    case SLASHEQ => "`/='"
-    case PERCENTEQ => "`%='"
-    case HATEQ => "`^='"
-    case LTLTEQ => "`<<='"
-    case GTGTEQ => "`>>='"
-    case GTGTGTEQ => "`>>>='"
-    case LPAREN => "`('"
-    case RPAREN => "`)'"
-    case LBRACE => "`{'"
-    case RBRACE => "`}'"
-    case LBRACKET => "`['"
-    case RBRACKET => "`]'"
-    case EOF => "eof"
-    case ERROR => "something"
-    case _ =>
-      try {
-        "`" + tokenName(token) + "'"
-      } catch {
-        case _: ArrayIndexOutOfBoundsException =>
-          "`<" + token + ">'"
-        case _: NullPointerException =>
-          "`<(" + token + ")>'"
-      }
+    /** Returns the string representation of given token. */
+    def token2string(token: Int): String = token match {
+      case IDENTIFIER => "identifier"
+      case CHARLIT    => "character literal"
+      case DOUBLELIT  => "double literal"
+      case FLOATLIT   => "float literal"
+      case INTLIT     => "integer literal"
+      case LONGLIT    => "long literal"
+      case STRINGLIT  => "string literal"
+      case EOF        => "eof"
+      case ERROR      => "something"
+      case AMP        => "`&'"
+      case AMPAMP     => "`&&'"
+      case AMPEQ      => "`&='"
+      case ASSIGN     => "`='"
+      case ASTERISK   => "`*'"
+      case ASTERISKEQ => "`*='"
+      case AT         => "`@'"
+      case BANG       => "`!'"
+      case BANGEQ     => "`!='"
+      case BAR        => "`|'"
+      case BARBAR     => "`||'"
+      case BAREQ      => "`|='"
+      case COLON      => "`:'"
+      case COMMA      => "`,'"
+      case DOT        => "`.'"
+      case DOTDOTDOT  => "`...'"
+      case EQEQ       => "`=='"
+      case GT         => "`>'"
+      case GTEQ       => "`>='"
+      case GTGT       => "`>>'"
+      case GTGTEQ     => "`>>='"
+      case GTGTGT     => "`>>>'"
+      case GTGTGTEQ   => "`>>>='"
+      case HAT        => "`^'"
+      case HATEQ      => "`^='"
+      case LBRACE     => "`{'"
+      case LBRACKET   => "`['"
+      case LPAREN     => "`('"
+      case LT         => "`<'"
+      case LTEQ       => "`<='"
+      case LTLT       => "`<<'"
+      case LTLTEQ     => "`<<='"
+      case MINUS      => "`-'"
+      case MINUSEQ    => "`-='"
+      case MINUSMINUS => "`--'"
+      case PERCENT    => "`%'"
+      case PERCENTEQ  => "`%='"
+      case PLUS       => "`+'"
+      case PLUSEQ     => "`+='"
+      case PLUSPLUS   => "`++'"
+      case QMARK      => "`?'"
+      case RBRACE     => "`}'"
+      case RBRACKET   => "`]'"
+      case RPAREN     => "`)'"
+      case SEMI       => "`;'"
+      case SLASH      => "`/'"
+      case SLASHEQ    => "`/='"
+      case TILDE      => "`~'"
+      case _ =>
+        try ("`" + tokenName(token) + "'")
+        catch {
+          case _: ArrayIndexOutOfBoundsException =>
+            "`<" + token + ">'"
+          case _: NullPointerException =>
+            "`<(" + token + ")>'"
+        }
     }
   }
-  
+
   /** A scanner for Java.
    *
    *  @author     Martin Odersky
    */
-  abstract class JavaScanner extends AbstractJavaScanner with JavaTokenData with Cloneable {
+  abstract class JavaScanner extends AbstractJavaScanner with JavaTokenData with Cloneable with ScannerCommon {
     override def intVal = super.intVal// todo: needed?
     override def floatVal = super.floatVal
     override var errpos: Int = NoPos
@@ -265,7 +237,7 @@ trait JavaScanners {
     }
 
     /** character buffer for literals
-     */  
+     */
     val cbuf = new StringBuilder()
 
     /** append Unicode character to "lit" buffer
@@ -287,8 +259,8 @@ trait JavaScanners {
       docBuffer = null
       ret
     }
-  
-    /** add the given character to the documentation buffer 
+
+    /** add the given character to the documentation buffer
      */
     protected def putDocChar(c: Char) {
       if (docBuffer ne null) docBuffer.append(c)
@@ -309,15 +281,12 @@ trait JavaScanners {
       val p = pos; nextToken
       p - 1
     }
-    
-    def nextToken {
+
+    def nextToken() {
       if (next.token == EMPTY) {
-        //print("[")
-        val t = fetchToken()
-        //print(this)
-        //print("]")
-        t
-      } else {
+        fetchToken()
+      }
+      else {
         this copyFrom next
         next.token = EMPTY
       }
@@ -336,14 +305,14 @@ trait JavaScanners {
      */
     private def fetchToken() {
       if (token == EOF) return
-      lastPos = in.cpos - 1 // Position.encode(in.cline, in.ccol)
+      lastPos = in.cpos - 1
       //var index = bp
       while (true) {
         in.ch match {
           case ' ' | '\t' | CR | LF | FF =>
             in.next
           case _ =>
-            pos = in.cpos // Position.encode(in.cline, in.ccol)
+            pos = in.cpos
             (in.ch: @switch) match {
               case 'A' | 'B' | 'C' | 'D' | 'E' |
                    'F' | 'G' | 'H' | 'I' | 'J' |
@@ -372,7 +341,7 @@ trait JavaScanners {
                   base = 8
                 }
                 getNumber
-                return   
+                return
 
               case '1' | '2' | '3' | '4' |
                    '5' | '6' | '7' | '8' | '9' =>
@@ -380,7 +349,7 @@ trait JavaScanners {
                 getNumber
                 return
 
-              case '\"' => 
+              case '\"' =>
                 in.next
                 while (in.ch != '\"' && (in.isUnicode || in.ch != CR && in.ch != LF && in.ch != SU)) {
                   getlitch()
@@ -412,9 +381,9 @@ trait JavaScanners {
                 if (in.ch == '=') {
                   token = EQEQ
                   in.next
-                } 
+                }
                 return
-              
+
               case '>' =>
                 token = GT
                 in.next
@@ -437,7 +406,7 @@ trait JavaScanners {
                   }
                 }
                 return
-              
+
               case '<' =>
                 token = LT
                 in.next
@@ -460,9 +429,9 @@ trait JavaScanners {
                 if (in.ch == '=') {
                   token = BANGEQ
                   in.next
-                } 
+                }
                 return
-                
+
               case '~' =>
                 token = TILDE
                 in.next
@@ -472,7 +441,7 @@ trait JavaScanners {
                 token = QMARK
                 in.next
                 return
-                
+
               case ':' =>
                 token = COLON
                 in.next
@@ -492,7 +461,7 @@ trait JavaScanners {
                 } else if (in.ch == '=') {
                   token = AMPEQ
                   in.next
-                } 
+                }
                 return
 
               case '|' =>
@@ -504,7 +473,7 @@ trait JavaScanners {
                 } else if (in.ch == '=') {
                   token = BAREQ
                   in.next
-                } 
+                }
                 return
 
               case '+' =>
@@ -516,7 +485,7 @@ trait JavaScanners {
                 } else if (in.ch == '=') {
                   token = PLUSEQ
                   in.next
-                } 
+                }
                 return
 
               case '-' =>
@@ -528,7 +497,7 @@ trait JavaScanners {
                 } else if (in.ch == '=') {
                   token = MINUSEQ
                   in.next
-                } 
+                }
                 return
 
               case '*' =>
@@ -537,7 +506,7 @@ trait JavaScanners {
                 if (in.ch == '=') {
                   token = ASTERISKEQ
                   in.next
-                } 
+                }
                 return
 
               case '/' =>
@@ -548,26 +517,26 @@ trait JavaScanners {
                   if (in.ch == '=') {
                     token = SLASHEQ
                     in.next
-                  } 
+                  }
                   return
                 }
-              
+
               case '^' =>
                 token = HAT
                 in.next
                 if (in.ch == '=') {
                   token = HATEQ
                   in.next
-                } 
+                }
                 return
-              
+
               case '%' =>
                 token = PERCENT
                 in.next
                 if (in.ch == '=') {
                   token = PERCENTEQ
                   in.next
-                } 
+                }
                 return
 
               case '.' =>
@@ -584,7 +553,7 @@ trait JavaScanners {
                 }
                 return
 
-              case ';' => 
+              case ';' =>
                 token = SEMI
                 in.next
                 return
@@ -594,7 +563,7 @@ trait JavaScanners {
                 in.next
                 return
 
-              case '(' =>   
+              case '(' =>
                 token = LPAREN
                 in.next
                 return
@@ -657,7 +626,7 @@ trait JavaScanners {
         docBuffer = null
         in.next
         val scalaDoc = ("/**", "*/")
-        if (in.ch == '*' && onlyPresentation)
+        if (in.ch == '*' && forScaladoc)
           docBuffer = new StringBuilder(scalaDoc._1)
         do {
           do {
@@ -679,7 +648,7 @@ trait JavaScanners {
 
 // Identifiers ---------------------------------------------------------------
 
-    private def getIdentRest {
+    private def getIdentRest() {
       while (true) {
         (in.ch: @switch) match {
           case 'A' | 'B' | 'C' | 'D' | 'E' |
@@ -698,7 +667,7 @@ trait JavaScanners {
                '5' | '6' | '7' | '8' | '9' =>
             putChar(in.ch)
             in.next
-            
+
           case '_' =>
             putChar(in.ch)
             in.next
@@ -765,7 +734,7 @@ trait JavaScanners {
     /** read fractional part and exponent of floating point number
      *  if one is present.
      */
-    protected def getFraction {
+    protected def getFraction() {
       token = DOUBLELIT
       while ('0' <= in.ch && in.ch <= '9') {
         putChar(in.ch)
@@ -839,22 +808,22 @@ trait JavaScanners {
     /** convert name, base to double value
     */
     def floatVal(negated: Boolean): Double = {
-      val limit: Double = 
+      val limit: Double =
         if (token == DOUBLELIT) Double.MaxValue else Float.MaxValue
       try {
-        val value: Double = java.lang.Double.valueOf(name.toString()).doubleValue()
+        val value: Double = java.lang.Double.valueOf(name.toString).doubleValue()
         if (value > limit)
           syntaxError("floating point number too large")
         if (negated) -value else value
       } catch {
-        case _: NumberFormatException => 
+        case _: NumberFormatException =>
           syntaxError("malformed floating point number")
           0.0
       }
     }
     /** read a number into name and set base
     */
-    protected def getNumber {
+    protected def getNumber() {
       while (digit2int(in.ch, if (base < 10) 10 else base) >= 0) {
         putChar(in.ch)
         in.next
@@ -864,7 +833,7 @@ trait JavaScanners {
         val lookahead = in.copy
         lookahead.next
         lookahead.ch match {
-          case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | 
+          case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' |
                '8' | '9' | 'd' | 'D' | 'e' | 'E' | 'f' | 'F' =>
             putChar(in.ch)
             in.next
@@ -876,8 +845,8 @@ trait JavaScanners {
               return getFraction
             }
         }
-      } 
-      if (base <= 10 && 
+      }
+      if (base <= 10 &&
           (in.ch == 'e' || in.ch == 'E' ||
            in.ch == 'f' || in.ch == 'F' ||
            in.ch == 'd' || in.ch == 'D')) {
@@ -934,16 +903,16 @@ trait JavaScanners {
         JavaScannerConfiguration.token2string(token)
     }
 
-    /** INIT: read lookahead character and token. 
+    /** INIT: read lookahead character and token.
      */
-    def init {
+    def init() {
       in.next
       nextToken
     }
   }
 
   /** ...
-   */   
+   */
   class JavaUnitScanner(unit: CompilationUnit) extends JavaScanner {
     in = new JavaCharArrayReader(unit.source.content, !settings.nouescape.value, syntaxError)
     init
