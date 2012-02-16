@@ -1,19 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala.xml
 
-/**
- * This object provides methods ...
+/** This singleton object contains the `unapplySeq` method for
+ *  convenient deconstruction.
  *
- * @author  Burak Emir
- * @version 1.0
+ *  @author  Burak Emir
+ *  @version 1.0
  */
 object Node {
   /** the constant empty attribute sequence */
@@ -41,9 +40,9 @@ abstract class Node extends NodeSeq {
   def label: String
 
   /** used internally. Atom/Molecule = -1 PI = -2 Comment = -3 EntityRef = -5
-   */ 
+   */
   def isAtom = this.isInstanceOf[Atom[_]]
-  
+
   /** The logic formerly found in typeTag$, as best I could infer it. */
   def doCollectNamespaces = true  // if (tag >= 0) DO collect namespaces
   def doTransform         = true  // if (tag < 0) DO NOT transform
@@ -61,8 +60,8 @@ abstract class Node extends NodeSeq {
   def namespace = getNamespace(this.prefix)
 
   /**
-   * Convenience method, same as <code>scope.getURI(pre)</code> but additionally
-   * checks if scope is <code>null</code>.
+   * Convenience method, same as `scope.getURI(pre)` but additionally
+   * checks if scope is `'''null'''`.
    *
    * @param pre the prefix whose namespace name we would like to obtain
    * @return    the namespace if <code>scope != null</code> and prefix was
@@ -72,7 +71,7 @@ abstract class Node extends NodeSeq {
 
   /**
    * Convenience method, looks up an unprefixed attribute in attributes of this node.
-   * Same as <code>attributes.getValue(key)</code>
+   * Same as `attributes.getValue(key)`
    *
    * @param  key of queried attribute.
    * @return value of <code>UnprefixedAttribute</code> with given key
@@ -82,20 +81,20 @@ abstract class Node extends NodeSeq {
 
   /**
    * Convenience method, looks up a prefixed attribute in attributes of this node.
-   * Same as <code>attributes.getValue(uri, this, key)</code>
+   * Same as `attributes.getValue(uri, this, key)`-
    *
    * @param  uri namespace of queried attribute (may not be null).
    * @param  key of queried attribute.
-   * @return value of <code>PrefixedAttribute</code> with given namespace
-   *         and given key, otherwise <code>null</code>.
+   * @return value of `PrefixedAttribute` with given namespace
+   *         and given key, otherwise `'''null'''`.
    */
   final def attribute(uri: String, key: String): Option[Seq[Node]] =
     attributes.get(uri, this, key)
 
   /**
    * Returns attribute meaning all attributes of this node, prefixed and
-   * unprefixed, in no particular order. In class <code>Node</code>, this
-   * defaults to <code>Null</code> (the empty attribute list).
+   * unprefixed, in no particular order. In class `Node`, this
+   * defaults to `Null` (the empty attribute list).
    *
    * @return all attributes of this node
    */
@@ -107,30 +106,33 @@ abstract class Node extends NodeSeq {
    * @return all children of this node
    */
   def child: Seq[Node]
-  
+
   /** Children which do not stringify to "" (needed for equality)
    */
   def nonEmptyChildren: Seq[Node] = child filterNot (_.toString == "")
 
   /**
-   * Descendant axis (all descendants of this node, not including node itself) 
+   * Descendant axis (all descendants of this node, not including node itself)
    * includes all text nodes, element nodes, comments and processing instructions.
    */
   def descendant: List[Node] =
     child.toList.flatMap { x => x::x.descendant }
 
   /**
-   * Descendant axis (all descendants of this node, including thisa node) 
+   * Descendant axis (all descendants of this node, including thisa node)
    * includes all text nodes, element nodes, comments and processing instructions.
    */
   def descendant_or_self: List[Node] = this :: descendant
-  
+
   override def canEqual(other: Any) = other match {
     case x: Group   => false
     case x: Node    => true
     case _          => false
   }
-  override def basisForHashCode: Seq[Any] = prefix :: label :: attributes :: nonEmptyChildren.toList
+
+  override protected def basisForHashCode: Seq[Any] =
+    prefix :: label :: attributes :: nonEmptyChildren.toList
+
   override def strict_==(other: Equality) = other match {
     case _: Group => false
     case x: Node  =>
@@ -160,28 +162,28 @@ abstract class Node extends NodeSeq {
     Utility.toXML(this, stripComments = stripComments).toString
 
   /**
-   * Same as <code>toString(false)</code>.
+   * Same as `toString('''false''')`.
    *
    * @see <code><a href="#toString">toString(Boolean)</a></code>
    */
   override def toString(): String = buildString(false)
 
   /**
-   * Appends qualified name of this node to <code>StringBuilder</code>.
+   * Appends qualified name of this node to `StringBuilder`.
    *
    * @param sb ...
    * @return   ...
    */
   def nameToString(sb: StringBuilder): StringBuilder = {
     if (null != prefix) {
-      sb.append(prefix)
-      sb.append(':')
+      sb append prefix
+      sb append ':'
     }
-    sb.append(label)
+    sb append label
   }
 
   /**
-   * Returns a type symbol (e.g. DTD, XSD), default <code>null</code>.
+   * Returns a type symbol (e.g. DTD, XSD), default `'''null'''`.
    */
   def xmlType(): TypeSymbol = null
 
