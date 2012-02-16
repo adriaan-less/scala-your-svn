@@ -1,26 +1,24 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 package remote
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 
 /**
  * @author Philipp Haller
  */
-@serializable
-private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: NetKernel) extends AbstractActor {
+private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: NetKernel) extends AbstractActor with Serializable {
   import java.io.{IOException, ObjectOutputStream, ObjectInputStream}
 
-  type Future[+R] = scala.actors.Future[R]
+  type Future[+P] = scala.actors.Future[P]
 
   @transient
   private[remote] var del: Actor = null
@@ -44,7 +42,7 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   }
 
   private def setupKernel() {
-    kernel = RemoteActor.someKernel
+    kernel = RemoteActor.someNetKernel
     kernel.registerProxy(node, name, this)
   }
 
@@ -66,10 +64,10 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
   def !?(msec: Long, msg: Any): Option[Any] =
     del !? (msec, msg)
 
-  override def !!(msg: Any): Future[Any] =
+  def !!(msg: Any): Future[Any] =
     del !! msg
 
-  override def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] =
+  def !![A](msg: Any, f: PartialFunction[Any, A]): Future[A] =
     del !! (msg, f)
 
   def linkTo(to: AbstractActor): Unit =
@@ -85,8 +83,11 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
     name+"@"+node
 }
 
-@serializable
-class LinkToFun extends Function2[AbstractActor, Proxy, Unit] {
+// Proxy is private[remote], but these classes are public and use it in a public
+// method signature.  That makes the only method they have non-overriddable.
+// So I made them final, which seems appropriate anyway.
+
+final class LinkToFun extends Function2[AbstractActor, Proxy, Unit] with Serializable {
   def apply(target: AbstractActor, creator: Proxy) {
     target.linkTo(creator)
   }
@@ -94,8 +95,7 @@ class LinkToFun extends Function2[AbstractActor, Proxy, Unit] {
     "<LinkToFun>"
 }
 
-@serializable
-class UnlinkFromFun extends Function2[AbstractActor, Proxy, Unit] {
+final class UnlinkFromFun extends Function2[AbstractActor, Proxy, Unit] with Serializable {
   def apply(target: AbstractActor, creator: Proxy) {
     target.unlinkFrom(creator)
   }
@@ -103,8 +103,7 @@ class UnlinkFromFun extends Function2[AbstractActor, Proxy, Unit] {
     "<UnlinkFromFun>"
 }
 
-@serializable
-class ExitFun(reason: AnyRef) extends Function2[AbstractActor, Proxy, Unit] {
+final class ExitFun(reason: AnyRef) extends Function2[AbstractActor, Proxy, Unit] with Serializable {
   def apply(target: AbstractActor, creator: Proxy) {
     target.exit(creator, reason)
   }
@@ -118,8 +117,8 @@ private[remote] case class Apply0(rfun: Function2[AbstractActor, Proxy, Unit])
  * @author Philipp Haller
  */
 private[remote] class DelegateActor(creator: Proxy, node: Node, name: Symbol, kernel: NetKernel) extends Actor {
-  var channelMap = new HashMap[Symbol, OutputChannel[Any]]
-  var sessionMap = new HashMap[OutputChannel[Any], Symbol]
+  var channelMap = new mutable.HashMap[Symbol, OutputChannel[Any]]
+  var sessionMap = new mutable.HashMap[OutputChannel[Any], Symbol]
 
   def act() {
     Actor.loop {
