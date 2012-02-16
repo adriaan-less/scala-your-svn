@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * Author: Paul Phillips
  */
 
@@ -9,34 +9,34 @@ package matching
 import transform.ExplicitOuter
 import ast.{ TreePrinters, Trees }
 import java.io.{ StringWriter, PrintWriter }
+import annotation.elidable
 
 /** Ancillary bits of ParallelMatching which are better off
  *  out of the way.
  */
 trait MatchSupport extends ast.TreeDSL { self: ParallelMatching =>
-  
+
   import global.{ typer => _, _ }
   import CODE._
-  
+
   /** Debugging support: enable with -Ypmat-debug **/
   private final def trace = settings.Ypmatdebug.value
-  
+
   def impossible:           Nothing = abort("this never happens")
-  def abort(msg: String):   Nothing = Predef.error(msg)
-  
+
+  def treeCollect[T](tree: Tree, pf: PartialFunction[Tree, T]): List[T] =
+    tree filter (pf isDefinedAt _) map (x => pf(x))
+
   object Types {
     import definitions._
     implicit def enrichType(x: Type): RichType = new RichType(x)
-    
-    // A subtype test which creates fresh existentials for type
-    // parameters on the right hand side.
-    private[matching] def matches(arg1: Type, arg2: Type) =
-      decodedEqualsType(arg1) matchesPattern decodedEqualsType(arg2)
+
+    val subrangeTypes = Set(ByteClass, ShortClass, CharClass, IntClass)
 
     class RichType(undecodedTpe: Type) {
       def tpe = decodedEqualsType(undecodedTpe)
       def isAnyRef = tpe <:< AnyRefClass.tpe
-      
+
       // These tests for final classes can inspect the typeSymbol
       private def is(s: Symbol) = tpe.typeSymbol eq s
       def      isByte = is(ByteClass)
@@ -48,7 +48,7 @@ trait MatchSupport extends ast.TreeDSL { self: ParallelMatching =>
       def     isArray = is(ArrayClass)
     }
   }
-  
+
   object Debug {
     def typeToString(t: Type): String = t match {
       case NoType => "x"
@@ -57,7 +57,7 @@ trait MatchSupport extends ast.TreeDSL { self: ParallelMatching =>
     def symbolToString(s: Symbol): String = s match {
       case x  => x.toString
     }
-    def treeToString(t: Tree): String = unbind(t) match {
+    def treeToString(t: Tree): String = treeInfo.unbind(t) match {
       case EmptyTree            => "?"
       case WILD()               => "_"
       case Literal(Constant(x)) => "LIT(%s)".format(x)
@@ -65,7 +65,7 @@ trait MatchSupport extends ast.TreeDSL { self: ParallelMatching =>
       case Typed(expr, tpt)     => "%s: %s".format(treeToString(expr), treeToString(tpt))
       case x                    =>  x.toString + " (" + x.getClass + ")"
     }
-    
+
     // Formatting for some error messages
     private val NPAD = 15
     def pad(s: String): String = "%%%ds" format (NPAD-1) format s
@@ -73,15 +73,15 @@ trait MatchSupport extends ast.TreeDSL { self: ParallelMatching =>
       case x: Tree    => treeToString(x)
       case x          => x.toString
     })
-    
+
     // pretty print for debugging
     def pp(x: Any): String = pp(x, false)
     def pp(x: Any, newlines: Boolean): String = {
       val stripStrings = List("""java\.lang\.""", """\$iw\.""")
-      
+
       def clean(s: String): String =
         stripStrings.foldLeft(s)((s, x) => s.replaceAll(x, ""))
-      
+
       def pplist(xs: List[Any]): String =
         if (newlines) (xs map ("    " + _ + "\n")).mkString("\n", "", "")
         else xs.mkString("(", ", ", ")")
@@ -94,47 +94,39 @@ trait MatchSupport extends ast.TreeDSL { self: ParallelMatching =>
         case x              => x.toString
       })
     }
-    
-    def ifDebug(body: => Unit): Unit          = { if (settings.debug.value) body }
-    def DBG(msg: => String): Unit             = { ifDebug(println(msg)) }
 
-    // @elidable(elidable.FINE)
-    def TRACE(f: String, xs: Any*): Unit      = {
+    @elidable(elidable.FINE) def TRACE(f: String, xs: Any*): Unit = {
       if (trace) {
         val msg = if (xs.isEmpty) f else f.format(xs map pp: _*)
         println(msg)
       }
     }
-
-    def tracing2[T](x: T)(category: String, xs: String*) = {
-      val preamble = "[" + """%10s""".format(category) + "]  "
-      if (xs.isEmpty) TRACE(preamble, x)
-      else TRACE(preamble + xs.head, xs.tail: _*) 
+    @elidable(elidable.FINE) def traceCategory(cat: String, f: String, xs: Any*) = {
+      if (trace)
+        TRACE("[" + """%10s""".format(cat) + "]  " + f, xs: _*)
+    }
+    def tracing[T](s: String)(x: T): T = {
+      if (trace)
+        println(("[" + """%10s""".format(s) + "]  %s") format pp(x))
 
       x
     }
-
-    def tracing[T](s: String, x: T): T = {
-      val format = "[" + """%10s""".format(s) + "]  %s"
-      TRACE(format, x)
+    private[nsc] def printing[T](fmt: String, xs: Any*)(x: T): T = {
+      println(fmt.format(xs: _*) + " == " + x)
       x
-    }
-    def traceCategory(cat: String, f: String, xs: Any*) = {
-      val format = "[" + """%10s""".format(cat) + "]  " + f
-      TRACE(format, xs: _*)
     }
 
     def indent(s: Any) = s.toString() split "\n" map ("  " + _) mkString "\n"
     def indentAll(s: Seq[Any]) = s map ("  " + _.toString() + "\n") mkString
   }
-  
+
   /** Drops the 'i'th element of a list.
    */
   def dropIndex[T](xs: List[T], n: Int) = {
     val (l1, l2) = xs splitAt n
     l1 ::: (l2 drop 1)
   }
-  
+
   /** Extract the nth element of a list and return it and the remainder.
    */
   def extractIndex[T](xs: List[T], n: Int): (T, List[T]) =

@@ -1,15 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2010 LAMP/EPFL
+ * Copyright 2006-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-
-// $Id: ClassPath.scala 20028 2009-12-07 11:49:19Z cunei $
 
 package scala.tools.nsc
 package util
 
-import Chars._
-import scala.collection.mutable.{HashMap, ListBuffer, StringBuilder}
+import scala.reflect.internal.Chars._
 
 /** Utilitity methods for doc comment strings
  */
@@ -22,7 +19,7 @@ object DocStrings {
     if (start < str.length && isWhitespace(str charAt start)) skipWhitespace(str, start + 1)
     else start
 
-  /** Returns index of string `str` following `start` skipping 
+  /** Returns index of string `str` following `start` skipping
    *  sequence of identifier characters.
    */
   def skipIdent(str: String, start: Int): Int =
@@ -31,7 +28,7 @@ object DocStrings {
 
   /** Returns index of string `str` after `start` skipping longest
    *  sequence of space and tab characters, possibly also containing
-   *  a single `*' character or the `/``**` sequence.
+   *  a single `*` character or the `/``**` sequence.
    *  @pre  start == str.length || str(start) == `\n'
    */
   def skipLineLead(str: String, start: Int): Int =
@@ -52,7 +49,7 @@ object DocStrings {
     else start
 
   /** Returns first index following `start` and starting a line (i.e. after skipLineLead) or starting the comment
-   *  which satisfies predicate `p'.
+   *  which satisfies predicate `p`.
    */
   def findNext(str: String, start: Int)(p: Int => Boolean): Int = {
     val idx = skipLineLead(str, skipToEol(str, start))
@@ -61,7 +58,7 @@ object DocStrings {
   }
 
   /** Return first index following `start` and starting a line (i.e. after skipLineLead)
-   *  which satisfies predicate `p'.
+   *  which satisfies predicate `p`.
    */
   def findAll(str: String, start: Int)(p: Int => Boolean): List[Int] = {
     val idx = findNext(str, start)(p)
@@ -71,19 +68,41 @@ object DocStrings {
 
   /** Produces a string index, which is a list of ``sections'', i.e
    *  pairs of start/end positions of all tagged sections in the string.
-   *  Every section starts with a `@' and extends to the next `@', or
+   *  Every section starts with a `@` and extends to the next `@`, or
    *  to the end of the comment string, but excluding the final two
-   *  charcters which terminate the comment.
+   *  characters which terminate the comment.
+   *  
+   *  Also take usecases into account - they need to expand until the next 
+   *  usecase or the end of the string, as they might include other sections 
+   *  of their own 
    */
   def tagIndex(str: String, p: Int => Boolean = (idx => true)): List[(Int, Int)] =
     findAll(str, 0) (idx => str(idx) == '@' && p(idx)) match {
       case List() => List()
-      case idxs => idxs zip (idxs.tail ::: List(str.length - 2))
+      case idxs => {
+        val idxs2 = mergeUsecaseSections(str, idxs)
+        idxs2 zip (idxs2.tail ::: List(str.length - 2))
+      }
     }
-
+  
+  /**
+   * Merge sections following an usecase into the usecase comment, so they 
+   * can override the parent symbol's sections 
+   */
+  def mergeUsecaseSections(str: String, idxs: List[Int]): List[Int] = {
+    idxs.find(str.substring(_).startsWith("@usecase")) match {
+      case Some(firstUC) =>
+        val commentSections = idxs.take(idxs.indexOf(firstUC))
+        val usecaseSections = idxs.drop(idxs.indexOf(firstUC)).filter(str.substring(_).startsWith("@usecase"))
+        commentSections ::: usecaseSections
+      case None =>
+        idxs
+    }
+  }
+  
   /** Does interval `iv` start with given `tag`?
    */
-  def startsWithTag(str: String, section: (Int, Int), tag: String): Boolean = 
+  def startsWithTag(str: String, section: (Int, Int), tag: String): Boolean =
     startsWithTag(str, section._1, tag)
 
   def startsWithTag(str: String, start: Int, tag: String): Boolean =
@@ -112,11 +131,11 @@ object DocStrings {
   /** Optionally start and end index of return section in `str`, or `None`
    *  if `str` does not have a @return.
    */
-  def returnDoc(str: String, sections: List[(Int, Int)]): Option[(Int, Int)] = 
+  def returnDoc(str: String, sections: List[(Int, Int)]): Option[(Int, Int)] =
     sections find (startsWithTag(str, _, "@return"))
-    
+
   /** Extracts variable name from a string, stripping any pair of surrounding braces */
-  def variableName(str: String): String = 
+  def variableName(str: String): String =
     if (str.length >= 2 && (str charAt 0) == '{' && (str charAt (str.length - 1)) == '}')
       str.substring(1, str.length - 1)
     else
