@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------*\
 **  ScalaCheck                                                             **
-**  Copyright (c) 2007-2010 Rickard Nilsson. All rights reserved.          **
+**  Copyright (c) 2007-2011 Rickard Nilsson. All rights reserved.          **
 **  http://www.scalacheck.org                                              **
 **                                                                         **
 **  This software is released under the terms of the Revised BSD License.  **
@@ -78,7 +78,7 @@ object Shrink {
   /** Shrink instance of integer */
   implicit lazy val shrinkInt: Shrink[Int] = Shrink { n =>
 
-    def halfs(n: Int): Stream[Int] = 
+    def halfs(n: Int): Stream[Int] =
       if(n == 0) empty else cons(n, halfs(n/2))
 
     if(n == 0) empty else {
