@@ -16,18 +16,18 @@ import generic._
  * $setNote
  * '''Implementation note:''' If your additions and mutations return the same kind of set as the set
  *       you are defining, you should inherit from `SetLike` as well.
- * $setTags 
+ * $setTags
  *
  * @since 1.0
  * @author Matthias Zenger
  */
-trait Set[A] extends (A => Boolean) 
-                with Iterable[A] 
+trait Set[A] extends (A => Boolean)
+                with Iterable[A]
                 with GenSet[A]
                 with GenericSetTemplate[A, Set]
                 with SetLike[A, Set[A]] {
   override def companion: GenericCompanion[Set] = Set
-  
+
   override def seq: Set[A] = this
 }
 
@@ -38,9 +38,10 @@ trait Set[A] extends (A => Boolean)
  *  @define Coll Set
  */
 object Set extends SetFactory[Set] {
-  private[collection] val hashSeed = "Set".hashCode
-
   def newBuilder[A] = immutable.Set.newBuilder[A]
   override def empty[A]: Set[A] = immutable.Set.empty[A]
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
 }
+
+/** Explicit instantiation of the `Set` trait to reduce class file size in subclasses. */
+private[scala] abstract class AbstractSet[A] extends AbstractIterable[A] with Set[A]

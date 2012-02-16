@@ -8,8 +8,7 @@ package interpreter
 
 import scala.collection.{ mutable, immutable }
 import scala.PartialFunction.cond
-import scala.reflect.NameTransformer
-import util.Chars
+import scala.reflect.internal.Chars
 
 trait ReplStrings {
   // Longest common prefix
@@ -24,7 +23,7 @@ trait ReplStrings {
   /** Convert a string into code that can recreate the string.
    *  This requires replacing all special characters by escape
    *  codes. It does not add the surrounding " marks.  */
-  def string2code(str: String): String = {    
+  def string2code(str: String): String = {
     val res = new StringBuilder
     for (c <- str) c match {
       case '"' | '\'' | '\\'  => res += '\\' ; res += c
@@ -37,7 +36,7 @@ trait ReplStrings {
   def string2codeQuoted(str: String) =
     "\"" + string2code(str) + "\""
 
-  def any2stringOf(x: Any, maxlen: Int) = 
+  def any2stringOf(x: Any, maxlen: Int) =
     "scala.runtime.ScalaRunTime.replStringOf(%s, %s)".format(x, maxlen)
 
   def words(s: String) = s.trim split "\\s+" filterNot (_ == "") toList

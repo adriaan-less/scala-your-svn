@@ -16,7 +16,7 @@ package scala
  *  shorthand for the anonymous class definition anonfun1:
  *
  *  {{{
- *  object Main extends Application { 
+ *  object Main extends App { 
  *    val succ = (x: Int) => x + 1
  *    val anonfun1 = new Function1[Int, Int] {
  *      def apply(x: Int): Int = x + 1
@@ -24,9 +24,15 @@ package scala
  *    assert(succ(0) == anonfun1(0))
  *  }
  *  }}}
+ *
+ *  Note that `Function1` does not define a total function, as might
+ *  be suggested by the existence of [[scala.PartialFunction]]. The only
+ *  distinction between `Function1` and `PartialFunction` is that the
+ *  latter can specify inputs which it will not handle.
+ 
  */
 @annotation.implicitNotFound(msg = "No implicit view available from ${T1} => ${R}.")
-trait Function1[@specialized(scala.Int, scala.Long, scala.Float, scala.Double) -T1, @specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double) +R] extends AnyRef { self =>
+trait Function1[@specialized(scala.Int, scala.Long, scala.Float, scala.Double, scala.AnyRef) -T1, @specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double, scala.AnyRef) +R] extends AnyRef { self =>
   /** Apply the body of this function to the argument.
    *  @return   the result of function application.
    */
