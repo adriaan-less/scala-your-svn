@@ -1,4 +1,4 @@
-object Test extends Application {
+object Test extends App {
   Test1
   Test2
   //Test3  // Java 1.5+ only
@@ -70,7 +70,7 @@ object Test2 {
   println()
 
   def loadArray[T](x: Array[Byte])(implicit m: reflect.Manifest[Array[T]]) =
-    load[Array[T]](x)(m).deepToString
+    load[Array[T]](x)(m).deep.toString
   println("Array()="+loadArray[Int](dump(Array(): Array[Int])))
   println("Array(true)="+loadArray[Boolean](dump(Array(true))))
   println("Array(a)="+loadArray[Char](dump(Array('a'))))
