@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -18,10 +18,10 @@ import java.sql._
  *
  *  @author  Gilles Dubochet
  */
-case class Database(dbms: Vendor) {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") case class Database(dbms: Vendor) {
+
   class Closed extends Exception {}
-  
+
   /** A lock used for operations that need to be atomic for this database
    *  instance. */
   private val lock: scala.concurrent.Lock = new scala.concurrent.Lock()
@@ -37,7 +37,7 @@ case class Database(dbms: Vendor) {
 
   /** Whether the database no longer accepts new connections. */
   private var closing: Boolean = false;
-  
+
   /** Retrieves a connection from the available connection pool or creates
    *  a new one.
    *
@@ -65,7 +65,7 @@ case class Database(dbms: Vendor) {
       }
     }
   }
-  
+
   /** Closes a connection to this database. A closed connection might
    *  also return to the available connection pool if the latter is depleted.
    *
@@ -87,7 +87,7 @@ case class Database(dbms: Vendor) {
 
   /** ..
    */
-  def close {
+  def close() {
     closing = true
     for (conn <- availableConnections) conn.close()
   }
@@ -116,7 +116,7 @@ case class Database(dbms: Vendor) {
       closeConnection(connection)
       statement.typeCheck(this)
     }
-  
+
   /** Executes a statement that updates the state of the database.
     * @param statusStatement The statement to execute.
     * @return The status of the database after the statement has been executed. */
@@ -134,14 +134,14 @@ case class Database(dbms: Vendor) {
     new scala.dbc.result.Status[Unit] {
       val statement = statusStatement;
       if (debug) Console.println("## " + statement.sqlString);
-      def result = ();
+      def result = ()
       private val connection = getConnection;
       val jdbcStatement: java.sql.Statement = connection.createStatement();
       jdbcStatement.execute(statement.sqlString);
       val touchedCount = Some(jdbcStatement.getUpdateCount());
       closeConnection(connection);
     }
-  
+
   /** Executes a list of statements or other operations inside a transaction.
    *  Only statements are protected in a transaction, other Scala code is not.
    *
@@ -150,7 +150,7 @@ case class Database(dbms: Vendor) {
    */
   def executeStatement[ResultType](transactionStatement: statement.Transaction[ResultType]): result.Status[ResultType] =
     executeStatement(transactionStatement, false);
-  
+
   /** Executes a list of statements or other operations inside a transaction.
    *  Only statements are protected in a transaction, other Scala code is not.
    *
@@ -183,5 +183,5 @@ case class Database(dbms: Vendor) {
       closeConnection(connection)
     }
   }
-  
+
 }
