@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * Author: Paul Phillips
  */
 
@@ -7,23 +7,36 @@ package scala.tools.nsc
 package matching
 
 import transform.ExplicitOuter
-import collection.immutable.TreeMap
+import PartialFunction._
 
 trait PatternBindings extends ast.TreeDSL
-{ 
+{
   self: ExplicitOuter with ParallelMatching =>
-  
+
   import global.{ typer => _, _ }
   import definitions.{ EqualsPatternClass }
   import CODE._
   import Debug._
-  
+
   /** EqualsPattern **/
-  def isEquals(tpe: Type)           = cond(tpe) { case TypeRef(_, EqualsPatternClass, _) => true }
-  def mkEqualsRef(tpe: Type)        = typeRef(NoPrefix, EqualsPatternClass, List(tpe))
-  def decodedEqualsType(tpe: Type)  = condOpt(tpe) { case TypeRef(_, EqualsPatternClass, List(arg)) => arg } getOrElse (tpe)
-  
-  // used as argument to `EqualsPatternClass'
+  def isEquals(tpe: Type)             = cond(tpe) { case TypeRef(_, EqualsPatternClass, _) => true }
+  def mkEqualsRef(tpe: Type)          = typeRef(NoPrefix, EqualsPatternClass, List(tpe))
+  def decodedEqualsType(tpe: Type)    = condOpt(tpe) { case TypeRef(_, EqualsPatternClass, List(arg)) => arg } getOrElse (tpe)
+
+  // A subtype test which creates fresh existentials for type
+  // parameters on the right hand side.
+  def matches(arg1: Type, arg2: Type) = decodedEqualsType(arg1) matchesPattern decodedEqualsType(arg2)
+
+  // For spotting duplicate unapplies
+  def isEquivalentTree(t1: Tree, t2: Tree) = (t1.symbol == t2.symbol) && (t1 equalsStructure t2)
+
+  // Reproduce the Bind trees wrapping oldTree around newTree
+  def moveBindings(oldTree: Tree, newTree: Tree): Tree = oldTree match {
+    case b @ Bind(x, body)  => Bind(b.symbol, moveBindings(body, newTree))
+    case _                  => newTree
+  }
+
+  // used as argument to `EqualsPatternClass`
   case class PseudoType(o: Tree) extends SimpleTypeProxy {
     override def underlying: Type = o.tpe
     override def safeToString: String = "PseudoType("+o+")"
@@ -33,7 +46,7 @@ trait PatternBindings extends ast.TreeDSL
   // Makes typed copies of any bindings found so all alternatives point to final state.
   def extractBindings(p: Pattern): List[Pattern] =
     toPats(_extractBindings(p.boundTree, identity))
-  
+
   private def _extractBindings(p: Tree, prevBindings: Tree => Tree): List[Tree] = {
     def newPrev(b: Bind) = (x: Tree) => treeCopy.Bind(b, b.name, x) setType x.tpe
 
@@ -42,72 +55,49 @@ trait PatternBindings extends ast.TreeDSL
       case Alternative(ps)    => ps map prevBindings
     }
   }
-  
+
   trait PatternBindingLogic {
     self: Pattern =>
-    
+
     // This is for traversing the pattern tree - pattern types which might have
     // bound variables beneath them return a list of said patterns for flatMapping.
     def subpatternsForVars: List[Pattern] = Nil
-    
-    // This is what calls subpatternsForVars.
-    // XXX reverse?
-    def deepBoundVariables: List[Symbol] = deepstrip(boundTree)
-    // (boundVariables ::: otherBoundVariables).reverse
-    
-    private def shallowBoundVariables = strip(boundTree)
-    private def otherBoundVariables = subpatternsForVars flatMap (_.deepBoundVariables)
-    lazy val boundVariables = {
-      val res = shallowBoundVariables
-      val deep = deepBoundVariables
-      
-      if (res.size != deep.size)
-        TRACE("deep variable list %s is larger than bound %s", deep, res)
 
-      res
-    }
-    
-    // XXX only a var for short-term experimentation.
-    private var _boundTree: Bind = null
-    def boundTree = if (_boundTree == null) tree else _boundTree
-    def withBoundTree(x: Bind): this.type = {
+    // The outermost Bind(x1, Bind(x2, ...)) surrounding the tree.
+    private var _boundTree: Tree = tree
+    def boundTree = _boundTree
+    def setBound(x: Bind): Pattern = {
       _boundTree = x
       this
     }
-    
+    def boundVariables = strip(boundTree)
+
     // If a tree has bindings, boundTree looks something like
     //   Bind(v3, Bind(v2, Bind(v1, tree)))
     // This takes the given tree and creates a new pattern
     //   using the same bindings.
-    def rebindTo(t: Tree): Pattern = {
-      if (boundVariables.size < deepBoundVariables.size)
-        TRACE("ALERT: rebinding %s is losing %s", this, otherBoundVariables)
-        
-      Pattern(wrapBindings(boundVariables, t))
-    }
+    def rebindTo(t: Tree): Pattern = Pattern(moveBindings(boundTree, t))
 
     // Wrap this pattern's bindings around (_: Type)
-    def rebindToType(tpe: Type, annotatedType: Type = null): Pattern = {
-      val aType = if (annotatedType == null) tpe else annotatedType
+    def rebindToType(tpe: Type, ascription: Type = null): Pattern = {
+      val aType = if (ascription == null) tpe else ascription
       rebindTo(Typed(WILD(tpe), TypeTree(aType)) setType tpe)
     }
-    
+
     // Wrap them around _
     def rebindToEmpty(tpe: Type): Pattern =
       rebindTo(Typed(EmptyTree, TypeTree(tpe)) setType tpe)
-    
+
     // Wrap them around a singleton type for an EqualsPattern check.
     def rebindToEqualsCheck(): Pattern =
       rebindToType(equalsCheck)
-    
+
     // Like rebindToEqualsCheck, but subtly different.  Not trying to be
     // mysterious -- I haven't sorted it all out yet.
-    def rebindToObjectCheck(): Pattern = {
-      val sType = sufficientType
-      rebindToType(mkEqualsRef(sType), sType)
-    }
-       
-    /** Helpers **/    
+    def rebindToObjectCheck(): Pattern =
+      rebindToType(mkEqualsRef(sufficientType), sufficientType)
+
+    /** Helpers **/
     private def wrapBindings(vs: List[Symbol], pat: Tree): Tree = vs match {
       case Nil      => pat
       case x :: xs  => Bind(x, wrapBindings(xs, pat)) setType pat.tpe
@@ -117,32 +107,28 @@ trait PatternBindings extends ast.TreeDSL
       case _                => Nil
     }
     private def deepstrip(t: Tree): List[Symbol] =
-      t filter { case _: Bind => true ; case _ => false } map (_.symbol)
+      treeCollect(t, { case x: Bind => x.symbol })
   }
 
   case class Binding(pvar: Symbol, tvar: Symbol) {
-    // see bug #1843 for the consequences of not setting info.
-    // there is surely a better way to do this, especially since
-    // this looks to be the only usage of containsTp anywhere
-    // in the compiler, but it suffices for now.
-    if (tvar.info containsTp WildcardType)
-      tvar setInfo pvar.info
-
-    override def toString() = pp(pvar -> tvar)
+    override def toString() = pvar.name + " -> " + tvar.name
   }
 
   class Bindings(private val vlist: List[Binding]) {
-    if (!vlist.isEmpty)
-      traceCategory("Bindings", this.toString)
+    // if (!vlist.isEmpty)
+    //   traceCategory("Bindings", this.toString)
 
     def get() = vlist
-    
+    def toMap = vlist map (x => (x.pvar, x.tvar)) toMap
+
     def add(vs: Iterable[Symbol], tvar: Symbol): Bindings = {
       val newBindings = vs.toList map (v => Binding(v, tvar))
       new Bindings(newBindings ++ vlist)
     }
 
-    override def toString() = pp(vlist)
+    override def toString() =
+      if (vlist.isEmpty) "<none>"
+      else vlist.mkString(", ")
   }
 
   val NoBinding: Bindings = new Bindings(Nil)
