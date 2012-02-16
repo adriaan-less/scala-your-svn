@@ -1,57 +1,21 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
-import java.io.File
-import io.AbstractFile
-import util.SourceFile
-import Settings._
-import annotation.elidable
+import settings.MutableSettings
 
-class Settings(errorFn: String => Unit) extends ScalacSettings {
+/** A compatibility stub.
+ */
+class Settings(errorFn: String => Unit) extends MutableSettings(errorFn) {
   def this() = this(Console.println)
 
-  // optionizes a system property
-  private def syspropopt(name: String): Option[String] = onull(System.getProperty(name))
-  private def sysenvopt(name: String): Option[String] = onull(System.getenv(name))
-
-  // given any number of possible path segments, flattens down to a 
-  // :-separated style path
-  private def concatPath(segments: Option[String]*): String =
-    segments.toList.flatMap(x => x) mkString File.pathSeparator
-
-  protected def classpathDefault = 
-    sysenvopt("CLASSPATH") getOrElse "."
-
-  protected def bootclasspathDefault = 
-    concatPath(syspropopt("sun.boot.class.path"), guessedScalaBootClassPath)
-    // syspropopt("sun.boot.class.path") getOrElse ""
-    // XXX scala-library.jar was being added to both boot and regular classpath until 8/18/09
-    // Removing from boot classpath caused build/quick/bin/scala to fail.
-    // Note to self, figure out how/why the bootclasspath is tied up with the locker/quick/pack.
-
-  protected def extdirsDefault =
-    concatPath(syspropopt("java.ext.dirs"), guessedScalaExtDirs)
-
-  protected def assemExtdirsDefault =
-    concatPath(guessedScalaExtDirs)
-
-  protected def pluginsDirDefault = 
-    guess(List("misc", "scala-devel", "plugins"), _.isDirectory) getOrElse ""
-
-  def onull[T <: AnyRef](x: T): Option[T] = if (x eq null) None else Some(x)
-  def mkPath(base: String, segments: String*) = new File(base, segments.mkString(File.separator))
-  def scalaHome: Option[String] = onull(Properties.scalaHome)
-
-  // examine path relative to scala home and return Some(path) if it meets condition
-  private def guess(xs: List[String], cond: (File) => Boolean): Option[String] = {
-    if (scalaHome.isEmpty) return None
-    val f = mkPath(scalaHome.get, xs: _*)
-    if (cond(f)) Some(f.getAbsolutePath) else None
+  override def withErrorFn(errorFn: String => Unit): Settings = {
+    val settings = new Settings(errorFn)
+    copyInto(settings)
+    settings
   }
 
   private def guessedScalaBootClassPath: Option[String] =    
