@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -71,38 +71,43 @@ abstract class NodePrinters {
         def nodeinfo(tree: Tree): String =
           if (infolevel == InfoLevel.Quiet) ""
           else {
-            val buf = new StringBuilder(" // sym=" + tree.symbol)
-            if (tree.hasSymbol) {
-              if (tree.symbol.isPrimaryConstructor)
-                buf.append(", isPrimaryConstructor")
-              else if (tree.symbol.isConstructor)
-                buf.append(", isConstructor")
-              if (tree.symbol != NoSymbol)
-                buf.append(", sym.owner=" + tree.symbol.owner)
-              buf.append(", sym.tpe=" + tree.symbol.tpe)
-            }
-            buf.append(", tpe=" + tree.tpe)
-            if (tree.tpe != null) {
-              var sym = tree.tpe.termSymbol
-              if (sym == NoSymbol) sym = tree.tpe.typeSymbol
-              buf.append(", tpe.sym=" + sym)
-              if (sym != NoSymbol) {
-                buf.append(", tpe.sym.owner=" + sym.owner)
-                if ((infolevel > InfoLevel.Normal) &&
-                    !(sym.owner eq definitions.ScalaPackageClass) &&
-                    !sym.isModuleClass && !sym.isPackageClass &&
-                    !sym.isJavaDefined) {
-                  val members = for (m <- tree.tpe.decls.toList)
-                    yield m.toString() + ": " + m.tpe + ", "
-                  buf.append(", tpe.decls=" + members)
+            try {
+              val buf = new StringBuilder(" // sym=" + tree.symbol)
+              if (tree.hasSymbol) {
+                if (tree.symbol.isPrimaryConstructor)
+                  buf.append(", isPrimaryConstructor")
+                else if (tree.symbol.isConstructor)
+                  buf.append(", isConstructor")
+                if (tree.symbol != NoSymbol)
+                  buf.append(", sym.owner=" + tree.symbol.owner)
+                buf.append(", sym.tpe=" + tree.symbol.tpe)
+              }
+              buf.append(", tpe=" + tree.tpe)
+              if (tree.tpe != null) {
+                var sym = tree.tpe.termSymbol
+                if (sym == NoSymbol) sym = tree.tpe.typeSymbol
+                buf.append(", tpe.sym=" + sym)
+                if (sym != NoSymbol) {
+                  buf.append(", tpe.sym.owner=" + sym.owner)
+                  if ((infolevel > InfoLevel.Normal) &&
+                      !(sym.owner eq definitions.ScalaPackageClass) &&
+                      !sym.isModuleClass && !sym.isPackageClass &&
+                      !sym.isJavaDefined) {
+                    val members = for (m <- tree.tpe.decls)
+                      yield m.toString() + ": " + m.tpe + ", "
+                    buf.append(", tpe.decls=" + members)
+                  }
                 }
               }
+              buf.toString
+            } catch {
+              case ex: Throwable =>
+                return " // sym= <error> " + ex.getMessage
             }
-            buf.toString
           }
         def nodeinfo2(tree: Tree): String =
           (if (comma) "," else "") + nodeinfo(tree)
-        
+
         def applyCommon(name: String, tree: Tree, fun: Tree, args: List[Tree]) {
           println(name + "(" + nodeinfo(tree))
           traverse(fun, level + 1, true)
@@ -117,7 +122,7 @@ abstract class NodePrinters {
           }
           printcln(")")
         }
-          
+
         tree match {
           case AppliedTypeTree(tpt, args) => applyCommon("AppliedTypeTree", tree, tpt, args)
           case Apply(fun, args)           => applyCommon("Apply", tree, fun, args)
@@ -196,13 +201,14 @@ abstract class NodePrinters {
             traverse(qualifier, level + 1, true)
             printcln("  \"" + selector + "\")")
           case Super(qual, mix) =>
-            printcln("Super(\"" + qual + "\", \"" + mix + "\")" + nodeinfo2(tree))
+            println("Super(\"" + mix + "\")" + nodeinfo(tree))
+            traverse(qual, level + 1, true)
           case Template(parents, self, body) =>
             println("Template(" + nodeinfo(tree))
             println("  " + parents.map(p =>
                 if (p.tpe ne null) p.tpe.typeSymbol else "null-" + p
               ) + ", // parents")
-            traverse(self, level + 1, true)    
+            traverse(self, level + 1, true)
             if (body.isEmpty)
               println("  List() // no body")
             else {
@@ -256,18 +262,18 @@ abstract class NodePrinters {
                   println(p.productPrefix+"(")
                   for (elem <- (0 until p.productArity) map p.productElement) {
                     def printElem(elem: Any, level: Int): Unit = elem match {
-                      case t: Tree => 
+                      case t: Tree =>
                         traverse(t, level, false)
-                      case xs: List[_] => 
+                      case xs: List[_] =>
                         print("List(")
                         for (x <- xs) printElem(x, level+1)
                         printcln(")")
-                      case _ => 
+                      case _ =>
                         println(elem.toString)
                     }
                     printElem(elem, level+1)
                   }
-                  printcln(")")                
+                  printcln(")")
                 } else printcln(p.productPrefix)
             }
         }

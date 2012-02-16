@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,7 +13,7 @@ package mutable
 import generic._
 
 /** The canonical builder for mutable Sets.
- *  
+ *
  *  @tparam A      The type of the elements that will be contained in this set.
  *  @tparam Coll   The type of the actual collection this set builds.
  *  @param empty   The empty element of the collection.
