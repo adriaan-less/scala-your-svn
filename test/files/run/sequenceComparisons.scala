@@ -22,7 +22,7 @@ object Test {
     // mutable.Queue(_: _*),
     immutable.Seq(_: _*),
     mutable.Seq(_: _*),
-    // immutable.Stack(_: _*),
+    immutable.Stack(_: _*),
     // mutable.Stack(_: _*),    
     immutable.IndexedSeq(_: _*), // was Vector
     //mutable.Vector(_: _*),
@@ -104,10 +104,10 @@ object Test {
       val scrut = s1f(seq)
       
       for (Method(f, (trueList, falseList), descr) <- methodList) {
-        for (s <- trueList; val rhs = s2f(s))
+        for (s <- trueList; rhs = s2f(s))
           assertOne(scrut, rhs, f(scrut, rhs), descr)
         
-        for (s <- falseList; val rhs = s2f(s))
+        for (s <- falseList; rhs = s2f(s))
           assertOne(scrut, rhs, !f(scrut, rhs), "!(" + descr + ")")
       }
     }
