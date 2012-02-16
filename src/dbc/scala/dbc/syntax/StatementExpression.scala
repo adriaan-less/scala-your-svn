@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id:StatementExpression.scala 6853 2006-03-20 16:58:47 +0100 (Mon, 20 Mar 2006) dubochet $
 
 
 package scala.dbc
@@ -16,7 +15,7 @@ package syntax;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-abstract class StatementExpression {
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class StatementExpression {
 
   def toStatement: statement.Expression;
 
@@ -172,7 +171,7 @@ abstract class StatementExpression {
 
 }
 
-object StatementExpression {
+@deprecated(DbcIsDeprecated, "2.9.0") object StatementExpression {
 
   def not (se:StatementExpression): StatementExpression = new StatementExpression {
     val toStatement = new statement.expression.UnaryOperator {
@@ -197,7 +196,7 @@ object StatementExpression {
       };
     }
   }
-  
+
   abstract class StatementField extends StatementExpression {
     def fieldName: String;
     def tableName: Option[String] = None;
@@ -215,8 +214,8 @@ object StatementExpression {
   implicit def stringToStatementField (ef:String): StatementField = new StatementField {
     val fieldName = ef;
   }
-  
-  
-  
-  
+
+
+
+
 }
