@@ -1,3 +1,7 @@
+/* FJBG -- Fast Java Bytecode Generator
+ * Copyright 2002-2011 LAMP/EPFL
+ * @author  Michel Schinz
+ */
 
 package ch.epfl.lamp.fjbg;
 
@@ -24,8 +28,8 @@ public interface JAccessFlags {
     public static int ACC_SYNTHETIC = 0x1000;
     public static int ACC_ANNOTATION= 0x2000;
     public static int ACC_ENUM      = 0x4000;
-    
+
     // 1.5 specifics
     public static int ACC_BRIDGE    = 0x0040;
-    public static int ACC_VARARGS   = 0x0080;    
+    public static int ACC_VARARGS   = 0x0080;
 }
