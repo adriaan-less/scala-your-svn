@@ -13,8 +13,8 @@ package datatype;
 
 
 /** The SQL type for a truth value. */
-class Unknown extends DataType {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") class Unknown extends DataType {
+
   def isEquivalent(datatype: DataType) = datatype match {
     case dt: Unknown =>
       nativeTypeId == dt.nativeTypeId

@@ -10,14 +10,14 @@
 package scala.actors
 
 /**
- * The ReactorCanReply trait provides message send operations that
+ * Provides message send operations that
  * may result in a response from the receiver.
  *
  * @author Philipp Haller
  */
 private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
   _: ReplyReactor =>
-  
+
   type Future[+P] = scala.actors.Future[P]
 
   def !?(msg: Any): Any =
@@ -74,7 +74,7 @@ private[actors] trait ReactorCanReply extends CanReply[Any, Any] {
       def apply() = {
         if (!isSet)
           fvalue = Some(res.get)
-        
+
         fvalueTyped
       }
       def respond(k: A => Unit): Unit =

@@ -13,16 +13,16 @@ package statement
 
 
 /** An expression that calculates some value from fields. */
-abstract class Expression extends Relation {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Expression extends Relation {
+
   def fieldTypes: List[DataType] = Nil
-  
+
   /** A SQL-99 compliant string representation of the expression. */
   def sqlString: String = "SELECT " + sqlInnerString
-  
+
   /** A SQL-99 compliant string representation of the relation sub-
    *  statement. This only has a meaning inside another statement.
    */
   def sqlInnerString: String
-  
+
 }

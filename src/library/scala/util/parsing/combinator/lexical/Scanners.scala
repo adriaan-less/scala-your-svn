@@ -15,43 +15,37 @@ package lexical
 import token._
 import input._
 
-/** <p>
- *    This component provides core functionality for lexical parsers.
- *  </p>
- *  <p>
- *    See its subclasses {@see Lexical} and -- most interestingly
- *    {@see StdLexical}, for more functionality.
- *  </p>
+/** This component provides core functionality for lexical parsers.
  *
- *  @author Martin Odersky, Adriaan Moors 
+ *  See its subclasses [[scala.util.parsing.combinator.lexical.Lexical]] and -- most interestingly
+ *  [[scala.util.parsing.combinator.lexical.StdLexical]], for more functionality.
+ *
+ *  @author Martin Odersky, Adriaan Moors
  */
 trait Scanners extends Parsers {
   type Elem = Char
   type Token
-  
-  /** This token is produced by a scanner {@see Scanner} when scanning failed. */
+
+  /** This token is produced by a scanner `Scanner` when scanning failed. */
   def errorToken(msg: String): Token
-  
-  /** a parser that produces a token (from a stream of characters) */
+
+  /** A parser that produces a token (from a stream of characters). */
   def token: Parser[Token]
-  
-  /** a parser for white-space -- its result will be discarded */
+
+  /** A parser for white-space -- its result will be discarded. */
   def whitespace: Parser[Any]
 
-  /** <p>
-   *    <code>Scanner</code> is essentially(*) a parser that produces `Token's
-   *    from a stream of characters. The tokens it produces are typically
-   *    passed to parsers in <code>TokenParsers</code>.
-   *  </p>
-   *  <p>
-   *   Note: (*) <code>Scanner</code> is really a `Reader' of `Token's
-   *  </p>
+  /** `Scanner` is essentially¹ a parser that produces `Token`s
+   *  from a stream of characters. The tokens it produces are typically
+   *  passed to parsers in `TokenParsers`.
+   *
+   *  @note ¹ `Scanner` is really a `Reader` of `Token`s
    */
   class Scanner(in: Reader[Char]) extends Reader[Token] {
     /** Convenience constructor (makes a character reader out of the given string) */
     def this(in: String) = this(new CharArrayReader(in.toCharArray()))
     private val (tok, rest1, rest2) = whitespace(in) match {
-      case Success(_, in1) => 
+      case Success(_, in1) =>
         token(in1) match {
           case Success(tok, in2) => (tok, in1, in2)
           case ns: NoSuccess => (errorToken(ns.msg), ns.next, skip(ns.next))
