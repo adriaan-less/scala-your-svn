@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -25,30 +24,22 @@ abstract class BasicTransformer extends Function1[Node,Node]
    *  @return   ...
    */
   protected def unchanged(n: Node, ns: Seq[Node]) =
-    ns.length == 1 && (ns.head eq n)
+    ns.length == 1 && (ns.head == n)
 
   /** Call transform(Node) for each node in ns, append results
    *  to NodeBuffer.
    */
   def transform(it: Iterator[Node], nb: NodeBuffer): Seq[Node] =
-    it.foldLeft(nb)(_ ++= transform(_)) toArray
+    it.foldLeft(nb)(_ ++= transform(_)).toSeq
 
   /** Call transform(Node) to each node in ns, yield ns if nothing changes,
    *  otherwise a new sequence of concatenated results.
    */
   def transform(ns: Seq[Node]): Seq[Node] = {
-    def testForChange(n: Node): Option[Seq[Node]] = {
-      val n2 = transform(n)
-      if (unchanged(n, n2)) None
-      else Some(n2)
-    }
-    // if any node is changed by the transform, concatenate
-    // the unchanged nodes with a recursive call.
-    for ((n, i) <- ns.zipWithIndex ; n2 <- testForChange(n))
-      return (ns take i) ++ transform(n2)
-    
-    // no change, return original sequence
-    ns
+    val (xs1, xs2) = ns span (n => unchanged(n, transform(n)))
+
+    if (xs2.isEmpty) ns
+    else xs1 ++ transform(xs2.head) ++ transform(xs2.tail)
   }
 
   def transform(n: Node): Seq[Node] = {
@@ -57,9 +48,9 @@ abstract class BasicTransformer extends Function1[Node,Node]
       case _          =>
         val ch = n.child
         val nch = transform(ch)
-        
+
         if (ch eq nch) n
-        else           Elem(n.prefix, n.label, n.attributes, n.scope, nch:_*)
+        else           Elem(n.prefix, n.label, n.attributes, n.scope, nch: _*)
     }
     else n
   }
