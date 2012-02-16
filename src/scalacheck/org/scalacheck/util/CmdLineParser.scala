@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------*\
 **  ScalaCheck                                                             **
-**  Copyright (c) 2007-2010 Rickard Nilsson. All rights reserved.          **
+**  Copyright (c) 2007-2011 Rickard Nilsson. All rights reserved.          **
 **  http://www.scalacheck.org                                              **
 **                                                                         **
 **  This software is released under the terms of the Revised BSD License.  **
@@ -89,6 +89,6 @@ trait CmdLineParser extends Parsers {
     }
   }
 
-  def parseArgs[T](args: Array[String])(f: OptMap => T) = 
+  def parseArgs[T](args: Array[String])(f: OptMap => T) =
     phrase(options map f)(new ArgsReader(args,0))
 }

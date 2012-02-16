@@ -6,19 +6,15 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.collection
 
 import generic._
 
-/** <p>
- *    This trait implements a proxy for iterable objects. It forwards
- *    all calls to a different iterable object.
- *  </p>
+/** This trait implements a proxy for iterable objects. It forwards all calls
+ *  to a different iterable object.
  *
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   2.8
  */
-trait IterableProxy[+A] extends Iterable[A] with IterableProxyLike[A, Iterable[A]] 
+trait IterableProxy[+A] extends Iterable[A] with IterableProxyLike[A, Iterable[A]]
