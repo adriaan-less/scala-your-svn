@@ -193,7 +193,7 @@ object FancyTailCalls {
   val f2 = new FancyTailCalls
 }
 
-object PolyObject extends Application {
+object PolyObject extends App {
   def tramp[A](x: Int): Int = 
     if (x > 0)
       tramp[A](x - 1)
@@ -295,7 +295,7 @@ object Test {
     while (!stop) {
       try {
         calibrator.f(n, n);
-        if (n >= Math.MAX_INT / 2) error("calibration failure");
+        if (n >= Int.MaxValue / 2) error("calibration failure");
         n = 2 * n;
       } catch {
         case exception: compat.Platform.StackOverflowError => stop = true

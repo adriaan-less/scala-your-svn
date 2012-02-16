@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -14,7 +14,7 @@ package scala.ref
  */
 class WeakReference[+T <: AnyRef](value: T, queue: ReferenceQueue[T]) extends ReferenceWrapper[T] {
   def this(value: T) = this(value, null)
-  val underlying: java.lang.ref.WeakReference[_ <: T] = 
+  val underlying: java.lang.ref.WeakReference[_ <: T] =
     new WeakReferenceWithWrapper[T](value, queue, this)
 }
 
