@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.dbc
@@ -17,21 +16,21 @@ import java.sql.Types._;
 import java.math.BigInteger;
 import java.math.BigDecimal;
 
-object Factory {
+@deprecated(DbcIsDeprecated, "2.9.0") object Factory {
 
   final val java_lang_Integer_SIZE = 32;
   final val java_lang_Long_SIZE    = 64;
 
-  /** Returns a mullable property formated as a boolean option */
+  /** Returns a nullable property formatted as a boolean option */
   def isNullable (metadata:java.sql.ResultSetMetaData, index:Int): Option[scala.Boolean] =
     metadata.isNullable(index) match {
       case java.sql.ResultSetMetaData.columnNoNulls => Some(false);
       case java.sql.ResultSetMetaData.columnNullable => Some(true);
       case java.sql.ResultSetMetaData.columnNullableUnknown => None;
     }
-  
+
   /** Returns the binary precision for an integer field. This should only be
-   * used to find precision for integer numbers. It assumes that 
+   * used to find precision for integer numbers. It assumes that
    * bytes cannot be used partially (result % 8 = 0). */
   def bytePrecision (precision:Int, signed:scala.Boolean, safe:scala.Boolean): Int = {
     val decimalPrecision = precision + (if (safe) 1 else 0);
@@ -59,9 +58,9 @@ object Factory {
       case Pair(false,dp) if (dp <= 37) => 120
       case Pair(_,dp) if (dp <= 39) => 128
       case _ => java.lang.Integer.MAX_VALUE
-    } 
+    }
   }
-  
+
   def create (metadata:java.sql.ResultSetMetaData, index:Int): DataType = {
     metadata.getColumnType(index) match {
       /* Boolean data types. */
@@ -235,17 +234,17 @@ object Factory {
       }
       /* Unsupported data types. */
       case REF | ARRAY | STRUCT =>
-        error ("I don't support composite data types yet.");
+        sys.error ("I don't support composite data types yet.");
       case DATALINK | DISTINCT | JAVA_OBJECT | NULL =>
-        error ("I won't support strange data types.");
+        sys.error ("I won't support strange data types.");
       /* Unsupported binary string data types. */
       case BINARY | BLOB | LONGVARBINARY | VARBINARY =>
-        error ("I don't support binary string data types yet.");
+        sys.error ("I don't support binary string data types yet.");
       /* Unsupported date and time data types. */
       case DATE | TIME | TIMESTAMP =>
-        error ("I don't support date and time data types yet.");
+        sys.error ("I don't support date and time data types yet.");
       /* Default case */
-      case x => error ("I don't know about this ("+metadata.getColumnTypeName(index)+") JDBC type.")
+      case x => sys.error ("I don't know about this ("+metadata.getColumnTypeName(index)+") JDBC type.")
     }
   }
 }
