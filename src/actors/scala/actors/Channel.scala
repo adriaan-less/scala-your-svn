@@ -6,32 +6,28 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala.actors
 
 import scala.concurrent.SyncVar
 
 /**
- *  This class is used to pattern match on values that were sent
- *  to some channel <code>Chan<sub>n</sub></code> by the current
- *  actor <code>self</code>.
- * 
- *  The following example demonstrates its usage:
- *  {{{
+ * Used to pattern match on values that were sent to some channel `Chan,,n,,`
+ * by the current actor `self`.
+ *
+ *  @example {{{
  *  receive {
- *    <b>case</b> Chan1 ! msg1 => ...
- *    <b>case</b> Chan2 ! msg2 => ...
+ *    case Chan1 ! msg1 => ...
+ *    case Chan2 ! msg2 => ...
  *  }
  *  }}}
- * 
+ *
  * @author Philipp Haller
  */
 case class ! [a](ch: Channel[a], msg: a)
 
 /**
- * This class provides a means for typed communication among
- * actors. Only the actor creating an instance of a
- * <code>Channel</code> may receive from it.
+ * Provides a means for typed communication among actors. Only the
+ * actor creating an instance of a `Channel` may receive from it.
  *
  * @author Philipp Haller
  *

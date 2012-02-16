@@ -7,12 +7,13 @@ package scala.tools.nsc
 package ast.parser
 
 import scala.collection.mutable
-import mutable.{ Buffer, ArrayBuffer, ListBuffer, HashMap }
+import mutable.{ Buffer, ArrayBuffer, ListBuffer }
 import scala.util.control.ControlThrowable
 import scala.tools.nsc.util.{SourceFile,CharArrayReader}
 import scala.xml.{ Text, TextBuffer }
+import scala.xml.parsing.MarkupParserCommon
 import scala.xml.Utility.{ isNameStart, isNameChar, isSpace }
-import util.Chars.{ SU, LF }
+import scala.reflect.internal.Chars.{ SU, LF }
 
 // XXX/Note: many/most of the functions in here are almost direct cut and pastes
 // from another file - scala.xml.parsing.MarkupParser, it looks like.
@@ -32,7 +33,7 @@ import util.Chars.{ SU, LF }
  */
 trait MarkupParsers {
   self: Parsers =>
-  
+
   case object MissingEndTagControl extends ControlThrowable {
     override def getMessage = "start tag was here: "
   }
@@ -47,20 +48,20 @@ trait MarkupParsers {
 
   import global._
 
-  class MarkupParser(parser: SourceFileParser, final val preserveWS: Boolean) extends scala.xml.parsing.MarkupParserCommon {
+  class MarkupParser(parser: SourceFileParser, final val preserveWS: Boolean) extends MarkupParserCommon {
 
     import Tokens.{ EMPTY, LBRACE, RBRACE }
-    
+
     type PositionType = Position
     type InputType    = CharArrayReader
     type ElementType  = Tree
     type AttributesType = mutable.Map[String, Tree]
     type NamespaceType = Any  // namespaces ignored
-    
+
     def mkAttributes(name: String, other: NamespaceType): AttributesType = xAttributes
-    
+
     val eof = false
-    
+
     def truncatedError(msg: String): Nothing = throw TruncatedXMLControl
     def xHandleError(that: Char, msg: String) =
       if (ch == SU) throw TruncatedXMLControl
@@ -76,10 +77,13 @@ trait MarkupParsers {
     var tmppos : Position = NoPosition
     def ch = input.ch
     /** this method assign the next character to ch and advances in input */
-    def nextch = { val result = input.ch; input.nextChar(); result } 
-    def ch_returning_nextch = nextch
-    
-    def mkProcInstr(position: Position, name: String, text: String): Tree =
+    def nextch() { input.nextChar() }
+
+    protected def ch_returning_nextch: Char = {
+      val result = ch; input.nextChar(); result
+    }
+
+    def mkProcInstr(position: Position, name: String, text: String): ElementType =
       parser.symbXMLBuilder.procInstr(position, name, text)
 
     var xEmbeddedBlock = false
@@ -87,7 +91,7 @@ trait MarkupParsers {
     private var debugLastStartElement = new mutable.Stack[(Int, String)]
     private def debugLastPos = debugLastStartElement.top._1
     private def debugLastElem = debugLastStartElement.top._2
-    
+
     private def errorBraces() = {
       reportSyntaxError("in XML content, please use '}}' to express '}'")
       throw ConfusedAboutBracesControl
@@ -98,7 +102,7 @@ trait MarkupParsers {
     }
 
     /** checks whether next character starts a Scala block, if yes, skip it.
-     * @return true if next character starts a scala block 
+     * @return true if next character starts a scala block
      */
     def xCheckEmbeddedBlock: Boolean = {
       // attentions, side-effect, used in xText
@@ -113,8 +117,8 @@ trait MarkupParsers {
      *                      | `{` scalablock `}`
      */
     def xAttributes = {
-      val aMap = new HashMap[String, Tree]()
-      
+      val aMap = mutable.LinkedHashMap[String, Tree]()
+
       while (isNameStart(ch)) {
         val start = curOffset
         val key = xName
@@ -124,13 +128,13 @@ trait MarkupParsers {
         val value: Tree = ch match {
           case '"' | '\'' =>
             val tmp = xAttributeValue(ch_returning_nextch)
-            
+
             try handle.parseAttribute(r2p(start, mid, curOffset), tmp)
             catch {
-              case e: RuntimeException => 
+              case e: RuntimeException =>
                 errorAndResult("error parsing attribute value", parser.errorTermTree)
             }
-          
+
           case '{'  =>
             nextch
             xEmbeddedExpr
@@ -180,11 +184,11 @@ trait MarkupParsers {
       val toAppend =
         if (preserveWS) Seq(txt)
         else TextBuffer.fromString(txt).toText map (_.text)
-      
+
       toAppend foreach (t => ts append handle.text(pos, t))
     }
 
-    /** adds entity/character to ts as side-effect 
+    /** adds entity/character to ts as side-effect
      *  @precond ch == '&'
      */
     def content_AMP(ts: ArrayBuffer[Tree]) {
@@ -200,7 +204,7 @@ trait MarkupParsers {
           xToken(';')
           handle.entityRef(tmppos, n)
       }
-      
+
       ts append toAppend
     }
 
@@ -221,13 +225,13 @@ trait MarkupParsers {
     private def content_LT(ts: ArrayBuffer[Tree]): Boolean = {
       if (ch == '/')
         return true   // end tag
-      
+
       val toAppend = ch match {
         case '!'    => nextch ; if (ch =='[') xCharData else xComment // CDATA or Comment
         case '?'    => nextch ; xProcInstr                            // PI
         case _      => element                                        // child node
       }
-      
+
       ts append toAppend
       false
     }
@@ -244,7 +248,7 @@ trait MarkupParsers {
             case '<'  => nextch ; if (content_LT(ts)) return ts
             // either the character '{' or an embedded scala block }
             case '{'  => content_BRACE(tmppos, ts)  // }
-            // EntityRef or CharRef 
+            // EntityRef or CharRef
             case '&'  => content_AMP(ts)
             case SU   => return ts
             // text content - here xEmbeddedBlock might be true
@@ -285,17 +289,17 @@ trait MarkupParsers {
     /** parse character data.
      *  precondition: xEmbeddedBlock == false (we are not in a scala block)
      */
-    def xText: String = {
+    private def xText: String = {
       assert(!xEmbeddedBlock, "internal error: encountered embedded block")
       val buf = new StringBuilder
       def done = buf.toString
-      
+
       while (ch != SU) {
         if (ch == '}') {
           if (charComingAfter(nextch) == '}') nextch
           else errorBraces()
         }
-        
+
         buf append ch
         nextch
         if (xCheckEmbeddedBlock || ch == '<' ||  ch == '&')
@@ -303,7 +307,7 @@ trait MarkupParsers {
       }
       done
     }
-    
+
     /** Some try/catch/finally logic used by xLiteral and xLiteralPattern.  */
     private def xLiteralCommon(f: () => Tree, ifTruncated: String => Unit): Tree = {
       try return f()
@@ -316,10 +320,10 @@ trait MarkupParsers {
           parser.syntaxError(debugLastPos, "missing end tag in XML literal for <%s>" format debugLastElem)
       }
       finally parser.in resume Tokens.XMLSTART
-      
+
       parser.errorTermTree
     }
-      
+
     /** Use a lookahead parser to run speculative body, and return the first char afterward. */
     private def charComingAfter(body: => Unit): Char = {
       try {
@@ -337,13 +341,13 @@ trait MarkupParsers {
       () => {
         input = parser.in
         handle.isPattern = false
-      
+
         val ts = new ArrayBuffer[Tree]
         val start = curOffset
         tmppos = o2p(curOffset)    // Iuli: added this line, as it seems content_LT uses tmppos when creating trees
         content_LT(ts)
-      
-        // parse more XML ?        
+
+        // parse more XML ?
         if (charComingAfter(xSpaceOpt) == '<') {
           xSpaceOpt
           while (ch == '<') {
@@ -361,7 +365,7 @@ trait MarkupParsers {
       msg => parser.incompleteInputError(msg)
     )
 
-    /** @see xmlPattern. resynchronizes after successful parse 
+    /** @see xmlPattern. resynchronizes after successful parse
      *  @return this xml pattern
      */
     def xLiteralPattern: Tree = xLiteralCommon(
@@ -385,7 +389,7 @@ trait MarkupParsers {
       }
       if (parser.in.token != RBRACE)
         reportSyntaxError(" expected end of Scala "+kind)
-      
+
       res
     }
 
@@ -396,15 +400,15 @@ trait MarkupParsers {
     def xScalaPatterns: List[Tree] = escapeToScala(parser.seqPatterns(), "pattern")
 
     def reportSyntaxError(pos: Int, str: String) = parser.syntaxError(pos, str)
-    def reportSyntaxError(str: String) = {
+    def reportSyntaxError(str: String) {
       reportSyntaxError(curOffset, "in XML literal: " + str)
-      nextch
+      nextch()
     }
 
     /** '<' xPattern  ::= Name [S] { xmlPattern | '{' pattern3 '}' } ETag
      *                  | Name [S] '/' '>'
      */
-    def xPattern: Tree = {      
+    def xPattern: Tree = {
       var start = curOffset
       val qname = xName
       debugLastStartElement.push((start, qname))
@@ -414,7 +418,7 @@ trait MarkupParsers {
       val isEmptyTag = (ch == '/') && { nextch ; true }
       xToken('>')
 
-      if (!isEmptyTag) {        
+      if (!isEmptyTag) {
         // recurses until it hits a termination condition, then returns
         def doPattern: Boolean = {
           val start1 = curOffset
@@ -424,17 +428,17 @@ trait MarkupParsers {
               nextch
               if (ch != '/') ts append xPattern   // child
               else return false                   // terminate
-              
+
             case '{'  => // embedded Scala patterns
               while (ch == '{') {
                 nextch
                 ts ++= xScalaPatterns
               }
               assert(!xEmbeddedBlock, "problem with embedded block")
-              
+
             case SU   =>
               throw TruncatedXMLControl
-              
+
             case _    => // text
               appendText(r2p(start1, start1, curOffset), ts, xText)
               // here xEmbeddedBlock might be true:
@@ -442,12 +446,12 @@ trait MarkupParsers {
           }
           true
         }
-        
+
         while (doPattern) { }  // call until false
         xEndTag(qname)
         debugLastStartElement.pop
       }
-      
+
       handle.makeXMLpat(r2p(start, start, curOffset), qname, ts)
     }
   } /* class MarkupParser */

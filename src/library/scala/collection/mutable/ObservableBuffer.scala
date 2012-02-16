@@ -23,9 +23,9 @@ import script._
  *  @since   1
  */
 trait ObservableBuffer[A] extends Buffer[A] with Publisher[Message[A] with Undoable]
-{ 
+{
   type Pub <: ObservableBuffer[A]
-  
+
   abstract override def +=(element: A): this.type = {
     super.+=(element)
     publish(new Include(End, element) with Undoable {
@@ -33,7 +33,12 @@ trait ObservableBuffer[A] extends Buffer[A] with Publisher[Message[A] with Undoa
     })
     this
   }
-  
+
+  abstract override def ++=(xs: TraversableOnce[A]): this.type = {
+    for (x <- xs) this += x
+    this
+  }
+
   abstract override def +=:(element: A): this.type = {
     super.+=:(element)
     publish(new Include(Start, element) with Undoable {
@@ -46,7 +51,7 @@ trait ObservableBuffer[A] extends Buffer[A] with Publisher[Message[A] with Undoa
     val oldelement = apply(n)
     super.update(n, newelement)
     publish(new Update(Index(n), newelement) with Undoable {
-      def undo { update(n, oldelement) }
+      def undo() { update(n, oldelement) }
     })
   }
 
@@ -54,15 +59,15 @@ trait ObservableBuffer[A] extends Buffer[A] with Publisher[Message[A] with Undoa
     val oldelement = apply(n)
     super.remove(n)
     publish(new Remove(Index(n), oldelement) with Undoable {
-      def undo { insert(n, oldelement) }
+      def undo() { insert(n, oldelement) }
     })
     oldelement
   }
 
   abstract override def clear(): Unit = {
     super.clear
-    publish(new Reset with Undoable { 
-      def undo { throw new UnsupportedOperationException("cannot undo") }
+    publish(new Reset with Undoable {
+      def undo() { throw new UnsupportedOperationException("cannot undo") }
     })
   }
 }

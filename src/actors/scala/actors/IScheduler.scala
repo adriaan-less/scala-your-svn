@@ -10,12 +10,10 @@
 package scala.actors
 
 /**
- * The <code>IScheduler</code> trait provides a common interface
- * for all schedulers used to execute actor tasks.
+ * A common interface for all schedulers used to execute actor tasks.
  *
- * Subclasses of <code>Actor</code> that override its
- * <code>scheduler</code> member must provide
- * an <code>IScheduler</code> implementation.
+ * Subclasses of `Actor` that override its `scheduler` member must provide
+ * an `IScheduler` implementation.
  *
  * @author Philipp Haller
  */
@@ -27,7 +25,7 @@ trait IScheduler {
    */
   def execute(fun: => Unit): Unit
 
-  /** Submits a <code>Runnable</code> for execution.
+  /** Submits a `Runnable` for execution.
    *
    *  @param  task  the task to be executed
    */
@@ -36,12 +34,13 @@ trait IScheduler {
   def executeFromActor(task: Runnable): Unit =
     execute(task)
 
-  /** Shuts down the scheduler.
-   */
+  /** Shuts down the scheduler. */
   def shutdown(): Unit
 
   /** When the scheduler is active, it can execute tasks.
-   */ 
+   *
+   * @return `'''true'''`, if the scheduler is active, otherwise false.
+   */
   def isActive: Boolean
 
   /** Registers a newly created actor with this scheduler.
@@ -52,31 +51,19 @@ trait IScheduler {
 
   /** Unregisters an actor from this scheduler, because it
    *  has terminated.
-   * 
+   *
    *  @param  a  the actor to be registered
    */
   def terminated(a: TrackedReactor): Unit
 
   /** Registers a closure to be executed when the specified
    *  actor terminates.
-   * 
+   *
    *  @param  a  the actor
    *  @param  f  the closure to be registered
    */
   def onTerminate(a: TrackedReactor)(f: => Unit): Unit
 
   def managedBlock(blocker: scala.concurrent.ManagedBlocker): Unit
-
-  @deprecated("this member is going to be removed in a future release")
-  def tick(a: Actor) {}
-
-  @deprecated("this member is going to be removed in a future release")
-  def onLockup(handler: () => Unit) {}
-
-  @deprecated("this member is going to be removed in a future release")
-  def onLockup(millis: Int)(handler: () => Unit) {}
-
-  @deprecated("this member is going to be removed in a future release")
-  def printActorDump {}
 
 }

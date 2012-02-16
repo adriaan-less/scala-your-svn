@@ -174,9 +174,9 @@ import ILGenerator._
 	// push size is either 0 (void Method) either 1
 	assert(arg.ReturnType != null, "No ReturnType: " + arg.DeclaringType + "::" + arg.Name)
 
-	val popush: Int = if (opcode == OpCode.Ldftn || 
-            opcode == OpCode.Ldvirtftn || 
-            opcode == OpCode.Jmp) 
+	val popush: Int = if (opcode == OpCode.Ldftn ||
+            opcode == OpCode.Ldvirtftn ||
+            opcode == OpCode.Jmp)
         {
            OpCode.PUSH_size(opcode.CEE_push) - OpCode.POP_size(opcode.CEE_pop)
         } else if (opcode == OpCode.Calli || opcode == OpCode.Callvirt) {
@@ -402,16 +402,20 @@ import ILGenerator._
      * sets the line of the source file corresponding to the next instruction
      */
     def setPosition(line: Int) {
-	if (line != 0)
-	    lineNums.put(lastLabel, Integer.toString(line))
+	    if (line != 0) lineNums.put(lastLabel, Integer.toString(line))
     }
 
     def setPosition(line: Int, filename: String) {
-	if (line != 0)
-	    lineNums.put(lastLabel, line + "  '" + filename + "'")
+	    if (line != 0) lineNums.put(lastLabel, line + "  '" + filename + "'")
     }
 
-    def getLocals(): Array[LocalBuilder] = localList.toArray
+    def setPosition(startLine: Int, endLine: Int, startCol: Int, endCol: Int, filename: String) {
+      val lineRange = startLine + "," + endLine
+      val colRange  = startCol  + "," + endCol
+	  lineNums.put(lastLabel, lineRange + ":" + colRange + "  '" + filename + "'")
+    }
+
+   def getLocals(): Array[LocalBuilder] = localList.toArray
 
     def getLabelIterator() = labelList.iterator
 
@@ -515,10 +519,10 @@ import ILGenerator._
 
 
 object ILGenerator {
-  
+
    val VOID: Type = Type.GetType("System.Void")
    val NO_LABEL: String = ""
-   
+
     private final class ExceptionStack {
         private val labels = new scala.collection.mutable.Stack[Label]()
         private val kinds = new scala.collection.mutable.Stack[Label]()
@@ -531,6 +535,6 @@ object ILGenerator {
         def peekLabel(): Label = labels.top
         def popLabel(): Label = { kinds.pop(); labels.pop() }
     }
-  
+
 }
 
