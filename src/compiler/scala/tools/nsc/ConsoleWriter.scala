@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2009 LAMP/EPFL
+ * Copyright 2006-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 
@@ -15,9 +14,9 @@ import java.io.Writer
  */
 class ConsoleWriter extends Writer {
   def close = flush
-  
+
   def flush = Console.flush
-  
+
   def write(cbuf: Array[Char], off: Int, len: Int) {
     if (len > 0)
       write(new String(cbuf.slice(off, off+len)))
