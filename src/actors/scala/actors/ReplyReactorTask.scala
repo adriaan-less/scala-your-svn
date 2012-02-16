@@ -10,23 +10,27 @@
 
 package scala.actors
 
-/** <p>
- *    The class <code>ReplyReactorTask</code>.
- *  </p>
- *
+/**
  *  @author Philipp Haller
+ *  @note   This class inherits a public var called 'reactor' from ReactorTask,
+ *  and also defines a constructor parameter which shadows it (which makes any
+ *  changes to the underlying var invisible.) I can't figure out what's supposed
+ *  to happen, so I renamed the constructor parameter to at least be less confusing.
  */
-private[actors] class ReplyReactorTask(reactor: ReplyReactor,
+private[actors] class ReplyReactorTask(replyReactor: ReplyReactor,
                                        fun: () => Unit,
                                        handler: PartialFunction[Any, Any],
                                        msg: Any)
-  extends ReactorTask(reactor, fun, handler, msg) {
+  extends ReactorTask(replyReactor, fun, handler, msg) {
 
   var saved: ReplyReactor = _
 
   protected override def beginExecution() {
     saved = Actor.tl.get
-    Actor.tl set reactor
+    // !!! If this is supposed to be setting the current contents of the
+    // inherited mutable var rather than always the value given in the constructor,
+    // then it should be changed to "set reactor".
+    Actor.tl set replyReactor
   }
 
   protected override def suspendExecution() {

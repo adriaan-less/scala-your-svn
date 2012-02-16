@@ -6,28 +6,27 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala
+
+import Specializable._
 
 /** Annotate type parameters on which code should be automatically
  *  specialized. For example:
- *  <code>
+ *  {{{
  *    class MyList[@specialized T] ...
- *  </code>
+ *  }}}
  *
  *  Type T can be specialized on a subset of the primitive types by
  *  specifying a list of primitive types to specialize at:
- *
- *  <code>
- *   class MyList[@specialized(Int, Double, Boolean) T] ..
- *  </code>
+ *  {{{
+ *    class MyList[@specialized(Int, Double, Boolean) T] ..
+ *  }}}
  *
  *  @since 2.8
  */
-class specialized(types: AnyValCompanion*) extends annotation.StaticAnnotation {
-  def this() {
-    this(Unit, Boolean, Byte, Short, Char, Int, Long, Float, Double)
-  }
+// class tspecialized[T](group: Group[T]) extends annotation.StaticAnnotation {
+ 
+class specialized(group: SpecializedGroup) extends annotation.StaticAnnotation {
+  def this(types: Specializable*) = this(new Group(types.toList))
+  def this() = this(Everything)
 }
-
