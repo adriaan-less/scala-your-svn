@@ -1,16 +1,18 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Stephane Micheloud
  */
-//$Id$
 
 package scala.man1
 
+/**
+ *  @author Lex Spoon
+ *  @version 1.0
+ */
 object fsc extends Command {
   import _root_.scala.tools.docutil.ManPage._
 
   protected def cn = new Error().getStackTrace()(0).getClassName()
-  override def lastModified = "January 18, 2007"
 
   val name = Section("NAME",
 
@@ -25,7 +27,7 @@ object fsc extends Command {
   val parameters = scalac.parameters
 
   val description = Section("DESCRIPTION",
-      
+
     "The "&MBold("fsc")&" tool submits Scala compilation jobs to " &
     "a compilation daemon. "&
     "The first time it is executed, the daemon is started automatically. "&
@@ -33,12 +35,12 @@ object fsc extends Command {
     "runs, the same daemon can be reused, thus resulting in a faster compilation. "&
     "The tool is especially effective when repeatedly compiling with the same "&
     "class paths, because the compilation daemon can reuse a compiler instance.",
-    
+
     "The compilation daemon is smart enough to flush its cached compiler "&
     "when the class path changes.  However, if the contents of the class path "&
     "change, for example due to upgrading a library, then the daemon "&
     "should be explicitly shut down with " & MBold("-shutdown") & ".",
-    
+
     "Note that the " & Link(MBold("scala"), "scala.html") & " script runner " &
     "will also use " &
     "the offline compiler by default, with the same advantages and caveats.")
@@ -64,15 +66,15 @@ object fsc extends Command {
           "is not needed.  Note that the hostname must be for a host that shares " &
           "the same filesystem."),
         Definition(
-          CmdOption("J", Argument("flag")),
-          "Pass <flag> directly to the Java VM for the compilation daemon.")
+          CmdOptionBound("J", Argument("flag")),
+          "Pass " & Mono(Argument("flag")) & " directly to the Java VM for the compilation daemon.")
     ))
 
   val example = Section("EXAMPLE",
 
       "The following session shows a typical speed up due to using the "&
       "offline compiler.",
-      
+
       CodeSample(
       """> fsc -verbose -d /tmp test.scala
         |\&...
@@ -121,11 +123,11 @@ object fsc extends Command {
         SeqPara(
           "Specify the options to be passed to the " & MBold("java") &
           " command defined by " & MBold("JAVACMD") & ".",
-        
+
           "With Java 1.5 (or newer) one may for example configure the " &
           "memory usage of the JVM as follows: " &
           Mono("JAVA_OPTS=\"-Xmx512M -Xms16M -Xss16M\""),
-        
+
           "With " & Link("GNU Java", "http://gcc.gnu.org/java/") & " one " &
           "may configure the memory usage of the GIJ as follows: " &
           Mono("JAVA_OPTS=\"--mx512m --ms16m\"")
@@ -147,7 +149,7 @@ object fsc extends Command {
 
   def manpage = new Document {
     title = command
-    date = lastModified
+    date = "January 2007"
     author = "Lex Spoon"
     version = "0.4"
     sections = List(

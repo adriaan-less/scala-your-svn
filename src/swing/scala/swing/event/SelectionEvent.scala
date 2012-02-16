@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -27,9 +26,9 @@ trait ListSelectionEvent extends SelectionEvent {
 case class SelectionChanged(override val source: Component) extends ComponentEvent with SelectionEvent
 
 object ListSelectionChanged {
-  def unapply[A](e: ListSelectionChanged[A]): Option[(ListView[A], Range, Boolean)] = 
+  def unapply[A](e: ListSelectionChanged[A]): Option[(ListView[A], Range, Boolean)] =
     Some((e.source, e.range, e.live))
 }
 
-class ListSelectionChanged[A](override val source: ListView[A], val range: Range, val live: Boolean) 
+class ListSelectionChanged[A](override val source: ListView[A], val range: Range, val live: Boolean)
   extends SelectionChanged(source) with ListEvent[A]
