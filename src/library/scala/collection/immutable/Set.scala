@@ -1,73 +1,74 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.collection.immutable
+package scala.collection
+package immutable
 
 import generic._
+import parallel.immutable.ParSet
 
-/** <p>
- *    A generic trait for immutable sets. Concrete set implementations have
- *    to provide functionality for the abstract methods in <code>Set</code>:
- *  </p>
- *  <pre>
- *    <b>def</b> contains(elem: A): Boolean
- *    <b>def</b> iterator: Iterator[A]
- *    <b>def</b> + (elem: A): This
- *    <b>def</b> - (elem: A): This</pre>
- *  <p>
- *    where <code>This</code> is the type of the set.
- *  </p>
+/** A generic trait for immutable sets.
+ *  $setNote
+ *  $setTags
  *
+ *  @since 1.0
  *  @author Matthias Zenger
  *  @author Martin Odersky
- *  @version 2.8
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
  */
-trait Set[A] extends Iterable[A] 
-                with collection.Set[A] 
-                with SetClass[A, Set]
-                with SetTemplate[A, Set[A]] { 
-  override def companion: Companion[Set] = Set
-  override def hashCode = (Set.hashSeed /: this)(_ * 41 + _.hashCode)
+trait Set[A] extends Iterable[A]
+//                with GenSet[A]
+                with scala.collection.Set[A]
+                with GenericSetTemplate[A, Set]
+                with SetLike[A, Set[A]]
+                with Parallelizable[A, ParSet[A]]
+{
+  override def companion: GenericCompanion[Set] = Set
+  override def toSet[B >: A]: Set[B] = this.asInstanceOf[Set[B]]
+  override def seq: Set[A] = this
+  protected override def parCombiner = ParSet.newCombiner[A] // if `immutable.SetLike` gets introduced, please move this there!
 }
 
-object Set extends SetFactory[Set] {
-  implicit def builderFactory[A]: BuilderFactory[A, Set[A], Coll] = setBuilderFactory[A]
-  override def empty[A]: Set[A] = new EmptySet[A]
-
-  private val hashSeed = "Set".hashCode 
+/** $factoryInfo
+ *  @define Coll immutable.Set
+ *  @define coll immutable set
+ */
+object Set extends ImmutableSetFactory[Set] {
+  /** $setCanBuildFromInfo */
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Set[A]] = setCanBuildFrom[A]
+  override def empty[A]: Set[A] = EmptySet.asInstanceOf[Set[A]]
 
   /** An optimized representation for immutable empty sets */
-  @serializable
-  class EmptySet[A] extends Set[A] {
+  private object EmptySet extends AbstractSet[Any] with Set[Any] with Serializable {
     override def size: Int = 0
-    def contains(elem: A): Boolean = false
-    def + (elem: A): Set[A] = new Set1(elem)
-    def - (elem: A): Set[A] = this
-    def iterator: Iterator[A] = Iterator.empty
-    override def foreach[U](f: A =>  U): Unit = {}
+    def contains(elem: Any): Boolean = false
+    def + (elem: Any): Set[Any] = new Set1(elem)
+    def - (elem: Any): Set[Any] = this
+    def iterator: Iterator[Any] = Iterator.empty
+    override def foreach[U](f: Any =>  U): Unit = {}
   }
-  
+
   /** An optimized representation for immutable sets of size 1 */
-  @serializable
-  class Set1[A](elem1: A) extends Set[A] {
+  @SerialVersionUID(1233385750652442003L)
+  class Set1[A] private[collection] (elem1: A) extends AbstractSet[A] with Set[A] with Serializable {
     override def size: Int = 1
-    def contains(elem: A): Boolean = 
+    def contains(elem: A): Boolean =
       elem == elem1
-    def + (elem: A): Set[A] = 
+    def + (elem: A): Set[A] =
       if (contains(elem)) this
       else new Set2(elem1, elem)
-    def - (elem: A): Set[A] = 
-      if (elem == elem1) new EmptySet[A] 
+    def - (elem: A): Set[A] =
+      if (elem == elem1) Set.empty
       else this
-    def iterator: Iterator[A] = 
+    def iterator: Iterator[A] =
       Iterator(elem1)
     override def foreach[U](f: A =>  U): Unit = {
       f(elem1)
@@ -75,19 +76,19 @@ object Set extends SetFactory[Set] {
   }
 
   /** An optimized representation for immutable sets of size 2 */
-  @serializable
-  class Set2[A](elem1: A, elem2: A) extends Set[A] {
+  @SerialVersionUID(-6443011234944830092L)
+  class Set2[A] private[collection] (elem1: A, elem2: A) extends AbstractSet[A] with Set[A] with Serializable {
     override def size: Int = 2
-    def contains(elem: A): Boolean = 
+    def contains(elem: A): Boolean =
       elem == elem1 || elem == elem2
-    def + (elem: A): Set[A] = 
+    def + (elem: A): Set[A] =
       if (contains(elem)) this
       else new Set3(elem1, elem2, elem)
-    def - (elem: A): Set[A] = 
+    def - (elem: A): Set[A] =
       if (elem == elem1) new Set1(elem2)
       else if (elem == elem2) new Set1(elem1)
       else this
-    def iterator: Iterator[A] = 
+    def iterator: Iterator[A] =
       Iterator(elem1, elem2)
     override def foreach[U](f: A =>  U): Unit = {
       f(elem1); f(elem2)
@@ -95,20 +96,20 @@ object Set extends SetFactory[Set] {
   }
 
   /** An optimized representation for immutable sets of size 3 */
-  @serializable
-  class Set3[A](elem1: A, elem2: A, elem3: A) extends Set[A] {
+  @SerialVersionUID(-3590273538119220064L)
+  class Set3[A] private[collection] (elem1: A, elem2: A, elem3: A) extends AbstractSet[A] with Set[A] with Serializable {
     override def size: Int = 3
-    def contains(elem: A): Boolean = 
+    def contains(elem: A): Boolean =
       elem == elem1 || elem == elem2 || elem == elem3
-    def + (elem: A): Set[A] = 
+    def + (elem: A): Set[A] =
       if (contains(elem)) this
       else new Set4(elem1, elem2, elem3, elem)
-    def - (elem: A): Set[A] = 
+    def - (elem: A): Set[A] =
       if (elem == elem1) new Set2(elem2, elem3)
       else if (elem == elem2) new Set2(elem1, elem3)
       else if (elem == elem3) new Set2(elem1, elem2)
       else this
-    def iterator: Iterator[A] = 
+    def iterator: Iterator[A] =
       Iterator(elem1, elem2, elem3)
     override def foreach[U](f: A =>  U): Unit = {
       f(elem1); f(elem2); f(elem3)
@@ -116,21 +117,21 @@ object Set extends SetFactory[Set] {
   }
 
   /** An optimized representation for immutable sets of size 4 */
-  @serializable
-  class Set4[A](elem1: A, elem2: A, elem3: A, elem4: A) extends Set[A] {
+  @SerialVersionUID(-3622399588156184395L)
+  class Set4[A] private[collection] (elem1: A, elem2: A, elem3: A, elem4: A) extends AbstractSet[A] with Set[A] with Serializable {
     override def size: Int = 4
-    def contains(elem: A): Boolean = 
+    def contains(elem: A): Boolean =
       elem == elem1 || elem == elem2 || elem == elem3 || elem == elem4
-    def + (elem: A): Set[A] = 
+    def + (elem: A): Set[A] =
       if (contains(elem)) this
       else new HashSet[A] + (elem1, elem2, elem3, elem4, elem)
-    def - (elem: A): Set[A] = 
+    def - (elem: A): Set[A] =
       if (elem == elem1) new Set3(elem2, elem3, elem4)
       else if (elem == elem2) new Set3(elem1, elem3, elem4)
       else if (elem == elem3) new Set3(elem1, elem2, elem4)
       else if (elem == elem4) new Set3(elem1, elem2, elem3)
       else this
-    def iterator: Iterator[A] = 
+    def iterator: Iterator[A] =
       Iterator(elem1, elem2, elem3, elem4)
     override def foreach[U](f: A =>  U): Unit = {
       f(elem1); f(elem2); f(elem3); f(elem4)

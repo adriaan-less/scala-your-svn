@@ -1,18 +1,19 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
-package scala.tools.nsc.symtab.classfile
+package scala.tools.nsc
+package symtab
+package classfile
 
 import java.lang.Float.intBitsToFloat
 import java.lang.Double.longBitsToDouble
 
 import scala.tools.nsc.io.AbstractFile
 
-/** 
+/**
  * This class reads files byte per byte. Only used by ClassFileParser
  *
  * @author Philippe Altherr

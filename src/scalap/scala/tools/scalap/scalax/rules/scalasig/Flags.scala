@@ -1,13 +1,16 @@
-package scala.tools.scalap.scalax.rules.scalasig
+package scala.tools.scalap
+package scalax
+package rules
+package scalasig
 
 trait Flags {
   def hasFlag(flag : Long) : Boolean
-  
+
   def isImplicit = hasFlag(0x00000001)
   def isFinal = hasFlag(0x00000002)
   def isPrivate = hasFlag(0x00000004)
   def isProtected = hasFlag(0x00000008)
-    
+
   def isSealed = hasFlag(0x00000010)
   def isOverride = hasFlag(0x00000020)
   def isCase = hasFlag(0x00000040)
@@ -48,7 +51,6 @@ trait Flags {
   def isParamAccessor = hasFlag(0x20000000)
 
   def isModuleVar = hasFlag(0x40000000) // for variables: is the variable caching a module value
-  def isSyntheticMethod = hasFlag(0x40000000) // for methods: synthetic method, but without SYNTHETIC flag
   def isMonomorphic = hasFlag(0x40000000) // for type symbols: does not have type parameters
   def isLazy = hasFlag(0x80000000L) // symbol is a lazy val. can't have MUTABLE unless transformed by typer
 

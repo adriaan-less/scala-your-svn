@@ -1,25 +1,38 @@
-package scala.collection.immutable
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
+
+package scala.collection
+package immutable
 
 import generic._
+import mutable.Builder
 
-/** A subtrait of Traversable in package collection which represents traversables
- *  that cannot be mutated.
- *  !!! todo: revise equality
- *  @author  Matthias Zenger
- *  @author   Martin Odersky
- *  @version 2.8
+/** A trait for traversable collections that are guaranteed immutable.
+ *  $traversableInfo
+ *  @define mutability immutable
  */
-trait Traversable[+A] extends collection.Traversable[A] 
-                         with TraversableClass[A, Traversable] 
-                         with TraversableTemplate[A, Traversable[A]]
-                         with Immutable { 
-  override def companion: Companion[Traversable] = Traversable
+trait Traversable[+A] extends scala.collection.Traversable[A]
+//                         with GenTraversable[A]
+                         with GenericTraversableTemplate[A, Traversable]
+                         with TraversableLike[A, Traversable[A]]
+                         with Immutable {
+  override def companion: GenericCompanion[Traversable] = Traversable
+  override def seq: Traversable[A] = this
 }
 
-/* A factory object for the trait `Traversable` */
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ *  @define coll immutable traversable collection
+ *  @define Coll immutable.Traversable
+ */
 object Traversable extends TraversableFactory[Traversable] {
-  implicit def builderFactory[A]: BuilderFactory[A, Traversable[A], Coll] = new VirtualBuilderFactory[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   def newBuilder[A]: Builder[A, Traversable[A]] = new mutable.ListBuffer
 }
-
-  

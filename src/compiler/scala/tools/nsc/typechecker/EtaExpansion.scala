@@ -1,10 +1,10 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
 
 import scala.collection.mutable.ListBuffer
 import symtab.Flags._
@@ -19,12 +19,13 @@ trait EtaExpansion { self: Analyzer =>
   import global._
 
   object etaExpansion {
+    private def isMatch(vparam: ValDef, arg: Tree) = arg match {
+      case Ident(name)  => vparam.name == name
+      case _            => false
+    }
+
     def unapply(tree: Tree): Option[(List[ValDef], Tree, List[Tree])] = tree match {
-      case Function(vparams, Apply(fn, args)) 
-      if (List.forall2(vparams, args) {
-        case (vparam, Ident(name)) => vparam.name == name
-        case _ => false
-      }) => 
+      case Function(vparams, Apply(fn, args)) if (vparams corresponds args)(isMatch) =>
         Some((vparams, fn, args))
       case _ =>
         None
@@ -48,20 +49,11 @@ trait EtaExpansion { self: Analyzer =>
    */
   def etaExpand(unit : CompilationUnit, tree: Tree): Tree = {
     val tpe = tree.tpe
-    val symbolHash = ""
     var cnt = 0 // for NoPosition
-    def freshName(pos : util.Position, n : Int) = {
+    def freshName() = {
       cnt += 1
-      newTermName(unit.fresh.newName(pos, "eta$" + (cnt - 1) + "$"))
-      // Note - the comment below made more sense before I ripped inIDE out -
-      // I leave it in to give context to the todo: at the bottom.
-      // Martin to Sean: I removed the 
-      // else if (n == 0) branch and changed `n' in the line above to `(cnt - 1)'
-      // this was necessary because otherwise curried eta-expansions would get the same
-      // symbol. An example which failes test/files/run/Course-2002-02.scala
-      // todo: review and get rid of the `n' argument (which is unused right now).
+      unit.freshTermName("eta$" + (cnt - 1) + "$")
     }
-    // { cnt = cnt + 1; newTermName("eta$" + cnt) }
     val defs = new ListBuffer[Tree]
 
     /** Append to <code>defs</code> value definitions for all non-stable
@@ -72,11 +64,14 @@ trait EtaExpansion { self: Analyzer =>
      */
     def liftoutPrefix(tree: Tree): Tree = {
       def liftout(tree: Tree): Tree =
-        if (treeInfo.isPureExpr(tree)) tree
+        if (treeInfo.isExprSafeToInline(tree)) tree
         else {
-          val vname: Name = freshName(tree.pos, 0)
-          defs += atPos(tree.pos)(ValDef(Modifiers(SYNTHETIC), vname, TypeTree(), tree))
-          Ident(vname) setPos tree.pos.toSynthetic
+          val vname: Name = freshName()
+          // Problem with ticket #2351 here
+          defs += atPos(tree.pos) {
+            ValDef(Modifiers(SYNTHETIC), vname.toTermName, TypeTree(), tree)
+          }
+          Ident(vname) setPos tree.pos.focus
         }
       val tree1 = tree match {
         // a partial application using named arguments has the following form:
@@ -85,12 +80,12 @@ trait EtaExpansion { self: Analyzer =>
         //   [...]
         //   val x$n = argn
         //   qual$1.fun(x$1, ..)..(.., x$n) }
-        // Eta-expansion has to be performed on `fun'
+        // Eta-expansion has to be performed on `fun`
         case Block(stats, fun) =>
           defs ++= stats
           liftoutPrefix(fun)
         case Apply(fn, args) =>
-          treeCopy.Apply(tree, liftoutPrefix(fn), List.mapConserve(args)(liftout)) setType null
+          treeCopy.Apply(tree, liftoutPrefix(fn), args mapConserve (liftout)) setType null
         case TypeApply(fn, args) =>
           treeCopy.TypeApply(tree, liftoutPrefix(fn), args) setType null
         case Select(qual, name) =>
@@ -98,23 +93,18 @@ trait EtaExpansion { self: Analyzer =>
         case Ident(name) =>
           tree
       }
-      if (tree1 ne tree) tree1 setPos makeTransparent(tree1.pos)
-      tree1 
+      if (tree1 ne tree) tree1 setPos tree1.pos.makeTransparent
+      tree1
     }
 
     /** Eta-expand lifted tree.
-     *
-     *  @param tree ...
-     *  @param tpe  ...
-     *  @return     ...
      */
     def expand(tree: Tree, tpe: Type): Tree = tpe match {
-      case mt: ImplicitMethodType =>
-        tree
-      case MethodType(paramSyms, restpe) =>
+      case mt @ MethodType(paramSyms, restpe) if !mt.isImplicit =>
         val params = paramSyms map (sym =>
-          ValDef(Modifiers(SYNTHETIC | PARAM), sym.name, TypeTree(sym.tpe), EmptyTree))
-        atPos(makeTransparent(tree.pos)) {
+          ValDef(Modifiers(SYNTHETIC | PARAM),
+                 sym.name.toTermName, TypeTree(sym.tpe) , EmptyTree))
+        atPos(tree.pos.makeTransparent) {
           Function(params, expand(Apply(tree, params map gen.paramToArg), restpe))
         }
       case _ =>

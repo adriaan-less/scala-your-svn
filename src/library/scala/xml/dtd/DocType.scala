@@ -1,15 +1,14 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
-
-package scala.xml.dtd
+package scala.xml
+package dtd
 
 /** An XML node for document type declaration.
  *
@@ -26,10 +25,10 @@ case class DocType(name: String, extID: ExternalID, intSubset: Seq[dtd.Decl])
 
   /** returns "&lt;!DOCTYPE + name + extID? + ("["+intSubSet+"]")? >" */
   final override def toString() = {
-    def intString = 
+    def intString =
       if (intSubset.isEmpty) ""
       else intSubset.mkString("[", "", "]")
-      
+
     """<!DOCTYPE %s %s%s>""".format(name, extID.toString, intString)
   }
 }

@@ -1,41 +1,30 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
-// $Id$
-
-package scala.tools.nsc.backend
+package scala.tools.nsc
+package backend
 
 import scala.tools.nsc.backend.icode._
+import scala.collection.{ mutable, immutable }
 
-import scala.collection.mutable.{Map, HashMap}
-
-/**
- * Scala primitive operations are represented as methods in Any and
- * AnyVal subclasses. Here we demultiplex them by providing a mapping
- * from their symbols to integers. Different methods exist for
- * different value types, but with the same meaning (like plus, minus,
- * etc.). They will all be mapped to the same int.
+/** Scala primitive operations are represented as methods in `Any` and
+ *  `AnyVal` subclasses. Here we demultiplex them by providing a mapping
+ *  from their symbols to integers. Different methods exist for
+ *  different value types, but with the same meaning (like plus, minus,
+ *  etc.). They will all be mapped to the same int.
  *
- * <p>Note: The three equal methods have the following semantics:</p>
- * <ul>
- *   <li>
- *     <code>"=="</code> checks for null, and if non-null, calls
- *     <code>java.lang.Object.equals</code><br/>
- *     <code>(class: Any; modifier: final)</code>. Primitive: EQ
- *   </li>
- *   <li>
- *     <code>"eq"</code> usual reference comparison<br/>
- *     <code>(class: AnyRef; modifier: final)</code>. Primitive: ID
- *   </li>
- *   <li>
- *     <code>"equals"</code> user-defined equality (Java semantics)<br/>
- *     <code>(class: Object; modifier: none)</code>. Primitive: EQUALS
- *   </li>
- * </ul>
+ *  Note: The three equal methods have the following semantics:
+ *  - `"=="` checks for `null`, and if non-null, calls
+ *    `java.lang.Object.equals`
+ *    `(class: Any; modifier: final)`. Primitive: `EQ`
+ *  - `"eq"` usual reference comparison
+ *    `(class: AnyRef; modifier: final)`. Primitive: `ID`
+ *  - `"equals"` user-defined equality (Java semantics)
+ *    `(class: Object; modifier: none)`. Primitive: `EQUALS`
  *
- * Inspired from the scalac compiler.
+ * Inspired from the `scalac` compiler.
  */
 abstract class ScalaPrimitives {
   val global: Global
@@ -91,14 +80,13 @@ abstract class ScalaPrimitives {
   // Any operations
   final val IS = 80                            // x.is[y]
   final val AS = 81                            // x.as[y]
-  final val ISERASED = 85                      // x.is$erased[y]
-  final val ASERASED = 86                      // x.as$erased[y]
+  final val HASH = 87                          // x.##
 
   // AnyRef operations
   final val SYNCHRONIZED = 90                  // x.synchronized(y)
 
   // String operations
-  final val CONCAT = 100                       // String.valueOf(x)+String.valueOf(y) 
+  final val CONCAT = 100                       // String.valueOf(x)+String.valueOf(y)
 
   // coercions
   final val COERCE = 101
@@ -202,18 +190,17 @@ abstract class ScalaPrimitives {
   final val D2F = 265                          // RunTime.d2f(x)
   final val D2D = 266                          // RunTime.d2d(x)
 
-
-  private var primitives: Map[Symbol, Int] = _
+  private val primitives: mutable.Map[Symbol, Int] = new mutable.HashMap()
 
   /** Initialize the primitive map */
-  def init {
-    primitives = new HashMap()
-
+  def init() {
+    primitives.clear()
     // scala.Any
     addPrimitive(Any_==, EQ)
     addPrimitive(Any_!=, NE)
     addPrimitive(Any_isInstanceOf, IS)
     addPrimitive(Any_asInstanceOf, AS)
+    addPrimitive(Any_##, HASH)
 
     // java.lang.Object
     addPrimitive(Object_eq, ID)
@@ -270,7 +257,7 @@ abstract class ScalaPrimitives {
     addPrimitives(ByteClass, nme.UNARY_+, POS)
     addPrimitives(ByteClass, nme.UNARY_-, NEG)
     addPrimitives(ByteClass, nme.UNARY_~, NOT)
-    
+
     addPrimitives(ByteClass, nme.toFloat,  B2F)
     addPrimitives(ByteClass, nme.toDouble, B2D)
 
@@ -446,9 +433,6 @@ abstract class ScalaPrimitives {
     // unary methods
     addPrimitives(DoubleClass, nme.UNARY_+, POS)
     addPrimitives(DoubleClass, nme.UNARY_-, NEG)
-    
-    // and the type map!
-    initPrimitiveTypeMap
   }
 
   /** Add a primitive operation to the map */
@@ -456,7 +440,7 @@ abstract class ScalaPrimitives {
     assert(!(primitives contains s), "Duplicate primitive " + s)
     primitives(s) = code
   }
-  
+
   def addPrimitives(cls: Symbol, method: Name, code: Int) {
     val tpe = cls.info
     val sym = tpe.member(method)
@@ -464,12 +448,24 @@ abstract class ScalaPrimitives {
       inform("Unknown primitive method " + cls + "." + method)
     for (s <- sym.alternatives)
       addPrimitive(
-        s, 
+        s,
         if (code == ADD && s.info.paramTypes.head == definitions.StringClass.tpe) CONCAT
         else code)
   }
 
   def isCoercion(code: Int): Boolean = (code >= B2B) && (code <= D2D)
+
+  final val typeOfArrayOp: Map[Int, TypeKind] = Map(
+    (List(ZARRAY_LENGTH, ZARRAY_GET, ZARRAY_SET) map (_ -> BOOL)) ++
+    (List(BARRAY_LENGTH, BARRAY_GET, BARRAY_SET) map (_ -> BYTE)) ++
+    (List(SARRAY_LENGTH, SARRAY_GET, SARRAY_SET) map (_ -> SHORT)) ++
+    (List(CARRAY_LENGTH, CARRAY_GET, CARRAY_SET) map (_ -> CHAR)) ++
+    (List(IARRAY_LENGTH, IARRAY_GET, IARRAY_SET) map (_ -> INT)) ++
+    (List(LARRAY_LENGTH, LARRAY_GET, LARRAY_SET) map (_ -> LONG)) ++
+    (List(FARRAY_LENGTH, FARRAY_GET, FARRAY_SET) map (_ -> FLOAT)) ++
+    (List(DARRAY_LENGTH, DARRAY_GET, DARRAY_SET) map (_ -> DOUBLE)) ++
+    (List(OARRAY_LENGTH, OARRAY_GET, OARRAY_SET) map (_ -> REFERENCE(AnyRefClass))) : _*
+  )
 
   /** Check whether the given operation code is an array operation. */
   def isArrayOp(code: Int): Boolean =
@@ -510,12 +506,14 @@ abstract class ScalaPrimitives {
 
     case _ => false
   }
+  def isUniversalEqualityOp(code: Int): Boolean = (code == EQ) || (code == NE)
+  def isReferenceEqualityOp(code: Int): Boolean = (code == ID) || (code == NI)
 
   def isArithmeticOp(code: Int): Boolean = code match {
     case POS | NEG | NOT => true; // unary
-    case ADD | SUB | MUL | 
+    case ADD | SUB | MUL |
          DIV | MOD       => true; // binary
-    case OR  | XOR | AND | 
+    case OR  | XOR | AND |
          LSL | LSR | ASR => true; // bitwise
     case _ => false;
   }
@@ -545,17 +543,17 @@ abstract class ScalaPrimitives {
     case B2F | C2F | S2F | I2F | L2F | F2F | D2F => FLOAT
     case B2D | C2D | S2D | I2D | L2D | F2D | D2D => DOUBLE
   }
-  
+
   def isPrimitive(sym: Symbol): Boolean = primitives contains sym
 
-  /** Return the code for the givem symbol. */
+  /** Return the code for the given symbol. */
   def getPrimitive(sym: Symbol): Int = {
-    assert(isPrimitive(sym), "Unkown primitive " + sym)
+    assert(isPrimitive(sym), "Unknown primitive " + sym)
     primitives(sym)
   }
 
-  /** 
-   * Return the primitive code of the given operation. If the 
+  /**
+   * Return the primitive code of the given operation. If the
    * operation is an array get/set, we inspect the type of the receiver
    * to demux the operation.
    *
@@ -567,17 +565,17 @@ abstract class ScalaPrimitives {
     import definitions._
     val code = getPrimitive(fun)
 
-    var elem: Type = null
-    tpe match {
-      case TypeRef(_, sym, _elem :: Nil)
-           if (sym == ArrayClass) => elem = _elem
-      case _ => ()
+    def elementType = atPhase(currentRun.typerPhase) {
+      val arrayParent = tpe :: tpe.parents collectFirst {
+        case TypeRef(_, ArrayClass, elem :: Nil) => elem
+      }
+      arrayParent getOrElse sys.error(fun.fullName + " : " + (tpe :: tpe.baseTypeSeq.toList).mkString(", "))
     }
 
     code match {
 
       case APPLY =>
-        toTypeKind(elem) match {
+        toTypeKind(elementType) match {
           case BOOL    => ZARRAY_GET
           case BYTE    => BARRAY_GET
           case SHORT   => SARRAY_GET
@@ -588,11 +586,11 @@ abstract class ScalaPrimitives {
           case DOUBLE  => DARRAY_GET
           case REFERENCE(_) | ARRAY(_) => OARRAY_GET
           case _ =>
-            abort("Unexpected array element type: " + elem)
+            abort("Unexpected array element type: " + elementType)
         }
 
       case UPDATE =>
-        toTypeKind(elem) match {
+        toTypeKind(elementType) match {
           case BOOL    => ZARRAY_SET
           case BYTE    => BARRAY_SET
           case SHORT   => SARRAY_SET
@@ -603,12 +601,11 @@ abstract class ScalaPrimitives {
           case DOUBLE  => DARRAY_SET
           case REFERENCE(_) | ARRAY(_) => OARRAY_SET
           case _ =>
-            abort("Unexpected array element type: " + elem)
+            abort("Unexpected array element type: " + elementType)
         }
 
       case LENGTH =>
-        assert(elem != null)
-        toTypeKind(elem) match {
+        toTypeKind(elementType) match {
           case BOOL    => ZARRAY_LENGTH
           case BYTE    => BARRAY_LENGTH
           case SHORT   => SARRAY_LENGTH
@@ -619,7 +616,7 @@ abstract class ScalaPrimitives {
           case DOUBLE  => DARRAY_LENGTH
           case REFERENCE(_) | ARRAY(_) => OARRAY_LENGTH
           case _ =>
-            abort("Unexpected array element type: " + elem)
+            abort("Unexpected array element type: " + elementType)
         }
 
       case _ =>

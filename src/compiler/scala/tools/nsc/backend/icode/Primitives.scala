@@ -1,11 +1,12 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
-// $Id$
 
-package scala.tools.nsc.backend.icode;
+package scala.tools.nsc
+package backend
+package icode;
 
 import java.io.PrintWriter;
 
@@ -75,12 +76,12 @@ trait Primitives { self: ICodes =>
 
   /** Pretty printer for primitives */
   class PrimitivePrinter(out: PrintWriter) {
-    
+
     def print(s: String): PrimitivePrinter = {
       out.print(s)
       this
     }
-    
+
     def print(o: AnyRef): PrimitivePrinter = print(o.toString())
 
     def printPrimitive(prim: Primitive) = prim match {
@@ -92,7 +93,7 @@ trait Primitives { self: ICodes =>
 
       case Comparison(op, kind) =>
         print(op).print("(").print(kind)
-      
+
     }
   }
 
@@ -110,10 +111,10 @@ trait Primitives { self: ICodes =>
 
   /** A comparison operation with -1 default for NaNs */
   case object CMPL extends ComparisonOp
-  
+
   /** A comparison operation with no default for NaNs */
   case object CMP extends ComparisonOp
-  
+
     /** A comparison operation with +1 default for NaNs */
   case object CMPG extends ComparisonOp
 
@@ -145,7 +146,7 @@ trait Primitives { self: ICodes =>
   }
   /** An equality test */
   case object EQ extends TestOp
-  
+
   /** A non-equality test */
   case object NE extends TestOp
 
@@ -184,13 +185,13 @@ trait Primitives { self: ICodes =>
 
   /** An arithmetic multiplication operation */
   case object MUL extends ArithmeticOp
-  
+
   /** An arithmetic division operation */
   case object DIV extends ArithmeticOp
 
   /** An arithmetic remainder operation */
   case object REM extends ArithmeticOp
-  
+
   /** Bitwise negation. */
   case object NOT extends ArithmeticOp
 
@@ -205,7 +206,7 @@ trait Primitives { self: ICodes =>
       case _  => throw new RuntimeException("ShitOp unknown case")
     }
   }
-  
+
   /** A logical shift to the left */
   case object LSL extends ShiftOp
 
@@ -226,7 +227,7 @@ trait Primitives { self: ICodes =>
       case _  => throw new RuntimeException("LogicalOp unknown case")
     }
   }
-  
+
   /** A bitwise AND operation */
   case object AND extends LogicalOp
 
