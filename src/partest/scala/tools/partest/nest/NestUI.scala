@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -42,7 +42,7 @@ object NestUI {
   def outline(msg: String, wr: PrintWriter) = synchronized {
     wr.print(_outline + msg + _default)
   }
-  
+
   def success(msg: String) = print(_success  + msg + _default)
   def success(msg: String, wr: PrintWriter) = synchronized {
     wr.print(_success + msg + _default)
@@ -80,6 +80,7 @@ object NestUI {
     println("    --scalacheck    run ScalaCheck tests")
     println("    --script        run script runner tests")
     println("    --shootout      run shootout tests")
+    println("    --presentation  run presentation compiler tests")
     println("    --grep <expr>    run all tests whose source file contains <expr>")
     println
     println("  Other options:")
@@ -98,7 +99,7 @@ object NestUI {
     println
     println(utils.Properties.versionString)
     println("maintained by Philipp Haller (EPFL)")
-    exit(1)
+    sys.exit(1)
   }
 
   var _verbose = false

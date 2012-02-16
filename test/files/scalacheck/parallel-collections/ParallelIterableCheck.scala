@@ -15,7 +15,7 @@ import scala.collection.parallel._
 
 
 abstract class ParallelIterableCheck[T](collName: String) extends Properties(collName) with Operators[T] {
-  type CollType <: ParIterable[T] with Sequentializable[T, Iterable[T]]
+  type CollType <: ParIterable[T]
   
   def values: Seq[Gen[T]]
   def ofSize(vals: Seq[Gen[T]], sz: Int): Iterable[T]
@@ -71,15 +71,42 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     (inst, fromTraversable(inst), modif)
   }
   
-  def areEqual(t1: Traversable[T], t2: Traversable[T]) = if (hasStrictOrder) {
+  def areEqual(t1: GenTraversable[T], t2: GenTraversable[T]) = if (hasStrictOrder) {
     t1 == t2 && t2 == t1
   } else (t1, t2) match { // it is slightly delicate what `equal` means if the order is not strict
-    case (m1: Map[_, _], m2: Map[_, _]) => m1 == m2 && m2 == m1
-    case (i1: Iterable[_], i2: Iterable[_]) =>
+    case (m1: GenMap[_, _], m2: GenMap[_, _]) => m1 == m2 && m2 == m1
+    case (i1: GenIterable[_], i2: GenIterable[_]) =>
       val i1s = i1.toSet
       val i2s = i2.toSet
       i1s == i2s && i2s == i1s
     case _ => t1 == t2 && t2 == t1
+  }
+  
+  def printDebugInfo(coll: ParIterableLike[_, _, _]) {
+    println("Collection debug info: ")
+    coll.printDebugBuffer
+    println("Task debug info: ")
+    println(tasksupport.debugMessages.mkString("\n"))
+  }
+  
+  def printComparison(t: Traversable[_], coll: ParIterable[_], tf: Traversable[_], cf: ParIterable[_], ind: Int) {
+    printDebugInfo(coll)
+    println("Operator: " + ind)
+    println("sz: " + t.size)
+    println(t)
+    println
+    println("sz: " + coll.size)
+    println(coll)
+    println("transformed to:")
+    println
+    println("size: " + tf.size)
+    println(tf)
+    println
+    println("size: " + cf.size)
+    println(cf)
+    println
+    println("tf == cf - " + (tf == cf))
+    println("cf == tf - " + (cf == tf))
   }
   
   property("reductions must be equal for assoc. operators") = forAll(collectionPairs) { case (t, coll) =>
@@ -105,10 +132,11 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
       val tc = t.count(pred)
       val cc = coll.count(pred)
       if (tc != cc) {
-        println("from: " + t)
-        println("and: " + coll.toList)
+        println("from: " + t + " - size: " + t.size)
+        println("and: " + coll + " - size: " + coll.toList.size)
         println(tc)
         println(cc)
+        printDebugInfo(coll)
       }
       ("op index: " + ind) |: tc == cc
     }
@@ -140,15 +168,19 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     val results = for ((f, ind) <- mapFunctions.zipWithIndex) yield {
       val ms = t.map(f)
       val mp = coll.map(f)
-      if (!areEqual(ms, mp) || !checkDataStructureInvariants(ms, mp)) {
+      val invs = checkDataStructureInvariants(ms, mp)
+      if (!areEqual(ms, mp) || !invs) {
         println(t)
         println(coll)
         println("mapped to: ")
         println(ms)
         println(mp)
-        println("valid: " + !checkDataStructureInvariants(ms, mp))
+        println("sizes: ")
+        println(ms.size)
+        println(mp.size)
+        println("valid: " + invs)
       }
-      ("op index: " + ind) |: (areEqual(ms, mp) && checkDataStructureInvariants(ms, mp))
+      ("op index: " + ind) |: (areEqual(ms, mp) && invs)
     }
     results.reduceLeft(_ && _)
   }
@@ -178,24 +210,38 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
     (for ((p, ind) <- filterPredicates.zipWithIndex) yield {
       val tf = t.filter(p)
       val cf = coll.filter(p)
-      if (tf != cf || cf != tf || !checkDataStructureInvariants(tf, cf)) {
+      val invs = checkDataStructureInvariants(tf, cf)
+      if (tf != cf || cf != tf || !invs) {
+        printDebugInfo(coll)
+        println("Operator: " + ind)
+        println("sz: " + t.size)
         println(t)
+        println
+        println("sz: " + coll.size)
         println(coll)
+        println
         println("filtered to:")
+        println
         println(cf)
+        println
         println(tf)
+        println
         println("tf == cf - " + (tf == cf))
         println("cf == tf - " + (cf == tf))
         printDataStructureDebugInfo(cf)
-        println("valid: " + checkDataStructureInvariants(tf, cf))
+        println("valid: " + invs)
       }
-      ("op index: " + ind) |: tf == cf && cf == tf && checkDataStructureInvariants(tf, cf)
+      ("op index: " + ind) |: tf == cf && cf == tf && invs
     }).reduceLeft(_ && _)
   }
   
   property("filterNots must be equal") = forAll(collectionPairs) { case (t, coll) =>
-    (for ((p, ind) <- filterNotPredicates.zipWithIndex)
-      yield ("op index: " + ind) |: t.filterNot(p) == coll.filterNot(p)).reduceLeft(_ && _)
+    (for ((p, ind) <- filterNotPredicates.zipWithIndex) yield {
+      val tf = t.filterNot(p)
+      val cf = coll.filterNot(p)
+      if (tf != cf || cf != tf) printComparison(t, coll, tf, cf, ind)
+      ("op index: " + ind) |: tf == cf && cf == tf
+    }).reduceLeft(_ && _)
   }
   
   if (!isCheckingViews) property("partitions must be equal") = forAll(collectionPairs) { case (t, coll) =>
@@ -350,6 +396,38 @@ abstract class ParallelIterableCheck[T](collName: String) extends Properties(col
       println(collarr.toSeq)
     }
     tarr.toSeq == collarr.toSeq
+  }
+  
+  if (hasStrictOrder) property("scans must be equal") = forAll(collectionPairs) {
+    case (t, coll) =>
+      (for (((first, op), ind) <- foldArguments.zipWithIndex) yield {
+        val tscan = t.scanLeft(first)(op)
+        val cscan = coll.scan(first)(op)
+        if (tscan != cscan || cscan != tscan) {
+          println("from: " + t)
+          println("and: " + coll)
+          println("scans are: ")
+          println(tscan)
+          println(cscan)
+        }
+        ("operator " + ind) |: tscan == cscan && cscan == tscan
+      }).reduceLeft(_ && _)
+  }
+  
+  property("groupBy must be equal") = forAll(collectionPairs) {
+    case (t, coll) =>
+      (for ((f, ind) <- groupByFunctions.zipWithIndex) yield {
+        val tgroup = t.groupBy(f)
+        val cgroup = coll.groupBy(f)
+        if (tgroup != cgroup || cgroup != tgroup) {
+          println("from: " + t)
+          println("and: " + coll)
+          println("groups are: ")
+          println(tgroup)
+          println(cgroup)
+        }
+        ("operator " + ind) |: tgroup == cgroup && cgroup == tgroup
+      }).reduceLeft(_ && _)
   }
   
 }
