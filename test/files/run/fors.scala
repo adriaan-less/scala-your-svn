@@ -4,7 +4,7 @@
 
 //############################################################################
 
-object Test extends Application {
+object Test extends App {
   val xs = List(1, 2, 3)
   val ys = List('a, 'b, 'c)
 
@@ -76,10 +76,10 @@ object Test extends Application {
     for {x <- it
          if x % 2 == 0} print(x + " "); println
     for (x <- it;
-         val y = 2
+         y = 2
          if x % y == 0) print(x + " "); println
     for {x <- it
-         val y = 2
+         y = 2
          if x % y == 0} print(x + " "); println
 
     // arrays
