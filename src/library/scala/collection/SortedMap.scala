@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 package scala.collection
 
 import generic._
@@ -21,18 +20,19 @@ import mutable.Builder
  */
 trait SortedMap[A, +B] extends Map[A, B] with SortedMapLike[A, B, SortedMap[A, B]] {
   /** Needs to be overridden in subclasses. */
-  override def empty = SortedMap.empty[A, B]
+  override def empty: SortedMap[A, B] = SortedMap.empty[A, B]
 
-  override protected[this] def newBuilder : Builder[(A, B), SortedMap[A, B]] = 
+  override protected[this] def newBuilder: Builder[(A, B), SortedMap[A, B]] =
     immutable.SortedMap.newBuilder[A, B]
 }
 
 /**
  * @since 2.8
  */
-object SortedMap extends ImmutableSortedMapFactory[immutable.SortedMap] {
-  implicit def canBuildFrom[A, B](implicit ord: Ordering[A]): CanBuildFrom[Coll, (A, B), SortedMap[A, B]] = new SortedMapCanBuildFrom[A, B]
+object SortedMap extends SortedMapFactory[SortedMap] {
   def empty[A, B](implicit ord: Ordering[A]): immutable.SortedMap[A, B] = immutable.SortedMap.empty[A, B](ord)
+
+  implicit def canBuildFrom[A, B](implicit ord: Ordering[A]): CanBuildFrom[Coll, (A, B), SortedMap[A, B]] = new SortedMapCanBuildFrom[A, B]
 }
 
 
