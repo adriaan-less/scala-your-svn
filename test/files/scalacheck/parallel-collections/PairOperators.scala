@@ -49,7 +49,7 @@ trait PairOperators[K, V] extends Operators[(K, V)] {
     def apply(kv: (K, V)) = kfm(kv._1).toIterable zip vfm(kv._2).toIterable
   }
   
-  def filterPredicates = zipPredicates(koperators.filterPredicates, voperators.existsPredicates)
+  def filterPredicates = zipPredicates(koperators.filterPredicates, voperators.filterPredicates)
   
   def filterNotPredicates = filterPredicates
   
@@ -72,6 +72,10 @@ trait PairOperators[K, V] extends Operators[(K, V)] {
   } yield kt.toIterable zip vt.toIterable
   
   def newArray(sz: Int) = new Array[(K, V)](sz)
+  
+  def groupByFunctions = (koperators.groupByFunctions zip voperators.groupByFunctions) map {
+    opt => { (p: (K, V)) => (opt._1(p._1), opt._2(p._2)) }
+  }
   
 }
 

@@ -1,3 +1,11 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
 package scala.collection.generic
 
 
@@ -11,18 +19,18 @@ import java.util.concurrent.atomic.AtomicInteger
  * A message interface serves as a unique interface to the
  * part of the collection capable of receiving messages from
  * a different task.
- * 
+ *
  * One example of use of this is the `find` method, which can use the
  * signalling interface to inform worker threads that an element has
  * been found and no further search is necessary.
- * 
+ *
  * @author prokopec
- * 
+ *
  * @define abortflag
  * Abort flag being true means that a worker can abort and produce whatever result,
  * since its result will not affect the final result of computation. An example
  * of operations using this are `find`, `forall` and `exists` methods.
- * 
+ *
  * @define indexflag
  * The index flag holds an integer which carries some operation-specific meaning. For
  * instance, `takeWhile` operation sets the index flag to the position of the element
@@ -33,53 +41,53 @@ import java.util.concurrent.atomic.AtomicInteger
 trait Signalling {
   /**
    * Checks whether an abort signal has been issued.
-   * 
+   *
    * $abortflag
    * @return the state of the abort
    */
   def isAborted: Boolean
-  
+
   /**
    * Sends an abort signal to other workers.
-   * 
+   *
    * $abortflag
    */
-  def abort: Unit
-  
+  def abort(): Unit
+
   /**
    * Returns the value of the index flag.
-   * 
+   *
    * $indexflag
    * @return the value of the index flag
    */
   def indexFlag: Int
-  
+
   /**
    * Sets the value of the index flag.
-   * 
+   *
    * $indexflag
    * @param f the value to which the index flag is set.
    */
   def setIndexFlag(f: Int)
-  
+
   /**
    * Sets the value of the index flag if argument is greater than current value.
    * This method does this atomically.
-   * 
+   *
    * $indexflag
    * @param f the value to which the index flag is set
    */
   def setIndexFlagIfGreater(f: Int)
-  
+
   /**
    * Sets the value of the index flag if argument is lesser than current value.
    * This method does this atomically.
-   * 
+   *
    * $indexflag
    * @param f the value to which the index flag is set
    */
   def setIndexFlagIfLesser(f: Int)
-  
+
   /**
    * A read only tag specific to the signalling object. It is used to give
    * specific workers information on the part of the collection being operated on.
@@ -96,7 +104,7 @@ class DefaultSignalling extends Signalling with VolatileAbort {
   def setIndexFlag(f: Int) {}
   def setIndexFlagIfGreater(f: Int) {}
   def setIndexFlagIfLesser(f: Int) {}
-  
+
   def tag = -1
 }
 
@@ -113,7 +121,7 @@ object IdleSignalling extends DefaultSignalling
 trait VolatileAbort extends Signalling {
   @volatile private var abortflag = false
   override def isAborted = abortflag
-  override def abort = abortflag = true
+  override def abort() = abortflag = true
 }
 
 
@@ -153,15 +161,15 @@ trait DelegatedSignalling extends Signalling {
    * A delegate that method calls are redirected to.
    */
   var signalDelegate: Signalling
-  
+
   def isAborted = signalDelegate.isAborted
-  def abort = signalDelegate.abort
-  
+  def abort() = signalDelegate.abort
+
   def indexFlag = signalDelegate.indexFlag
   def setIndexFlag(f: Int) = signalDelegate.setIndexFlag(f)
   def setIndexFlagIfGreater(f: Int) = signalDelegate.setIndexFlagIfGreater(f)
   def setIndexFlagIfLesser(f: Int) = signalDelegate.setIndexFlagIfLesser(f)
-  
+
   def tag = signalDelegate.tag
 }
 
