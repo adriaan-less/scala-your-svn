@@ -1,28 +1,24 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
-**  __\ \/ /__/ __ |/ /__/ __ |                                         **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
+package scala.collection
+package script
 
-
-package scala.collection.script
-import scala.collection._
-
-import Predef._
 import mutable.ArrayBuffer
 
-/** Class <code>Message</code> represents messages that are issued by observable
- *  collection classes whenever a data structure is changed. Class <code>Message</code>
- *  has several subclasses for the various kinds of events: <code>Update</code>
- *  <code>Remove</code>, <code>Include</code>, <code>Reset</code>, and
- *  <code>Script</code>.
+/** Class `Message` represents messages that are issued by observable
+ *  collection classes whenever a data structure is changed. Class `Message`
+ *  has several subclasses for the various kinds of events: `Update`
+ *  `Remove`, `Include`, `Reset`, and `Script`.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 08/07/2003
+ *  @since   2.8
  */
 trait Message[+A]
 
@@ -79,7 +75,7 @@ class Script[A] extends ArrayBuffer[Message[A]] with Message[A] {
       if (i > 1)
         res = res + ", "
       res = res + "[" + i + "] " + it.next
-      i = i + 1
+      i += 1
     }
     res + ")"
   }

@@ -1,7 +1,6 @@
 //############################################################################
 // Test Java interaction with scala inner classes
 //############################################################################
-// $Id:  $
 
 import java.io.{BufferedReader, File, FileWriter, InputStreamReader}
 
@@ -83,7 +82,7 @@ package p {
           Console.println("meth1(1) = " + meth1(1));
           Console.println("meth1(1.0) = " + meth1(1.0));
           // test accesses from closures
-          for (val x <- 1 until 3)
+          for (x <- 1 until 3)
             Console.println("meth2(1)(1) = " + meth2(1)("prefix: "));
 
           Console.println("meth3 = " + meth3.getClass);
