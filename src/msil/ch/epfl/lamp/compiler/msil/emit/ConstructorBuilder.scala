@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id: ConstructorBuilder.java 14655 2008-04-15 09:37:02Z lorch $
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -21,7 +20,7 @@ import java.io.IOException
  * @author Nikolay Mihaylov
  * @version 1.0
  */
-class ConstructorBuilder(declType: Type, attrs: int, paramTypes: Array[Type])
+class ConstructorBuilder(declType: Type, attrs: Int, paramTypes: Array[Type])
       extends ConstructorInfo(declType, attrs, paramTypes)
       with ICustomAttributeSetter
       with Visitable
@@ -31,7 +30,7 @@ class ConstructorBuilder(declType: Type, attrs: int, paramTypes: Array[Type])
     // public interface
 
     /** Defines a parameter of this constructor. */
-    def DefineParameter(pos: int, attr: int, name: String): ParameterBuilder = {
+    def DefineParameter(pos: Int, attr: Int, name: String): ParameterBuilder = {
 	val param = new ParameterBuilder(name, params(pos).ParameterType, attr, pos)
 	params(pos) = param
 	return param

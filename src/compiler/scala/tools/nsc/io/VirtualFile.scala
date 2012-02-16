@@ -1,27 +1,20 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
-package scala.tools.nsc.io
+package scala.tools.nsc
+package io
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream,
-                File, InputStream, OutputStream}
+import java.io.{ ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream }
 
 /** This class implements an in-memory file.
  *
  *  @author  Philippe Altherr
  *  @version 1.0, 23/03/2004
  */
-class VirtualFile(val name: String, _path: String) extends AbstractFile {
-
-  assert((name ne null) && (path ne null), name + " - " + path)
-
-  //########################################################################
-  // Public Constructors
-
+class VirtualFile(val name: String, override val path: String) extends AbstractFile {
   /**
    * Initializes this instance with the specified name and an
    * identical path.
@@ -30,32 +23,28 @@ class VirtualFile(val name: String, _path: String) extends AbstractFile {
    * @return     the created virtual file
    */
   def this(name: String) = this(name, name)
-  
-  override def hashCode = name.hashCode
-  override def equals(that : Any) = that match {
-  case that : VirtualFile => name == that.name
-  case _ => false
+
+  override def hashCode = path.hashCode
+  override def equals(that: Any) = that match {
+    case x: VirtualFile => x.path == path
+    case _              => false
   }
 
-  
   //########################################################################
   // Private data
   private var content = new Array[Byte](0)
-    
+
   //########################################################################
   // Public Methods
-
-  def path = _path
-
   def absolute = this
 
   /** Returns null. */
-  final def file: File = null
-  
+  final def file: JFile = null
+
   override def sizeOption: Option[Int] = Some(content.size)
-  
+
   def input : InputStream = new ByteArrayInputStream(content);
-  
+
   override def output: OutputStream = {
     new ByteArrayOutputStream() {
       override def close() {
@@ -64,30 +53,28 @@ class VirtualFile(val name: String, _path: String) extends AbstractFile {
       }
     }
   }
-  
-  def container : AbstractFile = throw new Error("not supported")
+
+  def container: AbstractFile =  unsupported
 
   /** Is this abstract file a directory? */
   def isDirectory: Boolean = false
 
   /** Returns the time that this abstract file was last modified. */
-  def lastModified: Long = Math.MIN_LONG
+  private var _lastModified: Long = 0
+  def lastModified: Long = _lastModified
+  def lastModified_=(x: Long) = _lastModified = x
 
   /** Returns all abstract subfiles of this abstract directory. */
   def iterator: Iterator[AbstractFile] = {
     assert(isDirectory, "not a directory '" + this + "'")
     Iterator.empty
-  }	
+  }
 
   /** Does this abstract file denote an existing file? */
-  def create {
-    throw new UnsupportedOperationException
-  }
+  def create() { unsupported }
 
   /** Delete the underlying file or directory (recursively). */
-  def delete {
-    throw new UnsupportedOperationException
-  }
+  def delete() { unsupported }
 
   /**
    * Returns the abstract file in this abstract directory with the
@@ -107,8 +94,7 @@ class VirtualFile(val name: String, _path: String) extends AbstractFile {
   /** Returns an abstract file with the given name. It does not
    *  check that it exists.
    */
-  def lookupNameUnchecked(name: String, directory: Boolean): AbstractFile =
-    throw new UnsupportedOperationException()
+  def lookupNameUnchecked(name: String, directory: Boolean) = unsupported
 
   //########################################################################
 }

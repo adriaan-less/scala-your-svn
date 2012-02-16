@@ -1,39 +1,34 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala Ant Tasks                      **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 package scala.tools.ant
 
 import java.io.{File, InputStream, FileWriter}
-
 import org.apache.tools.ant.BuildException
-import org.apache.tools.ant.taskdefs.MatchingTask
 import org.apache.tools.ant.types.{Path, Reference}
 
-/** <p>
- *    An Ant task that generates a shell or batch script to execute a
- *    Scala program.
- *    This task can take the following parameters as attributes:
- *  </p><ul>
- *  <li>file (mandatory),</li>
- *  <li>class (mandatory),</li>
- *  <li>platforms,</li>
- *  <li>classpath,</li>
- *  <li>properties,</li>
- *  <li>javaflags,</li>
- *  <li>toolflags.</li></ul>
+/** An Ant task that generates a shell or batch script to execute a
+ *  Scala program.
+ *
+ *  This task can take the following parameters as attributes:
+ *  - `file` (mandatory),
+ *  - `class` (mandatory),
+ *  - `platforms`,
+ *  - `classpath`,
+ *  - `properties`,
+ *  - `javaflags`,
+ *  - `toolflags`.
  *
  * @author  Gilles Dubochet
  * @version 1.1
  */
-class ScalaTool extends MatchingTask {
-  
+class ScalaTool extends ScalaMatchingTask {
+
   private def emptyPath = new Path(getProject)
 
 /*============================================================================*\
@@ -51,32 +46,36 @@ class ScalaTool extends MatchingTask {
     val values = List("unix", "windows")
   }
 
-  /** The path to the exec script file. ".bat" will be appended for the
+  /** The path to the exec script file. `".bat"` will be appended for the
     * Windows BAT file, if generated. */
   private var file: Option[File] = None
 
   /** The main class to run. */
   private var mainClass: Option[String] = None
 
-  /** Supported platforms for the script. Either "unix" or "windows".
+  /** Supported platforms for the script. Either `"unix"` or `"windows"`.
     * Defaults to both. */
   private var platforms: List[String] = List("unix", "windows")
 
   /** An (optional) path to all JARs that this script depend on. Paths must be
     * relative to the scala home directory. If not set, all JAR archives and
-    * folders in "lib/" are automatically added. */
-  private var classpath: Option[Path] = None
+    * folders in `"lib/"` are automatically added. */
+  private var classpath: List[String] = Nil
+
+  /** An (optional) path to JARs that this script depends on relative to the
+    * ant project's `basedir`. */
+  private var classpathPath: Path = emptyPath
 
   /** Comma-separated Java system properties to pass to the JRE. Properties
-    * are formated as name=value. Properties scala.home, scala.tool.name and
-    * scala.tool.version are always set. */
+    * are formatted as `name=value`. Properties `scala.home`, `scala.tool.name`
+    * and `scala.tool.version` are always set. */
   private var properties: List[(String, String)] = Nil
 
-  /** Additional flags passed to the JRE ("java [javaFlags] class"). */
+  /** Additional flags passed to the JRE (`"java [javaFlags] class"`). */
   private var javaFlags: String = ""
 
-  /** Additional flags passed to the tool ("java class [toolFlags]"). Can only
-    * be set when a main class is defined. */
+  /** Additional flags passed to the tool (`"java class [toolFlags]"`).
+    * Can only be set when a main class is defined. */
   private var toolFlags: String = ""
 
 /*============================================================================*\
@@ -98,24 +97,42 @@ class ScalaTool extends MatchingTask {
       if (Platforms.isPermissible(st))
         (if (input != "") List(st) else Nil)
       else {
-        error("Platform " + st + " does not exist.")
-        Nil
+        buildError("Platform " + st + " does not exist.")
       }
     }
   }
 
-  /** Sets the classpath with which to run the tool. */
-  def setClassPath(input: Path): Unit =
-    if (classpath.isEmpty)
-      classpath = Some(input)
-    else
-      classpath.get.append(input)
-  def createClassPath: Path = {
-    if (classpath.isEmpty) classpath = Some(emptyPath)
-    classpath.get.createPath()
+  /** Sets the classpath with which to run the tool.
+   *
+   *  Note that this mechanism of setting the classpath is generally preferred
+   *  for general purpose scripts, as this does not assume all elements are
+   *  relative to the Ant `basedir`.  Additionally, the platform specific
+   *  demarcation of any script variables (e.g. `${SCALA_HOME}` or
+   * `%SCALA_HOME%`) can be specified in a platform independant way (e.g.
+   * `@SCALA_HOME@`) and automatically translated for you.
+   */
+  def setClassPath(input: String) {
+    classpath = classpath ::: input.split(",").toList
   }
-  def setClassPathRef(input: Reference): Unit =
-    createClassPath.setRefid(input)
+
+  /**
+   * A special method that allows ant classpath path definitions to be nested
+   * within this ant task.
+   */
+  def createClassPath: Path = classpathPath.createPath()
+
+  /**
+   * Adds an Ant Path reference to the tool's classpath.
+   * Note that all entries in the path must exist either relative to the project
+   * basedir or with an absolute path to a file in the filesystem.  As a result,
+   * this is not a mechanism for setting the classpath for more general use scripts,
+   * such as those distributed within sbaz distribution packages.
+   */
+  def setClassPathRef(input: Reference) {
+    val tmpPath = emptyPath
+    tmpPath.setRefid(input)
+    classpath = classpath ::: tmpPath.list.toList
+  }
 
   /** Sets JVM properties that will be set whilst running the tool. */
   def setProperties(input: String) = {
@@ -126,7 +143,7 @@ class ScalaTool extends MatchingTask {
         if (input != "") List(Pair(stArray(0), stArray(1))) else Nil
       }
       else
-        error("Property " + st + " is not formatted properly.")
+        buildError("Property " + st + " is not formatted properly.")
     }
   }
 
@@ -143,15 +160,14 @@ class ScalaTool extends MatchingTask {
 \*============================================================================*/
 
     /** Gets the value of the classpath attribute in a Scala-friendly form.
-      * @returns The class path as a list of files. */
+      * @return The class path as a list of files. */
     private def getUnixclasspath: String =
-      classpath.getOrElse(emptyPath).list.mkString("", ":", "")
+      transposeVariableMarkup(classpath.mkString("", ":", "").replace('\\', '/'), "${", "}")
 
     /** Gets the value of the classpath attribute in a Scala-friendly form.
-      * @returns The class path as a list of files. */
+      * @return The class path as a list of files. */
     private def getWinclasspath: String =
-      classpath.getOrElse(emptyPath).list.map(_.replace('/', '\\')).
-                mkString("", ";", "")
+      transposeVariableMarkup(classpath.mkString("", ";", "").replace('/', '\\'), "%", "%")
 
     private def getProperties: String =
       properties.map({
@@ -162,13 +178,6 @@ class ScalaTool extends MatchingTask {
 **                       Compilation and support methods                      **
 \*============================================================================*/
 
-    /** Generates a build error. Error location will be the current task in the  
-      * ant file.
-      * @param message A message describing the error.
-      * @throws BuildException A build error exception thrown in every case. */
-    private def error(message: String): Nothing =
-      throw new BuildException(message, getLocation())
-  
     // XXX encoding and generalize
     private def getResourceAsCharStream(clazz: Class[_], resource: String): Stream[Char] = {
       val stream = clazz.getClassLoader() getResourceAsStream resource
@@ -176,10 +185,33 @@ class ScalaTool extends MatchingTask {
       else Stream continually stream.read() takeWhile (_ != -1) map (_.asInstanceOf[Char])
     }
 
+    // Converts a variable like @SCALA_HOME@ to ${SCALA_HOME} when pre = "${" and post = "}"
+    private def transposeVariableMarkup(text: String, pre: String, post: String) : String = {
+      val chars = scala.io.Source.fromString(text)
+      val builder = new StringBuilder()
+
+      while (chars.hasNext) {
+        val char = chars.next
+        if (char == '@') {
+          var char = chars.next
+          val token = new StringBuilder()
+          while (chars.hasNext && char != '@') {
+            token.append(char)
+            char = chars.next
+          }
+          if (token.toString == "")
+            builder.append('@')
+          else
+            builder.append(pre + token.toString + post)
+        } else builder.append(char)
+      }
+      builder.toString
+    }
+
     private def readAndPatchResource(resource: String, tokens: Map[String, String]): String = {
       val chars = getResourceAsCharStream(this.getClass, resource).iterator
       val builder = new StringBuilder()
-      
+
       while (chars.hasNext) {
         val char = chars.next
         if (char == '@') {
@@ -202,10 +234,10 @@ class ScalaTool extends MatchingTask {
 
     private def writeFile(file: File, content: String) =
       if (file.exists() && !file.canWrite())
-        error("File " + file + " is not writable")
+        buildError("File " + file + " is not writable")
       else {
         val writer = new FileWriter(file, false)
-        writer.write(content)
+        writer write content
         writer.close()
       }
 
@@ -216,8 +248,8 @@ class ScalaTool extends MatchingTask {
   /** Performs the tool creation. */
   override def execute() = {
     // Tests if all mandatory attributes are set and valid.
-    if (file.isEmpty) error("Attribute 'file' is not set.")
-    if (mainClass.isEmpty) error("Main class must be set.")
+    if (file.isEmpty) buildError("Attribute 'file' is not set.")
+    if (mainClass.isEmpty) buildError("Main class must be set.")
     val resourceRoot = "scala/tools/ant/templates/"
     val patches = Map (
       ("class", mainClass.get),
@@ -225,13 +257,16 @@ class ScalaTool extends MatchingTask {
       ("javaflags", javaFlags),
       ("toolflags", toolFlags)
     )
-    if (platforms.contains("unix")) {
+    // Consolidate Paths into classpath
+    classpath = classpath ::: classpathPath.list.toList
+    // Generate the scripts
+    if (platforms contains "unix") {
       val unixPatches = patches + (("classpath", getUnixclasspath))
       val unixTemplateResource = resourceRoot + "tool-unix.tmpl"
       val unixTemplate = readAndPatchResource(unixTemplateResource, unixPatches)
       writeFile(file.get, unixTemplate)
     }
-    if (platforms.contains("windows")) {
+    if (platforms contains "windows") {
       val winPatches = patches + (("classpath", getWinclasspath))
       val winTemplateResource = resourceRoot + "tool-windows.tmpl"
       val winTemplate = readAndPatchResource(winTemplateResource, winPatches)

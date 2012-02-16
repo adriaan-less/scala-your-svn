@@ -1,13 +1,15 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
-package scala.tools.nsc.typechecker
+package scala.tools.nsc
+package typechecker
+
+import util.Statistics._
 
 /** The main attribution phase.
- */ 
+ */
 trait Analyzer extends AnyRef
             with Contexts
             with Namers
@@ -16,9 +18,12 @@ trait Analyzer extends AnyRef
             with Implicits
             with Variances
             with EtaExpansion
-            with SyntheticMethods 
+            with SyntheticMethods
             with Unapplies
+            with Macros
             with NamesDefaults
+            with TypeDiagnostics
+            with ContextErrors
 {
   val global : Global
   import global._
@@ -30,54 +35,66 @@ trait Analyzer extends AnyRef
     val runsRightAfter = None
     def newPhase(_prev: Phase): StdPhase = new StdPhase(_prev) {
       override val checkable = false
+      override def keepsTypeParams = false
+
       def apply(unit: CompilationUnit) {
         newNamer(rootContext(unit)).enterSym(unit.body)
       }
     }
   }
 
-  var typerTime = 0L
+  object packageObjects extends SubComponent {
+    val global: Analyzer.this.global.type = Analyzer.this.global
+    val phaseName = "packageobjects"
+    val runsAfter = List[String]()
+    val runsRightAfter= Some("namer")
+
+    def newPhase(_prev: Phase): StdPhase = new StdPhase(_prev) {
+      override val checkable = false
+      import global._
+
+      val openPackageObjectsTraverser = new Traverser {
+        override def traverse(tree: Tree): Unit = tree match {
+          case ModuleDef(_, _, _) =>
+            if (tree.symbol.name == nme.PACKAGEkw) {
+              openPackageModule(tree.symbol, tree.symbol.owner)
+            }
+          case ClassDef(_, _, _, _) => () // make it fast
+          case _ => super.traverse(tree)
+        }
+      }
+
+      def apply(unit: CompilationUnit) {
+        openPackageObjectsTraverser(unit.body)
+      }
+    }
+  }
 
   object typerFactory extends SubComponent {
     val global: Analyzer.this.global.type = Analyzer.this.global
     val phaseName = "typer"
     val runsAfter = List[String]()
-    val runsRightAfter = Some("namer")
+    val runsRightAfter = Some("packageobjects")
     def newPhase(_prev: Phase): StdPhase = new StdPhase(_prev) {
+      override def keepsTypeParams = false
       resetTyper()
-      override def run { 
-        val start = System.nanoTime()
+      // the log accumulates entries over time, even though it should not (Adriaan, Martin said so).
+      // Lacking a better fix, we clear it here (before the phase is created, meaning for each
+      // compiler run). This is good enough for the resident compiler, which was the most affected.
+      undoLog.clear()
+      override def run() {
+        val start = startTimer(typerNanos)
+        global.echoPhaseSummary(this)
         currentRun.units foreach applyPhase
-        /*
-        typerTime += System.nanoTime() - start
-        def show(time: Long) = "%2.1f".format(time.toDouble / typerTime * 100)+" / "+time+"ns"
-        println("time spent typechecking: "+show(typerTime))
-        println("time spent in implicits: "+show(implicitTime))
-        println("    successful in scope: "+show(inscopeSucceed))
-        println("        failed in scope: "+show(inscopeFail))
-        println("     successful of type: "+show(oftypeSucceed))
-        println("         failed of type: "+show(oftypeFail))
-        println("    successful manifest: "+show(manifSucceed))
-        println("        failed manifest: "+show(manifFail))
-        println("implicit cache hitratio: "+"%2.1f".format(hits.toDouble / (hits + misses) * 100))
-        println("time spent in failed   : "+show(failedSilent))     
-        println("       failed op=      : "+show(failedOpEqs))     
-        println("       failed applu    : "+show(failedApplies))
-        */
-        typerTime = 0L
-        implicitTime = 0L
-        inscopeSucceed = 0L
-        inscopeFail = 0L
-        oftypeSucceed = 0L
-        oftypeFail = 0L
-        manifSucceed = 0L
-        manifFail = 0L
-        hits = 0
-        misses = 0
+        undoLog.clear()
+        // need to clear it after as well or 10K+ accumulated entries are
+        // uncollectable the rest of the way.
+        stopTimer(typerNanos, start)
       }
       def apply(unit: CompilationUnit) {
         try {
           unit.body = newTyper(rootContext(unit)).typed(unit.body)
+          if (global.settings.Yrangepos.value && !global.reporter.hasErrors) global.validatePositions(unit.body)
           for (workItem <- unit.toCheck) workItem()
         } finally {
           unit.toCheck.clear()
