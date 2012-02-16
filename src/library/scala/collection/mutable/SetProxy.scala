@@ -6,12 +6,10 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala.collection
 package mutable
 
-/** This is a simple wrapper class for <a href="Set.html"
- *  target="contentFrame"><code>scala.collection.mutable.Set</code></a>.
+/** This is a simple wrapper class for [[scala.collection.mutable.Set]].
  *  It is most useful for assembling customized set abstractions
  *  dynamically using object composition and forwarding.
  *
@@ -19,11 +17,11 @@ package mutable
  *  @version 1.1, 09/05/2004
  *  @since   1
  */
-trait SetProxy[A] extends Set[A] with SetProxyLike[A, Set[A]] {  
+trait SetProxy[A] extends Set[A] with SetProxyLike[A, Set[A]] {
   override def repr = this
   override def empty = new SetProxy[A] { val self = SetProxy.this.self.empty }
   override def + (elem: A) = { self += elem ; this }
-  override def - (elem: A) = { self -= elem ; this }  
+  override def - (elem: A) = { self -= elem ; this }
 
   def +=(elem: A) = { self += elem; this }
   def -=(elem: A) = { self -= elem; this }

@@ -24,15 +24,13 @@ object TraversableView {
   class NoBuilder[A] extends Builder[A, Nothing] {
     def +=(elem: A): this.type = this
     def iterator: Iterator[A] = Iterator.empty
-    @deprecated("use `iterator' instead", "2.8.0")
-    def elements = iterator
     def result() = throw new UnsupportedOperationException("TraversableView.Builder.result")
     def clear() {}
   }
   type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, TraversableView[A, Traversable[_]]] = 
-    new CanBuildFrom[Coll, A, TraversableView[A, Traversable[_]]] { 
-      def apply(from: Coll) = new NoBuilder 
-      def apply() = new NoBuilder 
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, TraversableView[A, Traversable[_]]] =
+    new CanBuildFrom[Coll, A, TraversableView[A, Traversable[_]]] {
+      def apply(from: Coll) = new NoBuilder
+      def apply() = new NoBuilder
     }
 }

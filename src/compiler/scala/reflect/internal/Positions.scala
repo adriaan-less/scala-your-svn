@@ -1,15 +1,12 @@
 package scala.reflect
 package internal
 
-trait Positions { self: SymbolTable =>
-  
-  type Position
-  val NoPosition: Position
-  
+trait Positions extends api.Positions { self: SymbolTable =>
+
   def focusPos(pos: Position): Position
   def isRangePos(pos: Position): Boolean
   def showPos(pos: Position): String
-  
+
   /** A position that wraps a set of trees.
    *  The point of the wrapping position is the point of the default position.
    *  If some of the trees are ranges, returns a range position enclosing all ranges
