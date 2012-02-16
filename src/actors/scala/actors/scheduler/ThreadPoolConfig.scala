@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -42,10 +42,10 @@ private[actors] object ThreadPoolConfig {
       (propIsSetTo("actors.enableForkJoin", "true") || {
         Debug.info(this+": java.version = "+javaVersion)
         Debug.info(this+": java.vm.vendor = "+javaVmVendor)
-      
+
         // on IBM J9 1.6 do not use ForkJoinPool
         // XXX this all needs to go into Properties.
-        isJavaAtLeast("1.6") && ((javaVmVendor contains "Sun") || (javaVmVendor contains "Apple"))
+        isJavaAtLeast("1.6") && ((javaVmVendor contains "Oracle") || (javaVmVendor contains "Sun") || (javaVmVendor contains "Apple"))
       })
     catch {
       case _: SecurityException => false
