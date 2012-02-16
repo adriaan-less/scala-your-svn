@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Lex Spoon
  */
 
@@ -15,15 +15,13 @@ import scala.collection.mutable
 import mutable.ListBuffer
 import scala.xml.XML
 
-/** <p>
- *    Information about a plugin loaded from a jar file.
- *  </p>
- *  <p>
- *    The concrete subclass must have a one-argument constructor
- *    that accepts an instance of <code>Global</code>.
- *  </p><pre>
+/** Information about a plugin loaded from a jar file.
+ *
+ *  The concrete subclass must have a one-argument constructor
+ *  that accepts an instance of `global`.
+ *  {{{
  *    (val global: Global)
- *  </pre>
+ *  }}}
  *
  *  @author Lex Spoon
  *  @version 1.0, 2007-5-21
@@ -42,7 +40,7 @@ abstract class Plugin {
    *  to a constructor parameter in the concrete subclass. */
   val global: Global
 
-  /** Handle any plugin-specific options.  The -P:plugname: part
+  /** Handle any plugin-specific options.  The `-P:plugname:` part
    *  will not be present. */
   def processOptions(options: List[String], error: String => Unit) {
     if (!options.isEmpty)
@@ -50,9 +48,8 @@ abstract class Plugin {
   }
 
   /** A description of this plugin's options, suitable as a response
-   *  to the -help command-line option.  Conventionally, the
-   *  options should be listed with the <code>-P:plugname:</code>
-   *  part included.
+   *  to the -help command-line option.  Conventionally, the options
+   *  should be listed with the `-P:plugname:` part included.
    */
   val optionsHelp: Option[String] = None
 }
@@ -72,7 +69,7 @@ object Plugin {
   private def loaderFor(jarfiles: Seq[Path]): ClassLoader = {
     val compilerLoader = classOf[Plugin].getClassLoader
     val jarurls = jarfiles map (_.toURL)
-    
+
     new URLClassLoader(jarurls.toArray, compilerLoader)
   }
 
@@ -105,13 +102,15 @@ object Plugin {
   type AnyClass = Class[_]
 
   /** Loads a plugin class from the named jar file.
-
-   *  @return <code>None</code> if the jar file has no plugin in it or
-   *                            if the plugin is badly formed.
+   *
+   *  @return `None` if the jar file has no plugin in it or
+   *                 if the plugin is badly formed.
    */
   def loadFrom(jarfile: Path, loader: ClassLoader): Option[AnyClass] =
     loadDescription(jarfile) match {
-      case None => None
+      case None =>
+        println("Warning: could not load descriptor for plugin %s".format(jarfile))
+        None
       case Some(pdesc) =>
         try Some(loader loadClass pdesc.classname) catch {
         case _: Exception =>
@@ -122,22 +121,22 @@ object Plugin {
 
   /** Load all plugins found in the argument list, both in the
    *  jar files explicitly listed, and in the jar files in the
-   *  directories specified. Skips all plugins in <code>ignoring</code>.
+   *  directories specified. Skips all plugins in `ignoring`.
    *  A single classloader is created and used to load all of them.
    */
   def loadAllFrom(
-    jars: List[Path], 
-    dirs: List[Path], 
+    jars: List[Path],
+    dirs: List[Path],
     ignoring: List[String]): List[AnyClass] =
   {
     val alljars = (jars ::: (for {
       dir <- dirs if dir.isDirectory
       entry <- dir.toDirectory.files.toList sortBy (_.name)
-      if entry.extension == "jar"
+      if Path.isJarOrZip(entry)
       pdesc <- loadDescription(entry)
       if !(ignoring contains pdesc.name)
     } yield entry)).distinct
- 
+
     val loader = loaderFor(alljars)
     alljars map (loadFrom(_, loader)) flatten
   }
