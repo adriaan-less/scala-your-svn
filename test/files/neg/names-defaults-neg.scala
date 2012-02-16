@@ -1,4 +1,4 @@
-object Test extends Application {
+object Test extends App {
   // TESTS
 
   // re-ordering
@@ -92,6 +92,10 @@ object Test extends Application {
   def deprNam3(@deprecatedName('x) a: Int, @deprecatedName('y) b: Int) = a + b
   deprNam3(y = 10, b = 2)
 
+
+  // t3818
+  def f3818(x: Int = 1, y: Int, z: Int = 1) = 0
+  f3818(y = 1, m = 1)
 
   // DEFINITIONS
   def test1(a: Int, b: String) = a +": "+ b
