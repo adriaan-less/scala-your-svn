@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -15,15 +14,14 @@ package dtd
 import PartialFunction._
 import ContentModel.ElemName
 import MakeValidationException._    // @todo other exceptions
-
 import scala.util.automata._
-import scala.collection.mutable.BitSet
+import scala.collection.mutable
 
 /** validate children and/or attributes of an element
  *  exceptions are created but not thrown.
  */
 class ElementValidator() extends Function1[Node,Boolean] {
-  
+
   private var exc: List[ValidationException] = Nil
 
   protected var contentModel: ContentModel           = _
@@ -48,8 +46,8 @@ class ElementValidator() extends Function1[Node,Boolean] {
   def setMetaData(adecls: List[AttrDecl]) { this.adecls = adecls }
 
   def getIterable(nodes: Seq[Node], skipPCDATA: Boolean): Iterable[ElemName] = {
-    def isAllWhitespace(a: Atom[_]) = cond(a.data) { case s: String if s.trim.isEmpty  => true }
-    
+    def isAllWhitespace(a: Atom[_]) = cond(a.data) { case s: String if s.trim == "" => true }
+
     nodes.filter {
       case y: SpecialNode => y match {
         case a: Atom[_] if isAllWhitespace(a) => false  // always skip all-whitespace nodes
@@ -57,14 +55,14 @@ class ElementValidator() extends Function1[Node,Boolean] {
       }
       case x                                  => x.namespace eq null
     } . map (x => ElemName(x.label))
-  }  
+  }
 
   /** check attributes, return true if md corresponds to attribute declarations in adecls.
    */
   def check(md: MetaData): Boolean = {
     val len: Int = exc.length
-    var ok = new BitSet(adecls.length)
-    
+    var ok = new mutable.BitSet(adecls.length)
+
     for (attr <- md) {
       def attrStr = attr.value.toString
       def find(Key: String): Option[AttrDecl] = {
@@ -79,13 +77,13 @@ class ElementValidator() extends Function1[Node,Boolean] {
         case None =>
           exc ::= fromUndefinedAttribute(attr.key)
 
-        case Some(AttrDecl(_, tpe, DEFAULT(true, fixedValue))) if attrStr != fixedValue => 
+        case Some(AttrDecl(_, tpe, DEFAULT(true, fixedValue))) if attrStr != fixedValue =>
           exc ::= fromFixedAttribute(attr.key, fixedValue, attrStr)
 
         case _ =>
       }
     }
-    
+
     adecls.zipWithIndex foreach {
       case (AttrDecl(key, tpe, REQUIRED), j) if !ok(j) => exc ::= fromMissingAttribute(key, tpe)
       case _ =>
@@ -95,7 +93,7 @@ class ElementValidator() extends Function1[Node,Boolean] {
   }
 
   /** check children, return true if conform to content model
-   *  @pre contentModel != null
+   *  @note contentModel != null
    */
   def check(nodes: Seq[Node]): Boolean = contentModel match {
     case ANY    => true
@@ -105,7 +103,7 @@ class ElementValidator() extends Function1[Node,Boolean] {
       val j = exc.length
       def find(Key: String): Boolean =
         branches exists { case ContentModel.Letter(ElemName(Key)) => true ; case _ => false }
-      
+
       getIterable(nodes, true) map (_.name) filterNot find foreach {
         exc ::= MakeValidationException fromUndefinedElement _
       }
@@ -120,7 +118,7 @@ class ElementValidator() extends Function1[Node,Boolean] {
   }
 
   /** applies various validations - accumulates error messages in exc
-   *  @todo: fail on first error, ignore other errors (rearranging conditions)
+   *  @todo fail on first error, ignore other errors (rearranging conditions)
    */
   def apply(n: Node): Boolean =
     //- ? check children

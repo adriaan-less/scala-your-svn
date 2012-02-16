@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -19,7 +19,7 @@ import scala.collection.generic.CanBuildFrom
 /** Tuple3 is the canonical representation of a @see Product3
  *
  */
-case class Tuple3[+T1, +T2, +T3](_1:T1,_2:T2,_3:T3)
+case class Tuple3[+T1, +T2, +T3](_1: T1, _2: T2, _3: T3)
   extends Product3[T1, T2, T3]
 {
   override def toString() = "(" + _1 + "," + _2 + "," + _3 + ")"
@@ -67,10 +67,26 @@ case class Tuple3[+T1, +T2, +T3](_1:T1,_2:T2,_3:T3)
       val elems2 = coll2.iterator
       val elems3 = coll3.iterator
 
-      for(el1 <- coll1)
-       if(elems2.hasNext && elems3.hasNext)
-         b ++= f(el1, elems2.next, elems3.next)
+      for (el1 <- coll1) {
+        if (elems2.hasNext && elems3.hasNext)
+          b += f(el1, elems2.next, elems3.next)
+        else
+          return b.result
+      }
+      b.result
+    }
 
+    def flatMap[B, To](f: (El1, El2, El3) => TraversableOnce[B])(implicit cbf: CBF[Repr1, B, To]): To = {
+      val b = cbf(coll1.repr)
+      val elems2 = coll2.iterator
+      val elems3 = coll3.iterator
+
+      for (el1 <- coll1) {
+        if (elems2.hasNext && elems3.hasNext)
+          b ++= f(el1, elems2.next, elems3.next)
+        else
+          return b.result
+      }
       b.result
     }
 
@@ -88,27 +104,31 @@ case class Tuple3[+T1, +T2, +T3](_1:T1,_2:T2,_3:T3)
         if(elems2.hasNext && elems3.hasNext) {
           val el2 = elems2.next
           val el3 = elems3.next
-          if(f(el1, el2, el3)) {
+
+          if (f(el1, el2, el3)) {
             b1 += el1
             b2 += el2
             b3 += el3
           }
         }
+        else return result
       }
 
       (b1.result, b2.result, b3.result)
     }
 
     def exists(f: (El1, El2, El3) => Boolean): Boolean = {
-      var acc = false
       val elems2 = coll2.iterator
       val elems3 = coll3.iterator
 
-      for(el1 <- coll1)
-       if(!acc && elems2.hasNext && elems3.hasNext)
-         acc = f(el1, elems2.next, elems3.next)
-
-      acc
+      for (el1 <- coll1) {
+        if (elems2.hasNext && elems3.hasNext) {
+          if (f(el1, elems2.next, elems3.next))
+            return true
+        }
+        else return false
+      }
+      false
     }
 
     def forall(f: (El1, El2, El3) => Boolean): Boolean = {
@@ -116,9 +136,8 @@ case class Tuple3[+T1, +T2, +T3](_1:T1,_2:T2,_3:T3)
       val elems2 = coll2.iterator
       val elems3 = coll3.iterator
 
-      for(el1 <- coll1)
-       if(acc && elems2.hasNext && elems3.hasNext)
-         acc = f(el1, elems2.next, elems3.next)
+    def forall(f: (El1, El2, El3) => Boolean): Boolean =
+      !exists((x, y, z) => !f(x, y, z))
 
       acc
     }
@@ -127,9 +146,12 @@ case class Tuple3[+T1, +T2, +T3](_1:T1,_2:T2,_3:T3)
       val elems2 = coll2.iterator
       val elems3 = coll3.iterator
 
-      for(el1 <- coll1)
-       if(elems2.hasNext && elems3.hasNext)
-         f(el1, elems2.next, elems3.next)
+      for (el1 <- coll1) {
+        if (elems2.hasNext && elems3.hasNext)
+          f(el1, elems2.next, elems3.next)
+        else
+          return
+      }
     }
   }
 }
