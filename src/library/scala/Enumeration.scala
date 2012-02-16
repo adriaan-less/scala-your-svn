@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -8,63 +8,73 @@
 
 package scala
 
-import scala.collection.SetLike
-import scala.collection.{ mutable, immutable, generic }
+import scala.collection.{ mutable, immutable, generic, SortedSetLike, AbstractSet }
 import java.lang.reflect.{ Modifier, Method => JMethod, Field => JField }
+import scala.reflect.NameTransformer._
+import java.util.regex.Pattern
 
-/** <p>
- *    Defines a finite set of values specific to the enumeration. Typically
- *    these values enumerate all possible forms something can take and provide a
- *    lightweight alternative to case classes.
- *  </p>
- *  <p>
- *    Each call to a <code>Value</code> method adds a new unique value to the
- *    enumeration. To be accessible, these values are usually defined as 
- *    <code>val</code> members of the evaluation.
- *  </p>
- *  <p>
- *    All values in an enumeration share a common, unique type defined as the 
- *    <code>Value</code> type member of the enumeration (<code>Value</code>
- *    selected on the stable identifier path of the enumeration instance).
- *  </p>
- *  <p>
- *    <b>Example use</b>
- *  </p><pre>
- *  <b>object</b> Main <b>extends</b> Application {
+/** Defines a finite set of values specific to the enumeration. Typically
+ *  these values enumerate all possible forms something can take and provide
+ *  a lightweight alternative to case classes.
  *
- *    <b>object</b> WeekDay <b>extends</b> Enumeration {
- *      <b>type</b> WeekDay</b> = Value
- *      <b>val</b> Mon, Tue, Wed, Thu, Fri, Sat, Sun = Value
+ *  Each call to a `Value` method adds a new unique value to the enumeration.
+ *  To be accessible, these values are usually defined as `val` members of
+ *  the evaluation.
+ *
+ *  All values in an enumeration share a common, unique type defined as the
+ *  `Value` type member of the enumeration (`Value` selected on the stable
+ *  identifier path of the enumeration instance).
+ *
+ * @example {{{
+ *  object Main extends App {
+ *
+ *    object WeekDay extends Enumeration {
+ *      type WeekDay = Value
+ *      val Mon, Tue, Wed, Thu, Fri, Sat, Sun = Value
  *    }
- *    <b>import</b> WeekDay._
+ *    import WeekDay._
  *
- *    <b>def</b> isWorkingDay(d: WeekDay) = ! (d == Sat || d == Sun)
- * 
+ *    def isWorkingDay(d: WeekDay) = ! (d == Sat || d == Sun)
+ *
  *    WeekDay.values filter isWorkingDay foreach println
- *  }</pre>
+ *  }
+ *  // output:
+ *  // Mon
+ *  // Tue
+ *  // Wed
+ *  // Thu
+ *  // Fri
+ *  }}}
  *
  *  @param initial The initial value from which to count the integers that
  *                 identifies values at run-time.
- *  @param names   The sequence of names to give to this enumeration's values.
- *
  *  @author  Matthias Zenger
- *  @version 1.0, 10/02/2004
  */
 @SerialVersionUID(8476000850333817230L)
-abstract class Enumeration(initial: Int, names: String*) extends Serializable {
+abstract class Enumeration (initial: Int) extends Serializable {
   thisenum =>
+
+  def this() = this(0)
     
-  def this() = this(0, null)
+  @deprecated("Names should be specified individually or discovered via reflection", "2.10.0")
+  def this(initial: Int, names: String*) = {
+    this(initial)
+    this.nextName = names.iterator
+  }
+  @deprecated("Names should be specified individually or discovered via reflection", "2.10.0")
   def this(names: String*) = this(0, names: _*)
 
   /* Note that `readResolve` cannot be private, since otherwise
      the JVM does not invoke it when deserializing subclasses. */
-  protected def readResolve(): AnyRef = thisenum.getClass.getField("MODULE$").get()
+  protected def readResolve(): AnyRef = thisenum.getClass.getField(MODULE_INSTANCE_NAME).get(null)
 
-  /** The name of this enumeration.  
+  /** The name of this enumeration.
    */
-  override def toString = (getClass.getName stripSuffix "$" split '.' last) split '$' last
-  
+  override def toString = (
+    (getClass.getName stripSuffix MODULE_SUFFIX_STRING split '.' last)
+    split Pattern.quote(NAME_JOIN_STRING) last
+  )
+
   /** The mapping from the integer used to identify values to the actual
     * values. */
   private val vmap: mutable.Map[Int, Value] = new mutable.HashMap
@@ -81,23 +91,28 @@ abstract class Enumeration(initial: Int, names: String*) extends Serializable {
    */
   def values: ValueSet = {
     if (!vsetDefined) {
-      vset = new ValueSet(immutable.BitSet.empty ++ (vmap.values map (_.id)))
+      vset = (ValueSet.newBuilder ++= vmap.values).result()
       vsetDefined = true
     }
     vset
   }
 
   /** The integer to use to identify the next created value. */
-  protected var nextId = initial
-  
+  protected var nextId: Int = initial
+
   /** The string to use to name the next created value. */
-  protected var nextName = names.iterator
-  private def nextNameOrElse(orElse: => String) =
-    if (nextName.hasNext) nextName.next else orElse
+  protected var nextName: Iterator[String] = _
+
+  private def nextNameOrNull =
+    if (nextName != null && nextName.hasNext) nextName.next else null
 
   /** The highest integer amongst those used to identify values in this
     * enumeration. */
   private var topId = initial
+
+  /** The lowest integer amongst those used to identify values in this
+    * enumeration, but no higher than 0. */
+  private var bottomId = if(initial < 0) initial else 0
 
   /** The highest integer amongst those used to identify values in this
     * enumeration. */
@@ -107,56 +122,54 @@ abstract class Enumeration(initial: Int, names: String*) extends Serializable {
    */
   final def apply(x: Int): Value = vmap(x)
 
-  /** Returns a Value from this Enumeration whose name matches 
-   * the argument <var>s</var>.
+  /** Return a `Value` from this `Enumeration` whose name matches
+   *  the argument `s`.  The names are determined automatically via reflection.
    *
-   * You can pass a String* set of names to the constructor, or
-   * initialize each Enumeration with Value(String). Otherwise, the
-   * names are determined automatically through reflection.
-   *
-   * Note the change here wrt 2.7 is intentional. You should know whether
-   * a name is in an Enumeration beforehand. If not, just use find on
-   * values.
-   *
-   * @param  s an Enumeration name
-   * @return   the Value of this Enumeration if its name matches <var>s</var>
-   * @throws   java.util.NoSuchElementException if no Value with a matching
-   *           name is in this Enumeration
+   * @param  s an `Enumeration` name
+   * @return   the `Value` of this `Enumeration` if its name matches `s`
+   * @throws   java.util.NoSuchElementException if no `Value` with a matching
+   *           name is in this `Enumeration`
    */
   final def withName(s: String): Value = values.find(_.toString == s).get
 
   /** Creates a fresh value, part of this enumeration. */
-  protected final def Value: Value = Value(nextId)      
-  
-  /** Creates a fresh value, part of this enumeration, identified by the integer
-   *  <code>i</code>.
+  protected final def Value: Value = Value(nextId)
+
+  /** Creates a fresh value, part of this enumeration, identified by the
+   *  integer `i`.
    *
    *  @param i An integer that identifies this value at run-time. It must be
    *           unique amongst all values of the enumeration.
-   *  @return  ..
+   *  @return  Fresh value identified by `i`.
    */
-  protected final def Value(i: Int): Value = Value(i, nextNameOrElse(null))
-  
-  /** Creates a fresh value, part of this enumeration, called <code>name</code>.
+  protected final def Value(i: Int): Value = Value(i, nextNameOrNull)
+
+  /** Creates a fresh value, part of this enumeration, called `name`.
    *
    *  @param name A human-readable name for that value.
+   *  @return  Fresh value called `name`.
    */
   protected final def Value(name: String): Value = Value(nextId, name)
-  
-  /** Creates a fresh value, part of this enumeration, called <code>name</code>
-   *  and identified by the integer <code>i</code>.
+
+  /** Creates a fresh value, part of this enumeration, called `name`
+   *  and identified by the integer `i`.
    *
    * @param i    An integer that identifies this value at run-time. It must be
    *             unique amongst all values of the enumeration.
    * @param name A human-readable name for that value.
-   * @return     ..
+   * @return     Fresh value with the provided identifier `i` and name `name`.
    */
   protected final def Value(i: Int, name: String): Value = new Val(i, name)
 
   private def populateNameMap() {
+    val fields = getClass.getDeclaredFields
+    def isValDef(m: JMethod) = fields exists (fd => fd.getName == m.getName && fd.getType == m.getReturnType)
+
     // The list of possible Value methods: 0-args which return a conforming type
-    val methods = getClass.getMethods filter (m => m.getParameterTypes.isEmpty && classOf[Value].isAssignableFrom(m.getReturnType))
-    
+    val methods = getClass.getMethods filter (m => m.getParameterTypes.isEmpty &&
+                                                   classOf[Value].isAssignableFrom(m.getReturnType) &&
+                                                   m.getDeclaringClass != classOf[Enumeration] &&
+                                                   isValDef(m))
     methods foreach { m =>
       val name = m.getName
       // invoke method to obtain actual `Value` instance
@@ -172,9 +185,7 @@ abstract class Enumeration(initial: Int, names: String*) extends Serializable {
   /* Obtains the name for the value with id `i`. If no name is cached
    * in `nmap`, it populates `nmap` using reflection.
    */
-  private def nameOf(i: Int): String = synchronized {
-    nmap.getOrElse(i, { populateNameMap() ; nmap(i) })
-  }
+  private def nameOf(i: Int): String = synchronized { nmap.getOrElse(i, { populateNameMap() ; nmap(i) }) }
 
   /** The type of the enumerated values. */
   @SerialVersionUID(7091335633555234129L)
@@ -190,41 +201,27 @@ abstract class Enumeration(initial: Int, names: String*) extends Serializable {
       case _                        => false
     }
     override def hashCode: Int = id.##
-
-    /** this enumeration value as an <code>Int</code> bit mask.
-     *  @throws IllegalArgumentException if <code>id</code> is greater than 31
-     */
-    @deprecated("mask32 will be removed")
-    def mask32: Int = {
-      if (id >= 32) throw new IllegalArgumentException
-      1  << id
-    }
-    /** this enumeration value as a <code>Long</code> bit mask. 
-     *  @throws IllegalArgumentException if <code>id</code> is greater than 63
-     */
-    @deprecated("mask64 will be removed")
-    def mask64: Long = {
-      if (id >= 64) throw new IllegalArgumentException
-      1L << id
-    }
+    
+    /** Create a ValueSet which contains this value and another one */
+    def + (v: Value) = ValueSet(this, v)
   }
-  
-  /** A class implementing the <a href="Enumeration.Value.html"
-   *  target="contentFrame"><code>Value</code></a> type. This class can be
-   *  overridden to change the enumeration's naming and integer identification
-   *  behaviour.
+
+  /** A class implementing the [[scala.Enumeration.Value]] type. This class
+   *  can be overridden to change the enumeration's naming and integer
+   *  identification behaviour.
    */
   @SerialVersionUID(0 - 3501153230598116017L)
   protected class Val(i: Int, name: String) extends Value with Serializable {
-    def this(i: Int)        = this(i, nextNameOrElse(i.toString))
-    def this(name: String)  = this(nextId, name)
-    def this()              = this(nextId)
+    def this(i: Int)       = this(i, nextNameOrNull)
+    def this(name: String) = this(nextId, name)
+    def this()             = this(nextId)
 
     assert(!vmap.isDefinedAt(i), "Duplicate id: " + i)
     vmap(i) = this
     vsetDefined = false
     nextId = i + 1
     if (nextId > topId) topId = nextId
+    if (i < bottomId) bottomId = i
     def id = i
     override def toString() =
       if (name != null) name
@@ -238,79 +235,61 @@ abstract class Enumeration(initial: Int, names: String*) extends Serializable {
     }
   }
 
-  /** A class for sets of values
-   *  Iterating through this set will yield values in increasing order of their ids.
-   *  @param   ids   The set of ids of values, organized as a BitSet. 
-   */
-  class ValueSet private[Enumeration] (val ids: immutable.BitSet) extends Set[Value] with SetLike[Value, ValueSet] {
-    override def empty = ValueSet.empty
-    def contains(v: Value) = ids contains (v.id)
-    def + (value: Value) = new ValueSet(ids + value.id)
-    def - (value: Value) = new ValueSet(ids - value.id)
-    def iterator = ids.iterator map thisenum.apply
-    override def stringPrefix = thisenum + ".ValueSet"
+  /** An ordering by id for values of this set */
+  object ValueOrdering extends Ordering[Value] {
+    def compare(x: Value, y: Value): Int = x.id - y.id
   }
 
+  /** A class for sets of values.
+   *  Iterating through this set will yield values in increasing order of their ids.
+   *
+   *  @param nnIds The set of ids of values (adjusted so that the lowest value does
+   *    not fall below zero), organized as a `BitSet`.
+   */
+  class ValueSet private[ValueSet] (private[this] var nnIds: immutable.BitSet)
+  extends AbstractSet[Value]
+     with immutable.SortedSet[Value]
+     with SortedSetLike[Value, ValueSet]
+     with Serializable {
+
+    implicit def ordering: Ordering[Value] = ValueOrdering
+    def rangeImpl(from: Option[Value], until: Option[Value]): ValueSet =
+      new ValueSet(nnIds.rangeImpl(from.map(_.id - bottomId), until.map(_.id - bottomId)))
+
+    override def empty = ValueSet.empty
+    def contains(v: Value) = nnIds contains (v.id - bottomId)
+    def + (value: Value) = new ValueSet(nnIds + (value.id - bottomId))
+    def - (value: Value) = new ValueSet(nnIds - (value.id - bottomId))
+    def iterator = nnIds.iterator map (id => thisenum.apply(id + bottomId))
+    override def stringPrefix = thisenum + ".ValueSet"
+    /** Creates a bit mask for the zero-adjusted ids in this set as a
+     *  new array of longs */
+    def toBitMask: Array[Long] = nnIds.toBitMask
+  }
+                                
   /** A factory object for value sets */
   object ValueSet {
-    import mutable.{ Builder, AddingBuilder }
     import generic.CanBuildFrom
 
     /** The empty value set */
     val empty = new ValueSet(immutable.BitSet.empty)
-    /** A value set consisting of given elements */ 
-    def apply(elems: Value*): ValueSet = empty ++ elems
+    /** A value set consisting of given elements */
+    def apply(elems: Value*): ValueSet = (newBuilder ++= elems).result()
+    /** A value set containing all the values for the zero-adjusted ids
+     *  corresponding to the bits in an array */
+    def fromBitMask(elems: Array[Long]): ValueSet = new ValueSet(immutable.BitSet.fromBitMask(elems))
     /** A builder object for value sets */
-    def newBuilder: Builder[Value, ValueSet] = new AddingBuilder(empty)
+    def newBuilder: mutable.Builder[Value, ValueSet] = new mutable.Builder[Value, ValueSet] {
+      private[this] val b = new mutable.BitSet
+      def += (x: Value) = { b += (x.id - bottomId); this }
+      def clear() = b.clear
+      def result() = new ValueSet(b.toImmutable)
+    }
     /** The implicit builder for value sets */
-    implicit def canBuildFrom: CanBuildFrom[ValueSet, Value, ValueSet] = 
-      new CanBuildFrom[ValueSet, Value, ValueSet] { 
-        def apply(from: ValueSet) = newBuilder 
-        def apply() = newBuilder 
+    implicit def canBuildFrom: CanBuildFrom[ValueSet, Value, ValueSet] =
+      new CanBuildFrom[ValueSet, Value, ValueSet] {
+        def apply(from: ValueSet) = newBuilder
+        def apply() = newBuilder
       }
   }
-  
-  /** The name of this enumeration. */
-  @deprecated("use toString instead") def name = toString
-
-  @deprecated("use withName instead")
-  def valueOf(s: String) = values.find(_.toString == s)
-
-  /** A new iterator over all values of this enumeration. */
-  @deprecated("use values.iterator instead")
-  final def iterator: Iterator[Value] = values.iterator
-  
-  /** Apply a function f to all values of this enumeration. */
-  @deprecated("use values.foreach instead")
-  def foreach(f: Value => Unit): Unit = this.iterator foreach f
-  
-  /** Apply a predicate p to all values of this enumeration and return
-    * true, iff the predicate yields true for all values. 
-   */
-  @deprecated("use values.forall instead")
-  def forall(p: Value => Boolean): Boolean = this.iterator forall p
-  
-  /** Apply a predicate p to all values of this enumeration and return
-    * true, iff there is at least one value for which p yields true.
-    */
-  @deprecated("use values.exists instead")
-  def exists(p: Value => Boolean): Boolean = this.iterator exists p
-  
-  /** Returns an iterator resulting from applying the given function f to each
-    * value of this enumeration.
-    */
-  @deprecated("use values.map instead")
-  def map[B](f: Value => B): Iterator[B] = this.iterator map f
-  
-  /** Applies the given function f to each value of this enumeration, then
-    * concatenates the results. 
-    */
-  @deprecated("use values.flatMap instead")
-  def flatMap[B](f: Value => TraversableOnce[B]): Iterator[B] = this.iterator flatMap f
-    
-  /** Returns all values of this enumeration that satisfy the predicate p.
-    * The order of values is preserved. 
-    */
-  @deprecated("use values.filter instead")
-  def filter(p: Value => Boolean): Iterator[Value] = this.iterator filter p
 }

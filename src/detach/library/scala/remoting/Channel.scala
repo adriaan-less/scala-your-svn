@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -42,7 +42,7 @@ class Channel protected (socket: Socket) {
   /** Returns the port on which this channel is listening. */
   val port = socket.getLocalPort
 
-  private var cl: ClassLoader = 
+  private var cl: ClassLoader =
     try {
       // requires permission in Java policy file
       val codebase = System.getProperty("java.rmi.server.codebase")
@@ -51,7 +51,7 @@ class Channel protected (socket: Socket) {
     }
     catch {
       case e: Exception =>
-        error("Class loader undefined: " + e.getMessage)
+        sys.error("Class loader undefined: " + e.getMessage)
         null
     }
   def classLoader: ClassLoader = cl
@@ -82,16 +82,16 @@ class Channel protected (socket: Socket) {
     }
     catch {
       case e: IOException =>
-        error("Input stream undefined: "+e.getMessage+" ("+this+")")
+        sys.error("Input stream undefined: "+e.getMessage+" ("+this+")")
         null
     }
-  private lazy val out = 
+  private lazy val out =
     try {
       new ObjectOutputStream(socket.getOutputStream)
     }
     catch {
       case e: IOException =>
-        error("Output stream undefined: "+e.getMessage+" ("+this+")")
+        sys.error("Output stream undefined: "+e.getMessage+" ("+this+")")
         null
     }
 

@@ -1,3 +1,7 @@
+/*
+ *  @author Stephane Micheloud
+ */
+
 import scala.actors.Actor._, ClientHelper._
 import scala.actors.remote._, RemoteActor._
 import scala.remoting._, Debug._
@@ -31,7 +35,7 @@ object Client {
       react {
         case result: Int =>
           println("result received: " + result)
-          Predef.exit(0)        
+          Predef.exit(0)
       }
     }
   }
