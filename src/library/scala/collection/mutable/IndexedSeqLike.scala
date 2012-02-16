@@ -14,16 +14,16 @@ import generic._
 
 /** A subtrait of scala.collection.IndexedSeq which represents sequences
  *  that can be mutated.
- *  
+ *
  *  It declares a method `update` which allows updating an element
  *  at a specific index in the sequence.
  *
  *  This trait just implements `iterator` in terms of `apply` and `length`.
  *  However, see `IndexedSeqOptimized` for an implementation trait that overrides operations
- *  to make them run faster under the assumption of fast random access with `apply`. 
+ *  to make them run faster under the assumption of fast random access with `apply`.
  *
  *  $indexedSeqInfo
- *  
+ *
  *  @tparam A    the element type of the $coll
  *  @tparam Repr the type of the actual $coll containing the elements.
  *
@@ -51,7 +51,7 @@ trait IndexedSeqLike[A, +Repr] extends scala.collection.IndexedSeqLike[A, Repr] 
 
   /** Creates a view of this iterable @see Iterable.View
    */
-  override def view = new IndexedSeqView[A, Repr] { 
+  override def view = new IndexedSeqView[A, Repr] {
     protected lazy val underlying = self.repr
     override def iterator = self.iterator
     override def length = self.length
@@ -68,6 +68,6 @@ trait IndexedSeqLike[A, +Repr] extends scala.collection.IndexedSeqLike[A, Repr] 
    *         a view of the current sequence, whereas `slice` produces a new sequence.
    *
    *  @note view(from, to)  is equivalent to view.slice(from, to)
-   */ 
+   */
   override def view(from: Int, until: Int) = view.slice(from, until)
 }
