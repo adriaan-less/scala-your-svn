@@ -13,16 +13,16 @@ package statement
 package expression;
 
 
-@deprecated(DbcIsDeprecated) abstract class Select extends Expression {
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Select extends Expression {
 
   /** The actual select statement */
   def selectStatement: statement.Select;
 
   /** A SQL-99 compliant string representation of the expression. */
   override def sqlString: String = selectStatement.sqlString;
-  
+
   /** A SQL-99 compliant string representation of the relation sub-
    * statement. This only has a meaning inside another statement. */
   def sqlInnerString: String = "("+selectStatement.sqlString+")";
-  
+
 }

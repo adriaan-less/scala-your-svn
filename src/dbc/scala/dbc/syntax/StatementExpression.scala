@@ -15,7 +15,7 @@ package syntax;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-@deprecated(DbcIsDeprecated) abstract class StatementExpression {
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class StatementExpression {
 
   def toStatement: statement.Expression;
 
@@ -171,7 +171,7 @@ import java.math.BigInteger;
 
 }
 
-@deprecated(DbcIsDeprecated) object StatementExpression {
+@deprecated(DbcIsDeprecated, "2.9.0") object StatementExpression {
 
   def not (se:StatementExpression): StatementExpression = new StatementExpression {
     val toStatement = new statement.expression.UnaryOperator {
@@ -196,7 +196,7 @@ import java.math.BigInteger;
       };
     }
   }
-  
+
   abstract class StatementField extends StatementExpression {
     def fieldName: String;
     def tableName: Option[String] = None;
@@ -214,8 +214,8 @@ import java.math.BigInteger;
   implicit def stringToStatementField (ef:String): StatementField = new StatementField {
     val fieldName = ef;
   }
-  
-  
-  
-  
+
+
+
+
 }

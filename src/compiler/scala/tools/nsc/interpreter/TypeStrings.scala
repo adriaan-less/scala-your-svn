@@ -9,6 +9,7 @@ package interpreter
 import java.lang.{ reflect => r }
 import r.TypeVariable
 import scala.reflect.NameTransformer
+import NameTransformer._
 
 /** Logic for turning a type into a String.  The goal is to be
  *  able to take some arbitrary object 'x' and obtain the most precise
@@ -31,39 +32,39 @@ trait TypeStrings {
       case "void" => "Unit"
       case s      => s.capitalize
     }
-    
+
     ("java.lang." + key) -> ("scala." + value)
   } toMap
-  
+
   def scalaName(s: String): String = {
-    if (s endsWith "$") s.init + ".type"
+    if (s endsWith MODULE_SUFFIX_STRING) s.init + ".type"
     else if (s == "void") "scala.Unit"
     else if (primitives(s)) "scala." + s.capitalize
-    else primitiveMap.getOrElse(s, NameTransformer decode s)
+    else primitiveMap.getOrElse(s, NameTransformer.decode(s))
   }
   // Trying to put humpty dumpty back together again.
   def scalaName(clazz: JClass): String = {
     val name      = clazz.getName
     val isAnon    = clazz.isScalaAnonymous
     val enclClass = clazz.getEnclosingClass
-    def enclPre   = enclClass.getName + "$"
+    def enclPre   = enclClass.getName + MODULE_SUFFIX_STRING
     def enclMatch = name startsWith enclPre
-    
+
     scalaName(
       if (enclClass == null || isAnon || !enclMatch) name
       else enclClass.getName + "." + (name stripPrefix enclPre)
     )
   }
   def scalaName(m: ClassManifest[_]): String = scalaName(m.erasure)
-  def anyClass(x: Any): JClass               = if (x == null) null else x.asInstanceOf[AnyRef].getClass
-  
+  def anyClass(x: Any): JClass               = if (x == null) null else x.getClass
+
   private def brackets(tps: String*): String =
     if (tps.isEmpty) ""
     else tps.mkString("[", ", ", "]")
 
   private def tvarString(tvar: TypeVariable[_]): String = tvarString(tvar.getBounds.toList)
-  private def tvarString(bounds: List[AnyRef]): String = {    
-    val xs = bounds filterNot (_ == ObjectClass) collect { case x: Class[_] => x }
+  private def tvarString(bounds: List[AnyRef]): String = {
+    val xs = bounds filterNot (_ == ObjectClass) collect { case x: JClass => x }
     if (xs.isEmpty) "_"
     else scalaName(xs.head)
   }
@@ -86,7 +87,7 @@ trait TypeStrings {
   def fromValue(value: Any): String             = if (value == null) "Null" else fromClazz(anyClass(value))
   def fromClazz(clazz: JClass): String          = scalaName(clazz) + tparamString(clazz)
   def fromManifest[T: Manifest] : String        = scalaName(manifest[T].erasure) + tparamString[T]
-  
+
   /** Reducing fully qualified noise for some common packages.
    */
   def quieter(tpe: String, alsoStrip: String*): String = {
@@ -97,12 +98,12 @@ trait TypeStrings {
       "java.lang." -> "jl.",
       "scala.runtime." -> "runtime."
     ) ++ (alsoStrip map (_ -> ""))
-    
+
     transforms.foldLeft(tpe) {
       case (res, (k, v)) => res.replaceAll(k, v)
     }
   }
-  
+
   val typeTransforms = List(
     "java.lang." -> "",
     "scala.collection.immutable." -> "immutable.",

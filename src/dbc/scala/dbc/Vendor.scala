@@ -16,8 +16,8 @@ import java.sql.{Connection, Driver};
 
 /** This class ..
  */
-@deprecated(DbcIsDeprecated) abstract class Vendor {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Vendor {
+
   def nativeDriverClass: Class[_];
   def uri: java.net.URI;
   def user: String;

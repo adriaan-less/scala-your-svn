@@ -13,21 +13,21 @@ package statement
 package expression;
 
 
-@deprecated(DbcIsDeprecated) case class FunctionCall (
+@deprecated(DbcIsDeprecated, "2.9.0") case class FunctionCall (
   functionName: String,
   arguments: List[Expression]
 ) extends Expression {
-  
+
   /** A SQL-99 compliant string representation of the relation sub-
     * statement. This only has a meaning inside another statement. */
   def sqlInnerString: String = {
     functionName + "(" + arguments.mkString("",", ","") + ")"
   }
-  
+
   /** The name of the function to call. */
   //def functionName: String;
-  
+
   /** A list of all argument expressions to pass to the function, in order. */
   //def arguments: List[Expression];
-  
+
 }
