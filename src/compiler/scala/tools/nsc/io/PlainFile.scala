@@ -1,35 +1,41 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 
 package scala.tools.nsc
 package io
 
-import java.io.{ File => JFile, FileInputStream, FileOutputStream, IOException }
+import java.io.{ FileInputStream, FileOutputStream, IOException }
 import PartialFunction._
 
-object PlainFile
-{
+object PlainFile {
   /**
    * If the specified File exists, returns an abstract file backed
    * by it. Otherwise, returns null.
    */
   def fromPath(file: Path): PlainFile =
-    if (file.exists) new PlainFile(file) else null
+    if (file.isDirectory) new PlainDirectory(file.toDirectory)
+    else if (file.isFile) new PlainFile(file)
+    else null
 }
 
-/** This class implements an abstract file backed by a File. 
+class PlainDirectory(givenPath: Directory) extends PlainFile(givenPath) {
+  override def isDirectory = true
+  override def iterator = givenPath.list filter (_.exists) map (x => new PlainFile(x))
+  override def delete(): Unit = givenPath.deleteRecursively()
+}
+
+/** This class implements an abstract file backed by a File.
  */
 class PlainFile(val givenPath: Path) extends AbstractFile {
   assert(path ne null)
 
   val file = givenPath.jfile
   override def underlyingSource = Some(this)
-  
-  private val fpath = try givenPath.normalize catch { case _: IOException => givenPath.toAbsolute }
+
+  private val fpath = givenPath.toAbsolute
 
   /** Returns the name of this abstract file. */
   def name = givenPath.name
@@ -38,16 +44,18 @@ class PlainFile(val givenPath: Path) extends AbstractFile {
   def path = givenPath.path
 
   /** The absolute file. */
-  def absolute = new PlainFile(givenPath.normalize)
-    
+  def absolute = new PlainFile(givenPath.toAbsolute)
+
   override def container: AbstractFile = new PlainFile(givenPath.parent)
   override def input = givenPath.toFile.inputStream()
   override def output = givenPath.toFile.outputStream()
   override def sizeOption = Some(givenPath.length.toInt)
-  
+
   override def hashCode(): Int = fpath.hashCode
-  override def equals(that: Any): Boolean =
-    cond(that) { case other: PlainFile  => fpath == other.fpath }
+  override def equals(that: Any): Boolean = that match {
+    case x: PlainFile => fpath == x.fpath
+    case _            => false
+  }
 
   /** Is this abstract file a directory? */
   def isDirectory: Boolean = givenPath.isDirectory
@@ -57,8 +65,8 @@ class PlainFile(val givenPath: Path) extends AbstractFile {
 
   /** Returns all abstract subfiles of this abstract directory. */
   def iterator: Iterator[AbstractFile] = {
-    assert(isDirectory, "not a directory '%s'" format this)
-    givenPath.toDirectory.list filter (_.exists) map (new PlainFile(_))
+    if (!isDirectory) Iterator.empty
+    else givenPath.toDirectory.list filter (_.exists) map (new PlainFile(_))
   }
 
   /**
@@ -78,10 +86,10 @@ class PlainFile(val givenPath: Path) extends AbstractFile {
   }
 
   /** Does this abstract file denote an existing file? */
-  def create: Unit = if (!exists) givenPath.createFile()
+  def create(): Unit = if (!exists) givenPath.createFile()
 
   /** Delete the underlying file or directory (recursively). */
-  def delete: Unit =
+  def delete(): Unit =
     if (givenPath.isFile) givenPath.delete()
     else if (givenPath.isDirectory) givenPath.toDirectory.deleteRecursively()
 
