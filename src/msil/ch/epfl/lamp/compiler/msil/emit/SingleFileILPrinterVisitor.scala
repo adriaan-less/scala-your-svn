@@ -19,7 +19,7 @@ import ch.epfl.lamp.compiler.msil.util.Table
 
 /**
  * The MSIL printer Visitor. It prints a complete
- * assembly in a single file. Then this file can be compiled by ilasm.
+ * assembly in a single file that can be compiled by ilasm.
  *
  * @author Nikolay Mihaylov
  * @author Daniel Lorch
@@ -29,7 +29,7 @@ final class SingleFileILPrinterVisitor(_fileName: String) extends ILPrinterVisit
     var fileName: String = _fileName
 
     out = new PrintWriter(new BufferedWriter(new FileWriter(fileName)))
-    
+
    /**
      * Visit an AssemblyBuilder
      */
@@ -42,20 +42,20 @@ final class SingleFileILPrinterVisitor(_fileName: String) extends ILPrinterVisit
 
 	// all external assemblies
 	as = assemblyBuilder.getExternAssemblies()
-	Arrays.sort(as, assemblyNameComparator)
+  scala.util.Sorting.quickSort(as)(assemblyNameComparator) // Arrays.sort(as, assemblyNameComparator)
 
-        assemblyBuilder.generatedFiles.add(fileName)
+        assemblyBuilder.generatedFiles += fileName
 	printAssemblyBoilerplate()
 
 	// print each module
         var m: Array[Module] = assemblyBuilder.GetModules()
         nomembers = true
-        for(val i <- 0 until m.length) {
+        for(i <- 0 until m.length) {
 	    print(m(i).asInstanceOf[ModuleBuilder])
 	}
 
         nomembers = false
-        for(val i <- 0 until m.length) {
+        for(i <- 0 until m.length) {
 	    print(m(i).asInstanceOf[ModuleBuilder])
 	}
 	// close out file
@@ -79,12 +79,12 @@ final class SingleFileILPrinterVisitor(_fileName: String) extends ILPrinterVisit
 	    module.CreateGlobalFunctions()
 
 	var m: Array[MethodInfo] = module.GetMethods()
-        for(val i <- 0 until m.length) {
+        for(i <- 0 until m.length) {
 	    print(m(i).asInstanceOf[MethodBuilder])
 	}
 
 	var t: Array[Type] = module.GetTypes()
-        for(val i <- 0 until t.length) {
+        for(i <- 0 until t.length) {
 	    print(t(i).asInstanceOf[TypeBuilder])
 	}
 	currentModule = null
