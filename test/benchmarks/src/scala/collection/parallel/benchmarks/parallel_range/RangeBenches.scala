@@ -6,13 +6,13 @@ package scala.collection.parallel.benchmarks.parallel_range
 
 import scala.collection.parallel.benchmarks.generic._
 import scala.collection.parallel.immutable.ParRange
+import scala.collection.parallel.benchmarks.generic.StandardParIterableBenches
 
 
 
 
 
-
-object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenchmark {
+object RangeBenches extends StandardParIterableBenches[Int, ParRange] {
   
   def nameOfCollection = "ParRange"
   def operators = new IntOperators {}
@@ -20,9 +20,9 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   val forkJoinPool = new scala.concurrent.forkjoin.ForkJoinPool
   def createSequential(sz: Int, p: Int) = new collection.immutable.Range(0, sz, 1)
   def createParallel(sz: Int, p: Int) = {
-    val pr = new collection.parallel.immutable.ParRange(0, sz, 1, false)
+    val pr = collection.parallel.immutable.ParRange(0, sz, 1, false)
     forkJoinPool.setParallelism(p)
-    pr.environment = forkJoinPool
+    collection.parallel.tasksupport.environment = forkJoinPool
     pr
   }
   
@@ -33,7 +33,7 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class MapLight(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     def calc(n: Int) = n % 2 + 1
     
     def comparisonMap = collection.Map()
@@ -49,7 +49,7 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class MapMedium(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     def calc(n: Int) = {
       var i = 0
       var sum = n
@@ -73,13 +73,16 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class ForeachModify(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     val array = new Array[Int](size)
     def modify(n: Int) = array(n) += 1
     
     def comparisonMap = collection.Map()
     def runseq = for (n <- this.seqcoll) modify(n)
-    def runpar = for (n <- this.parcoll) modify(n)
+    def runpar = for (n <- this.parcoll.asInstanceOf[ParRange]) {
+      modify(n)
+      ()
+    }
     def companion = ForeachModify
   }
   
@@ -90,7 +93,7 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class ForeachModifyMedium(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     val array = new Array[Int](size)
     def modify(n: Int) = array(n) = {
       var i = 0
@@ -115,7 +118,7 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class ForeachModifyHeavy(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     val array = new Array[Int](size)
     def modify(n: Int) = array(n) = collatz(10000 + array(n))
     
@@ -133,7 +136,7 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class ForeachAdd(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     val cmap = new java.util.concurrent.ConcurrentHashMap[Int, Int]
     val hmap = new java.util.HashMap[Int, Int]
     
@@ -157,7 +160,7 @@ object RangeBenches extends StandardParIterableBench[Int, ParRange] with NotBenc
   }
   
   class ForeachAddCollatz(val size: Int, val parallelism: Int, val runWhat: String)
-  extends IterableBench with StandardParIterableBench[Int, ParRange] {
+  extends IterableBench {
     val cmap = new java.util.concurrent.ConcurrentHashMap[Int, Int]
     val hmap = new java.util.HashMap[Int, Int]
     
