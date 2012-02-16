@@ -1,41 +1,42 @@
 import scala.collection.{ mutable, immutable }
-import collection.{ Sequence, Traversable }
+import collection.{ Seq, Traversable }
 
 object Test {
   // TODO: 
   //
-  // SequenceProxy
-  // SequenceForwarder
+  // SeqProxy
+  // SeqForwarder
   // the commented out ones in seqMakers
   
-  val seqMakers = List[List[Int] => Sequence[Int]](
+  val seqMakers = List[List[Int] => Seq[Int]](
     // scala.Array(_: _*),
     mutable.ArrayBuffer(_: _*),
     // mutable.ArrayStack(_: _*),
     mutable.Buffer(_: _*),
-    mutable.LinearSequence(_: _*),
+    mutable.LinearSeq(_: _*),
     // null on Nil
     // mutable.LinkedList(_: _*),
     mutable.ListBuffer(_: _*),
+    // mutable.PriorityQueue(_: _*),
     // immutable.Queue(_: _*),
     // mutable.Queue(_: _*),
-    immutable.Sequence(_: _*),
-    mutable.Sequence(_: _*),
-    // immutable.Stack(_: _*),
+    immutable.Seq(_: _*),
+    mutable.Seq(_: _*),
+    immutable.Stack(_: _*),
     // mutable.Stack(_: _*),    
-    immutable.Vector(_: _*),
-    mutable.Vector(_: _*),
+    immutable.IndexedSeq(_: _*), // was Vector
+    //mutable.Vector(_: _*),
     immutable.List(_: _*),
     immutable.Stream(_: _*)
   )
   
   abstract class Data[T] {
-    val seq: Sequence[T]
+    val seq: Seq[T]
     private def seqList = seq.toList
     // _1 is inputs which must be true, _2 which must be false
     type Inputs = (List[List[T]], List[List[T]])
     case class Method(
-      f: (Sequence[T], Sequence[T]) => Boolean,
+      f: (Seq[T], Seq[T]) => Boolean,
       inputs: Inputs,
       descr: String
     ) {
@@ -51,14 +52,14 @@ object Test {
     val endsWithInputs: Inputs
     lazy val endsWith = Method(_ endsWith _, endsWithInputs, "%s endsWith %s")
 
-    val indexOfSeqInputs: Inputs
-    private def subseqTest(s1: Sequence[T], s2: Sequence[T]) = (s1 indexOfSeq s2) != -1
-    lazy val indexOfSeq = Method(subseqTest _, indexOfSeqInputs, "(%s indexOfSeq %s) != -1")
+    val indexOfSliceInputs: Inputs
+    private def subseqTest(s1: Seq[T], s2: Seq[T]) = (s1 indexOfSlice s2) != -1
+    lazy val indexOfSlice = Method(subseqTest _, indexOfSliceInputs, "(%s indexOfSlice %s) != -1")
     
     val sameElementsInputs: Inputs
     lazy val sameElements = Method(_ sameElements _, sameElementsInputs, "%s sameElements %s")
     
-    def methodList = List(eqeq, startsWith, endsWith, indexOfSeq, sameElements)
+    def methodList = List(eqeq, startsWith, endsWith, indexOfSlice, sameElements)
   }
   
   object test1 extends Data[Int] {
@@ -74,7 +75,7 @@ object Test {
       List(0 :: seq, List(5,2,3,4,5), List(3,4), List(5,6))
     )
     
-    val indexOfSeqInputs = (
+    val indexOfSliceInputs = (
       List(Nil, List(1), List(3), List(5), List(1,2), List(2,3,4), List(4,5), seq),
       List(List(1,2,3,5), List(6), List(5,4,3,2,1), List(2,1))
     )
@@ -103,19 +104,18 @@ object Test {
       val scrut = s1f(seq)
       
       for (Method(f, (trueList, falseList), descr) <- methodList) {
-        for (s <- trueList; val rhs = s2f(s))
+        for (s <- trueList; rhs = s2f(s))
           assertOne(scrut, rhs, f(scrut, rhs), descr)
         
-        for (s <- falseList; val rhs = s2f(s))
+        for (s <- falseList; rhs = s2f(s))
           assertOne(scrut, rhs, !f(scrut, rhs), "!(" + descr + ")")
       }
     }
   }
   
-  def main(args: Array[String]): Unit = {
+  def main(args: Array[String]) {
     runSeqs()
     
-    if (failures.isEmpty) println("All %d tests passed.".format(testCount))
-    else failures foreach println
+    assert(failures.isEmpty, failures mkString "\n")
   }
 }
