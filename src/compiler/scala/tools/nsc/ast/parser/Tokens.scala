@@ -1,13 +1,19 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast.parser
 
-object Tokens {
+import annotation.switch
+
+/** Common code between JavaTokens and Tokens.  Not as much (and not as concrete)
+ *  as one might like because JavaTokens for no clear reason chose new numbers for
+ *  identical token sets.
+ */
+abstract class Tokens {
+  import scala.reflect.internal.Chars._
 
   /** special tokens */
   final val EMPTY = -3
@@ -22,26 +28,45 @@ object Tokens {
   final val FLOATLIT = 4
   final val DOUBLELIT = 5
   final val STRINGLIT = 6
-  final val SYMBOLLIT = 7
-  def isLiteral(code : Int) =
-    code >= CHARLIT && code <= SYMBOLLIT
+
+  def LPAREN: Int
+  def RBRACE: Int
+
+  def isIdentifier(code: Int): Boolean
+  def isLiteral(code: Int): Boolean
+  def isKeyword(code: Int): Boolean
+  def isSymbol(code: Int): Boolean
+
+  final def isSpace(at: Char)       = at == ' ' || at == '\t'
+  final def isNewLine(at: Char)     = at == CR || at == LF || at == FF
+  final def isBrace(code: Int)      = code >= LPAREN && code <= RBRACE
+  final def isOpenBrace(code: Int)  = isBrace(code) && (code % 2 == 0)
+  final def isCloseBrace(code: Int) = isBrace(code) && (code % 2 == 1)
+}
+
+object Tokens extends Tokens {
+  final val STRINGPART = 7  // a part of an interpolated string
+  final val SYMBOLLIT = 8
+  final val INTERPOLATIONID = 9 // the lead identifier of an interpolated string
+
+  def isLiteral(code: Int) =
+    code >= CHARLIT && code <= INTERPOLATIONID
+
 
   /** identifiers */
   final val IDENTIFIER = 10
   final val BACKQUOTED_IDENT = 11
-  def isIdentifier(code : Int) =
+  def isIdentifier(code: Int) =
     code >= IDENTIFIER && code <= BACKQUOTED_IDENT
-
-  def canBeginExpression(code : Int) = code match {
-  case IDENTIFIER|BACKQUOTED_IDENT|USCORE => true
-  case LBRACE|LPAREN|LBRACKET|COMMENT|STRINGLIT => true
-  case IF|DO|WHILE|FOR|NEW|TRY|THROW => true
-  case NULL|THIS|TRUE|FALSE => true
-  case code if isLiteral(code) => true
-  case _ => false
+    
+  @switch def canBeginExpression(code: Int) = code match {
+    case IDENTIFIER|BACKQUOTED_IDENT|USCORE       => true
+    case LBRACE|LPAREN|LBRACKET|COMMENT           => true
+    case IF|DO|WHILE|FOR|NEW|TRY|THROW            => true
+    case NULL|THIS|TRUE|FALSE                     => true
+    case code                                     => isLiteral(code)
   }
-    
-    
+
   /** keywords */
   final val IF = 20
   final val FOR = 21
@@ -84,20 +109,18 @@ object Tokens {
   final val RETURN = 57
   final val MATCH = 58
   final val FORSOME = 59
-  final val REQUIRES = 60
   final val LAZY = 61
 
-  def isKeyword(code : Int) =
+  def isKeyword(code: Int) =
     code >= IF && code <= LAZY
-  
-  def isDefinition(code : Int) = code match {
-  case CLASS|TRAIT|OBJECT => true
-  case CASECLASS|CASEOBJECT => true
-  case DEF|VAL|VAR => true
-  case TYPE => true
-  case _ => false
-  }
 
+  @switch def isDefinition(code: Int) = code match {
+    case CLASS|TRAIT|OBJECT => true
+    case CASECLASS|CASEOBJECT => true
+    case DEF|VAL|VAR => true
+    case TYPE => true
+    case _ => false
+  }
 
   /** special symbols */
   final val COMMA = 70
@@ -115,8 +138,8 @@ object Tokens {
   final val HASH = 82
   final val AT = 83
   final val VIEWBOUND = 84
-  
-  def isSymbol(code : Int) =
+
+  def isSymbol(code: Int) =
     code >= COMMA && code <= VIEWBOUND
 
   /** parenthesis */
@@ -127,29 +150,13 @@ object Tokens {
   final val LBRACE = 94
   final val RBRACE = 95
 
-  def isBrace(code : Int) =
-    code >= LPAREN && code <= RBRACE
-  def isOpenBrace(code : Int) = isBrace(code) && (code % 2 == 0)
-  def isCloseBrace(code : Int) = isBrace(code) && (code % 2 == 1)
-
   /** XML mode */
   final val XMLSTART = 96
-  
+
   /** for IDE only */
   final val COMMENT = 97
-  
+
   final val WHITESPACE = 105
   final val IGNORE = 106
   final val ESCAPE = 109
-
-  def isSpace(at : Char) = at match {
-  case ' ' | '\t' => true
-  case _ => false
-  }
-  import scala.tools.nsc.util.SourceFile._
-
-  def isNewLine(at : Char) = at match {
-  case CR | LF | FF => true
-  case _ => false
-  }
 }
