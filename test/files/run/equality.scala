@@ -1,6 +1,8 @@
 // a quickly assembled test of equality.  Needs work.
 object Test
 {
+  import scala.runtime.ScalaRunTime.hash
+  
   def makeFromInt(x: Int) = List(
     x.toByte, x.toShort, x.toInt, x.toLong, x.toFloat, x.toDouble, BigInt(x), BigDecimal(x)
   ) ::: (
@@ -31,6 +33,8 @@ object Test
     
     // negatives
     val bigLong = new java.util.concurrent.atomic.AtomicLong(Long.MaxValue)
-    assert(-1 != bigLong && bigLong != -1)  // bigLong.intValue() == -1      
+    assert(-1 != bigLong && bigLong != -1)  // bigLong.intValue() == -1
+    assert(BigDecimal(1.1) != 1L)
+    assert(1L != BigDecimal(1.1))
   }
 }

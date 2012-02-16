@@ -29,7 +29,7 @@ object Covariant {
         def b2a(b : B) : A
         def doit(b : B) = setA(b2a(b))
       }
-      ()
+      println("")
     }
   }
   class Foo3[+A] {
@@ -70,4 +70,12 @@ object Covariant {
   }
   val t: T[Any] = ST
   t.x.m(new Object)
+}
+
+object TestAlias {
+  class B[-T]
+  trait C[+T] {
+    type A = T
+    def foo: B[A]
+  }
 }

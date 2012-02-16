@@ -1,20 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.concurrent
 
 import java.util.concurrent.{ExecutorService, Executor}
 
-/** The <code>JavaConversions</code> object...
- *  
+/** The `JavaConversions` object provides implicit converstions supporting
+ *  interoperability between Scala and Java concurrency classes.
+ *
  *  @author Philipp Haller
  */
 object JavaConversions {
