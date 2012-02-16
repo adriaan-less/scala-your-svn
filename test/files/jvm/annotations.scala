@@ -94,8 +94,8 @@ object Test4 {
   }
   class Foo8(@SourceAnnotation("constructor val") val n: Int) {}
   class Foo9 {
-    import scala.annotation.target._
-    import scala.reflect.BeanProperty
+    import scala.annotation.meta._
+    import scala.beans.BeanProperty
     @(SourceAnnotation @getter)("http://apple.com") val x = 0
     @BeanProperty @(SourceAnnotation @beanSetter)("http://uppla.com") var y = 0
 
@@ -103,14 +103,14 @@ object Test4 {
     @BeanProperty @myAnn("http://eppli.com") var z = 0
   }
   class Foo10(@SourceAnnotation("on param 1") val name: String)
-  class Foo11(@(SourceAnnotation @scala.annotation.target.field)("on param 2") val name: String)
-  class Foo12(@(SourceAnnotation @scala.annotation.target.setter)("on param 3") var name: String)
+  class Foo11(@(SourceAnnotation @scala.annotation.meta.field)("on param 2") val name: String)
+  class Foo12(@(SourceAnnotation @scala.annotation.meta.setter)("on param 3") var name: String)
   def run {
     import java.lang.annotation.Annotation
     import java.lang.reflect.AnnotatedElement
     def printSourceAnnotation(a: Annotation) {
       val ann = a.asInstanceOf[SourceAnnotation]
-      println("@test.SourceAnnotation(mails=" + ann.mails.deepMkString("{", ",", "}") +
+      println("@test.SourceAnnotation(mails=" + ann.mails.deep.mkString("{", ",", "}") +
               ", value=" + ann.value + ")")
     }
     def printSourceAnnotations(target: AnnotatedElement) {
@@ -157,7 +157,7 @@ object Test4 {
 }
 
 object Test5 {
-  import scala.reflect.BeanProperty
+  import scala.beans.BeanProperty
   import java.lang.Integer
 
   class Count {
@@ -181,6 +181,24 @@ object Test5 {
   }
 }
 
+object Test6 {
+  import scala.beans.BeanProperty
+  import scala.beans.BooleanBeanProperty
+  class C(@BeanProperty var text: String)
+  class D(@BooleanBeanProperty var prop: Boolean) {
+    @BeanProperty val m: Int = if (prop) 1 else 2
+  }
+
+  def run {
+    val c = new C("bob")
+    c.setText("dylan")
+    println(c.getText())
+    if (new D(true).isProp()) {
+      println(new D(false).getM())
+    }
+  }
+}
+
 // #3345
 class A3345(@volatile private var i:Int)
 
@@ -191,5 +209,6 @@ object Test {
     Test3.run     // requires the use of -target:jvm-1.5
     Test4.run
     Test5.run
+    Test6.run
   }
 }
