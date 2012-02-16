@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -29,7 +29,7 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
    *  @return the builder itself.
    */
   def +=(elem: Elem): this.type
-  
+
   /** Clears the contents of this builder.
    *  After execution of this method the builder will contain no elements.
    */
@@ -46,7 +46,7 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
    *  will optimize their representation based on the hint. However,
    *  builder implementations are still required to work correctly even if the hint is
    *  wrong, i.e. a different number of elements is added.
-   * 
+   *
    *  @param size  the hint how many elements will be added.
    */
   def sizeHint(size: Int) {}
@@ -60,12 +60,12 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
    *  will optimize their representation based on the hint. However,
    *  builder implementations are still required to work correctly even if the hint is
    *  wrong, i.e. a different number of elements is added.
-   * 
+   *
    *  @param coll  the collection which serves as a hint for the result's size.
    *  @param delta a correction to add to the `coll.size` to produce the size hint.
    */
   def sizeHint(coll: TraversableLike[_, _], delta: Int = 0) {
-    if (coll.isInstanceOf[IndexedSeqLike[_,_]]) {
+    if (coll.isInstanceOf[collection.IndexedSeqLike[_,_]]) {
       sizeHint(coll.size + delta)
     }
   }
@@ -76,14 +76,14 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
    *  will optimize their representation based on the hint. However,
    *  builder implementations are still required to work correctly even if the hint is
    *  wrong, i.e. a different number of elements is added.
-   * 
+   *
    *  @param size  the hint how many elements will be added.
    *  @param boundingColl  the bounding collection. If it is
-   *                       an IndexedSeqLike, then sizes larger 
+   *                       an IndexedSeqLike, then sizes larger
    *                       than collection's size are reduced.
    */
   def sizeHintBounded(size: Int, boundingColl: TraversableLike[_, _]) {
-    if (boundingColl.isInstanceOf[IndexedSeqLike[_,_]])
+    if (boundingColl.isInstanceOf[collection.IndexedSeqLike[_,_]])
       sizeHint(size min boundingColl.size)
   }
 
@@ -93,8 +93,8 @@ trait Builder[-Elem, +To] extends Growable[Elem] {
    *  @tparam NewTo the type of collection returned by `f`.
    *  @return a new builder which is the same as the current builder except
    *          that a transformation function is applied to this builder's result.
-   */	
-  def mapResult[NewTo](f: To => NewTo): Builder[Elem, NewTo] = 
+   */
+  def mapResult[NewTo](f: To => NewTo): Builder[Elem, NewTo] =
     new Builder[Elem, NewTo] with Proxy {
       val self = Builder.this
       def +=(x: Elem): this.type = { self += x; this }

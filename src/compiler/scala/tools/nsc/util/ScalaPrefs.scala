@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -13,7 +13,7 @@ trait ScalaPrefs {
   def exceptionFormatter: Exceptional.Formatter
 }
 
-trait LowPriorityScalaPrefs {  
+trait LowPriorityScalaPrefs {
   implicit object DefaultScalaPrefs extends ScalaPrefs {
     def codeSources        = Sources.defaultSources
     def exceptionFormatter = Exceptional.Formatter(this)
