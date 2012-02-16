@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -13,7 +13,7 @@ import java.lang.Double.longBitsToDouble
 
 import scala.tools.nsc.io.AbstractFile
 
-/** 
+/**
  * This class reads files byte per byte. Only used by ClassFileParser
  *
  * @author Philippe Altherr
