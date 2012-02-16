@@ -12,15 +12,15 @@ package scala.dbc
 package value;
 
 
-abstract class Unknown extends Value {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Unknown extends Value {
+
   val dataType: datatype.Unknown;
-  
+
   def sqlString = sys.error("An 'ANY' value cannot be represented.");
-  
+
 }
 
-object UnknownType {
+@deprecated(DbcIsDeprecated, "2.9.0") object UnknownType {
 
   def view (obj:value.Unknown): AnyRef = obj.nativeValue;
 

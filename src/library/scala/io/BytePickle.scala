@@ -6,11 +6,9 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.io
 
-import scala.collection.mutable.{HashMap, ArrayBuffer}
+import scala.collection.mutable
 
 /**
  * Pickler combinators.
@@ -44,12 +42,12 @@ object BytePickle {
   def uunpickle[T](p: PU[T], stream: Array[Byte]): T =
     p.appU(stream)._1
 
-  class PicklerEnv extends HashMap[Any, Int] {
+  class PicklerEnv extends mutable.HashMap[Any, Int] {
     private var cnt: Int = 64
     def nextLoc() = { cnt += 1; cnt }
   }
 
-  class UnPicklerEnv extends HashMap[Int, Any] {
+  class UnPicklerEnv extends mutable.HashMap[Int, Any] {
     private var cnt: Int = 64
     def nextLoc() = { cnt += 1; cnt }
   }
@@ -110,11 +108,11 @@ object BytePickle {
         case None =>
           val sPrime = refDef.appP(Def(), state.stream)
           val l = pe.nextLoc()
-          
+
           val sPrimePrime = pa.appP(v, new PicklerState(sPrime, pe))
-          
+
           pe.update(v, l)
-          
+
           return sPrimePrime
         case Some(l) =>
           val sPrime = refDef.appP(Ref(), state.stream)
@@ -231,7 +229,7 @@ object BytePickle {
     Array.concat(a, Array(b.toByte))
 
   def nat2Bytes(x: Int): Array[Byte] = {
-    val buf = new ArrayBuffer[Byte]
+    val buf = new mutable.ArrayBuffer[Byte]
     def writeNatPrefix(x: Int) {
       val y = x >>> 7;
       if (y != 0) writeNatPrefix(y);
@@ -271,8 +269,8 @@ object BytePickle {
   }
 
   def string: SPU[String] = share(wrap(
-    (a: Array[Byte]) => Codec toUTF8 a mkString,
-    (s: String) => Codec fromUTF8 s,
+    (a: Array[Byte]) => Codec fromUTF8 a mkString,
+    (s: String) => Codec toUTF8 s,
     bytearray
   ))
 

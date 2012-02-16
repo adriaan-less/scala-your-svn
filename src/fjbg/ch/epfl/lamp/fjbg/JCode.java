@@ -22,6 +22,8 @@ import ch.epfl.lamp.util.ByteArray;
 public class JCode {
     protected boolean frozen = false;
 
+    public static int MAX_CODE_SIZE = 65535;
+
     protected final FJBGContext context;
     protected final JMethod owner;
 
@@ -57,8 +59,8 @@ public class JCode {
         this.owner = owner;
         owner.setCode(this);
         int size = stream.readInt();
-        if (size >= 65536) // section 4.10
-            throw new Error("code size must be less than 65536: " + size);
+        if (size > MAX_CODE_SIZE) // section 4.10
+            throw new Error("code size must be less than " + MAX_CODE_SIZE + ": " + size);
         this.codeArray = new ByteArray(stream, size);
     }
 
@@ -97,8 +99,19 @@ public class JCode {
     // Freezing
     //////////////////////////////////////////////////////////////////////
 
+    public static class CodeSizeTooBigException extends OffsetTooBigException {
+        public int codeSize;
+
+        public CodeSizeTooBigException(int size) {
+          codeSize = size;
+        }
+    }
+
     public void freeze() throws OffsetTooBigException {
         assert !frozen;
+
+        if (getSize() > MAX_CODE_SIZE) throw new CodeSizeTooBigException(getSize());
+
         patchAllOffset();
         codeArray.freeze();
         frozen = true;
@@ -824,7 +837,7 @@ public class JCode {
     protected void setStackProduction(int pc, JOpcode opcode) {
         // TODO we should instead check whether the opcode has known
         // stack consumption/production.
-        if (getStackProduction(pc) == UNKNOWN_STACK_SIZE) 
+        if (getStackProduction(pc) == UNKNOWN_STACK_SIZE)
 //                && opcode.hasKnownProducedDataSize()
 //                && opcode.hasKnownConsumedDataSize())
             setStackProduction(pc,
@@ -839,7 +852,7 @@ public class JCode {
             stackSizes[0] = 0;
         }
         int size = computeMaxStackSize(0, 0, 0);
-        
+
         // compute stack sizes for exception handlers too
         ExceptionHandler exh = null;
         for (Iterator it = exceptionHandlers.iterator();
@@ -997,7 +1010,7 @@ public class JCode {
         public void setStartPC(int pc) {
             this.startPC = pc;
         }
-        
+
         public int getStartPC() {
             return this.startPC;
         }
@@ -1005,7 +1018,7 @@ public class JCode {
         public void setEndPC(int pc) {
             this.endPC = pc;
         }
-        
+
         public int getEndPC() {
             return this.endPC;
         }
@@ -1013,7 +1026,7 @@ public class JCode {
         public void setHandlerPC(int pc) {
             this.handlerPC = pc;
         }
-        
+
         public int getHandlerPC() {
             return this.handlerPC;
         }
@@ -1205,7 +1218,7 @@ public class JCode {
             data = codeArray.getU1(pc+1);
             buf.append("\t");
             buf.append(data);
-            break;     
+            break;
         case JOpcode.cLDC:
             data = codeArray.getU1(pc+1);
             buf.append("\t#");

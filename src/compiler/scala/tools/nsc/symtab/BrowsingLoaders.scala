@@ -5,13 +5,13 @@
 
 package scala.tools.nsc
 package symtab
- 
-import scala.tools.nsc.io.AbstractFile
+
 import scala.tools.nsc.util.BatchSourceFile
+import scala.tools.nsc.io.AbstractFile
 
 /** A subclass of SymbolLoaders that implements browsing behavior.
  *  This class should be used whenever file dependencies and recompile sets
- *  are managed automoatically.
+ *  are managed automatically.
  */
 abstract class BrowsingLoaders extends SymbolLoaders {
   import global._
@@ -27,7 +27,7 @@ abstract class BrowsingLoaders extends SymbolLoaders {
    */
   override protected def enterIfNew(owner: Symbol, member: Symbol, completer: SymbolLoader): Symbol = {
     completer.sourcefile match {
-      case Some(src) => 
+      case Some(src) =>
         (if (member.isModule) member.moduleClass else member).sourceFile = src
       case _ =>
     }
@@ -42,7 +42,7 @@ abstract class BrowsingLoaders extends SymbolLoaders {
       member
     } else {
       if (member.sourceFile != null) {
-        if (existing.sourceFile != member.sourceFile) 
+        if (existing.sourceFile != member.sourceFile)
           error(member+"is defined twice,"+
                 "\n in "+existing.sourceFile+
                 "\n and also in "+member.sourceFile)
@@ -54,7 +54,7 @@ abstract class BrowsingLoaders extends SymbolLoaders {
   /** Browse the top-level of given abstract file `src` and enter
    *  eny encountered top-level classes and modules in `root`
    */
-  def browseTopLevel(root: Symbol, src: AbstractFile) {  
+  def browseTopLevel(root: Symbol, src: AbstractFile) {
 
     class BrowserTraverser extends Traverser {
       var packagePrefix = ""
@@ -80,20 +80,24 @@ abstract class BrowsingLoaders extends SymbolLoaders {
           } else println("prefixes differ: "+packagePrefix+","+root.fullName)
         case ModuleDef(_, name, _) =>
           if (packagePrefix == root.fullName) {
-            enterModule(root, name.toString, new SourcefileLoader(src))
+            val module = enterModule(root, name.toString, new SourcefileLoader(src))
             entered += 1
+            if (name == nme.PACKAGEkw) {
+              println("open package module: "+module)
+              openPackageModule(module, root)
+            }
           } else println("prefixes differ: "+packagePrefix+","+root.fullName)
         case _ =>
       }
     }
 
 //    System.out.println("Browsing "+src)
-    val source = new BatchSourceFile(src)
+    val source = getSourceFile(src) // this uses the current encoding
     val body = new OutlineParser(source).parse()
-    System.out.println(body)
+//    System.out.println(body)
     val browser = new BrowserTraverser
     browser.traverse(body)
-    if (browser.entered == 0) 
+    if (browser.entered == 0)
       warning("No classes or objects found in "+source+" that go in "+root)
   }
 
@@ -101,13 +105,13 @@ abstract class BrowsingLoaders extends SymbolLoaders {
    */
   override def enterToplevelsFromSource(root: Symbol, name: String, src: AbstractFile) {
     try {
-      if (root == definitions.EmptyPackageClass)
+      if (root == definitions.RootClass || root == definitions.EmptyPackageClass)
         super.enterToplevelsFromSource(root, name, src)
-      else 
+      else
         browseTopLevel(root, src)
     } catch {
       case ex: syntaxAnalyzer.MalformedInput =>
-        println("caught malformed input exception at offset "+ex.offset+": "+ex.msg)
+        println("[%s] caught malformed input exception at offset %d: %s".format(src, ex.offset, ex.msg))
         super.enterToplevelsFromSource(root, name, src)
     }
   }

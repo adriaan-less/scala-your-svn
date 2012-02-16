@@ -6,39 +6,29 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.xml
 package factory
 
+/** This class logs what the nodefactory is actually doing.
+ *  If you want to see what happens during loading, use it like this:
+{{{
+object testLogged extends Application {
+  val x = new scala.xml.parsing.NoBindingFactoryAdapter
+        with scala.xml.factory.LoggedNodeFactory[scala.xml.Elem]
+        with scala.util.logging.ConsoleLogger
 
-/** <p>
- *    This class logs what the nodefactory is actually doing.
- *    If you want to see what happens during loading, use it like this:
- *  </p><pre>
- *  <b>object</b> testLogged <b>extends</b> Application {
- *
- *    <b>val</b> x = <b>new</b> scala.xml.nobinding.NoBindingFactoryAdapter 
- *          <b>with</b> scala.xml.LoggedNodeFactory[scala.xml.Elem]()
- *          <b>with</b> scala.util.logging.ConsoleLogger;
- *
- *    Console.println("Start");
- *
- *    <b>val</b> doc = x.loadXML(new org.xml.sax.InputSource("http://lamp.epfl.ch/~buraq"));
- *
- *    Console.println("End");
- *
- *    Console.println(doc);
- *  }</pre>
+  Console.println("Start")
+  val doc = x.load(new java.net.URL("http://lampsvn.epfl.ch/svn-repos/scala/scala/trunk/build.xml"))
+  Console.println("End")
+  Console.println(doc)
+}
+}}}
  *
  *  @author  Burak Emir
  *  @version 1.0
  */
-abstract class LoggedNodeFactory[A <: Node] 
-extends NodeFactory[A]
-with scala.util.logging.Logged {
-
-  // configuration values;
+trait LoggedNodeFactory[A <: Node] extends NodeFactory[A] with scala.util.logging.Logged {
+  // configuration values
   val logNode      = true
   val logText      = false
   val logComment   = false
@@ -47,9 +37,9 @@ with scala.util.logging.Logged {
   final val NONE  = 0
   final val CACHE = 1
   final val FULL  = 2
-  /** 0 = no loggging, 1 = cache hits, 2 = detail */
+  /** 0 = no logging, 1 = cache hits, 2 = detail */
   val logCompressLevel  = 1
-  
+
   // methods of NodeFactory
 
   /** logged version of makeNode method */
@@ -73,7 +63,7 @@ with scala.util.logging.Logged {
 
     super.makeNode(pre, label, attrSeq, scope, children)
   }
-  
+
   override def makeText(s: String) = {
     if (logText)
       log("[makeText:\""+s+"\"]");
