@@ -1,21 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: InputChannel.scala 18844 2009-09-30 20:28:49Z phaller $
 
 package scala.actors
 
 /**
- * The <code>ReactChannel</code> trait.
- *
  * @author Philipp Haller
  */
-private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[Msg] {
+private[actors] class ReactChannel[Msg](receiver: ReplyReactor) extends InputChannel[Msg] {
 
   private case class SendToReactor(channel: ReactChannel[Msg], msg: Msg)
 
@@ -29,8 +26,8 @@ private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[
   }
 
   /**
-   * Sends a message to this <code>ReactChannel</code>
-   * (asynchronous) supplying explicit reply destination.
+   * Sends a message to this `ReactChannel` (asynchronous) supplying
+   * explicit reply destination.
    *
    * @param  msg     the message to send
    * @param  replyTo the reply destination
@@ -40,22 +37,22 @@ private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[
   }
 
   /**
-   * Forwards <code>msg</code> to <code>this</code> keeping the
-   * last sender as sender instead of <code>self</code>.
+   * Forwards `msg` to `'''this'''` keeping the last sender as sender
+   * instead of `self`.
    */
   def forward(msg: Msg) {
     receiver forward SendToReactor(this, msg)
   }
 
   /**
-   * Receives a message from this <code>ReactChannel</code>.
-   * <p>
-   * This method never returns. Therefore, the rest of the computation
+   * Receives a message from this `ReactChannel`.
+   *
+   * This method ''never'' returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *
    * @param  f    a partial function with message patterns and actions
    */
-  def react(f: Msg =>? Unit): Nothing = {
+  def react(f: PartialFunction[Msg, Unit]): Nothing = {
     val C = this
     receiver.react {
       case SendToReactor(C, msg) if (f.isDefinedAt(msg.asInstanceOf[Msg])) =>
@@ -64,16 +61,15 @@ private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[
   }
 
   /**
-   * Receives a message from this <code>ReactChannel</code> within
-   * a certain time span.
-   * <p>
-   * This method never returns. Therefore, the rest of the computation
+   * Receives a message from this `ReactChannel` within a certain time span.
+   *
+   * This method ''never'' returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *
    * @param  msec the time span before timeout
    * @param  f    a partial function with message patterns and actions
    */
-  def reactWithin(msec: Long)(f: Any =>? Unit): Nothing = {
+  def reactWithin(msec: Long)(f: PartialFunction[Any, Unit]): Nothing = {
     val C = this
     val recvActor = receiver.asInstanceOf[Actor]
     recvActor.reactWithin(msec) {
@@ -84,12 +80,12 @@ private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[
   }
 
   /**
-   * Receives a message from this <code>ReactChannel</code>.
+   * Receives a message from this `ReactChannel`.
    *
    * @param  f    a partial function with message patterns and actions
    * @return      result of processing the received value
    */
-  def receive[R](f: Msg =>? R): R = {
+  def receive[R](f: PartialFunction[Msg, R]): R = {
     val C = this
     val recvActor = receiver.asInstanceOf[Actor]
     recvActor.receive {
@@ -99,14 +95,13 @@ private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[
   }
 
   /**
-   * Receives a message from this <code>ReactChannel</code> within a certain
-   * time span.
+   * Receives a message from this `ReactChannel` within a certain time span.
    *
    * @param  msec the time span before timeout
    * @param  f    a partial function with message patterns and actions
    * @return      result of processing the received value
    */
-  def receiveWithin[R](msec: Long)(f: Any =>? R): R = {
+  def receiveWithin[R](msec: Long)(f: PartialFunction[Any, R]): R = {
     val C = this
     val recvActor = receiver.asInstanceOf[Actor]
     recvActor.receiveWithin(msec) {
@@ -117,7 +112,7 @@ private[actors] class ReactChannel[Msg](receiver: Reactor) extends InputChannel[
   }
 
   /**
-   * Receives the next message from this <code>ReactChannel</code>.
+   * Receives the next message from this `ReactChannel`.
    */
   def ? : Msg = receive {
     case x => x

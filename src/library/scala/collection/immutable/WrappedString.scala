@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,23 +13,50 @@ package immutable
 
 import generic._
 import mutable.{Builder, StringBuilder}
-import scala.util.matching.Regex
 
 /**
- * @since 2.8
+ *  This class serves as a wrapper augmenting `String`s with all the operations
+ *  found in indexed sequences.
+ *
+ *  The difference between this class and `StringOps` is that calling transformer
+ *  methods such as `filter` and `map` will yield an object of type `WrappedString`
+ *  rather than a `String`.
+ *
+ *  @param self    a string contained within this wrapped string
+ *
+ *  @since 2.8
+ *  @define Coll WrappedString
+ *  @define coll wrapped string
  */
-class WrappedString(override val self: String) extends IndexedSeq[Char] with StringLike[WrappedString] with Proxy {
+class WrappedString(val self: String) extends AbstractSeq[Char] with IndexedSeq[Char] with StringLike[WrappedString] {
 
   override protected[this] def thisCollection: WrappedString = this
   override protected[this] def toCollection(repr: WrappedString): WrappedString = repr
 
   /** Creates a string builder buffer as builder for this class */
   override protected[this] def newBuilder = WrappedString.newBuilder
+
+  override def slice(from: Int, until: Int): WrappedString = {
+    val start = if (from < 0) 0 else from
+    if (until <= start || start >= repr.length)
+      return new WrappedString("")
+
+    val end = if (until > length) length else until
+    new WrappedString(repr.substring(start, end))
+  }
+  override def length = self.length
+  override def toString = self
 }
 
-/**
- * @since 2.8
+/** A companion object for wrapped strings.
+ *
+ *  @since 2.8
  */
 object WrappedString {
-  def newBuilder: Builder[Char, WrappedString] = new StringBuilder() mapResult (new WrappedString(_))
+  implicit def canBuildFrom: CanBuildFrom[WrappedString, Char, WrappedString] = new CanBuildFrom[WrappedString, Char, WrappedString] {
+    def apply(from: WrappedString) = newBuilder
+    def apply() = newBuilder
+  }
+
+  def newBuilder: Builder[Char, WrappedString] = StringBuilder.newBuilder mapResult (x => new WrappedString(x))
 }
