@@ -1,10 +1,11 @@
-package bug1
+package t1
 
 trait Element[T] {
 }
 
 trait Config {
   type T <: Element[T]
+  implicit val m: ClassManifest[T]
   // XXX Following works fine:
   // type T <: Element[_]
 }
