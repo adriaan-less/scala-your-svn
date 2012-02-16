@@ -17,15 +17,15 @@ object CharSequenceReader {
   final val EofCh = '\032'
 }
 
-/** A character array reader reads a stream of characters (keeping track of their positions) 
+/** A character array reader reads a stream of characters (keeping track of their positions)
  * from an array.
  *
  * @param source the source sequence
  * @param offset  starting offset.
  *
- * @author Martin Odersky 
+ * @author Martin Odersky
  */
-class CharSequenceReader(override val source: java.lang.CharSequence, 
+class CharSequenceReader(override val source: java.lang.CharSequence,
                          override val offset: Int) extends Reader[Char] {
   import CharSequenceReader._
 
@@ -36,11 +36,11 @@ class CharSequenceReader(override val source: java.lang.CharSequence,
 
   /** Returns the first element of the reader, or EofCh if reader is at its end.
    */
-  def first = 
-    if (offset < source.length) source.charAt(offset) else EofCh 
+  def first =
+    if (offset < source.length) source.charAt(offset) else EofCh
 
   /** Returns a CharSequenceReader consisting of all elements except the first.
-   * 
+   *
    * @return If `atEnd` is `true`, the result will be `this`;
    *         otherwise, it's a `CharSequenceReader` containing the rest of input.
    */
@@ -56,10 +56,10 @@ class CharSequenceReader(override val source: java.lang.CharSequence,
    *  EofCh's)
    */
   def atEnd = offset >= source.length
-    
+
   /** Returns an abstract reader consisting of all elements except the first
    *  `n` elements.
-   */ 
-  override def drop(n: Int): CharSequenceReader = 
+   */
+  override def drop(n: Int): CharSequenceReader =
     new CharSequenceReader(source, offset + n)
 }

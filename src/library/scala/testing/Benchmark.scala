@@ -20,17 +20,17 @@ import compat.Platform
  *  The `run` method has to be defined by the user, who will perform the
  *  timed operation there. Run the benchmark as follows:
  *  {{{
- *  > scala sort1 5 
+ *  > scala sort1 5
  *  }}}
- *  This will run the benchmark 5 times, forcing a garbage collection 
- *  between runs, and printing the execution times to stdout. 
+ *  This will run the benchmark 5 times, forcing a garbage collection
+ *  between runs, and printing the execution times to stdout.
  *
  *  It is also possible to add a multiplier, so
  *  {{{
  *  > scala sort1 5 10
  *  }}}
  *  will run the entire benchmark 10 times, each time for 5 runs.
- * 
+ *
  *  @author Iulian Dragos, Burak Emir
  */
 trait Benchmark {

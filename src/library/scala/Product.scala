@@ -35,15 +35,12 @@ trait Product extends Equals {
   /** An iterator over all the elements of this product.
    *  @return     in the default implementation, an `Iterator[Any]`
    */
-  def productIterator: Iterator[Any] = new Iterator[Any] {
+  def productIterator: Iterator[Any] = new collection.AbstractIterator[Any] {
     private var c: Int = 0
     private val cmax = productArity
     def hasNext = c < cmax
     def next() = { val result = productElement(c); c += 1; result }
   }
-
-  @deprecated("use productIterator instead", "2.8.0")
-  def productElements: Iterator[Any] = productIterator
 
   /** A string used in the `toString` methods of derived classes.
    *  Implementations may override this method to prepend a string prefix

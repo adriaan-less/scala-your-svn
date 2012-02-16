@@ -7,7 +7,7 @@
 \*                                                                      */
 
 package scala.annotation
- 
+
 /** A method annotation which instructs the compiler to generate a
  *  Java varargs-style forwarder method for interop. This annotation can
  *  only be applied to methods with repeated parameters.

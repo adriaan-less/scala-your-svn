@@ -40,7 +40,15 @@ class Jar(file: File) extends Iterable[JarEntry] {
 
   lazy val jarFile  = new JarFile(file.jfile)
   lazy val manifest = withJarInput(s => Option(s.getManifest))
+
   def mainClass     = manifest map (f => f(Name.MAIN_CLASS))
+  /** The manifest-defined classpath String if available. */
+  def classPathString: Option[String] =
+    for (m <- manifest ; cp <- m.attrs get Name.CLASS_PATH) yield cp
+  def classPathElements: List[String] = classPathString match {
+    case Some(s)  => s split "\\s+" toList
+    case _        => Nil
+  }
 
   def withJarInput[T](f: JarInputStream => T): T = {
     val in = new JarInputStream(file.inputStream())
@@ -56,7 +64,7 @@ class Jar(file: File) extends Iterable[JarEntry] {
   }
   override def iterator: Iterator[JarEntry] = this.toList.iterator
   def fileishIterator: Iterator[Fileish] = jarFile.entries.asScala map (x => Fileish(x, () => getEntryStream(x)))
-  
+
   private def getEntryStream(entry: JarEntry) = jarFile getInputStream entry match {
     case null   => errorFn("No such entry: " + entry) ; null
     case x      => x
@@ -66,7 +74,7 @@ class Jar(file: File) extends Iterable[JarEntry] {
 
 class JarWriter(val file: File, val manifest: Manifest) {
   private lazy val out = new JarOutputStream(file.outputStream(), manifest)
-  
+
   /** Adds a jar entry for the given path and returns an output
    *  stream to which the data should immediately be written.
    *  This unusual interface exists to work with fjbg.
@@ -97,7 +105,7 @@ class JarWriter(val file: File, val manifest: Manifest) {
   def addDirectory(entry: Directory, prefix: String) {
     entry.list foreach (p => addEntry(p, prefix))
   }
-  
+
   private def transfer(in: InputStream, out: OutputStream) = {
     val buf = new Array[Byte](10240)
     def loop(): Unit = in.read(buf, 0, buf.length) match {
@@ -118,16 +126,16 @@ object Jar {
       val m = WManifest(new JManifest)
       for ((k, v) <- mainAttrs)
         m(k) = v
-      
+
       m
-    } 
+    }
     def apply(manifest: JManifest): WManifest = new WManifest(manifest)
     implicit def unenrichManifest(x: WManifest): JManifest = x.underlying
-  } 
+  }
   class WManifest(manifest: JManifest) {
     for ((k, v) <- initialMainAttrs)
       this(k) = v
-    
+
     def underlying = manifest
     def attrs = manifest.getMainAttributes().asInstanceOf[AttributeMap].asScala withDefaultValue null
     def initialMainAttrs: Map[Attributes.Name, String] = {
@@ -137,7 +145,7 @@ object Jar {
         ScalaCompilerVersion  -> versionNumberString
       )
     }
-    
+
     def apply(name: Attributes.Name): String        = attrs(name)
     def apply(name: String): String                 = apply(new Attributes.Name(name))
     def update(key: Attributes.Name, value: String) = attrs.put(key, value)
@@ -151,7 +159,7 @@ object Jar {
   // for some ideas.
   private val ZipMagicNumber = List[Byte](80, 75, 3, 4)
   private def magicNumberIsZip(f: Path) = f.isFile && (f.toFile.bytes().take(4).toList == ZipMagicNumber)
-  
+
   def isJarOrZip(f: Path): Boolean = isJarOrZip(f, true)
   def isJarOrZip(f: Path, examineFile: Boolean): Boolean =
     f.hasExtension("zip", "jar") || (examineFile && magicNumberIsZip(f))

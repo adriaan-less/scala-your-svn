@@ -8,7 +8,7 @@
 
 package scala.xml
 
-import collection.{ mutable, immutable, generic, SeqLike }
+import collection.{ mutable, immutable, generic, SeqLike, AbstractSeq }
 import mutable.{ Builder, ListBuffer }
 import generic.{ CanBuildFrom }
 
@@ -26,7 +26,7 @@ object NodeSeq {
   implicit def canBuildFrom: CanBuildFrom[Coll, Node, NodeSeq] =
     new CanBuildFrom[Coll, Node, NodeSeq] {
       def apply(from: Coll) = newBuilder
-      def apply() = newBuilder 
+      def apply() = newBuilder
     }
   def newBuilder: Builder[Node, NodeSeq] = new ListBuffer[Node] mapResult fromSeq
   implicit def seqToNodeSeq(s: Seq[Node]): NodeSeq = fromSeq(s)
@@ -38,7 +38,7 @@ object NodeSeq {
  *  @author  Burak Emir
  *  @version 1.0
  */
-abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] with Equality {
+abstract class NodeSeq extends AbstractSeq[Node] with immutable.Seq[Node] with SeqLike[Node, NodeSeq] with Equality {
   import NodeSeq.seqToNodeSeq // import view magic for NodeSeq wrappers
 
   /** Creates a list buffer as builder for this class */
@@ -60,11 +60,14 @@ abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] w
 
     !these.hasNext && !those.hasNext
   }
-  def basisForHashCode: Seq[Any] = theSeq
+
+  protected def basisForHashCode: Seq[Any] = theSeq
+
   override def canEqual(other: Any) = other match {
     case _: NodeSeq   => true
     case _            => false
   }
+
   override def strict_==(other: Equality) = other match {
     case x: NodeSeq => (length == x.length) && (theSeq sameElements x.theSeq)
     case _          => false
@@ -92,11 +95,11 @@ abstract class NodeSeq extends immutable.Seq[Node] with SeqLike[Node, NodeSeq] w
     def fail = throw new IllegalArgumentException(that)
     def atResult = {
       lazy val y = this(0)
-      val attr = 
+      val attr =
         if (that.length == 1) fail
         else if (that(1) == '{') {
           val i = that indexOf '}'
-          if (i == -1) fail                  
+          if (i == -1) fail
           val (uri, key) = (that.substring(2,i), that.substring(i+1, that.length()))
           if (uri == "" || key == "") fail
           else y.attribute(uri, key)

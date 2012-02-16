@@ -12,7 +12,7 @@ import java.util.concurrent.{ExecutorService, Callable, TimeUnit}
 
 /** The `ThreadPoolRunner` trait uses a `java.util.concurrent.ExecutorService`
  *  to run submitted tasks.
- *  
+ *
  *  @author Philipp Haller
  */
 trait ThreadPoolRunner extends FutureTaskRunner {

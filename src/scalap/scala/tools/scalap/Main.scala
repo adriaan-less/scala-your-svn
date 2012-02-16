@@ -8,6 +8,7 @@
 package scala.tools.scalap
 
 import java.io.{ PrintStream, OutputStreamWriter, ByteArrayOutputStream }
+import scala.reflect.NameTransformer
 import scalax.rules.scalasig._
 import tools.nsc.util.{ ClassPath, JavaClassPath }
 import tools.util.PathResolver
@@ -80,8 +81,8 @@ class Main {
     syms foreach (printer printSymbol _)
     baos.toString
   }
-  
-  def decompileScala(bytes: Array[Byte], isPackageObject: Boolean): String = {    
+
+  def decompileScala(bytes: Array[Byte], isPackageObject: Boolean): String = {
     val byteCode = ByteCode(bytes)
     val classFile = ClassFileParser.parse(byteCode)
 
@@ -96,7 +97,7 @@ class Main {
    */
   def process(args: Arguments, path: ClassPath[AbstractFile])(classname: String): Unit = {
     // find the classfile
-    val encName = Names.encode(
+    val encName = NameTransformer.encode(
       if (classname == "scala.AnyRef") "java.lang.Object"
       else classname)
     val cls = path.findClass(encName)
@@ -171,17 +172,17 @@ object Main extends Main {
       Console.println(versionMsg)
     if (arguments contains "-help")
       usage()
-      
+
     verbose       = arguments contains "-verbose"
     printPrivates = arguments contains "-private"
     // construct a custom class path
-    val cparg = List("-classpath", "-cp") map (arguments getArgument _) reduceLeft (_ orElse _) 
+    val cparg = List("-classpath", "-cp") map (arguments getArgument _) reduceLeft (_ orElse _)
     val path = cparg match {
       case Some(cp) => new JavaClassPath(DefaultJavaContext.classesInExpandedPath(cp), DefaultJavaContext)
       case _        => PathResolver.fromPathString("")
     }
     // print the classpath if output is verbose
-    if (verbose) 
+    if (verbose)
       Console.println(Console.BOLD + "CLASSPATH" + Console.RESET + " = " + path)
 
     // process all given classes

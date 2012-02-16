@@ -25,7 +25,7 @@ import scala.collection.immutable.Range
  */
 trait SeqForwarder[+A] extends Seq[A] with IterableForwarder[A] {
 
-  protected override def underlying: Seq[A] 
+  protected override def underlying: Seq[A]
 
   override def length: Int = underlying.length
   override def apply(idx: Int): A = underlying.apply(idx)
@@ -35,7 +35,6 @@ trait SeqForwarder[+A] extends Seq[A] with IterableForwarder[A] {
   override def prefixLength(p: A => Boolean) = underlying prefixLength p
   override def indexWhere(p: A => Boolean): Int = underlying indexWhere p
   override def indexWhere(p: A => Boolean, from: Int): Int = underlying.indexWhere(p, from)
-  override def findIndexOf(p: A => Boolean): Int = underlying indexWhere p
   override def indexOf[B >: A](elem: B): Int = underlying indexOf elem
   override def indexOf[B >: A](elem: B, from: Int): Int = underlying.indexOf(elem, from)
   override def lastIndexOf[B >: A](elem: B): Int = underlying lastIndexOf elem

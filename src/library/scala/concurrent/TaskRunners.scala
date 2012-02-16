@@ -11,7 +11,7 @@ package scala.concurrent
 import java.util.concurrent.{ThreadPoolExecutor, LinkedBlockingQueue, TimeUnit}
 
 /** The `TaskRunners` object...
- *  
+ *
  *  @author Philipp Haller
  */
 object TaskRunners {

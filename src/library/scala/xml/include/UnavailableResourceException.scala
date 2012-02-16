@@ -13,7 +13,7 @@ package include
  * An `UnavailableResourceException` is thrown when an included document
  * cannot be found or loaded.
  */
-class UnavailableResourceException(message: String) 
+class UnavailableResourceException(message: String)
 extends XIncludeException(message) {
   def this() = this(null)
 }

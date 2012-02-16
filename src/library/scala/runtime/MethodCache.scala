@@ -71,7 +71,7 @@ final class PolyMethodCache(
   def find(forReceiver: JClass[_]): JMethod = findInternal(forReceiver)
 
   // TODO: come up with a more realistic number
-  final private val MaxComplexity = 160    
+  final private val MaxComplexity = 160
 
   def add(forReceiver: JClass[_], forMethod: JMethod): MethodCache =
     if (complexity < MaxComplexity)

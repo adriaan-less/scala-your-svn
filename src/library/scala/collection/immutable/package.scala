@@ -21,12 +21,12 @@ package immutable {
     def step: Int
     def inclusive: Boolean
     def create(_start: Int, _end: Int, _step: Int, _inclusive: Boolean): Repr
-    
+
     private final def inclusiveLast: Int = {
       val size = end.toLong - start.toLong
       (size / step.toLong * step.toLong + start.toLong).toInt
     }
-    
+
     final def _last: Int = (
       if (!inclusive) {
         if (step == 1 || step == -1) end - step
@@ -38,7 +38,7 @@ package immutable {
       else if (step == 1 || step == -1) end
       else inclusiveLast
     )
-    
+
     final def _foreach[U](f: Int => U) = if (_length > 0) {
       var i = start
       val last = _last
@@ -47,30 +47,30 @@ package immutable {
         i += step
       }
     }
-    
+
     final def _length: Int = (
       if (!inclusive) {
         if (end > start == step > 0 && start != end) {
           (_last.toLong - start.toLong) / step.toLong + 1
         } else 0
-      }.toInt 
+      }.toInt
       else {
         if (end > start == step > 0 || start == end) {
           (_last.toLong - start.toLong) / step.toLong + 1
         } else 0
       }.toInt
     )
-    
+
     final def _apply(idx: Int): Int = {
       if (idx < 0 || idx >= _length) throw new IndexOutOfBoundsException(idx.toString)
       start + idx * step
     }
-    
+
     private def locationAfterN(n: Int) = (
       if (n > 0) {
         if (step > 0)
           math.min(start.toLong + step.toLong * n.toLong, _last.toLong).toInt
-        else 
+        else
           math.max(start.toLong + step.toLong * n.toLong, _last.toLong).toInt
       }
       else start
@@ -79,15 +79,15 @@ package immutable {
     final def _take(n: Int) = (
       if (n > 0 && _length > 0)
         create(start, locationAfterN(n), step, true)
-      else 
+      else
         create(start, start, step, false)
     )
 
     final def _drop(n: Int)                 = create(locationAfterN(n), end, step, inclusive)
-    final def _slice(from: Int, until: Int) = _drop(from)._take(until - from) 
+    final def _slice(from: Int, until: Int) = _drop(from)._take(until - from)
   }
 }
 
 package object immutable {
-  /** Nothing left after I promoted RangeUtils to the package. */  
+  /** Nothing left after I promoted RangeUtils to the package. */
 }

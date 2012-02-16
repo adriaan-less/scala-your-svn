@@ -32,10 +32,10 @@ trait Constants {
     def convertTo(pt: Type): Constant
   }
 
-  type Constant <: AbsConstant 
-  
+  type Constant <: AbsConstant
+
   val Constant: ConstantExtractor
-  
+
   abstract class ConstantExtractor {
     def apply(const: Any): Constant
     def unapply(arg: Constant): Option[Any]

@@ -6,10 +6,9 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.collection.mutable
 
+import collection.AbstractIterator
 import collection.Iterator
 import collection.generic._
 import annotation.tailrec
@@ -18,24 +17,24 @@ import annotation.tailrec
  *
  *  Unrolled linked lists store elements in linked fixed size
  *  arrays.
- *  
+ *
  *  Unrolled buffers retain locality and low memory overhead
  *  properties of array buffers, but offer much more efficient
  *  element addition, since they never reallocate and copy the
  *  internal array.
- *  
+ *
  *  However, they provide `O(n/m)` complexity random access,
  *  where `n` is the number of elements, and `m` the size of
  *  internal array chunks.
- *  
+ *
  *  Ideal to use when:
  *  - elements are added to the buffer and then all of the
  *    elements are traversed sequentially
  *  - two unrolled buffers need to be concatenated (see `concat`)
- *  
+ *
  *  Better than singly linked lists for random access, but
  *  should still be avoided for such a purpose.
- *  
+ *
  *  @define coll unrolled buffer
  *  @define Coll UnrolledBuffer
  *  @author Aleksandar Prokopec
@@ -43,7 +42,8 @@ import annotation.tailrec
  */
 @SerialVersionUID(1L)
 class UnrolledBuffer[T](implicit val manifest: ClassManifest[T])
-extends collection.mutable.Buffer[T]
+extends collection.mutable.AbstractBuffer[T]
+   with collection.mutable.Buffer[T]
    with collection.mutable.BufferLike[T, UnrolledBuffer[T]]
    with GenericClassManifestTraversableTemplate[T, UnrolledBuffer]
    with collection.mutable.Builder[T, UnrolledBuffer[T]]
@@ -70,16 +70,16 @@ extends collection.mutable.Buffer[T]
   def classManifestCompanion = UnrolledBuffer
 
   /** Concatenates the targer unrolled buffer to this unrolled buffer.
-   *  
+   *
    *  The specified buffer `that` is cleared after this operation. This is
    *  an O(1) operation.
-   *  
+   *
    *  @param that    the unrolled buffer whose elements are added to this buffer
    */
   def concat(that: UnrolledBuffer[T]) = {
     // bind the two together
     if (!lastptr.bind(that.headptr)) lastptr = that.lastPtr
-    
+
     // update size
     sz += that.sz
 
@@ -104,11 +104,11 @@ extends collection.mutable.Buffer[T]
     sz = 0
   }
 
-  def iterator = new Iterator[T] {
+  def iterator: Iterator[T] = new AbstractIterator[T] {
     var pos: Int = -1
     var node: Unrolled[T] = headptr
     scan()
-    
+
     private def scan() {
       pos += 1
       while (pos >= node.size) {
@@ -185,7 +185,7 @@ extends collection.mutable.Buffer[T]
 
 object UnrolledBuffer extends ClassManifestTraversableFactory[UnrolledBuffer] {
   /** $genericCanBuildFromInfo */
-  implicit def canBuildFrom[T](implicit m: ClassManifest[T]): CanBuildFrom[Coll, T, UnrolledBuffer[T]] = 
+  implicit def canBuildFrom[T](implicit m: ClassManifest[T]): CanBuildFrom[Coll, T, UnrolledBuffer[T]] =
     new GenericCanBuildFrom[T]
   def newBuilder[T](implicit m: ClassManifest[T]): Builder[T, UnrolledBuffer[T]] = new UnrolledBuffer[T]
 
@@ -255,7 +255,7 @@ object UnrolledBuffer extends ClassManifestTraversableFactory[UnrolledBuffer] {
       }
     }
     // returns pointer to new last if changed
-    @tailrec final def remove(idx: Int, buffer: UnrolledBuffer[T]): T = 
+    @tailrec final def remove(idx: Int, buffer: UnrolledBuffer[T]): T =
       if (idx < size) {
         // remove the element
         // then try to merge with the next bucket
@@ -281,7 +281,7 @@ object UnrolledBuffer extends ClassManifestTraversableFactory[UnrolledBuffer] {
       next = next.next
       if (next eq null) true else false // checks if last node was thrown out
     } else false
-    
+
     @tailrec final def insertAll(idx: Int, t: collection.Traversable[T], buffer: UnrolledBuffer[T]): Unit = if (idx < size) {
       // divide this node at the appropriate position and insert all into head
       // update new next

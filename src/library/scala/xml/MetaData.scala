@@ -10,15 +10,14 @@ package scala.xml
 
 import Utility.sbToString
 import annotation.tailrec
-import scala.collection.Iterator
+import scala.collection.{ AbstractIterable, Iterator }
 
 /**
  * Copyright 2008 Google Inc. All Rights Reserved.
  * @author Burak Emir <bqe@google.com>
  */
 object MetaData {
-
-  /** 
+  /**
    * appends all attributes from new_tail to attribs, without attempting to
    * detect or remove duplicates. The method guarantees that all attributes
    * from attribs come before the attributes in new_tail, but does not
@@ -26,8 +25,8 @@ object MetaData {
    *
    * Duplicates can be removed with `normalize`.
    */
-  @tailrec
-  def concatenate(attribs: MetaData, new_tail: MetaData): MetaData =
+  @tailrec  // temporarily marked final so it will compile under -Xexperimental
+  final def concatenate(attribs: MetaData, new_tail: MetaData): MetaData =
     if (attribs eq Null) new_tail
     else concatenate(attribs.next, attribs copy new_tail)
 
@@ -35,16 +34,16 @@ object MetaData {
    * returns normalized MetaData, with all duplicates removed and namespace prefixes resolved to
    *  namespace URIs via the given scope.
    */
-  def normalize(attribs: MetaData, scope: NamespaceBinding): MetaData = {    
+  def normalize(attribs: MetaData, scope: NamespaceBinding): MetaData = {
     def iterate(md: MetaData, normalized_attribs: MetaData, set: Set[String]): MetaData = {
       lazy val key = getUniversalKey(md, scope)
       if (md eq Null) normalized_attribs
-      else if (set(key)) iterate(md.next, normalized_attribs, set)
-      else iterate(md.next, md copy normalized_attribs, set + key)
+      else if ((md.value eq null) || set(key)) iterate(md.next, normalized_attribs, set)
+      else md copy iterate(md.next, normalized_attribs, set + key)
     }
     iterate(attribs, Null, Set())
   }
- 
+
   /**
    * returns key if md is unprefixed, pre+key is md is prefixed
    */
@@ -73,9 +72,14 @@ object MetaData {
  *  Copyright 2008 Google Inc. All Rights Reserved.
  *  @author Burak Emir <bqe@google.com>
  */
-abstract class MetaData extends Iterable[MetaData] with Equality with Serializable {
+abstract class MetaData
+extends AbstractIterable[MetaData]
+   with Iterable[MetaData]
+   with Equality
+   with Serializable {
+
   /** Updates this MetaData with the MetaData given as argument. All attributes that occur in updates
-   *  are part of the resulting MetaData. If an attribute occurs in both this instance and 
+   *  are part of the resulting MetaData. If an attribute occurs in both this instance and
    *  updates, only the one in updates is part of the result (avoiding duplicates). For prefixed
    *  attributes, namespaces are resolved using the given scope, which defaults to TopScope.
    *
@@ -121,7 +125,7 @@ abstract class MetaData extends Iterable[MetaData] with Equality with Serializab
   def copy(next: MetaData): MetaData
 
   /** if owner is the element of this metadata item, returns namespace */
-  def getNamespace(owner: Node): String 
+  def getNamespace(owner: Node): String
 
   def hasNext = (Null != next)
 
@@ -139,11 +143,7 @@ abstract class MetaData extends Iterable[MetaData] with Equality with Serializab
     case m: MetaData  => this.asAttrMap == m.asAttrMap
     case _            => false
   }
-  def basisForHashCode: Seq[Any] = List(this.asAttrMap)
-
-  /** Returns an iterator on attributes */
-  def iterator: Iterator[MetaData] = Iterator.single(this) ++ next.iterator
-  override def size: Int = 1 + iterator.length
+  protected def basisForHashCode: Seq[Any] = List(this.asAttrMap)
 
   /** filters this sequence of meta data */
   override def filter(f: MetaData => Boolean): MetaData =
@@ -163,7 +163,7 @@ abstract class MetaData extends Iterable[MetaData] with Equality with Serializab
     case x: Attribute if x.isPrefixed => x.pre + ":" + key
     case _                            => key
   }
-  
+
   /** Returns a Map containing the attributes stored as key/value pairs.
    */
   def asAttrMap: Map[String, String] =
@@ -194,17 +194,17 @@ abstract class MetaData extends Iterable[MetaData] with Equality with Serializab
   final def get(uri: String, scope: NamespaceBinding, key: String): Option[Seq[Node]] =
     Option(apply(uri, scope, key))
 
-  def toString1(): String = sbToString(toString1)
+  protected def toString1(): String = sbToString(toString1)
 
   // appends string representations of single attribute to StringBuilder
-  def toString1(sb: StringBuilder): Unit
+  protected def toString1(sb: StringBuilder): Unit
 
   override def toString(): String = sbToString(buildString)
 
   def buildString(sb: StringBuilder): StringBuilder = {
-    sb.append(' ')
+    sb append ' '
     toString1(sb)
-    next.buildString(sb)
+    next buildString sb
   }
 
   /**

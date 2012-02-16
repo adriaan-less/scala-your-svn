@@ -6,19 +6,19 @@ import scala.collection._
 import util.{RangePosition, OffsetPosition, SourceFile}
 
 /** The goal of this trait is , using makeTree,
-  * to browse a tree to 
+  * to browse a tree to
   * 1- have the String of the complete tree (tree.expression)
   * 2- fill references to create hyperLinks later in html.pageTemplate
-  * 
+  *
   * It is applied in ModelFactory => makeTree
-  * 
+  *
   */
- 
+
 trait TreeFactory { thisTreeFactory: ModelFactory with TreeFactory =>
 
   val global: Global
   import global._
-  
+
   def makeTree(rhs: Tree): Option[TreeEntity] = {
 
     var expr = new StringBuilder

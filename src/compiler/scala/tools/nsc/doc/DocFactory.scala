@@ -29,7 +29,7 @@ import DocParser.Parsed
   *
   * @param reporter The reporter to which both documentation and compilation errors will be reported.
   * @param settings The settings to be used by the documenter and compiler for generating documentation.
-  * 
+  *
   * @author Gilles Dubochet */
 class DocFactory(val reporter: Reporter, val settings: doc.Settings) { processor =>
   /** The unique compiler instance used by this processor and constructed from its `settings`. */
@@ -41,7 +41,7 @@ class DocFactory(val reporter: Reporter, val settings: doc.Settings) { processor
       phasesSet += analyzer.typerFactory
       phasesSet += superAccessors
       phasesSet += pickler
-      phasesSet += refchecks
+      phasesSet += refChecks
     }
     override def forScaladoc = true
   }
@@ -96,7 +96,7 @@ class DocFactory(val reporter: Reporter, val settings: doc.Settings) { processor
 
   val documentError: PartialFunction[Throwable, Unit] = {
     case NoCompilerRunException =>
-      reporter.info(NoPosition, "No documentation generated with unsucessful compiler run", false)
+      reporter.info(null, "No documentation generated with unsucessful compiler run", false)
     case _: ClassNotFoundException =>
       ()
   }

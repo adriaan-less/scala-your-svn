@@ -7,5 +7,5 @@ trait Scopes { self: Universe =>
 
   def newScope(): Scope
 }
-  
-  
+
+

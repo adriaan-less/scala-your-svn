@@ -102,7 +102,7 @@ class ScalaTool extends ScalaMatchingTask {
     }
   }
 
-  /** Sets the classpath with which to run the tool. 
+  /** Sets the classpath with which to run the tool.
    *
    *  Note that this mechanism of setting the classpath is generally preferred
    *  for general purpose scripts, as this does not assume all elements are
@@ -121,8 +121,8 @@ class ScalaTool extends ScalaMatchingTask {
    */
   def createClassPath: Path = classpathPath.createPath()
 
-  /** 
-   * Adds an Ant Path reference to the tool's classpath.  
+  /**
+   * Adds an Ant Path reference to the tool's classpath.
    * Note that all entries in the path must exist either relative to the project
    * basedir or with an absolute path to a file in the filesystem.  As a result,
    * this is not a mechanism for setting the classpath for more general use scripts,
@@ -177,7 +177,7 @@ class ScalaTool extends ScalaMatchingTask {
 /*============================================================================*\
 **                       Compilation and support methods                      **
 \*============================================================================*/
-  
+
     // XXX encoding and generalize
     private def getResourceAsCharStream(clazz: Class[_], resource: String): Stream[Char] = {
       val stream = clazz.getClassLoader() getResourceAsStream resource
@@ -203,7 +203,7 @@ class ScalaTool extends ScalaMatchingTask {
             builder.append('@')
           else
             builder.append(pre + token.toString + post)
-        } else builder.append(char)          
+        } else builder.append(char)
       }
       builder.toString
     }
@@ -259,7 +259,7 @@ class ScalaTool extends ScalaMatchingTask {
     )
     // Consolidate Paths into classpath
     classpath = classpath ::: classpathPath.list.toList
-    // Generate the scripts    
+    // Generate the scripts
     if (platforms contains "unix") {
       val unixPatches = patches + (("classpath", getUnixclasspath))
       val unixTemplateResource = resourceRoot + "tool-unix.tmpl"

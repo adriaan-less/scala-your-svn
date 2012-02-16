@@ -5,7 +5,7 @@
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
- 
+
 
 
 package scala.collection
@@ -19,8 +19,8 @@ import annotation.bridge
  */
 abstract class GenSeqFactory[CC[X] <: GenSeq[X] with GenericTraversableTemplate[X, CC]]
 extends GenTraversableFactory[CC] {
-  
+
   @bridge
   def unapplySeq[A](x: GenSeq[A]): Some[GenSeq[A]] = Some(x)
-  
+
 }

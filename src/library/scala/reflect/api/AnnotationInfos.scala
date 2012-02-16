@@ -38,5 +38,5 @@ trait AnnotationInfos { self: Universe =>
     def unapply(arg: NestedAnnotArg): Option[AnnotationInfo]
   }
 }
-  
-  
+
+

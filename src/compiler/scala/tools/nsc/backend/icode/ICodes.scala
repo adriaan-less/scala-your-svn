@@ -24,9 +24,9 @@ import scala.tools.nsc.symtab.classfile.ICodeReader
  */
 abstract class ICodes extends AnyRef
                                  with Members
-                                 with BasicBlocks                
+                                 with BasicBlocks
                                  with Opcodes
-                                 with TypeStacks 
+                                 with TypeStacks
                                  with TypeKinds
                                  with ExceptionHandlers
                                  with Primitives
@@ -39,8 +39,8 @@ abstract class ICodes extends AnyRef
 
   /** The ICode representation of classes */
   val classes = perRunCaches.newMap[global.Symbol, IClass]()
-  
-  /** Debugging flag */  
+
+  /** Debugging flag */
   def shouldCheckIcode = settings.check contains global.genicode.phaseName
   def checkerDebug(msg: String) = if (shouldCheckIcode && global.opt.debug) println(msg)
 
@@ -50,24 +50,24 @@ abstract class ICodes extends AnyRef
     case "dfs"    => new DepthFirstLinerizer()
     case "normal" => new NormalLinearizer()
     case "dump"   => new DumpLinearizer()
-    case x        => global.abort("Unknown linearizer: " + x)    
+    case x        => global.abort("Unknown linearizer: " + x)
   }
-  
+
   def newTextPrinter() =
     new TextPrinter(new PrintWriter(Console.out, true), new DumpLinearizer)
-    
+
   /** Have to be careful because dump calls around, possibly
    *  re-entering methods which initiated the dump (like foreach
    *  in BasicBlocks) which leads to the icode output olympics.
    */
   private var alreadyDumping = false
-  
+
   /** Print all classes and basic blocks. Used for debugging. */
-  
+
   def dumpClassesAndAbort(msg: String): Nothing = {
     if (alreadyDumping) global.abort(msg)
     else alreadyDumping = true
-    
+
     Console.println(msg)
     val printer = newTextPrinter()
     classes.values foreach printer.printClass
@@ -84,15 +84,16 @@ abstract class ICodes extends AnyRef
 
   def checkValid(m: IMethod) {
     // always slightly dicey to iterate over mutable structures
-    val bs = m.code.blocks.toList
-    for (b <- bs ; if !b.closed) {
-      // Something is leaving open/empty blocks around (see SI-4840) so
-      // let's not kill the deal unless it's nonempty.
-      if (b.isEmpty) {
-        log("!!! Found open but empty block while inlining " + m + ": removing from block list.")
-        m.code removeBlock b
+    m foreachBlock { b =>
+      if (!b.closed) {
+        // Something is leaving open/empty blocks around (see SI-4840) so
+        // let's not kill the deal unless it's nonempty.
+        if (b.isEmpty) {
+          log("!!! Found open but empty block while inlining " + m + ": removing from block list.")
+          m.code removeBlock b
+        }
+        else dumpMethodAndAbort(m, b)
       }
-      else dumpMethodAndAbort(m, b)
     }
   }
 
@@ -115,13 +116,13 @@ abstract class ICodes extends AnyRef
   object icodeReader extends ICodeReader {
     lazy val global: ICodes.this.global.type = ICodes.this.global
   }
-  
+
   /** A phase which works on icode. */
   abstract class ICodePhase(prev: Phase) extends global.GlobalPhase(prev) {
     override def erasedTypes = true
     override def apply(unit: global.CompilationUnit): Unit =
       unit.icode foreach apply
-        
+
     def apply(cls: global.icodes.IClass): Unit
   }
 }

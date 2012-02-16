@@ -10,7 +10,7 @@ package scala.math
 
 import java.util.Comparator
 
-/** Ordering is trait whose instances each represent a strategy for sorting
+/** Ordering is a trait whose instances each represent a strategy for sorting
   * instances of a type.
   *
   * Ordering's companion object defines many implicit objects to deal with
@@ -184,10 +184,10 @@ object Ordering extends LowPriorityOrderingImplicits {
       * With it imported, you can write methods as follows:
       *
       * {{{
-      * def lessThan[T: Ordering](x: T, y: T) = x < y 
+      * def lessThan[T: Ordering](x: T, y: T) = x < y
       * }}}
       */
-    implicit def infixOrderingOps[T](x: T)(implicit ord: Ordering[T]): Ordering[T]#Ops = new ord.Ops(x) 
+    implicit def infixOrderingOps[T](x: T)(implicit ord: Ordering[T]): Ordering[T]#Ops = new ord.Ops(x)
   }
 
   /** An object containing implicits which are not in the default scope. */
@@ -214,7 +214,7 @@ object Ordering extends LowPriorityOrderingImplicits {
     * parameter is passed implicitly.
     */
   def by[T, S](f: T => S)(implicit ord: Ordering[S]): Ordering[T] =
-    fromLessThan((x, y) => ord.lt(f(x), f(y)))  
+    fromLessThan((x, y) => ord.lt(f(x), f(y)))
 
   trait UnitOrdering extends Ordering[Unit] {
     def compare(x: Unit, y: Unit) = 0
@@ -262,12 +262,52 @@ object Ordering extends LowPriorityOrderingImplicits {
   implicit object Long extends LongOrdering
 
   trait FloatOrdering extends Ordering[Float] {
+    outer =>
+
     def compare(x: Float, y: Float) = java.lang.Float.compare(x, y)
+
+    override def lteq(x: Float, y: Float): Boolean = x <= y
+    override def gteq(x: Float, y: Float): Boolean = x >= y
+    override def lt(x: Float, y: Float): Boolean = x < y
+    override def gt(x: Float, y: Float): Boolean = x > y
+    override def equiv(x: Float, y: Float): Boolean = x == y
+    override def max(x: Float, y: Float): Float = math.max(x, y)
+    override def min(x: Float, y: Float): Float = math.min(x, y)
+
+    override def reverse: Ordering[Float] = new FloatOrdering {
+      override def reverse = outer
+      override def compare(x: Float, y: Float) = outer.compare(y, x)
+
+      override def lteq(x: Float, y: Float): Boolean = outer.lteq(y, x)
+      override def gteq(x: Float, y: Float): Boolean = outer.gteq(y, x)
+      override def lt(x: Float, y: Float): Boolean = outer.lt(y, x)
+      override def gt(x: Float, y: Float): Boolean = outer.gt(y, x)
+    }
   }
   implicit object Float extends FloatOrdering
 
   trait DoubleOrdering extends Ordering[Double] {
+    outer =>
+
     def compare(x: Double, y: Double) = java.lang.Double.compare(x, y)
+
+    override def lteq(x: Double, y: Double): Boolean = x <= y
+    override def gteq(x: Double, y: Double): Boolean = x >= y
+    override def lt(x: Double, y: Double): Boolean = x < y
+    override def gt(x: Double, y: Double): Boolean = x > y
+    override def equiv(x: Double, y: Double): Boolean = x == y
+    override def max(x: Double, y: Double): Double = math.max(x, y)
+    override def min(x: Double, y: Double): Double = math.min(x, y)
+
+    override def reverse: Ordering[Double] = new DoubleOrdering {
+      override def reverse = outer
+      override def compare(x: Double, y: Double) = outer.compare(y, x)
+
+      override def lteq(x: Double, y: Double): Boolean = outer.lteq(y, x)
+      override def gteq(x: Double, y: Double): Boolean = outer.gteq(y, x)
+      override def lt(x: Double, y: Double): Boolean = outer.lt(y, x)
+      override def gt(x: Double, y: Double): Boolean = outer.gt(y, x)
+    }
   }
   implicit object Double extends DoubleOrdering
 
@@ -298,7 +338,7 @@ object Ordering extends LowPriorityOrderingImplicits {
   implicit def Option[T](implicit ord: Ordering[T]): Ordering[Option[T]] =
     new OptionOrdering[T] { val optionOrdering = ord }
 
-  implicit def Iterable[T](implicit ord: Ordering[T]): Ordering[Iterable[T]] = 
+  implicit def Iterable[T](implicit ord: Ordering[T]): Ordering[Iterable[T]] =
     new Ordering[Iterable[T]] {
       def compare(x: Iterable[T], y: Iterable[T]): Int = {
         val xe = x.iterator
@@ -313,7 +353,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple2[T1, T2](implicit ord1: Ordering[T1], ord2: Ordering[T2]): Ordering[(T1, T2)] = 
+  implicit def Tuple2[T1, T2](implicit ord1: Ordering[T1], ord2: Ordering[T2]): Ordering[(T1, T2)] =
     new Ordering[(T1, T2)]{
       def compare(x: (T1, T2), y: (T1, T2)): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -324,7 +364,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple3[T1, T2, T3](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3]) : Ordering[(T1, T2, T3)] = 
+  implicit def Tuple3[T1, T2, T3](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3]) : Ordering[(T1, T2, T3)] =
     new Ordering[(T1, T2, T3)]{
       def compare(x: (T1, T2, T3), y: (T1, T2, T3)): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -337,7 +377,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple4[T1, T2, T3, T4](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4]) : Ordering[(T1, T2, T3, T4)] = 
+  implicit def Tuple4[T1, T2, T3, T4](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4]) : Ordering[(T1, T2, T3, T4)] =
     new Ordering[(T1, T2, T3, T4)]{
       def compare(x: (T1, T2, T3, T4), y: (T1, T2, T3, T4)): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -352,7 +392,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple5[T1, T2, T3, T4, T5](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5]): Ordering[(T1, T2, T3, T4, T5)] = 
+  implicit def Tuple5[T1, T2, T3, T4, T5](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5]): Ordering[(T1, T2, T3, T4, T5)] =
     new Ordering[(T1, T2, T3, T4, T5)]{
       def compare(x: (T1, T2, T3, T4, T5), y: Tuple5[T1, T2, T3, T4, T5]): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -369,7 +409,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple6[T1, T2, T3, T4, T5, T6](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6]): Ordering[(T1, T2, T3, T4, T5, T6)] = 
+  implicit def Tuple6[T1, T2, T3, T4, T5, T6](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6]): Ordering[(T1, T2, T3, T4, T5, T6)] =
     new Ordering[(T1, T2, T3, T4, T5, T6)]{
       def compare(x: (T1, T2, T3, T4, T5, T6), y: (T1, T2, T3, T4, T5, T6)): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -388,7 +428,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple7[T1, T2, T3, T4, T5, T6, T7](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6], ord7: Ordering[T7]): Ordering[(T1, T2, T3, T4, T5, T6, T7)] = 
+  implicit def Tuple7[T1, T2, T3, T4, T5, T6, T7](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6], ord7: Ordering[T7]): Ordering[(T1, T2, T3, T4, T5, T6, T7)] =
     new Ordering[(T1, T2, T3, T4, T5, T6, T7)]{
       def compare(x: (T1, T2, T3, T4, T5, T6, T7), y: (T1, T2, T3, T4, T5, T6, T7)): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -409,7 +449,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple8[T1, T2, T3, T4, T5, T6, T7, T8](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6], ord7: Ordering[T7], ord8: Ordering[T8]): Ordering[(T1, T2, T3, T4, T5, T6, T7, T8)] = 
+  implicit def Tuple8[T1, T2, T3, T4, T5, T6, T7, T8](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6], ord7: Ordering[T7], ord8: Ordering[T8]): Ordering[(T1, T2, T3, T4, T5, T6, T7, T8)] =
     new Ordering[(T1, T2, T3, T4, T5, T6, T7, T8)]{
       def compare(x: (T1, T2, T3, T4, T5, T6, T7, T8), y: (T1, T2, T3, T4, T5, T6, T7, T8)): Int = {
         val compare1 = ord1.compare(x._1, y._1)
@@ -432,7 +472,7 @@ object Ordering extends LowPriorityOrderingImplicits {
       }
     }
 
-  implicit def Tuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6], ord7: Ordering[T7], ord8 : Ordering[T8], ord9: Ordering[T9]): Ordering[(T1, T2, T3, T4, T5, T6, T7, T8, T9)] = 
+  implicit def Tuple9[T1, T2, T3, T4, T5, T6, T7, T8, T9](implicit ord1: Ordering[T1], ord2: Ordering[T2], ord3: Ordering[T3], ord4: Ordering[T4], ord5: Ordering[T5], ord6: Ordering[T6], ord7: Ordering[T7], ord8 : Ordering[T8], ord9: Ordering[T9]): Ordering[(T1, T2, T3, T4, T5, T6, T7, T8, T9)] =
     new Ordering[(T1, T2, T3, T4, T5, T6, T7, T8, T9)]{
       def compare(x: (T1, T2, T3, T4, T5, T6, T7, T8, T9), y: (T1, T2, T3, T4, T5, T6, T7, T8, T9)): Int = {
         val compare1 = ord1.compare(x._1, y._1)

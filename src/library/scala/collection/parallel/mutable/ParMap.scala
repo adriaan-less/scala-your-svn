@@ -18,12 +18,12 @@ import collection.parallel.Combiner
 
 
 /** A template trait for mutable parallel maps.
- *  
+ *
  *  $sideeffects
- *  
+ *
  *  @tparam K    the key type of the map
  *  @tparam V    the value type of the map
- *  
+ *
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
@@ -34,47 +34,47 @@ extends collection/*.mutable*/.GenMap[K, V]
    with GenericParMapTemplate[K, V, ParMap]
    with /* mutable */ ParMapLike[K, V, ParMap[K, V], collection.mutable.Map[K, V]]
 {
-  
+
   protected[this] override def newCombiner: Combiner[(K, V), ParMap[K, V]] = ParMap.newCombiner[K, V]
-  
+
   override def mapCompanion: GenericParMapCompanion[ParMap] = ParMap
-  
+
   override def empty: ParMap[K, V] = new ParHashMap[K, V]
-  
+
   def seq: collection.mutable.Map[K, V]
-  
+
   override def updated [U >: V](key: K, value: U): ParMap[K, U] = this + ((key, value))
-  
+
   /** The same map with a given default function.
    *  Note: `get`, `contains`, `iterator`, `keys`, etc are not affected by `withDefault`.
-   *  
+   *
    *  Invoking transformer methods (e.g. `map`) will not preserve the default value.
    *
    *  @param d     the function mapping keys to values, used for non-present keys
    *  @return      a wrapper of the map with a default value
    */
-  def withDefault(d: K => V): collection.parallel.mutable.ParMap[K, V] = new ParMap.WithDefault[K, V](this, d) 
-  
+  def withDefault(d: K => V): collection.parallel.mutable.ParMap[K, V] = new ParMap.WithDefault[K, V](this, d)
+
   /** The same map with a given default value.
-   *  
+   *
    *  Invoking transformer methods (e.g. `map`) will not preserve the default value.
    *
    *  @param d     the function mapping keys to values, used for non-present keys
    *  @return      a wrapper of the map with a default value
    */
   def withDefaultValue(d: V): collection.parallel.mutable.ParMap[K, V] = new ParMap.WithDefault[K, V](this, x => d)
-  
+
 }
 
 
 
 object ParMap extends ParMapFactory[ParMap] {
   def empty[K, V]: ParMap[K, V] = new ParHashMap[K, V]
-  
+
   def newCombiner[K, V]: Combiner[(K, V), ParMap[K, V]] = ParHashMapCombiner.apply[K, V]
-  
+
   implicit def canBuildFrom[K, V]: CanCombineFrom[Coll, (K, V), ParMap[K, V]] = new CanCombineFromMap[K, V]
-  
+
   class WithDefault[K, V](underlying: ParMap[K, V], d: K => V)
   extends collection.parallel.ParMap.WithDefault(underlying, d) with ParMap[K, V] {
     override def += (kv: (K, V)) = {underlying += kv; this}
@@ -86,7 +86,7 @@ object ParMap extends ParMapFactory[ParMap] {
     override def seq = underlying.seq.withDefault(d)
     def clear() = underlying.clear()
     def put(key: K, value: V): Option[V] = underlying.put(key, value)
-    
+
     /** If these methods aren't overridden to thread through the underlying map,
      *  successive calls to withDefault* have no effect.
      */
@@ -112,4 +112,4 @@ object ParMap extends ParMapFactory[ParMap] {
 
 
 
- 
+

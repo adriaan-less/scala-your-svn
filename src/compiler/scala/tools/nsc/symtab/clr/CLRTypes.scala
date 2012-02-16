@@ -13,7 +13,7 @@ import scala.util.Sorting
 import ch.epfl.lamp.compiler.msil._
 import scala.collection.{ mutable, immutable }
 import scala.tools.nsc.util.{Position, NoPosition}
- 
+
 /**
  * Collects all types from all reference assemblies.
  */
@@ -60,7 +60,7 @@ abstract class CLRTypes {
   val fields: mutable.Map[Symbol, FieldInfo] = new mutable.HashMap
   val sym2type: mutable.Map[Type,Symbol] = new mutable.HashMap
   val addressOfViews = new mutable.HashSet[Symbol]
-  val mdgptrcls4clssym: mutable.Map[ /*cls*/ Symbol, /*cls*/ Symbol] = new mutable.HashMap 
+  val mdgptrcls4clssym: mutable.Map[ /*cls*/ Symbol, /*cls*/ Symbol] = new mutable.HashMap
 
   def isAddressOf(msym : Symbol) = addressOfViews.contains(msym)
 

@@ -17,7 +17,7 @@ import symtab._
 abstract class TreeInfo extends reflect.internal.TreeInfo {
   val global: Global
   import global._
-  
+
   import definitions.ThrowableClass
 
   /** Is tree legal as a member definition of an interface?
@@ -34,7 +34,7 @@ abstract class TreeInfo extends reflect.internal.TreeInfo {
     case _ => super.isPureDef(tree)
   }
 
- /** Does list of trees start with a definition of 
+ /** Does list of trees start with a definition of
    *  a class of module with given name (ignoring imports)
    */
   override def firstDefinesClassOrObject(trees: List[Tree], name: Name): Boolean = trees match {

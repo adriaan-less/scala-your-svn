@@ -6,10 +6,27 @@
 **                          |/                                          **
 \*                                                                      */
 
+/*  [Martin]
+ *  Todo: ClassManifests currently contain all available type arguments.
+ *        That's a waste of cycles if all that's needed is the class.
+ *        We should have instead consider a structure like this:
+ *
+ *                  OptManifest
+ *                  /        \
+ *                 /          \
+ *        PartialManifest   ClassManifest
+ *                 \          /
+ *                  \        /
+ *                   Manifest
+ *
+ *        where PartialManifest means: generate as much as you can, use NoManifest
+ *        where nothing is known, and
+ *        ClassManifest means: generate exactly the top-level class, and nothing else.
+ */
 package scala.reflect
 
 import scala.collection.mutable.{ WrappedArray, ArrayBuilder }
-import java.lang.{ Class => JClass }
+import java.lang.{ Class => jClass }
 
 /** A `ClassManifest[T]` is an opaque descriptor for type `T`.
  *  It is used by the compiler to preserve information necessary
@@ -25,10 +42,14 @@ import java.lang.{ Class => JClass }
 trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
   /** A class representing the type `U` to which `T` would be erased. Note
     * that there is no subtyping relationship between `T` and `U`. */
-  def erasure: JClass[_]
+  def erasure: jClass[_]
 
-  private def subtype(sub: JClass[_], sup: JClass[_]): Boolean = {
-    def loop(left: Set[JClass[_]], seen: Set[JClass[_]]): Boolean = {
+  /** The Scala type described by this manifest.
+   */
+  lazy val tpe: mirror.Type = reflect.mirror.classToType(erasure)
+
+  private def subtype(sub: jClass[_], sup: jClass[_]): Boolean = {
+    def loop(left: Set[jClass[_]], seen: Set[jClass[_]]): Boolean = {
       left.nonEmpty && {
         val next = left.head
         val supers = next.getInterfaces.toSet ++ Option(next.getSuperclass)
@@ -47,11 +68,11 @@ trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
     case (x, y)                                     => (x eq NoManifest) && (y eq NoManifest)
   }
 
-  /** Tests whether the type represented by this manifest is a subtype 
+  /** Tests whether the type represented by this manifest is a subtype
     * of the type represented by `that` manifest, subject to the limitations
     * described in the header.
     */
-  def <:<(that: ClassManifest[_]): Boolean = {    
+  def <:<(that: ClassManifest[_]): Boolean = {
     // All types which could conform to these types will override <:<.
     def cannotMatch = {
       import Manifest._
@@ -64,7 +85,7 @@ trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
     //
     //   List[String] <: AnyRef
     //   Map[Int, Int] <: Iterable[(Int, Int)]
-    // 
+    //
     // Given the manifest for Map[A, B] how do I determine that a
     // supertype has single type argument (A, B) ? I don't see how we
     // can say whether X <:< Y when type arguments are involved except
@@ -80,7 +101,7 @@ trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
     }
   }
 
-  /** Tests whether the type represented by this manifest is a supertype 
+  /** Tests whether the type represented by this manifest is a supertype
     * of the type represented by `that` manifest, subject to the limitations
     * described in the header.
     */
@@ -102,11 +123,11 @@ trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
   }
   override def hashCode = this.erasure.##
 
-  protected def arrayClass[T](tp: JClass[_]): JClass[Array[T]] = 
-    java.lang.reflect.Array.newInstance(tp, 0).getClass.asInstanceOf[JClass[Array[T]]]
+  protected def arrayClass[T](tp: jClass[_]): jClass[Array[T]] =
+    java.lang.reflect.Array.newInstance(tp, 0).getClass.asInstanceOf[jClass[Array[T]]]
 
-  def arrayManifest: ClassManifest[Array[T]] = 
-    ClassManifest.classType[Array[T]](arrayClass[T](erasure))
+  def arrayManifest: ClassManifest[Array[T]] =
+    ClassManifest.classType[Array[T]](arrayClass[T](erasure), this)
 
   def newArray(len: Int): Array[T] =
     java.lang.reflect.Array.newInstance(erasure, len).asInstanceOf[Array[T]]
@@ -128,16 +149,16 @@ trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
       .asInstanceOf[Array[Array[Array[Array[Array[T]]]]]]
 
   def newWrappedArray(len: Int): WrappedArray[T] =
-    // it's safe to assume T <: AnyRef here because the method is overridden for all value type manifests 
+    // it's safe to assume T <: AnyRef here because the method is overridden for all value type manifests
     new WrappedArray.ofRef[T with AnyRef](newArray(len).asInstanceOf[Array[T with AnyRef]]).asInstanceOf[WrappedArray[T]]
-  
-  def newArrayBuilder(): ArrayBuilder[T] = 
+
+  def newArrayBuilder(): ArrayBuilder[T] =
     // it's safe to assume T <: AnyRef here because the method is overridden for all value type manifests
     new ArrayBuilder.ofRef[T with AnyRef]()(this.asInstanceOf[ClassManifest[T with AnyRef]]).asInstanceOf[ArrayBuilder[T]]
 
   def typeArguments: List[OptManifest[_]] = List()
 
-  protected def argString = 
+  protected def argString =
     if (typeArguments.nonEmpty) typeArguments.mkString("[", ", ", "]")
     else if (erasure.isArray) "["+ClassManifest.fromClass(erasure.getComponentType)+"]"
     else ""
@@ -162,7 +183,7 @@ object ClassManifest {
   val Nothing = Manifest.Nothing
   val Null    = Manifest.Null
 
-  def fromClass[T](clazz: JClass[T]): ClassManifest[T] = clazz match {
+  def fromClass[T](clazz: jClass[T]): ClassManifest[T] = clazz match {
     case java.lang.Byte.TYPE      => Byte.asInstanceOf[ClassManifest[T]]
     case java.lang.Short.TYPE     => Short.asInstanceOf[ClassManifest[T]]
     case java.lang.Character.TYPE => Char.asInstanceOf[ClassManifest[T]]
@@ -184,29 +205,29 @@ object ClassManifest {
     *       pass varargs as arrays into this, we get an infinitely recursive call
     *       to boxArray. (Besides, having a separate case is more efficient)
     */
-  def classType[T <: AnyRef](clazz: JClass[_]): ClassManifest[T] =
+  def classType[T <: AnyRef](clazz: jClass[_]): ClassManifest[T] =
     new ClassTypeManifest[T](None, clazz, Nil)
 
   /** ClassManifest for the class type `clazz[args]`, where `clazz` is
     * a top-level or static class and `args` are its type arguments */
-  def classType[T <: AnyRef](clazz: JClass[_], arg1: OptManifest[_], args: OptManifest[_]*): ClassManifest[T] =
+  def classType[T <: AnyRef](clazz: jClass[_], arg1: OptManifest[_], args: OptManifest[_]*): ClassManifest[T] =
     new ClassTypeManifest[T](None, clazz, arg1 :: args.toList)
 
   /** ClassManifest for the class type `clazz[args]`, where `clazz` is
     * a class with non-package prefix type `prefix` and type arguments `args`.
     */
-  def classType[T <: AnyRef](prefix: OptManifest[_], clazz: JClass[_], args: OptManifest[_]*): ClassManifest[T] =
+  def classType[T <: AnyRef](prefix: OptManifest[_], clazz: jClass[_], args: OptManifest[_]*): ClassManifest[T] =
     new ClassTypeManifest[T](Some(prefix), clazz, args.toList)
 
   def arrayType[T](arg: OptManifest[_]): ClassManifest[Array[T]] = arg match {
-    case NoManifest => Object.asInstanceOf[ClassManifest[Array[T]]]
+    case NoManifest          => Object.asInstanceOf[ClassManifest[Array[T]]]
     case m: ClassManifest[_] => m.asInstanceOf[ClassManifest[T]].arrayManifest
   }
 
   /** ClassManifest for the abstract type `prefix # name`. `upperBound` is not
     * strictly necessary as it could be obtained by reflection. It was
     * added so that erasure can be calculated without reflection. */
-  def abstractType[T](prefix: OptManifest[_], name: String, clazz: JClass[_], args: OptManifest[_]*): ClassManifest[T] =
+  def abstractType[T](prefix: OptManifest[_], name: String, clazz: jClass[_], args: OptManifest[_]*): ClassManifest[T] =
     new ClassManifest[T] {
       def erasure = clazz
       override val typeArguments = args.toList
@@ -227,14 +248,14 @@ object ClassManifest {
 }
 
 /** Manifest for the class type `clazz[args]`, where `clazz` is
-  * a top-level or static class. */
+  * a top-level or static class: todo: we should try to merge this with Manifest's class */
 private class ClassTypeManifest[T <: AnyRef](
-  prefix: Option[OptManifest[_]], 
-  val erasure: JClass[_], 
+  prefix: Option[OptManifest[_]],
+  val erasure: jClass[_],
   override val typeArguments: List[OptManifest[_]]) extends ClassManifest[T]
 {
-  override def toString = 
-    (if (prefix.isEmpty) "" else prefix.get.toString+"#") + 
+  override def toString =
+    (if (prefix.isEmpty) "" else prefix.get.toString+"#") +
     (if (erasure.isArray) "Array" else erasure.getName) +
     argString
 }

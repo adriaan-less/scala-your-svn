@@ -16,7 +16,7 @@ import java.util.jar.Attributes.{ Name => AttributeName }
 object Properties extends PropertiesTrait {
   protected def propCategory    = "library"
   protected def pickJarBasedOn  = classOf[ScalaObject]
-  
+
   /** Scala manifest attributes.
    */
   val ScalaCompilerVersion = new AttributeName("Scala-Compiler-Version")
@@ -25,27 +25,27 @@ object Properties extends PropertiesTrait {
 private[scala] trait PropertiesTrait {
   protected def propCategory: String      // specializes the remainder of the values
   protected def pickJarBasedOn: Class[_]  // props file comes from jar containing this
-  
+
   /** The name of the properties file */
   protected val propFilename = "/" + propCategory + ".properties"
-  
+
   /** The loaded properties */
   protected lazy val scalaProps: java.util.Properties = {
     val props = new java.util.Properties
     val stream = pickJarBasedOn getResourceAsStream propFilename
     if (stream ne null)
       quietlyDispose(props load stream, stream.close)
-    
+
     props
-  }    
-  
+  }
+
   private def quietlyDispose(action: => Unit, disposal: => Unit) =
     try     { action }
-    finally { 
+    finally {
         try     { disposal }
         catch   { case _: IOException => }
     }
-  
+
   def propIsSet(name: String)                   = System.getProperty(name) != null
   def propIsSetTo(name: String, value: String)  = propOrNull(name) == value
   def propOrElse(name: String, alt: String)     = System.getProperty(name, alt)
@@ -58,7 +58,7 @@ private[scala] trait PropertiesTrait {
 
   def envOrElse(name: String, alt: String)      = Option(System getenv name) getOrElse alt
   def envOrNone(name: String)                   = Option(System getenv name)
-  
+
   // for values based on propFilename
   def scalaPropOrElse(name: String, alt: String): String = scalaProps.getProperty(name, alt)
   def scalaPropOrEmpty(name: String): String             = scalaPropOrElse(name, "")
@@ -105,22 +105,22 @@ private[scala] trait PropertiesTrait {
    */
   val versionString         = "version " + scalaPropOrElse("version.number", "(unknown)")
   val copyrightString       = scalaPropOrElse("copyright.string", "(c) 2002-2011 LAMP/EPFL")
-  
+
   /** This is the encoding to use reading in source files, overridden with -encoding
    *  Note that it uses "prop" i.e. looks in the scala jar, not the system properties.
    */
   def sourceEncoding        = scalaPropOrElse("file.encoding", "UTF-8")
   def sourceReader          = scalaPropOrElse("source.reader", "scala.tools.nsc.io.SourceReader")
-  
+
   /** This is the default text encoding, overridden (unreliably) with
    *  `JAVA_OPTS="-Dfile.encoding=Foo"`
    */
   def encodingString        = propOrElse("file.encoding", "UTF-8")
-  
+
   /** The default end of line character.
-   */  
+   */
   def lineSeparator         = propOrElse("line.separator", "\n")
-  
+
   /** Various well-known properties.
    */
   def javaClassPath         = propOrEmpty("java.class.path")
@@ -137,16 +137,21 @@ private[scala] trait PropertiesTrait {
   def userDir               = propOrEmpty("user.dir")
   def userHome              = propOrEmpty("user.home")
   def userName              = propOrEmpty("user.name")
-  
+
   /** Some derived values.
    */
   def isWin                 = osName startsWith "Windows"
   def isMac                 = javaVendor startsWith "Apple"
   
+  // This is looking for javac, tools.jar, etc.
+  // Tries JDK_HOME first, then the more common but likely jre JAVA_HOME,
+  // and finally the system property based javaHome.
+  def jdkHome              = envOrElse("JDK_HOME", envOrElse("JAVA_HOME", javaHome))
+
   def versionMsg            = "Scala %s %s -- %s".format(propCategory, versionString, copyrightString)
   def scalaCmd              = if (isWin) "scala.bat" else "scala"
   def scalacCmd             = if (isWin) "scalac.bat" else "scalac"
-  
+
   /** Can the java version be determined to be at least as high as the argument?
    *  Hard to properly future proof this but at the rate 1.7 is going we can leave
    *  the issue for our cyborg grandchildren to solve.
@@ -166,4 +171,4 @@ private[scala] trait PropertiesTrait {
     val writer = new PrintWriter(Console.err, true)
     writer println versionMsg
   }
-}  
+}

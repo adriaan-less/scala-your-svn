@@ -29,20 +29,20 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
 
   def startDocument() {
     try {
-      out.write("<?xml version='1.0' encoding='" 
+      out.write("<?xml version='1.0' encoding='"
                 + encoding + "'?>\r\n");
     }
     catch {
       case e:IOException =>
         throw new SAXException("Write failed", e)
-    }        
+    }
   }
 
   def endDocument() {
     try {
       out.flush()
     }
-    catch { 
+    catch {
       case e:IOException =>
         throw new SAXException("Flush failed", e)
     }
@@ -56,8 +56,8 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
     try {
       out.write("<" + qualifiedName);
       var i = 0; while (i < atts.getLength()) {
-        out.write(" ");   
-        out.write(atts.getQName(i));   
+        out.write(" ");
+        out.write(atts.getQName(i));
         out.write("='");
         val value = atts.getValue(i);
         // @todo Need to use character references if the encoding
@@ -68,10 +68,10 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
       }
       out.write(">")
     }
-    catch { 
+    catch {
       case e:IOException =>
         throw new SAXException("Write failed", e)
-    }        
+    }
   }
 
   def endElement(namespaceURI: String, localName:String, qualifiedName: String) {
@@ -84,7 +84,7 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
     }
   }
 
-  // need to escape characters that are not in the given 
+  // need to escape characters that are not in the given
   // encoding using character references????
   def characters(ch: Array[Char], start: Int, length: Int) {
     try {
@@ -100,9 +100,9 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
         i += 1
       }
     }
-    catch { 
-      case e: IOException => 
-        throw new SAXException("Write failed", e);      
+    catch {
+      case e: IOException =>
+        throw new SAXException("Write failed", e);
     }
   }
 
@@ -115,7 +115,7 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
     try {
       out.write("<?" + target + " " + data + "?>")
     }
-    catch { 
+    catch {
       case e:IOException =>
         throw new SAXException("Write failed", e)
     }
@@ -145,7 +145,7 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
       try {
         out.write("<!DOCTYPE " + name + id + ">\r\n")
       }
-      catch { 
+      catch {
         case e:IOException =>
           throw new SAXException("Error while writing DOCTYPE", e)
       }
@@ -164,7 +164,7 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
   def startCDATA() {}
   def endCDATA() {}
 
-  // Just need this reference so we can ask if a comment is 
+  // Just need this reference so we can ask if a comment is
   // inside an include element or not
   private var filter: XIncludeFilter = null
 
@@ -179,7 +179,7 @@ class XIncluder(outs: OutputStream, encoding: String) extends ContentHandler wit
         out.write(ch, start, length)
         out.write("-->")
       }
-      catch { 
+      catch {
         case e: IOException =>
           throw new SAXException("Write failed", e)
       }

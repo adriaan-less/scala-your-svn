@@ -9,7 +9,7 @@
 package scala.reflect
 
 /** A `OptManifest[T]` is an optional [[scala.reflect.Manifest]].
- *  
+ *
  *  It is either a `Manifest` or the value `NoManifest`.
  *
  *  @author Martin Odersky

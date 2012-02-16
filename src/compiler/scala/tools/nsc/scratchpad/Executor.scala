@@ -1,28 +1,21 @@
 package scala.tools.nsc.scratchpad
 
 import java.io.{PrintStream, OutputStreamWriter, Writer}
-import scala.runtime.ScalaRunTime.replStringOf
+
+import scala.runtime.ScalaRunTime.stringOf
 import java.lang.reflect.InvocationTargetException
+import scala.reflect.ReflectionUtils._
 
 object Executor {
-  
+
   println("exec started")
-  
+
   private var currentWriter: CommentWriter = null
-  
-  def ultimateCause(ex: Throwable): Throwable = ex match {
-    case ex: InvocationTargetException =>
-      ultimateCause(ex.getCause)
-    case ex: ExceptionInInitializerError =>
-      ultimateCause(ex.getCause)
-    case ex =>
-      ex
-  }
-  
+
   /** Execute module with given name, redirecting all output to given
    *  source inserter. Catch all exceptions and print stacktrace of underlying causes.
    */
-  def execute(name: String, si: SourceInserter) {
+  def execute(name: String, si: SourceInserter, classLoader: ClassLoader = getClass.getClassLoader) {
     val oldSysOut = System.out
     val oldSysErr = System.err
     val oldConsOut = Console.out
@@ -35,11 +28,10 @@ object Executor {
     Console.setOut(newOut)
     Console.setErr(newOut)
     try {
-      val clazz = Class.forName(name+"$")
-      clazz.getField("$MODULE").get(null)
+      singletonInstance(name, classLoader)
     } catch {
-      case ex: Throwable => 
-        ultimateCause(ex) match {
+      case ex: Throwable =>
+        unwrapThrowable(ex) match {
           case _: StopException => ;
           case cause => cause.printStackTrace()
         }
@@ -52,12 +44,12 @@ object Executor {
       currentWriter = oldCwr
     }
   }
-  
+
   def $skip(n: Int) = currentWriter.skip(n)
-  
+
   def $stop() = throw new StopException
-  
-  def $show(x: Any): String = replStringOf(x, scala.Int.MaxValue)
+
+  def $show(x: Any): String = stringOf(x, scala.Int.MaxValue)
 }
 
 class StopException extends Exception

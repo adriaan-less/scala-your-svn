@@ -23,9 +23,9 @@ object ListSet extends ImmutableSetFactory[ListSet] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, ListSet[A]] = setCanBuildFrom[A]
   override def empty[A] = EmptyListSet.asInstanceOf[ListSet[A]]
   override def newBuilder[A]: Builder[A, ListSet[A]] = new ListSetBuilder[A]
-  
+
   private object EmptyListSet extends ListSet[Any] { }
-  
+
   /** A custom builder because forgetfully adding elements one at
    *  a time to a list backed set puts the "squared" in N^2.  There is a
    *  temporary space cost, but it's improbable a list backed set could
@@ -45,16 +45,16 @@ object ListSet extends ImmutableSetFactory[ListSet] {
     }
     def clear() = { elems.clear() ; seen.clear() }
     def result() = elems.foldLeft(empty[Elem])(_ unchecked_+ _)
-  }  
+  }
 }
 
 /** This class implements immutable sets using a list-based data
  *  structure. Instances of `ListSet` represent
  *  empty sets; they can be either created by calling the constructor
  *  directly, or by applying the function `ListSet.empty`.
- *  
+ *
  *  @tparam A    the type of the elements contained in this list set.
- *  
+ *
  *  @author  Matthias Zenger
  *  @version 1.0, 09/07/2003
  *  @since   1
@@ -63,7 +63,8 @@ object ListSet extends ImmutableSetFactory[ListSet] {
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
-class ListSet[A] extends Set[A]
+class ListSet[A] extends AbstractSet[A]
+                    with Set[A]
                     with GenericSetTemplate[A, ListSet]
                     with SetLike[A, ListSet[A]]
                     with Serializable{ self =>
@@ -102,7 +103,7 @@ class ListSet[A] extends Set[A]
     else new ListSet.ListSetBuilder(this) ++= xs.seq result
 
   @bridge def ++(xs: TraversableOnce[A]): ListSet[A] = ++(xs: GenTraversableOnce[A]): ListSet[A]
-  
+
   private[ListSet] def unchecked_+(e: A): ListSet[A] = new Node(e)
   private[ListSet] def unchecked_outer: ListSet[A] =
     throw new NoSuchElementException("Empty ListSet has no outer pointer")
@@ -112,7 +113,7 @@ class ListSet[A] extends Set[A]
    *  @throws Predef.NoSuchElementException
    *  @return the new iterator
    */
-  def iterator: Iterator[A] = new Iterator[A] {
+  def iterator: Iterator[A] = new AbstractIterator[A] {
     var that: ListSet[A] = self
     def hasNext = that.nonEmpty
     def next: A =
@@ -133,9 +134,9 @@ class ListSet[A] extends Set[A]
    *  @throws Predef.NoSuchElementException
    */
   protected def next: ListSet[A] = throw new NoSuchElementException("Next of an empty set");
-  
+
   override def stringPrefix = "ListSet"
-  
+
   /** Represents an entry in the `ListSet`.
    */
   protected class Node(override protected val elem: A) extends ListSet[A] with Serializable {
@@ -162,7 +163,7 @@ class ListSet[A] extends Set[A]
      *  @return `'''true'''`, iff `elem` is contained in this set.
      */
     override def contains(e: A) = containsInternal(this, e)
-    @tailrec private def containsInternal(n: ListSet[A], e: A): Boolean = 
+    @tailrec private def containsInternal(n: ListSet[A], e: A): Boolean =
       !n.isEmpty && (n.elem == e || containsInternal(n.unchecked_outer, e))
 
     /** This method creates a new set with an additional element.

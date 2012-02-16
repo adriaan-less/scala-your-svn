@@ -20,10 +20,10 @@ import scala.util.parsing.combinator.lexical._
  * the `perThreadNumberParser` property to your function. For example:
  * {{{
  * val myConversionFunc = {input : String => BigDecimal(input)}
- * 
+ *
  * // Global override
  * JSON.globalNumberParser = myConversionFunc
- * 
+ *
  * // Per-thread override
  * JSON.perThreadNumberParser = myConversionFunc
  * }}}
@@ -31,20 +31,6 @@ import scala.util.parsing.combinator.lexical._
  * @author Derek Chen-Becker <"java"+@+"chen-becker"+"."+"org">
  */
 object JSON extends Parser {
-
-  /**
-   * Parse the given `JSON` string and return a list of elements. If the
-   * string is a `JSON` object it will be a list of pairs. If it's a `JSON`
-   * array it will be be a list of individual elements.
-   *
-   * @param input the given `JSON` string.
-   * @return      an optional list of of elements.
-   */
-  @deprecated("Use parseFull or parseRaw as needed.", "2.8.0")
-  def parse(input: String): Option[List[Any]] = parseRaw(input).map(unRaw).flatMap({
-    case l : List[_] => Some(l)
-    case _ => None
-  })
 
   /**
    * This method converts ''raw'' results back into the original, deprecated
@@ -59,12 +45,12 @@ object JSON extends Parser {
   /**
    * Parse the given `JSON` string and return a list of elements. If the
    * string is a `JSON` object it will be a `JSONObject`. If it's a `JSON`
-   * array it will be be a `JSONArray`.
+   * array it will be a `JSONArray`.
    *
    * @param input the given `JSON` string.
    * @return      an optional `JSONType` element.
    */
-  def parseRaw(input : String) : Option[JSONType] = 
+  def parseRaw(input : String) : Option[JSONType] =
     phrase(root)(new lexical.Scanner(input)) match {
       case Success(result, _) => Some(result)
       case _ => None
@@ -85,7 +71,7 @@ object JSON extends Parser {
     }
 
   /**
-   * A utility method to resolve a parsed `JSON` list into objects or 
+   * A utility method to resolve a parsed `JSON` list into objects or
    * arrays. See the `parse` method for details.
    */
   def resolveType(input: Any): Any = input match {
@@ -97,7 +83,7 @@ object JSON extends Parser {
   }
 
   /**
-   * The global (VM) default function for converting a string to a numeric value. 
+   * The global (VM) default function for converting a string to a numeric value.
    */
   def globalNumberParser_=(f: NumericParser) { defaultNumberParser = f }
   def globalNumberParser : NumericParser = defaultNumberParser

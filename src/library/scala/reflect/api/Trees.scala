@@ -6,30 +6,24 @@
 package scala.reflect
 package api
 
-import java.io.{PrintWriter, StringWriter}
 import scala.collection.mutable.ListBuffer
 
-//import scala.tools.nsc.util.{ FreshNameCreator, HashSet, SourceFile }
+// Syncnote: Trees are currently not thread-safe.
+trait Trees { self: Universe =>
 
-trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
-   
   private[scala] var nodeCount = 0
-  
+
   type Modifiers <: AbsModifiers
-  
-  /** Hook to define what toString means on a tree
-   */
-  def show(tree: Tree): String
-  
+
   abstract class AbsModifiers {
-    def hasModifier(mod: Modifier.Value): Boolean
-    def allModifiers: Set[Modifier.Value]
+    def modifiers: Set[Modifier]
+    def hasModifier(mod: Modifier): Boolean
     def privateWithin: Name  // default: EmptyTypeName
-    def annotations: List[Tree] // default: List() 
+    def annotations: List[Tree] // default: List()
     def mapAnnotations(f: List[Tree] => List[Tree]): Modifiers
   }
-  
-  def Modifiers(mods: Set[Modifier.Value] = Set(), 
+
+  def Modifiers(mods: Set[Modifier] = Set(),
                 privateWithin: Name = EmptyTypeName,
                 annotations: List[Tree] = List()): Modifiers
 
@@ -59,7 +53,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *  symbol and tpe, but all the positions will be focused.
    *
    *  Trees can be coarsely divided into four mutually exclusive categories:
-   * 
+   *
    *  - TermTrees, representing terms
    *  - TypTrees, representing types.  Note that is `TypTree`, not `TypeTree`.
    *  - SymTrees, which may represent types or terms.
@@ -93,13 +87,27 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
 
     /** Set tpe to give `tp` and return this.
      */
-    def setType(tp: Type): this.type = { rawtpe = tp; this } 
+    def setType(tp: Type): this.type = { rawtpe = tp; this }
 
-    /** Like `setType`, but if this is a previously empty TypeTree
-     *  that fact is remembered so that resetType will snap back.
+    /** Like `setType`, but if this is a previously empty TypeTree that
+     *  fact is remembered so that resetAllAttrs will snap back.
+     *
+     *  @PP: Attempting to elaborate on the above, I find: If defineType
+     *  is called on a TypeTree whose type field is null or NoType,
+     *  this is recorded as "wasEmpty = true". That value is used in
+     *  ResetAttrsTraverser, which nulls out the type field of TypeTrees
+     *  for which wasEmpty is true, leaving the others alone.
+     *
+     *  resetAllAttrs is used in situations where some speculative
+     *  typing of a tree takes place, fails, and the tree needs to be
+     *  returned to its former state to try again. So according to me:
+     *  using `defineType` instead of `setType` is how you communicate
+     *  that the type being set does not depend on any previous state,
+     *  and therefore should be abandoned if the current line of type
+     *  inquiry doesn't work out.
      */
     def defineType(tp: Type): this.type = setType(tp)
-    
+
     /** Note that symbol is fixed as null at this level.  In SymTrees,
      *  it is overridden and implemented with a var, initialized to NoSymbol.
      *
@@ -118,13 +126,13 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     def symbol: Symbol = null
     def symbol_=(sym: Symbol) { throw new UnsupportedOperationException("symbol_= inapplicable for " + this) }
     def setSymbol(sym: Symbol): this.type = { symbol = sym; this }
-    
+
     def hasSymbol = false
     def isDef = false
     def isEmpty = false
-    
+
     def hasSymbolWhich(f: Symbol => Boolean) = hasSymbol && f(symbol)
-    
+
     /** The canonical way to test if a Tree represents a term.
      */
     def isTerm: Boolean = this match {
@@ -149,7 +157,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
 
     /** Apply `f` to each subtree */
     def foreach(f: Tree => Unit) { new ForeachTreeTraverser(f).traverse(this) }
-    
+
     /** Find all subtrees matching predicate `p` */
     def filter(f: Tree => Boolean): List[Tree] = {
       val ft = new FilterTreeTraverser(f)
@@ -158,14 +166,14 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     }
 
     /** Returns optionally first tree (in a preorder traversal) which satisfies predicate `p`,
-     *  or None if none exists. 
+     *  or None if none exists.
      */
     def find(p: Tree => Boolean): Option[Tree] = {
       val ft = new FindTreeTraverser(p)
       ft.traverse(this)
       ft.result
     }
- 
+
     /** Is there part of this tree which satisfies predicate `p`? */
     def exists(p: Tree => Boolean): Boolean = !find(p).isEmpty
 
@@ -183,7 +191,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
           case _                          =>
             true
         }
-        
+
         (this.productIterator zip that.productIterator forall { case (x, y) => equals0(x, y) }) && compareOriginals()
       })
 
@@ -213,13 +221,13 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       if (hasSymbol) symbol = tree.symbol
       this
     }
-    
+
     override def toString: String = show(this)
     override def hashCode(): Int = System.identityHashCode(this)
     override def equals(that: Any) = this eq that.asInstanceOf[AnyRef]
   }
 
-  /** A tree for a term.  Not all terms are TermTrees; use isTerm 
+  /** A tree for a term.  Not all terms are TermTrees; use isTerm
    *  to reliably identify terms.
    */
   trait TermTree extends Tree
@@ -227,7 +235,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   /** A tree for a type.  Not all types are TypTrees; use isType
    *  to reliably identify types.
    */
-  trait TypTree extends Tree 
+  trait TypTree extends Tree
 
   /** A tree with a mutable symbol field, initialized to NoSymbol.
    */
@@ -256,7 +264,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   /** The empty tree */
   case object EmptyTree extends TermTree {
     super.tpe_=(NoType)
-    override def tpe_=(t: Type) = 
+    override def tpe_=(t: Type) =
       if (t != NoType) throw new UnsupportedOperationException("tpe_=("+t+") inapplicable for <empty>")
     override def isEmpty = true
   }
@@ -306,7 +314,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   /** A common base class for ValDefs and DefDefs.
    */
   abstract class ValOrDefDef extends MemberDef {
-    def name: TermName
+    def name: Name // can't be a TermName because macros can be type names.
     def tpt: Tree
     def rhs: Tree
   }
@@ -316,15 +324,16 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    */
   case class ValDef(mods: Modifiers, name: TermName, tpt: Tree, rhs: Tree) extends ValOrDefDef
 
-  /** A method definition.
+  /** A method or macro definition.
+   *  @param name   The name of the method or macro. Can be a type name in case this is a type macro
    */
-  case class DefDef(mods: Modifiers, name: TermName, tparams: List[TypeDef],
+  case class DefDef(mods: Modifiers, name: Name, tparams: List[TypeDef],
                     vparamss: List[List[ValDef]], tpt: Tree, rhs: Tree) extends ValOrDefDef
 
   /** An abstract type, a type parameter, or a type alias.
    */
-  case class TypeDef(mods: Modifiers, name: TypeName, tparams: List[TypeDef], rhs: Tree) 
-       extends MemberDef 
+  case class TypeDef(mods: Modifiers, name: TypeName, tparams: List[TypeDef], rhs: Tree)
+       extends MemberDef
 
   /** A labelled expression.  Not expressible in language syntax, but
    *  generated by the compiler to simulate while/do-while loops, and
@@ -341,26 +350,26 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *  Forward jumps within a block are allowed.
    */
   case class LabelDef(name: TermName, params: List[Ident], rhs: Tree)
-       extends DefTree with TermTree 
+       extends DefTree with TermTree
 
   /** Import selector
    *
    * Representation of an imported name its optional rename and their optional positions
-   * 
+   *
    * @param name      the imported name
    * @param namePos   its position or -1 if undefined
    * @param rename    the name the import is renamed to (== name if no renaming)
    * @param renamePos the position of the rename or -1 if undefined
    */
   case class ImportSelector(name: Name, namePos: Int, rename: Name, renamePos: Int)
-  
+
   /** Import clause
    *
    *  @param expr
    *  @param selectors
    */
   case class Import(expr: Tree, selectors: List[ImportSelector])
-       extends SymTree 
+       extends SymTree
     // The symbol of an Import is an import symbol @see Symbol.newImport
     // It's used primarily as a marker to check that the import has been typechecked.
 
@@ -376,9 +385,9 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     // the local dummy is itself the owner of any local blocks
     // For example:
     //
-    // class C { 
-    //   def foo // owner is C 
-    //   { 
+    // class C {
+    //   def foo // owner is C
+    //   {
     //      def bar  // owner is local dummy
     //   }
     // System.err.println("TEMPLATE: " + parents)
@@ -410,9 +419,9 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *  @param body
    */
   case class Bind(name: Name, body: Tree)
-       extends DefTree 
+       extends DefTree
 
-  case class UnApply(fun: Tree, args: List[Tree]) 
+  case class UnApply(fun: Tree, args: List[Tree])
        extends TermTree
 
   /** Array of expressions, needs to be translated in backend,
@@ -422,12 +431,18 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
 
   /** Anonymous function, eliminated by analyzer */
   case class Function(vparams: List[ValDef], body: Tree)
-       extends TermTree with SymTree 
+       extends TermTree with SymTree
     // The symbol of a Function is a synthetic value of name nme.ANON_FUN_NAME
     // It is the owner of the function's parameters.
 
   /** Assignment */
   case class Assign(lhs: Tree, rhs: Tree)
+       extends TermTree
+
+  /** Either an assignment or a named argument. Only appears in argument lists,
+   *  eliminated by typecheck (doTypedApply)
+   */
+  case class AssignOrNamedArg(lhs: Tree, rhs: Tree)
        extends TermTree
 
   /** Conditional expression */
@@ -436,9 +451,9 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
 
   /** - Pattern matching expression  (before explicitouter)
    *  - Switch statements            (after explicitouter)
-   *  
+   *
    *  After explicitouter, cases will satisfy the following constraints:
-   *  
+   *
    *  - all guards are `EmptyTree`,
    *  - all patterns will be either `Literal(Constant(x:Int))`
    *    or `Alternative(lit|...|lit)`
@@ -465,7 +480,18 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *
    *  @param tpt    a class type
    */
-  case class New(tpt: Tree) extends TermTree 
+  case class New(tpt: Tree) extends TermTree
+
+  /** Factory method for object creation `new tpt(args_1)...(args_n)`
+   *  A `New(t, as)` is expanded to: `(new t).<init>(as)`
+   */
+  def New(tpt: Tree, argss: List[List[Tree]]): Tree = {
+    assert(!argss.isEmpty)
+    // todo. we need to expose names in scala.reflect.api
+//    val superRef: Tree = Select(New(tpt), nme.CONSTRUCTOR)
+    val superRef: Tree = Select(New(tpt), nme.CONSTRUCTOR)
+    (superRef /: argss) (Apply)
+  }
 
   /** Type annotation, eliminated by explicit outer */
   case class Typed(expr: Tree, tpt: Tree)
@@ -483,7 +509,10 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   }
 
   /** Explicit type application.
-  */
+   *  @PP: All signs point toward it being a requirement that args.nonEmpty,
+   *  but I can't find that explicitly stated anywhere.  Unless your last name
+   *  is odersky, you should probably treat it as true.
+   */
   case class TypeApply(fun: Tree, args: List[Tree])
        extends GenericApply {
     override def symbol: Symbol = fun.symbol
@@ -498,16 +527,16 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   }
 
   class ApplyToImplicitArgs(fun: Tree, args: List[Tree]) extends Apply(fun, args)
-  
+
   class ApplyImplicitView(fun: Tree, args: List[Tree]) extends Apply(fun, args)
 
-  /** Dynamic value application. 
+  /** Dynamic value application.
    *  In a dynamic application   q.f(as)
    *   - q is stored in qual
    *   - as is stored in args
    *   - f is stored as the node's symbol field.
    */
-  case class ApplyDynamic(qual: Tree, args: List[Tree]) 
+  case class ApplyDynamic(qual: Tree, args: List[Tree])
        extends TermTree with SymTree
     // The symbol of an ApplyDynamic is the function symbol of `qual`, or NoSymbol, if there is none.
 
@@ -525,12 +554,27 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     // The symbol of a This is the class to which the this refers.
     // For instance in C.this, it would be C.
 
+  def This(sym: Symbol): Tree =
+    This(sym.name.toTypeName) setSymbol sym
+
   /** Designator <qualifier> . <name> */
   case class Select(qualifier: Tree, name: Name)
-       extends RefTree 
+       extends RefTree
+
+  def Select(qualifier: Tree, name: String): Select =
+    Select(qualifier, newTermName(name))
+
+  def Select(qualifier: Tree, sym: Symbol): Select =
+    Select(qualifier, sym.name) setSymbol sym
 
   /** Identifier <name> */
-  case class Ident(name: Name) extends RefTree { }
+  case class Ident(name: Name) extends RefTree
+
+  def Ident(name: String): Ident =
+    Ident(newTermName(name))
+
+  def Ident(sym: Symbol): Ident =
+    Ident(sym.name) setSymbol sym
 
   class BackQuotedIdent(name: Name) extends Ident(name)
 
@@ -540,15 +584,15 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     assert(value ne null)
   }
 
-  @deprecated("will be removed and then be re-introduced with changed semantics, use Literal(Constant(x)) instead")
-  def Literal(x: Any) = new Literal(Constant(x))
-  
+//  @deprecated("will be removed and then be re-introduced with changed semantics, use Literal(Constant(x)) instead")
+//  def Literal(x: Any) = new Literal(Constant(x))
+
   /** A tree that has an annotation attached to it. Only used for annotated types and
    *  annotation ascriptions, annotations on definitions are stored in the Modifiers.
    *  Eliminated by typechecker (typedAnnotated), the annotations are then stored in
    *  an AnnotatedType.
    */
-  case class Annotated(annot: Tree, arg: Tree) extends Tree 
+  case class Annotated(annot: Tree, arg: Tree) extends Tree
 
   /** Singleton type, eliminated by RefCheck */
   case class SingletonTypeTree(ref: Tree)
@@ -581,20 +625,20 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     * `RefCheck`, where the arbitrary type trees are all replaced by
     * TypeTree's. */
   case class TypeTree() extends TypTree {
-    private var orig: Tree = null 
+    private var orig: Tree = null
     private[scala] var wasEmpty: Boolean = false
-    
+
     override def symbol = if (tpe == null) null else tpe.typeSymbol
     override def isEmpty = (tpe eq null) || tpe == NoType
 
     def original: Tree = orig
-    def setOriginal(tree: Tree): this.type = { 
+    def setOriginal(tree: Tree): this.type = {
       def followOriginal(t: Tree): Tree = t match {
         case tt: TypeTree => followOriginal(tt.original)
         case t => t
       }
-        
-      orig = followOriginal(tree); setPos(tree.pos); 
+
+      orig = followOriginal(tree); setPos(tree.pos);
       this
     }
 
@@ -606,13 +650,20 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
 
   def TypeTree(tp: Type): TypeTree = TypeTree() setType tp
 
+  /** An empty deferred value definition corresponding to:
+   *    val _: _
+   *  This is used as a placeholder in the `self` parameter Template if there is
+   *  no definition of a self value of self type.
+   */
+  def emptyValDef: ValDef
+
   // ------ traversers, copiers, and transformers ---------------------------------------------
-  
+
   val treeCopy = newLazyTreeCopier
 
   class Traverser {
     protected var currentOwner: Symbol = definitions.RootClass
-        
+
     def traverse(tree: Tree): Unit = tree match {
       case EmptyTree =>
         ;
@@ -670,6 +721,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
           traverseTrees(vparams); traverse(body)
         }
       case Assign(lhs, rhs) =>
+        traverse(lhs); traverse(rhs)
+      case AssignOrNamedArg(lhs, rhs) =>
         traverse(lhs); traverse(rhs)
       case If(cond, thenp, elsep) =>
         traverse(cond); traverse(thenp); traverse(elsep)
@@ -737,7 +790,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       traverse
       currentOwner = prevOwner
     }
- 
+
     /** Leave apply available in the generic traverser to do something else.
      */
     def apply[T <: Tree](tree: T): T = { traverse(tree); tree }
@@ -745,7 +798,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
 
   protected def xtraverse(traverser: Traverser, tree: Tree): Unit = throw new MatchError(tree)
 
-  // to be implemented in subclasses:  
+  // to be implemented in subclasses:
   type TreeCopier <: TreeCopierOps
   def newStrictTreeCopier: TreeCopier
   def newLazyTreeCopier: TreeCopier
@@ -769,6 +822,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     def ArrayValue(tree: Tree, elemtpt: Tree, trees: List[Tree]): ArrayValue
     def Function(tree: Tree, vparams: List[ValDef], body: Tree): Function
     def Assign(tree: Tree, lhs: Tree, rhs: Tree): Assign
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree): AssignOrNamedArg
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree): If
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]): Match
     def Return(tree: Tree, expr: Tree): Return
@@ -823,7 +877,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       new Star(elem).copyAttrs(tree)
     def Bind(tree: Tree, name: Name, body: Tree) =
       new Bind(name, body).copyAttrs(tree)
-    def UnApply(tree: Tree, fun: Tree, args: List[Tree]) = 
+    def UnApply(tree: Tree, fun: Tree, args: List[Tree]) =
       new UnApply(fun, args).copyAttrs(tree)
     def ArrayValue(tree: Tree, elemtpt: Tree, trees: List[Tree]) =
       new ArrayValue(elemtpt, trees).copyAttrs(tree)
@@ -831,6 +885,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       new Function(vparams, body).copyAttrs(tree)
     def Assign(tree: Tree, lhs: Tree, rhs: Tree) =
       new Assign(lhs, rhs).copyAttrs(tree)
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) =
+      new AssignOrNamedArg(lhs, rhs).copyAttrs(tree)
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) =
       new If(cond, thenp, elsep).copyAttrs(tree)
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]) =
@@ -976,8 +1032,13 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       if (lhs0 == lhs) && (rhs0 == rhs) => t
       case _ => treeCopy.Assign(tree, lhs, rhs)
     }
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) = tree match {
+      case t @ AssignOrNamedArg(lhs0, rhs0)
+      if (lhs0 == lhs) && (rhs0 == rhs) => t
+      case _ => treeCopy.AssignOrNamedArg(tree, lhs, rhs)
+    }
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) = tree match {
-      case t @ If(cond0, thenp0, elsep0) 
+      case t @ If(cond0, thenp0, elsep0)
       if (cond0 == cond) && (thenp0 == thenp) && (elsep0 == elsep) => t
       case _ => treeCopy.If(tree, cond, thenp, elsep)
     }
@@ -1091,19 +1152,19 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       case _ => treeCopy.ExistentialTypeTree(tree, tpt, whereClauses)
     }
   }
-  
+
   abstract class Transformer {
     val treeCopy: TreeCopier = newLazyTreeCopier
     protected var currentOwner: Symbol = definitions.RootClass
-    protected def currentMethod = currentOwner.enclMethod
-    protected def currentClass = currentOwner.enclClass
-    protected def currentPackage = currentOwner.toplevelClass.owner
+    protected def currentMethod = currentOwner.enclosingMethod
+    protected def currentClass = currentOwner.enclosingClass
+    protected def currentPackage = currentOwner.enclosingTopLevelClass.owner
     def transform(tree: Tree): Tree = tree match {
       case EmptyTree =>
         tree
       case PackageDef(pid, stats) =>
         treeCopy.PackageDef(
-          tree, transform(pid).asInstanceOf[RefTree], 
+          tree, transform(pid).asInstanceOf[RefTree],
           atOwner(tree.symbol.moduleClass) {
             transformStats(stats, currentOwner)
           }
@@ -1160,6 +1221,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
         }
       case Assign(lhs, rhs) =>
         treeCopy.Assign(tree, transform(lhs), transform(rhs))
+      case AssignOrNamedArg(lhs, rhs) =>
+        treeCopy.AssignOrNamedArg(tree, transform(lhs), transform(rhs))
       case If(cond, thenp, elsep) =>
         treeCopy.If(tree, transform(cond), transform(thenp), transform(elsep))
       case Match(selector, cases) =>
@@ -1203,13 +1266,13 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       case AppliedTypeTree(tpt, args) =>
         treeCopy.AppliedTypeTree(tree, transform(tpt), transformTrees(args))
       case TypeBoundsTree(lo, hi) =>
-        treeCopy.TypeBoundsTree(tree, transform(lo), transform(hi)) 
+        treeCopy.TypeBoundsTree(tree, transform(lo), transform(hi))
       case ExistentialTypeTree(tpt, whereClauses) =>
         treeCopy.ExistentialTypeTree(tree, transform(tpt), transformTrees(whereClauses))
       case _ =>
         xtransform(this, tree)
     }
-    
+
     def transformTrees(trees: List[Tree]): List[Tree] =
         trees mapConserve (transform(_))
     def transformTemplate(tree: Template): Template =
@@ -1243,7 +1306,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   }
 
   protected def xtransform(transformer: Transformer, tree: Tree): Tree = throw new MatchError(tree)
- 
+
   class ForeachTreeTraverser(f: Tree => Unit) extends Traverser {
     override def traverse(t: Tree) {
       f(t)
@@ -1268,10 +1331,10 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       }
     }
   }
-  
+
   protected def duplicateTree(tree: Tree): Tree
 
-/* A standard pattern match 
+/* A standard pattern match
   case EmptyTree =>
   case PackageDef(pid, stats) =>
      // package pid { stats }
@@ -1280,14 +1343,14 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   case ModuleDef(mods, name, impl) =>                             (eliminated by refcheck)
      // mods object name impl  where impl = extends parents { defs }
   case ValDef(mods, name, tpt, rhs) =>
-     // mods val name: tpt = rhs   
+     // mods val name: tpt = rhs
      // note missing type information is expressed by tpt = TypeTree()
   case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
      // mods def name[tparams](vparams_1)...(vparams_n): tpt = rhs
      // note missing type information is expressed by tpt = TypeTree()
   case TypeDef(mods, name, tparams, rhs) =>                       (eliminated by erasure)
      // mods type name[tparams] = rhs
-     // mods type name[tparams] >: lo <: hi,  where lo, hi are in a TypeBoundsTree, 
+     // mods type name[tparams] >: lo <: hi,  where lo, hi are in a TypeBoundsTree,
                                               and DEFERRED is set in mods
   case LabelDef(name, params, rhs) =>
      // used for tailcalls and like
@@ -1320,13 +1383,15 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     // used to pass arguments to vararg arguments
     // for instance, printf("%s%d", foo, 42) is translated to after uncurry to:
     // Apply(
-    //   Ident("printf"), 
-    //   Literal("%s%d"), 
+    //   Ident("printf"),
+    //   Literal("%s%d"),
     //   ArrayValue(<Any>, List(Ident("foo"), Literal(42))))
   case Function(vparams, body) =>                                 (eliminated by lambdaLift)
     // vparams => body  where vparams:List[ValDef]
   case Assign(lhs, rhs) =>
     // lhs = rhs
+  case AssignOrNamedArg(lhs, rhs) =>                              (eliminated by typer, resurrected by reifier)
+    // @annotation(lhs = rhs)
   case If(cond, thenp, elsep) =>
     // if (cond) thenp else elsep
   case Match(selector, cases) =>

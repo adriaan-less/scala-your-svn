@@ -112,14 +112,11 @@ abstract class Component extends UIElement {
   /*def verifyOnTraversal: (Component, Component) => Boolean = { a =>
     peer.getInputVerifier().verify(a.peer)
   }
-  def verifyOnTraversal_=(v: (Component, Component) => Boolean) { 
+  def verifyOnTraversal_=(v: (Component, Component) => Boolean) {
     peer.setInputVerifier(new javax.swing.InputVerifier {
       def verify(c: javax.swing.JComponent) = v(UIElement.cachedWrapper[Component](c))
     })
   }*/
-
-  @deprecated("Use mouse instead", "2.8.0") lazy val Mouse = mouse
-
   /**
    * Contains publishers for various mouse events. They are separated for
    * efficiency reasons.
@@ -183,7 +180,7 @@ abstract class Component extends UIElement {
      * Publishes mouse wheel moves.
      */
     val wheel: Publisher = new LazyPublisher {
-      // We need to subscribe lazily and unsubscribe, since components in scroll panes capture 
+      // We need to subscribe lazily and unsubscribe, since components in scroll panes capture
       // mouse wheel events if there is a listener installed. See ticket #1442.
       lazy val l = new MouseWheelListener {
         def mouseWheelMoved(e: java.awt.event.MouseWheelEvent) {

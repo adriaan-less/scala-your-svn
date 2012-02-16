@@ -20,11 +20,11 @@ trait Adaptations {
 
   import global._
   import definitions._
-  
+
   trait Adaptation {
     self: Typer =>
 
-    def checkValidAdaptation(t: Tree, args: List[Tree]): Boolean = {      
+    def checkValidAdaptation(t: Tree, args: List[Tree]): Boolean = {
       def applyArg = t match {
         case Apply(_, arg :: Nil) => arg
         case _                    => EmptyTree

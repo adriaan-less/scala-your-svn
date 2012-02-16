@@ -2,24 +2,24 @@ package scala.reflect
 package internal
 package transform
 
-trait Erasure { 
-  
+trait Erasure {
+
   val global: SymbolTable
   import global._
   import definitions._
-  
+
   /** An extractor object for generic arrays */
   object GenericArray {
-    
+
     /** Is `tp` an unbounded generic type (i.e. which could be instantiated
-     *  with primitive as well as class types)?. 
+     *  with primitive as well as class types)?.
      */
     private def genericCore(tp: Type): Type = tp.normalize match {
       case TypeRef(_, sym, _) if sym.isAbstractType && !sym.owner.isJavaDefined =>
         tp
-      case ExistentialType(tparams, restp) => 
+      case ExistentialType(tparams, restp) =>
         genericCore(restp)
-      case _ => 
+      case _ =>
         NoType
     }
 
@@ -30,12 +30,12 @@ trait Erasure {
     def unapply(tp: Type): Option[(Int, Type)] = tp.normalize match {
       case TypeRef(_, ArrayClass, List(arg)) =>
         genericCore(arg) match {
-          case NoType => 
+          case NoType =>
             unapply(arg) match {
               case Some((level, core)) => Some((level + 1, core))
               case None => None
             }
-          case core => 
+          case core =>
             Some((1, core))
         }
       case ExistentialType(tparams, restp) =>
@@ -44,7 +44,7 @@ trait Erasure {
         None
     }
   }
-  
+
   protected def unboundedGenericArrayLevel(tp: Type): Int = tp match {
     case GenericArray(level, core) if !(core <:< AnyRefClass.tpe) => level
     case _ => 0
@@ -59,23 +59,23 @@ trait Erasure {
   // included (use pre.baseType(cls.owner)).
   //
   // This requires that cls.isClass.
-  @inline protected def rebindInnerClass(pre: Type, cls: Symbol): Type = {
+  protected def rebindInnerClass(pre: Type, cls: Symbol): Type = {
     if (cls.owner.isClass) cls.owner.tpe else pre // why not cls.isNestedClass?
   }
 
   abstract class ErasureMap extends TypeMap {
     def mergeParents(parents: List[Type]): Type
-    
+
     def apply(tp: Type): Type = {
       tp match {
         case ConstantType(_) =>
-          tp 
+          tp
         case st: SubType =>
           apply(st.supertype)
         case TypeRef(pre, sym, args) =>
           if (sym == ArrayClass)
             if (unboundedGenericArrayLevel(tp) == 1) ObjectClass.tpe
-            else if (args.head.typeSymbol == NothingClass || args.head.typeSymbol == NullClass) arrayType(ObjectClass.tpe)
+            else if (args.head.typeSymbol.isBottomClass) ObjectArray
             else typeRef(apply(pre), sym, args map this)
           else if (sym == AnyClass || sym == AnyValClass || sym == SingletonClass || sym == NotNullClass) erasedTypeRef(ObjectClass)
           else if (sym == UnitClass) erasedTypeRef(BoxedUnitClass)
@@ -88,15 +88,11 @@ trait Erasure {
           apply(restpe)
         case mt @ MethodType(params, restpe) =>
           MethodType(
-            cloneSymbols(params) map (p => p.setInfo(apply(p.tpe))),
-            if (restpe.typeSymbol == UnitClass)
-              erasedTypeRef(UnitClass) 
-            else if (settings.YdepMethTpes.value)
-              // this replaces each typeref that refers to an argument
-              // by the type `p.tpe` of the actual argument p (p in params)
-              apply(mt.resultType(params map (_.tpe)))
-            else
-              apply(restpe))
+            cloneSymbolsAndModify(params, ErasureMap.this),
+            if (restpe.typeSymbol == UnitClass) erasedTypeRef(UnitClass)
+            // this replaces each typeref that refers to an argument
+            // by the type `p.tpe` of the actual argument p (p in params)
+            else apply(mt.resultType(params map (_.tpe))))
         case RefinedType(parents, decls) =>
           apply(mergeParents(parents))
         case AnnotatedType(_, atp, _) =>
@@ -112,7 +108,7 @@ trait Erasure {
       }
     }
   }
-  
+
   protected def verifyJavaErasure = false
 
   /**   The erasure |T| of a type T. This is:
@@ -154,9 +150,9 @@ trait Erasure {
     }
     else scalaErasure(tp)
   }
-  
+
   /** Scala's more precise erasure than java's is problematic as follows:
-   * 
+   *
    *  - Symbols are read from classfiles and populated with types
    *  - The textual signature read from the bytecode is forgotten
    *  - Bytecode generation must know the precise signature of a method
@@ -174,9 +170,9 @@ trait Erasure {
     def mergeParents(parents: List[Type]): Type =
       intersectionDominator(parents)
   }
-  
+
   /** The intersection dominator (SLS 3.7) of a list of types is computed as follows.
-   * 
+   *
    *  - If the list contains one or more occurrences of scala.Array with
    *    type parameters El1, El2, ... then the dominator is scala.Array with
    *    type parameter of intersectionDominator(List(El1, El2, ...)).           <--- @PP: not yet in spec.
@@ -226,7 +222,7 @@ trait Erasure {
   /** Remove duplicate references to class Object in a list of parent classes */
   private def removeDoubleObject(tps: List[Type]): List[Type] = tps match {
     case List() => List()
-    case tp :: tps1 => 
+    case tp :: tps1 =>
       if (tp.typeSymbol == ObjectClass) tp :: tps1.filter(_.typeSymbol != ObjectClass)
       else tp :: removeDoubleObject(tps1)
   }
@@ -242,18 +238,18 @@ trait Erasure {
   def transformInfo(sym: Symbol, tp: Type): Type = {
     if (sym == Object_asInstanceOf)
       sym.info
-    else if (sym == Object_isInstanceOf || sym == ArrayClass) 
+    else if (sym == Object_isInstanceOf || sym == ArrayClass)
       PolyType(sym.info.typeParams, erasure(sym, sym.info.resultType))
-    else if (sym.isAbstractType) 
+    else if (sym.isAbstractType)
       TypeBounds(WildcardType, WildcardType)
     else if (sym.isTerm && sym.owner == ArrayClass) {
       if (sym.isClassConstructor)
         tp match {
           case MethodType(params, TypeRef(pre, sym1, args)) =>
-            MethodType(cloneSymbols(params) map (p => p.setInfo(erasure(sym, p.tpe))),
+            MethodType(cloneSymbolsAndModify(params, erasure(sym, _)),
                        typeRef(erasure(sym, pre), sym1, args))
         }
-      else if (sym.name == nme.apply) 
+      else if (sym.name == nme.apply)
         tp
       else if (sym.name == nme.update)
         (tp: @unchecked) match {

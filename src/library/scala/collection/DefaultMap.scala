@@ -13,7 +13,7 @@ package scala.collection
 import generic._
 
 /** A default map which implements the `+` and `-` methods of maps.
- *  
+ *
  *  Instances that inherit from `DefaultMap[A, B]` still have to define:
  *  {{{
  *    def get(key: A): Option[B]

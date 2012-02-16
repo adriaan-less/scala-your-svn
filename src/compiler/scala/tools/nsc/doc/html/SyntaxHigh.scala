@@ -2,7 +2,7 @@
  * Copyright 2010-2011 LAMP/EPFL
  * @author  Stephane Micheloud
  */
- 
+
 package scala.tools.nsc.doc.html
 
 import xml.NodeSeq
@@ -18,10 +18,10 @@ private[html] object SyntaxHigh {
   /** Reserved words, sorted alphabetically
     * (see [[scala.reflect.internal.StdNames]]) */
   val reserved = Array(
-    "abstract", "case", "catch", "class", "def", 
+    "abstract", "case", "catch", "class", "def",
     "do", "else", "extends", "false", "final", "finally",
     "for", "if", "implicit", "import", "lazy", "match",
-    "new", "null", "object", "override", "package", 
+    "new", "null", "object", "override", "package",
     "private", "protected", "return", "sealed", "super",
     "this", "throw", "trait", "true", "try", "type",
     "val", "var", "while", "with", "yield")
@@ -112,7 +112,7 @@ private[html] object SyntaxHigh {
               multiline(i+1, false)
           case _ =>
             multiline(i+1, false)
-        }  
+        }
       }
       if (buf(i) == '/') line(i) else multiline(i, true)
       out.toString
@@ -206,14 +206,14 @@ private[html] object SyntaxHigh {
         }
       }
       intg(i)
-      out.toString     
+      out.toString
     }
 
     def parse(pre: String, i: Int): Int = {
       out append pre
       if (i == buf.length) return i
       buf(i) match {
-        case '\n' => 
+        case '\n' =>
           parse("\n", i+1)
         case ' ' =>
           parse(" ", i+1)
@@ -261,7 +261,7 @@ private[html] object SyntaxHigh {
             if (Character.isDigit(buf(i)) ||
                 (buf(i) == '.' && Character.isDigit(buf(i+1)))) {
               val s = numlit(i)
-              parse("<span class=\"num\">"+s+"</span>", i+s.length)              
+              parse("<span class=\"num\">"+s+"</span>", i+s.length)
             } else {
               val k = lookup(reserved, i)
               if (k >= 0)

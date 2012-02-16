@@ -22,7 +22,7 @@ class SyncVar[A] {
     while (!isDefined) wait()
     value.get
   }
-  
+
   /** Waits `timeout` millis. If `timeout <= 0` just returns 0. If the system clock
    *  went backward, it will return 0, so it never returns negative results.
    */
@@ -36,7 +36,7 @@ class SyncVar[A] {
   /** Waits for this SyncVar to become defined at least for
    *  `timeout` milliseconds (possibly more), and gets its
    *  value.
-   *  
+   *
    *  @param timeout     the amount of milliseconds to wait, 0 means forever
    *  @return            `None` if variable is undefined after `timeout`, `Some(value)` otherwise
    */
@@ -52,7 +52,7 @@ class SyncVar[A] {
     }
     value
   }
-  
+
   def take(): A = synchronized {
     try get
     finally unset()
@@ -69,7 +69,7 @@ class SyncVar[A] {
     while (isDefined) wait()
     set(x)
   }
-  
+
   def isSet: Boolean = synchronized {
     isDefined
   }

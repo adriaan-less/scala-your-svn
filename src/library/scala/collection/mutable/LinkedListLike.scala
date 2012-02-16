@@ -25,10 +25,10 @@ import annotation.tailrec
  *  @author  Martin Odersky
  *  @version 1.0, 08/07/2003
  *  @since   2.8
- *  
+ *
  *  @tparam A    type of the elements contained in the linked list
  *  @tparam This the type of the actual linked list holding the elements
- *  
+ *
  *  @define Coll LinkedList
  *  @define coll linked list
  *
@@ -58,7 +58,7 @@ import annotation.tailrec
  *  }}}
  */
 trait LinkedListLike[A, This <: Seq[A] with LinkedListLike[A, This]] extends SeqLike[A, This] { self =>
-  
+
   var elem: A = _
   var next: This = _
 
@@ -68,7 +68,7 @@ trait LinkedListLike[A, This <: Seq[A] with LinkedListLike[A, This]] extends Seq
     * node.
     */
   override def length: Int = length0(repr, 0)
-  
+
   @tailrec private def length0(elem: This, acc: Int): Int =
     if (elem.isEmpty) acc else length0(elem.next, acc + 1)
 
@@ -113,7 +113,7 @@ trait LinkedListLike[A, This <: Seq[A] with LinkedListLike[A, This]] extends Seq
    *    scala> println(a)
    *    LinkedList()
    * }}}
-   * 
+   *
    *  @return the list after append (this is the list itself if nonempty,
    *  or list `that` if list this is empty. )
    */
@@ -163,7 +163,7 @@ trait LinkedListLike[A, This <: Seq[A] with LinkedListLike[A, This]] extends Seq
     else None
   }
 
-  override def iterator: Iterator[A] = new Iterator[A] {
+  override def iterator: Iterator[A] = new AbstractIterator[A] {
     var elems = self
     def hasNext = elems.nonEmpty
     def next = {

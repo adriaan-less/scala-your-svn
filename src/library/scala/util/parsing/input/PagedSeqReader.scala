@@ -20,15 +20,15 @@ object PagedSeqReader {
   final val EofCh = '\032'
 }
 
-/** A character array reader reads a stream of characters (keeping track of their positions) 
+/** A character array reader reads a stream of characters (keeping track of their positions)
  * from an array.
  *
  * @param source the source sequence
  * @param offset  starting offset.
  *
- * @author Martin Odersky 
+ * @author Martin Odersky
  */
-class PagedSeqReader(seq: PagedSeq[Char], 
+class PagedSeqReader(seq: PagedSeq[Char],
                      override val offset: Int) extends Reader[Char] {
   import PagedSeqReader._
 
@@ -39,13 +39,13 @@ class PagedSeqReader(seq: PagedSeq[Char],
    */
   def this(seq: PagedSeq[Char]) = this(seq, 0)
 
-  /** Returns the first element of the reader, or EofCh if reader is at its end 
+  /** Returns the first element of the reader, or EofCh if reader is at its end
    */
-  def first = 
-    if (seq.isDefinedAt(offset)) seq(offset) else EofCh 
+  def first =
+    if (seq.isDefinedAt(offset)) seq(offset) else EofCh
 
-  /** Returns a PagedSeqReader consisting of all elements except the first 
-   * 
+  /** Returns a PagedSeqReader consisting of all elements except the first
+   *
    * @return If `atEnd` is `true`, the result will be `this`;
    *         otherwise, it's a `PagedSeqReader` containing the rest of input.
    */
@@ -61,10 +61,10 @@ class PagedSeqReader(seq: PagedSeq[Char],
    *  EofCh's).
    */
   def atEnd = !seq.isDefinedAt(offset)
-    
+
   /** Returns an abstract reader consisting of all elements except the first
    *  `n` elements.
-   */ 
-  override def drop(n: Int): PagedSeqReader = 
+   */
+  override def drop(n: Int): PagedSeqReader =
     new PagedSeqReader(seq, offset + n)
 }

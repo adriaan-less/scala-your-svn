@@ -12,7 +12,7 @@ import scala.runtime.ScalaRunTime
 class Tracer(enabled: () => Boolean) {
   def out: PrintStream = System.out
   def stringify(x: Any) = ScalaRunTime stringOf x
-  
+
   // So can pass tuples, lists, whatever as arguments and don't
   // get a lot of extra parens or noisy prefixes.
   def stringifyArgs(x: Any) = {
@@ -34,7 +34,7 @@ class Tracer(enabled: () => Boolean) {
   }
   private def passign(name: String, args: String) =
     p(spaces + name + "(" + args + ") = ")
-  
+
   private def indented[T](body: => T): T = {
     indentLevel += 1
     try body
@@ -44,7 +44,7 @@ class Tracer(enabled: () => Boolean) {
     out.print(s)
     out.flush()
   }
-  
+
   def apply[T](name: String, args: => Any)(body: => T): T = {
     val result = body
 

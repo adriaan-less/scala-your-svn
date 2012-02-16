@@ -20,7 +20,7 @@ import java.util.{Timer, TimerTask}
 object Actor extends Combinators {
 
   /** State of an actor.
-   *  
+   *
    *  - '''New''' -
    *      Not yet started
    *  - '''Runnable''' -
@@ -31,9 +31,9 @@ object Actor extends Combinators {
    *      Suspended, waiting in a `reactWithin`
    *  - '''Blocked''' -
    *      Blocked waiting in a `receive`
-   *  - '''TimedBlocked''' - 
+   *  - '''TimedBlocked''' -
    *      Blocked waiting in a `receiveWithin`
-   *  - '''Terminated''' - 
+   *  - '''Terminated''' -
    *      Actor has terminated
    */
   object State extends Enumeration {
@@ -246,8 +246,8 @@ object Actor extends Combinators {
     rawSelf.react(new RecursiveProxyHandler(rawSelf, f))
 
   private class RecursiveProxyHandler(a: ReplyReactor, f: PartialFunction[Any, Unit])
-          extends PartialFunction[Any, Unit] {
-    def isDefinedAt(m: Any): Boolean =
+          extends scala.runtime.AbstractPartialFunction[Any, Unit] {
+    def _isDefinedAt(m: Any): Boolean =
       true // events are immediately removed from the mailbox
     def apply(m: Any) {
       if (f.isDefinedAt(m)) f(m)
@@ -332,10 +332,10 @@ object Actor extends Combinators {
   /**
    * Terminates execution of `self` with the following effect on
    * linked actors:
-   * 
+   *
    * For each linked actor `a` with `trapExit` set to `'''true'''`,
    * send message `Exit(self, reason)` to `a`.
-   * 
+   *
    * For each linked actor `a` with `trapExit` set to `'''false'''`
    * (default), call `a.exit(reason)` if `reason != 'normal`.
    */
@@ -344,7 +344,7 @@ object Actor extends Combinators {
   /**
    * Terminates execution of `self` with the following effect on
    * linked actors:
-   * 
+   *
    * For each linked actor `a` with `trapExit` set to `'''true'''`,
    * send message `Exit(self, 'normal)` to `a`.
    */
@@ -364,33 +364,33 @@ object Actor extends Combinators {
  *  }
  *  }}}
  *  A new `Actor` instance is started by invoking its `start` method.
- * 
+ *
  *  '''Note:''' care must be taken when invoking thread-blocking methods other
  *  than those provided by the `Actor` trait or its companion object (such as
  *  `receive`). Blocking the underlying thread inside an actor may lead to
  *  starvation of other actors. This also applies to actors hogging their
  *  thread for a long time between invoking `receive`/`react`.
- *   
+ *
  *  If actors use blocking operations (for example, methods for blocking I/O),
  *  there are several options:
- * 
+ *
  *  - The run-time system can be configured to use a larger thread pool size
  *    (for example, by setting the `actors.corePoolSize` JVM property).
- *  - The `scheduler` method of the `Actor` trait can be overridden to return a 
+ *  - The `scheduler` method of the `Actor` trait can be overridden to return a
  *    `ResizableThreadPoolScheduler`, which resizes its thread pool to
- *    avoid starvation caused by actors that invoke arbitrary blocking methods.  
- *  - The `actors.enableForkJoin` JVM property can be set to `false`, in which 
+ *    avoid starvation caused by actors that invoke arbitrary blocking methods.
+ *  - The `actors.enableForkJoin` JVM property can be set to `false`, in which
  *    case a `ResizableThreadPoolScheduler` is used by default to execute actors.
- * 
+ *
  *  The main ideas of the implementation are explained in the two papers
- * 
+ *
  *  - [[http://lampwww.epfl.ch/~odersky/papers/jmlc06.pdf Event-Based
  *    Programming without Inversion of Control]],
  *    Philipp Haller and Martin Odersky, ''Proc. JMLC 2006'', and
  *  - [[http://lamp.epfl.ch/~phaller/doc/haller07coord.pdf Actors that
  *    Unify Threads and Events]],
  *    Philipp Haller and Martin Odersky, ''Proc. COORDINATION 2007''.
- * 
+ *
  *  @author Philipp Haller
  *
  *  @define actor actor
@@ -549,7 +549,7 @@ trait Actor extends AbstractActor with ReplyReactor with ActorCanReply with Inpu
             if (onTimeout.isEmpty) {
               if (!f.isDefinedAt(TIMEOUT))
                 sys.error("unhandled timeout")
-              
+
               val thisActor = this
               onTimeout = Some(new TimerTask {
                 def run() {
@@ -558,7 +558,7 @@ trait Actor extends AbstractActor with ReplyReactor with ActorCanReply with Inpu
               })
               Actor.timer.schedule(onTimeout.get, msec)
             }
-            
+
             // It is possible that !onTimeout.isEmpty, but TIMEOUT is not yet in mailbox
             // See SI-4759
             waitingFor = f
@@ -742,10 +742,10 @@ trait Actor extends AbstractActor with ReplyReactor with ActorCanReply with Inpu
   /**
    * Terminates execution of `self` with the following effect on
    * linked actors:
-   * 
+   *
    * For each linked actor `a` with `trapExit` set to `'''true'''`,
    * send message `Exit(self, reason)` to `a`.
-   * 
+   *
    * For each linked actor `a` with `trapExit` set to `'''false'''`
    * (default), call `a.exit(reason)` if `reason != 'normal`.
    */
@@ -821,7 +821,7 @@ trait Actor extends AbstractActor with ReplyReactor with ActorCanReply with Inpu
           /* Here we should not throw a SuspendActorControl,
              since the current method is called from an actor that
              is in the process of exiting.
-             
+
              Therefore, the contract for scheduleActor is that
              it never throws a SuspendActorControl.
            */

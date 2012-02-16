@@ -32,9 +32,9 @@ abstract class OverridingPairs {
 
     /** Symbols to exclude: Here these are constructors, private locals,
      *  and bridges. But it may be refined in subclasses.
-     * 
+     *
      */
-    protected def exclude(sym: Symbol): Boolean = 
+    protected def exclude(sym: Symbol): Boolean =
       sym.isConstructor || sym.isPrivateLocal || sym.hasFlag(BRIDGE)
 
     /** The parents of base (may also be refined).
@@ -45,8 +45,14 @@ abstract class OverridingPairs {
      *  Types always match. Term symbols match if their membertypes
      *  relative to <base>.this do
      */
-    protected def matches(sym1: Symbol, sym2: Symbol): Boolean =
-      sym1.isType || (self.memberType(sym1) matches self.memberType(sym2))
+    protected def matches(sym1: Symbol, sym2: Symbol): Boolean = {
+      def tp_s(s: Symbol) = self.memberType(s) + "/" + self.memberType(s).getClass
+      val result = sym1.isType || (self.memberType(sym1) matches self.memberType(sym2))
+      debuglog("overriding-pairs? %s matches %s (%s vs. %s) == %s".format(
+        sym1.fullLocationString, sym2.fullLocationString, tp_s(sym1), tp_s(sym2), result))
+      
+      result
+    }
 
     /** An implementation of BitSets as arrays (maybe consider collection.BitSet
      *  for that?) The main purpose of this is to implement
@@ -74,7 +80,7 @@ abstract class OverridingPairs {
     }
 
     /** The symbols that can take part in an overriding pair */
-    private val decls = new Scope
+    private val decls = newScope
 
     // fill `decls` with overriding shadowing overridden */
     { def fillDecls(bcs: List[Symbol], deferredflag: Int) {
@@ -129,7 +135,7 @@ abstract class OverridingPairs {
       for (p <- parents) {
         index get p.typeSymbol match {
           case Some(pIndex) =>
-            for (bc <- p.baseClasses) 
+            for (bc <- p.baseClasses)
               if (p.baseType(bc) =:= self.baseType(bc))
                 index get bc match {
                   case Some(bcIndex) =>
@@ -177,7 +183,7 @@ abstract class OverridingPairs {
       if (curEntry ne null) {
         overriding = curEntry.sym
         if (nextEntry ne null) {
-          do { 
+          do {
             do {
               nextEntry = decls.lookupNextEntry(nextEntry);
               /* DEBUG

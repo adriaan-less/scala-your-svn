@@ -20,7 +20,7 @@ import Utility.Escapes.{ pairs => unescape }
  * whatever the markup handler returns. Use `ConstructingParser` if you just
  * want to parse XML to construct instances of `scala.xml.Node`.
  *
- * While XML elements are returned, DTD declarations - if handled - are 
+ * While XML elements are returned, DTD declarations - if handled - are
  * collected using side-effects.
  *
  * @author  Burak Emir
@@ -52,7 +52,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
   // variables, values
   //
 
-  var curInput: Source = input
+  protected var curInput: Source = input
 
   // See ticket #3720 for motivations.
   private class WithLookAhead(underlying: Source) extends Source {
@@ -78,7 +78,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       curInput = newInput
       newInput.lookahead()
   }
- 
+
 
   /** the handler of the markup, returns this */
   private val handle: MarkupHandler = this
@@ -107,7 +107,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       } else {
         val ilen = inpStack.length;
         //Console.println("  ilen = "+ilen+ " extIndex = "+extIndex);
-        if ((ilen != extIndex) && (ilen > 0)) { 
+        if ((ilen != extIndex) && (ilen > 0)) {
           /** for external source, inpStack == Nil ! need notify of eof! */
           pop()
         } else {
@@ -249,7 +249,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       case _:EntityRef => // todo: fix entities, shouldn't be "special"
         reportSyntaxError("no entity references allowed here");
       case s:SpecialNode =>
-        if (s.toString().trim().length > 0) //non-empty text nodes not allowed
+        if (s.toString.trim().length > 0) //non-empty text nodes not allowed
           elemCount += 2
       case m:Node =>
         elemCount += 1
@@ -266,7 +266,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
   }
 
   /** append Unicode character to name buffer*/
-  protected def putChar(c: Char) = cbuf.append(c)
+  protected def putChar(c: Char) = cbuf append c
 
   /** As the current code requires you to call nextch once manually
    *  after construction, this method formalizes that suboptimal reality.
@@ -276,13 +276,14 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
     this
   }
 
-  def ch_returning_nextch = { val res = ch ; nextch ; res }
-  def mkProcInstr(position: Int, name: String, text: String): NodeSeq =
-    handle.procInstr(position, name, text)
+  protected def ch_returning_nextch: Char = { val res = ch; nextch(); res }
 
-  def mkAttributes(name: String, pscope: NamespaceBinding) =
+  def mkAttributes(name: String, pscope: NamespaceBinding): AttributesType =
     if (isNameStart (ch)) xAttributes(pscope)
     else (Null, pscope)
+
+  def mkProcInstr(position: Int, name: String, text: String): ElementType =
+    handle.procInstr(position, name, text)
 
   /** this method tells ch to get the next character when next called */
   def nextch() {
@@ -318,7 +319,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
           aMap = new PrefixedAttribute(prefix, key, Text(value), aMap)
 
         case _ =>
-          if( qname == "xmlns" ) 
+          if( qname == "xmlns" )
             scope = new NamespaceBinding(null, value, scope)
           else
             aMap = new UnprefixedAttribute(qname, Text(value), aMap)
@@ -375,7 +376,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
   def xComment: NodeSeq = {
     val sb: StringBuilder = new StringBuilder()
     xToken("--")
-    while (true) { 
+    while (true) {
       if (ch == '-'  && { sb.append(ch); nextch; ch == '-' }) {
         sb.length = sb.length - 1
         nextch
@@ -404,7 +405,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
     ch match {
       case '!' =>
         nextch
-      if ('[' == ch)                 // CDATA 
+      if ('[' == ch)                 // CDATA
         ts &+ xCharData
       else if ('D' == ch) // doctypedecl, parse DTD // @todo REMOVE HACK
         parseDTD()
@@ -413,11 +414,11 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       case '?' =>                    // PI
         nextch
         ts &+ xProcInstr
-      case _   => 
+      case _   =>
         ts &+ element1(pscope)      // child
     }
   }
-   
+
   /** {{{
    *  content1 ::=  '&lt;' content1 | '&amp;' charref ...
    *  }}} */
@@ -442,7 +443,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
           }
 
         // postcond: xEmbeddedBlock == false!
-        case '&' => // EntityRef or CharRef 
+        case '&' => // EntityRef or CharRef
           nextch; ch match {
             case '#'  =>  // CharacterRef
               nextch
@@ -490,7 +491,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
    *  dtd.
    *  {{{
    *  &lt;! parseDTD ::= DOCTYPE name ... >
-   *  }}} */ 
+   *  }}} */
   def parseDTD() { // dirty but fast
     var extID: ExternalID = null
     if (this.dtd ne null)
@@ -505,7 +506,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       xSpaceOpt
     }
 
-    /* parse external subset of DTD 
+    /* parse external subset of DTD
      */
 
     if ((null != extID) && isValidating) {
@@ -577,17 +578,17 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
    *
    *  precondition: `xEmbeddedBlock == false` (we are not in a scala block)
    */
-  def xText: String = {
-    var exit = false;
+  private def xText: String = {
+    var exit = false
     while (! exit) {
-      putChar(ch);
-      val opos = pos;
-      nextch;
+      putChar(ch)
+      val opos = pos
+      nextch
 
       exit = eof || ( ch == '<' ) || ( ch == '&' )
     }
-    val str = cbuf.toString();
-    cbuf.length = 0;
+    val str = cbuf.toString
+    cbuf.length = 0
     str
   }
 
@@ -627,7 +628,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       nextch
     }
     nextch
-    val str = cbuf.toString()
+    val str = cbuf.toString
     cbuf.length = 0
     str
   }
@@ -671,7 +672,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
           if ('L' == ch) {
             nextch
             elementDecl()
-          } else 
+          } else
             entityDecl()
 
         case 'A' =>
@@ -733,7 +734,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       val ent = xName
       xToken(';')
       if (!isValidating)
-        handle.peReference(ent)  //  n-v: just create PE-reference 
+        handle.peReference(ent)  //  n-v: just create PE-reference
       else
         push(ent)                //    v: parse replacementText
 
@@ -748,7 +749,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
       nextch
   }
 
-  /**  "rec-xml/#ExtSubset" pe references may not occur within markup declarations 
+  /**  "rec-xml/#ExtSubset" pe references may not occur within markup declarations
    */
   def intSubset() {
     //Console.println("(DEBUG) intSubset()")
@@ -796,7 +797,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
           cbuf.append(ch)
         nextch
       }
-      val atpe = cbuf.toString()
+      val atpe = cbuf.toString
       cbuf.length = 0
 
       val defdecl: DefaultDecl = ch match {
@@ -880,7 +881,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
     val notat = xName
     xSpace
     val extID = if (ch == 'S') {
-      externalID();
+      externalID()
     }
     else if (ch == 'P') {
       /** PublicID (without system, only used in NOTATION) */
@@ -893,7 +894,7 @@ trait MarkupParser extends MarkupParserCommon with TokenTests
         systemLiteral()
       else
         null;
-      new PublicID(pubID, sysID);
+      new PublicID(pubID, sysID)
     } else {
       reportSyntaxError("PUBLIC or SYSTEM expected");
       sys.error("died parsing notationdecl")

@@ -5,19 +5,19 @@ package transform
 import Flags._
 
 trait UnCurry {
-  
+
   val global: SymbolTable
   import global._
   import definitions._
-  
+
   private def expandAlias(tp: Type): Type = if (!tp.isHigherKinded) tp.normalize else tp
-  
+
   private def isUnboundedGeneric(tp: Type) = tp match {
-    case t @ TypeRef(_, sym, _) => sym.isAbstractType && !(t <:< AnyRefClass.tpe) 
+    case t @ TypeRef(_, sym, _) => sym.isAbstractType && !(t <:< AnyRefClass.tpe)
     case _ => false
   }
 
-  protected val uncurry: TypeMap = new TypeMap {
+  val uncurry: TypeMap = new TypeMap {
     def apply(tp0: Type): Type = {
       // tp0.typeSymbolDirect.initialize
       val tp = expandAlias(tp0)
@@ -25,7 +25,7 @@ trait UnCurry {
         case MethodType(params, MethodType(params1, restpe)) =>
           apply(MethodType(params ::: params1, restpe))
         case MethodType(params, ExistentialType(tparams, restpe @ MethodType(_, _))) =>
-          assert(false, "unexpected curried method types with intervening existential") 
+          assert(false, "unexpected curried method types with intervening existential")
           tp0
         case MethodType(h :: t, restpe) if h.isImplicit =>
           apply(MethodType(h.cloneSymbol.resetFlag(IMPLICIT) :: t, restpe))
@@ -43,7 +43,7 @@ trait UnCurry {
       }
     }
   }
-  
+
   private val uncurryType = new TypeMap {
     def apply(tp0: Type): Type = {
       val tp = expandAlias(tp0)
@@ -60,11 +60,11 @@ trait UnCurry {
     }
   }
 
-  /** - return symbol's transformed type, 
+  /** - return symbol's transformed type,
    *  - if symbol is a def parameter with transformed type T, return () => T
    *
    * @MAT: starting with this phase, the info of every symbol will be normalized
    */
-  def transformInfo(sym: Symbol, tp: Type): Type = 
+  def transformInfo(sym: Symbol, tp: Type): Type =
     if (sym.isType) uncurryType(tp) else uncurry(tp)
 }

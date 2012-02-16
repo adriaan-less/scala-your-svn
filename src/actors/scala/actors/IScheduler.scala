@@ -40,7 +40,7 @@ trait IScheduler {
   /** When the scheduler is active, it can execute tasks.
    *
    * @return `'''true'''`, if the scheduler is active, otherwise false.
-   */ 
+   */
   def isActive: Boolean
 
   /** Registers a newly created actor with this scheduler.
@@ -51,14 +51,14 @@ trait IScheduler {
 
   /** Unregisters an actor from this scheduler, because it
    *  has terminated.
-   * 
+   *
    *  @param  a  the actor to be registered
    */
   def terminated(a: TrackedReactor): Unit
 
   /** Registers a closure to be executed when the specified
    *  actor terminates.
-   * 
+   *
    *  @param  a  the actor
    *  @param  f  the closure to be registered
    */

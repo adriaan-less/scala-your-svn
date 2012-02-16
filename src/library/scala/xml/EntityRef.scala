@@ -33,7 +33,7 @@ case class EntityRef(entityName: String) extends SpecialNode {
    *  @param  sb the string buffer.
    *  @return the modified string buffer `sb`.
    */
-  override def buildString(sb: StringBuilder) = 
+  override def buildString(sb: StringBuilder) =
     sb.append("&").append(entityName).append(";")
 
 }

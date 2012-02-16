@@ -13,6 +13,7 @@ package mutable
 
 import generic._
 import immutable.{List, Nil, ::}
+import java.io._
 
 /** A `Buffer` implementation back up by a list. It provides constant time
  *  prepend and append. Most other operations are linear.
@@ -21,9 +22,11 @@ import immutable.{List, Nil, ::}
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
- *  
+ *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-mutable-collection-classes.html#list_buffers "Scala's Collection Library overview"]]
+ *  section on `List Buffers` for more information.
+ *
  *  @tparam A    the type of this list buffer's elements.
- *  
+ *
  *  @define Coll ListBuffer
  *  @define coll list buffer
  *  @define thatinfo the class of the returned collection. In the standard library configuration,
@@ -33,23 +36,25 @@ import immutable.{List, Nil, ::}
  *    result class `That` from the current representation type `Repr`
  *    and the new element type `B`. This is usually the `canBuildFrom` value
  *    defined in object `ListBuffer`.
- *  @define orderDependent 
+ *  @define orderDependent
  *  @define orderDependentFold
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
-@SerialVersionUID(3419063961353022661L)
-final class ListBuffer[A] 
-      extends Buffer[A] 
+@SerialVersionUID(3419063961353022662L)
+final class ListBuffer[A]
+      extends AbstractBuffer[A]
+         with Buffer[A]
          with GenericTraversableTemplate[A, ListBuffer]
          with BufferLike[A, ListBuffer[A]]
-         with Builder[A, List[A]] 
+         with Builder[A, List[A]]
          with SeqForwarder[A]
          with Serializable
-{ 
+{
   override def companion: GenericCompanion[ListBuffer] = ListBuffer
 
   import scala.collection.Traversable
+  import scala.collection.immutable.ListSerializeEnd
 
   private var start: List[A] = Nil
   private var last0: ::[A] = _
@@ -57,13 +62,58 @@ final class ListBuffer[A]
   private var len = 0
 
   protected def underlying: immutable.Seq[A] = start
- 
+  
+  private def writeObject(out: ObjectOutputStream) {
+    // write start
+    var xs: List[A] = start
+    while (!xs.isEmpty) { out.writeObject(xs.head); xs = xs.tail }
+    out.writeObject(ListSerializeEnd)
+    
+    // no need to write last0
+    
+    // write if exported
+    out.writeBoolean(exported)
+    
+    // write the length
+    out.writeInt(len)
+  }
+  
+  private def readObject(in: ObjectInputStream) {
+    // read start, set last0 appropriately
+    var elem: A = in.readObject.asInstanceOf[A]
+    if (elem == ListSerializeEnd) {
+      start = Nil
+      last0 = null
+    } else {
+      var current = new ::(elem, Nil)
+      start = current
+      elem = in.readObject.asInstanceOf[A]
+      while (elem != ListSerializeEnd) {
+        val list = new ::(elem, Nil)
+        current.tl = list
+        current = list
+        elem = in.readObject.asInstanceOf[A]
+      }
+      last0 = current
+      start
+    }
+    
+    // read if exported
+    exported = in.readBoolean()
+    
+    // read the length
+    len = in.readInt()
+  }
+  
   /** The current length of the buffer.
-   *  
+   *
    *  This operation takes constant time.
    */
   override def length = len
-  
+
+  // Don't use the inherited size, which forwards to a List and is O(n).
+  override def size = length
+
   // Implementations of abstract methods in Buffer
 
   override def apply(n: Int): A =
@@ -83,9 +133,9 @@ final class ListBuffer[A]
       if (exported) copy()
       if (n == 0) {
         val newElem = new :: (x, start.tail);
-        if (last0 eq start) { 
+        if (last0 eq start) {
           last0 = newElem
-        }	
+        }
         start = newElem
       } else {
         var cursor = start
@@ -97,7 +147,7 @@ final class ListBuffer[A]
         val newElem = new :: (x, cursor.tail.tail)
         if (last0 eq cursor.tail) {
           last0 = newElem
-        }	
+        }
         cursor.asInstanceOf[::[A]].tl = newElem
       }
     } catch {
@@ -152,7 +202,7 @@ final class ListBuffer[A]
     len += 1
     this
   }
-  
+
   /** Inserts new elements at the index `n`. Opposed to method
    *  `update`, this method will not replace an element with a new
    *  one. Instead, it will insert a new element at index `n`.
@@ -231,7 +281,7 @@ final class ListBuffer[A]
 
   def result: List[A] = toList
 
-  /** Converts this buffer to a list. Takes constant time. The buffer is 
+  /** Converts this buffer to a list. Takes constant time. The buffer is
    *  copied lazily, the first time it is mutated.
    */
   override def toList: List[A] = {
@@ -299,8 +349,8 @@ final class ListBuffer[A]
       len -= 1
     } else {
       var cursor = start
-      while (!cursor.tail.isEmpty && cursor.tail.head != elem) { 
-        cursor = cursor.tail 
+      while (!cursor.tail.isEmpty && cursor.tail.head != elem) {
+        cursor = cursor.tail
       }
       if (!cursor.tail.isEmpty) {
         val z = cursor.asInstanceOf[::[A]]
@@ -313,7 +363,7 @@ final class ListBuffer[A]
     this
   }
 
-  override def iterator: Iterator[A] = new Iterator[A] {
+  override def iterator: Iterator[A] = new AbstractIterator[A] {
     // Have to be careful iterating over mutable structures.
     // This used to have "(cursor ne last0)" as part of its hasNext
     // condition, which means it can return true even when the iterator
@@ -349,7 +399,7 @@ final class ListBuffer[A]
   private def copy() {
     var cursor = start
     val limit = last0.tail
-    clear
+    clear()
     while (cursor ne limit) {
       this += cursor.head
       cursor = cursor.tail

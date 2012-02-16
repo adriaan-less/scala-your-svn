@@ -17,7 +17,7 @@ object NameTransformer {
   val MODULE_SUFFIX_STRING = sys.props.getOrElse("SCALA_MODULE_SUFFIX_STRING", "$")
   val NAME_JOIN_STRING     = sys.props.getOrElse("SCALA_NAME_JOIN_STRING", "$")
   val MODULE_INSTANCE_NAME = "MODULE$"
-  
+
   private val nops = 128
   private val ncodes = 26 * 26
 
@@ -69,7 +69,7 @@ object NameTransformer {
         }
         buf.append(op2code(c))
       /* Handle glyphs that are not valid Java/JVM identifiers */
-      } 
+      }
       else if (!Character.isJavaIdentifierPart(c)) {
         if (buf eq null) {
           buf = new StringBuilder()
@@ -116,11 +116,11 @@ object NameTransformer {
               buf.append(ops.op)
               i += ops.code.length()
             }
-            /* Handle the decoding of Unicode glyphs that are 
+            /* Handle the decoding of Unicode glyphs that are
              * not valid Java/JVM identifiers */
           } else if ((len - i) >= 6 && // Check that there are enough characters left
-                     ch1 == 'u' && 
-                     ((Character.isDigit(ch2)) || 
+                     ch1 == 'u' &&
+                     ((Character.isDigit(ch2)) ||
                      ('A' <= ch2 && ch2 <= 'F'))) {
             /* Skip past "$u", next four should be hexadecimal */
             val hex = name.substring(i+2, i+6)
@@ -144,12 +144,12 @@ object NameTransformer {
       }
       /* If we didn't see an opcode or encoded Unicode glyph, and the
         buffer is non-empty, write the current character and advance
-         one */ 
-      if ((ops eq null) && !unicode) { 
+         one */
+      if ((ops eq null) && !unicode) {
         if (buf ne null)
-          buf.append(c) 
-        i += 1 
-      } 
+          buf.append(c)
+        i += 1
+      }
     }
     //System.out.println("= " + (if (buf == null) name else buf.toString()));//DEBUG
     if (buf eq null) name else buf.toString()

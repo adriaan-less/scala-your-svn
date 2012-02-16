@@ -2,7 +2,7 @@
  * Copyright 2005-2011 LAMP/EPFL
  * @author Paul Phillips
  */
- 
+
 package scala.tools.nsc
 
 import java.util.concurrent.{ Future, Callable }
@@ -23,11 +23,12 @@ package object io {
   def runnableFn(f: () => Unit): Runnable     = runnable(f())
   def callableFn[T](f: () => T): Callable[T]  = callable(f())
   def spawnFn[T](f: () => T): Future[T]       = spawn(f())
-  
+
   // Create, start, and return a daemon thread
-  def daemonize(body: => Unit): Thread = {
+  def daemonize(body: => Unit): Thread = newThread(_ setDaemon true)(body)
+  def newThread(f: Thread => Unit)(body: => Unit): Thread = {
     val thread = new Thread(runnable(body))
-    thread setDaemon true
+    f(thread)
     thread.start
     thread
   }
