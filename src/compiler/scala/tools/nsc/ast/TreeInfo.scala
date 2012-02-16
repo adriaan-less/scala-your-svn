@@ -1,78 +1,41 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package ast
 
-import symtab.Flags._
-import symtab.SymbolTable
-import util.HashSet
+import reflect.internal.Flags._
+import symtab._
 
 /** This class ...
  *
  *  @author Martin Odersky
  *  @version 1.0
  */
-abstract class TreeInfo {
+abstract class TreeInfo extends reflect.internal.TreeInfo {
+  val global: Global
+  import global._
 
-  val trees: SymbolTable
-  import trees._
   import definitions.ThrowableClass
-
-  def isTerm(tree: Tree): Boolean = tree.isTerm
-  def isType(tree: Tree): Boolean = tree.isType
-
-  def isOwnerDefinition(tree: Tree): Boolean = tree match {
-    case PackageDef(_, _)
-       | ClassDef(_, _, _, _)
-       | ModuleDef(_, _, _)
-       | DefDef(_, _, _, _, _, _)
-       | Import(_, _) => true
-    case _ => false
-  }
-
-  def isDefinition(tree: Tree): Boolean = tree.isDef
-
-  def isDeclaration(tree: Tree): Boolean = tree match {
-    case DefDef(_, _, _, _, _, EmptyTree)
-       | ValDef(_, _, _, EmptyTree)
-       | TypeDef(_, _, _, _) => true
-    case _ => false
-  }
 
   /** Is tree legal as a member definition of an interface?
    */
-  def isInterfaceMember(tree: Tree): Boolean = tree match {
-    case EmptyTree                     => true
-    case Import(_, _)                  => true
-    case TypeDef(_, _, _, _)           => true
-    case DefDef(mods, _, _, _, _, __)  => mods.hasFlag(DEFERRED)
-    case ValDef(mods, _, _, _)         => mods.hasFlag(DEFERRED)
+  override def isInterfaceMember(tree: Tree): Boolean = tree match {
     case DocDef(_, definition)         => isInterfaceMember(definition)
-    case _ => false
+    case _ => super.isInterfaceMember(tree)
   }
 
   /** Is tree a pure (i.e. non-side-effecting) definition?
    */
-  def isPureDef(tree: Tree): Boolean = tree match {
-    case EmptyTree
-       | ClassDef(_, _, _, _)
-       | TypeDef(_, _, _, _)
-       | Import(_, _)
-       | DefDef(_, _, _, _, _, _) =>
-      true
-    case ValDef(mods, _, _, rhs) =>
-      !mods.hasFlag(MUTABLE) && isPureExpr(rhs)
-    case DocDef(_, definition) =>
-      isPureDef(definition)
-    case _ =>
-      false
+  override def isPureDef(tree: Tree): Boolean = tree match {
+    case DocDef(_, definition) => isPureDef(definition)
+    case _ => super.isPureDef(tree)
   }
 
-  /** Is tree a stable and pure expression?
+ /** Does list of trees start with a definition of
+   *  a class of module with given name (ignoring imports)
    */
   def isPureExpr(tree: Tree): Boolean = tree match {
     case EmptyTree
