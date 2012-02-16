@@ -3,77 +3,99 @@
  * @author  Lex Spoon
  */
 
-// $Id$
-
 package scala.tools.nsc
+
+import GenericRunnerCommand._
 
 /** A command for ScriptRunner */
 class GenericRunnerCommand(
-  allargs: List[String], 
-  override val settings: GenericRunnerSettings,
-  error: String => Unit)
-extends CompilerCommand(allargs, settings, error, false, false)
-{
-  def this(allargs: List[String], error: String=>Unit) =
-    this(allargs, new GenericRunnerSettings(error), error)
+  args: List[String],
+  override val settings: GenericRunnerSettings)
+extends CompilerCommand(args, settings) {
 
-  def this(allargs: List[String]) = 
-    this(allargs, str => Console.println("Error: " + str))
+  def this(args: List[String], error: String => Unit) =
+    this(args, new GenericRunnerSettings(error))
+
+  def this(args: List[String]) =
+    this(args, str => Console.println("Error: " + str))
 
   /** name of the associated compiler command */
-  override val cmdName = "scala"
-  val compCmdName = "scalac"
+  override def cmdName = "scala"
+  def compCmdName = "scalac"
 
-  /** What to run.  If it is None, then the interpreter should be started */
-  var thingToRun: Option[String] = None
+  // change CompilerCommand behavior
+  override def shouldProcessArguments: Boolean = false
 
-  /** Arguments to pass to the object or script to run */
-  var arguments: List[String] = Nil
-
-  override protected def processArguments() {
-    var args = allargs
-
-    while (!args.isEmpty && ok && args.head.startsWith("-")) {
-      val args0 = args
-      args = settings parseParams args
-      if (args eq args0) {
-        error("bad option: '" + args.head + "'")
-        ok = false
+  private lazy val (_ok, targetAndArguments) = settings.processArguments(args, false)
+  override def ok = _ok
+  private def guessHowToRun(target: String): GenericRunnerCommand.HowToRun = {
+    if (!ok) Error
+    else if (io.Jar.isJarOrZip(target)) AsJar
+    else if (util.ScalaClassLoader.classExists(settings.classpathURLs, target)) AsObject
+    else {
+      val f = io.File(target)
+      if (!f.hasExtension("class", "jar", "zip") && f.canRead) AsScript
+      else {
+        Console.err.println("No such file or class on classpath: " + target)
+        Error
       }
     }
-
-    if (!args.isEmpty) {
-      thingToRun = Some(args.head)
-      arguments = args.tail
-    }
   }
+  /** String with either the jar file, class name, or script file name. */
+  def thingToRun = targetAndArguments.headOption getOrElse ""
+  /** Arguments to thingToRun. */
+  def arguments = targetAndArguments drop 1
 
-  // we can safely call processArguments since we passed the superclass shouldProcessArguments=false
-  processArguments()
-
-  override def usageMsg = {
-    cmdName + " [ <option> ]... [<torun> <arguments>]\n" +
-    "\n" +
-    "All options to "+compCmdName+" are allowed.  See "+compCmdName+" -help.\n" +
-    "\n" +
-    "<torun>, if present, is an object or script file to run.\n" +
-    "If no <torun> is present, run an interactive shell.\n" +
-    "\n" +
-    "Option -howtorun allows explicitly specifying how to run <torun>:\n" +
-    "    script: it is a script file\n" +
-    "    object: it is an object name\n" +
-    "    guess: (the default) try to guess\n" +
-    "\n" +
-    "Option -i requests that a file be pre-loaded.  It is only\n" +
-    "meaningful for interactive shells.\n" +
-    "\n" +
-    "Option -e requests that its argument be executed as Scala code.\n" +
-    "\n" +
-    "Option -savecompiled requests that the compiled script be saved\n" +
-    "for future use.\n" +
-    "\n" +
-    "Option -nocompdaemon requests that the fsc offline compiler not be used.\n" +
-    "\n" +
-    "Option -Dproperty=value sets a Java system property.\n"
+  val howToRun = targetAndArguments match {
+    case Nil      => AsRepl
+    case hd :: _  => waysToRun find (_.name == settings.howtorun.value) getOrElse guessHowToRun(hd)
   }
+  private def interpolate(s: String) = s.trim.replaceAll("@cmd@", cmdName).replaceAll("@compileCmd@", compCmdName) + "\n"
+
+  def shortUsageMsg = interpolate("""
+Usage: @cmd@ <options> [<script|class|object|jar> <arguments>]
+   or  @cmd@ -help
+
+All options to @compileCmd@ (see @compileCmd@ -help) are also allowed.
+""")
+
+  override def usageMsg = shortUsageMsg + interpolate("""
+The first given argument other than options to @cmd@ designates
+what to run.  Runnable targets are:
+
+  - a file containing scala source
+  - the name of a compiled class
+  - a runnable jar file with a valid Main-Class attribute
+  - or if no argument is given, the repl (interactive shell) is started
+
+Options to @cmd@ which reach the java runtime:
+
+ -Dname=prop  passed directly to java to set system properties
+ -J<arg>      -J is stripped and <arg> passed to java as-is
+ -nobootcp    do not put the scala jars on the boot classpath (slower)
+
+Other startup options:
+
+ -howtorun    what to run <script|object|jar|guess> (default: guess)
+ -i <file>    preload <file> before starting the repl
+ -e <string>  execute <string> as if entered in the repl
+ -save        save the compiled script in a jar for future use
+ -nc          no compilation daemon: do not use the fsc offline compiler
+
+A file argument will be run as a scala script unless it contains only
+self-contained compilation units (classes and objects) and exactly one
+runnable main method.  In that case the file will be compiled and the
+main method invoked.  This provides a bridge between scripts and standard
+scala source.
+  """) + "\n"
+}
+
+object GenericRunnerCommand {
+  sealed abstract class HowToRun(val name: String) { }
+  case object AsJar extends HowToRun("jar")
+  case object AsObject extends HowToRun("object")
+  case object AsScript extends HowToRun("script")
+  case object AsRepl extends HowToRun("repl")
+  case object Error extends HowToRun("<error>")
+  val waysToRun = List(AsJar, AsObject, AsScript, AsRepl)
 }
