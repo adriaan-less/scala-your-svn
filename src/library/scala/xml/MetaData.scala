@@ -1,37 +1,32 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.xml
 
 import Utility.sbToString
 import annotation.tailrec
-import collection.immutable.List
-import collection.{Seq, Iterator, Iterable}
-import collection.mutable.StringBuilder
-
+import scala.collection.{ AbstractIterable, Iterator }
 
 /**
  * Copyright 2008 Google Inc. All Rights Reserved.
  * @author Burak Emir <bqe@google.com>
  */
 object MetaData {
-
-  /** 
-   * appends all attributes from new_tail to attribs, without attempting to detect
-   * or remove duplicates. The method guarantees that all attributes from attribs come before
-   * the attributes in new_tail, but does not guarantee to preserve the relative order of attribs.
-   * Duplicates can be removed with normalize.
+  /**
+   * appends all attributes from new_tail to attribs, without attempting to
+   * detect or remove duplicates. The method guarantees that all attributes
+   * from attribs come before the attributes in new_tail, but does not
+   * guarantee to preserve the relative order of attribs.
+   *
+   * Duplicates can be removed with `normalize`.
    */
-  @tailrec
-  def concatenate(attribs: MetaData, new_tail: MetaData): MetaData =
+  @tailrec  // temporarily marked final so it will compile under -Xexperimental
+  final def concatenate(attribs: MetaData, new_tail: MetaData): MetaData =
     if (attribs eq Null) new_tail
     else concatenate(attribs.next, attribs copy new_tail)
 
@@ -39,16 +34,16 @@ object MetaData {
    * returns normalized MetaData, with all duplicates removed and namespace prefixes resolved to
    *  namespace URIs via the given scope.
    */
-  def normalize(attribs: MetaData, scope: NamespaceBinding): MetaData = {    
+  def normalize(attribs: MetaData, scope: NamespaceBinding): MetaData = {
     def iterate(md: MetaData, normalized_attribs: MetaData, set: Set[String]): MetaData = {
       lazy val key = getUniversalKey(md, scope)
       if (md eq Null) normalized_attribs
-      else if (set(key)) iterate(md.next, normalized_attribs, set)
-      else iterate(md.next, md copy normalized_attribs, set + key)
+      else if ((md.value eq null) || set(key)) iterate(md.next, normalized_attribs, set)
+      else md copy iterate(md.next, normalized_attribs, set + key)
     }
     iterate(attribs, Null, Set())
   }
- 
+
   /**
    * returns key if md is unprefixed, pre+key is md is prefixed
    */
@@ -65,22 +60,26 @@ object MetaData {
 
 }
 
-/** <p>
- *    This class represents an attribute and at the same time a linked list of attributes.
- *    Every instance of this class is either an instance of UnprefixedAttribute <code>key,value</code>
- *    or an instance of PrefixedAttribute <code>namespace_prefix,key,value</code> or Null, the empty
- *    attribute list. Namespace URIs are obtained by using the namespace scope of the element owning
- *    this attribute (see <code>getNamespace</code>)
- * </p>
+/** This class represents an attribute and at the same time a linked list of
+ *  attributes. Every instance of this class is either
+ *  - an instance of `UnprefixedAttribute key,value` or
+ *  - an instance of `PrefixedAttribute namespace_prefix,key,value` or
+ *  - `Null, the empty attribute list.
  *
- * Copyright 2008 Google Inc. All Rights Reserved.
- * @author Burak Emir <bqe@google.com>
+ *  Namespace URIs are obtained by using the namespace scope of the element
+ *  owning this attribute (see `getNamespace`).
+ *
+ *  Copyright 2008 Google Inc. All Rights Reserved.
+ *  @author Burak Emir <bqe@google.com>
  */
-@serializable
-abstract class MetaData extends Iterable[MetaData]
-{
+abstract class MetaData
+extends AbstractIterable[MetaData]
+   with Iterable[MetaData]
+   with Equality
+   with Serializable {
+
   /** Updates this MetaData with the MetaData given as argument. All attributes that occur in updates
-   *  are part of the resulting MetaData. If an attribute occurs in both this instance and 
+   *  are part of the resulting MetaData. If an attribute occurs in both this instance and
    *  updates, only the one in updates is part of the result (avoiding duplicates). For prefixed
    *  attributes, namespaces are resolved using the given scope, which defaults to TopScope.
    *
@@ -98,7 +97,7 @@ abstract class MetaData extends Iterable[MetaData]
    */
   def apply(key: String): Seq[Node]
 
-  /** convenience method, same as <code>apply(namespace, owner.scope, key)</code>.
+  /** convenience method, same as `apply(namespace, owner.scope, key)`.
    *
    *  @param namespace_uri namespace uri of key
    *  @param owner the element owning this attribute list
@@ -118,13 +117,6 @@ abstract class MetaData extends Iterable[MetaData]
    */
   def apply(namespace_uri:String, scp:NamespaceBinding, k:String): Seq[Node]
 
-  /**
-   *  @param m ...
-   *  @return  <code>true</code> iff ...
-   */
-  def containedIn1(m: MetaData): Boolean =
-    m != null && (m.equals1(this) || containedIn1(m.next))
-
   /** returns a copy of this MetaData item with next field set to argument.
    *
    *  @param next ...
@@ -133,7 +125,7 @@ abstract class MetaData extends Iterable[MetaData]
   def copy(next: MetaData): MetaData
 
   /** if owner is the element of this metadata item, returns namespace */
-  def getNamespace(owner: Node): String 
+  def getNamespace(owner: Node): String
 
   def hasNext = (Null != next)
 
@@ -143,21 +135,15 @@ abstract class MetaData extends Iterable[MetaData]
 
   def isPrefixed: Boolean
 
-  /** deep equals method - XXX */
-  override def equals(that: Any) = that match {
-    case m: MetaData  =>
-      (this.length == m.length) &&
-      (this.hashCode == m.hashCode) &&
-      (this forall (_ containedIn1 m))
+  override def canEqual(other: Any) = other match {
+    case _: MetaData  => true
     case _            => false
   }
-
-  /** Returns an iterator on attributes */
-  def iterator: Iterator[MetaData] = Iterator.iterate(this)(_.next) takeWhile (_ != Null)
-  override def size: Int = 1 + iterator.length
-
-  /** shallow equals method */
-  def equals1(that: MetaData): Boolean
+  override def strict_==(other: Equality) = other match {
+    case m: MetaData  => this.asAttrMap == m.asAttrMap
+    case _            => false
+  }
+  protected def basisForHashCode: Seq[Any] = List(this.asAttrMap)
 
   /** filters this sequence of meta data */
   override def filter(f: MetaData => Boolean): MetaData =
@@ -170,8 +156,18 @@ abstract class MetaData extends Iterable[MetaData]
   /** returns value of this MetaData item */
   def value: Seq[Node]
 
-  /** maps this sequence of meta data */
-  def map(f: MetaData => Text): List[Text] = (iterator map f).toList
+  /** Returns a String containing "prefix:key" if the first key is
+   *  prefixed, and "key" otherwise.
+   */
+  def prefixedKey = this match {
+    case x: Attribute if x.isPrefixed => x.pre + ":" + key
+    case _                            => key
+  }
+
+  /** Returns a Map containing the attributes stored as key/value pairs.
+   */
+  def asAttrMap: Map[String, String] =
+    iterator map (x => (x.prefixedKey, x.value.text)) toMap
 
   /** returns Null or the next MetaData item */
   def next: MetaData
@@ -198,24 +194,22 @@ abstract class MetaData extends Iterable[MetaData]
   final def get(uri: String, scope: NamespaceBinding, key: String): Option[Seq[Node]] =
     Option(apply(uri, scope, key))
 
-  override def hashCode(): Int
-
-  def toString1(): String = sbToString(toString1)
+  protected def toString1(): String = sbToString(toString1)
 
   // appends string representations of single attribute to StringBuilder
-  def toString1(sb: StringBuilder): Unit
+  protected def toString1(sb: StringBuilder): Unit
 
   override def toString(): String = sbToString(buildString)
 
   def buildString(sb: StringBuilder): StringBuilder = {
-    sb.append(' ')
+    sb append ' '
     toString1(sb)
-    next.buildString(sb)
+    next buildString sb
   }
 
   /**
    *  @param scope ...
-   *  @return      <code>true</code> iff ...
+   *  @return      `'''true'''` iff ...
    */
   def wellformed(scope: NamespaceBinding): Boolean
 
