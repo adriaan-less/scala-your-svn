@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -22,9 +22,9 @@ import script._
  *  @author  Matthias Zenger
  *  @version 1.0, 16/04/2004
  *  @since   1
- *  
+ *
  *  @tparam A     type of the elements the buffer proxy contains.
- *  
+ *
  *  @define Coll BufferProxy
  *  @define coll buffer proxy
  */
@@ -38,16 +38,6 @@ trait BufferProxy[A] extends Buffer[A] with Proxy {
 
   def apply(n: Int): A = self.apply(n)
 
-  /** Append a single element to this buffer and return
-   *  the identity of the buffer.
-   *
-   *  @param elem  the element to append.
-   *  @return      the updated buffer.
-   */
-  @deprecated("Use += instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=' if you intend to create a new collection.")
-  override def +(elem: A): Buffer[A] = self.+(elem)
-
   /** Append a single element to this buffer.
    *
    *  @param elem  the element to append.
@@ -55,17 +45,6 @@ trait BufferProxy[A] extends Buffer[A] with Proxy {
   def +=(elem: A): this.type = { self.+=(elem); this }
 
   override def readOnly = self.readOnly
-  
-  /** Appends a number of elements provided by a traversable object
-   *  via its <code>foreach</code> method. The identity of the
-   *  buffer is returned.
-   *
-   *  @param iter  the traversable object.
-   *  @return      the updated buffer.
-   */
-  @deprecated("Use ++= instead if you intend to add by side effect to an existing collection.\n"+
-              "Use `clone() ++=` if you intend to create a new collection.")
-  override def ++(xs: TraversableOnce[A]): Buffer[A] = self.++(xs)
 
   /** Appends a number of elements provided by a traversable object.
    *
