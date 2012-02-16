@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -24,12 +23,12 @@ object SequentialContainer {
 }
 
 /**
- * A container for which a sequential order of children makes sense, such as 
+ * A container for which a sequential order of children makes sense, such as
  * flow panels, or menus. Its contents are mutable.
  */
 trait SequentialContainer extends Container {
   /**
-   * The mutable child components of this container. The order matters and 
+   * The mutable child components of this container. The order matters and
    * usually indicates the layout of the children.
    */
   override def contents: Buffer[Component]
