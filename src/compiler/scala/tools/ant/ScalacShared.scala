@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala Ant Tasks                      **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -17,7 +17,7 @@ trait ScalacShared extends ScalaMatchingTask {
 
   def execWithArgFiles(java: Java, paths: List[String]) = {
     paths foreach (p => java.createArg() setValue ("@"+ p))
-    
+
     val debugString = paths map (x => " (@ = '%s')".format(io.File(x).slurp())) mkString ""
     log(java.getCommandLine.getCommandline.mkString("", " ", debugString), Project.MSG_VERBOSE)
     java.executeJava()

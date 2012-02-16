@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------*\
 **  ScalaCheck                                                             **
-**  Copyright (c) 2007-2010 Rickard Nilsson. All rights reserved.          **
+**  Copyright (c) 2007-2011 Rickard Nilsson. All rights reserved.          **
 **  http://www.scalacheck.org                                              **
 **                                                                         **
 **  This software is released under the terms of the Revised BSD License.  **
@@ -30,7 +30,7 @@ object Buildable {
     def builder = (new mutable.ListBuffer[T]).mapResult(_.toStream)
   }
 
-  implicit def buildableArray[T](implicit cm: ClassManifest[T]) = 
+  implicit def buildableArray[T](implicit cm: ClassManifest[T]) =
     new Buildable[T,Array] {
       def builder = mutable.ArrayBuilder.make[T]
     }
