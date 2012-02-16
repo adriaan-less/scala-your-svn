@@ -1,27 +1,32 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
-import scala.collection.script._
+import script._
 
-/** This class should be used as a mixin. It synchronizes the <code>Buffer</code>
+/** This class should be used as a mixin. It synchronizes the `Buffer`
  *  methods of the class into which it is mixed in.
+ *
+ *  @tparam A    type of the elements contained in this buffer.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 08/07/2003
+ *  @since   1
+ *  @define Coll SynchronizedBuffer
+ *  @define coll synchronized buffer
  */
 trait SynchronizedBuffer[A] extends Buffer[A] {
 
-  import collection.Traversable
+  import scala.collection.Traversable
 
   abstract override def length: Int = synchronized {
     super.length
@@ -35,15 +40,6 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
     super.apply(n)
   }
 
-  /** Append a single element to this buffer and return
-   *  the identity of the buffer.
-   *
-   *  @param elem  the element to append.
-   */
-  override def +(elem: A): Buffer[A] = synchronized {
-    super.+(elem)
-  }
-
   /** Append a single element to this buffer.
    *
    *  @param elem  the element to append.
@@ -52,23 +48,23 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
     super.+=(elem)
   }
 
-  /** Appends a number of elements provided by an iterable object
-   *  via its <code>iterator</code> method. The identity of the
-   *  buffer is returned.
+  /** Appends a number of elements provided by a traversable object via
+   *  its `foreach` method.
+   *  The identity of the buffer is returned.
    *
-   *  @param iter  the iterable object.
+   *  @param xs the traversable object.
    */
-  override def ++(iter: Traversable[A]): Buffer[A] = synchronized {
-    super.++(iter)
+  override def ++(xs: GenTraversableOnce[A]): Self = synchronized {
+    super.++(xs)
   }
 
-  /** Appends a number of elements provided by an iterable object
-   *  via its <code>iterator</code> method.
+  /** Appends a number of elements provided by a traversable object
+   *  via its `foreach` method.
    *
    *  @param iter  the iterable object.
    */
-  override def ++=(iter: Traversable[A]): this.type = synchronized[this.type] {
-    super.++=(iter)
+  override def ++=(xs: TraversableOnce[A]): this.type = synchronized[this.type] {
+    super.++=(xs)
   }
 
   /** Appends a sequence of elements to this buffer.
@@ -79,13 +75,13 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
     super.++=(elems)
   }
 
-  /** Appends a number of elements provided by an iterable object
-   *  via its <code>iterator</code> method.
+  /** Appends a number of elements provided by a traversable object
+   *  via its `foreach` method.
    *
-   *  @param iter  the iterable object.
+   *  @param xs the traversable object.
    */
-  override def appendAll(iter: Traversable[A]): Unit = synchronized {
-    super.appendAll(iter)
+  override def appendAll(xs: TraversableOnce[A]): Unit = synchronized {
+    super.appendAll(xs)
   }
 
   /** Prepend a single element to this buffer and return
@@ -93,41 +89,35 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *
    *  @param elem  the element to append.
    */
-  abstract override def +:(elem: A): Buffer[A] = synchronized {
-    super.+:(elem)
+  abstract override def +=:(elem: A): this.type = synchronized[this.type] {
+    super.+=:(elem)
   }
 
-  /** Prepends a number of elements provided by an iterable object
-   *  via its <code>iterator</code> method. The identity of the
-   *  buffer is returned.
+  /** Prepends a number of elements provided by a traversable object
+   *  via its `foreach` method. The identity of the buffer is returned.
    *
-   *  @param iter  the iterable object.
+   *  @param xs the traversable object.
    */
-  override def ++:(iter: Traversable[A]): Buffer[A] = synchronized {
-    super.++:(iter)
-  }
+  override def ++=:(xs: TraversableOnce[A]): this.type = synchronized[this.type] { super.++=:(xs) }
 
   /** Prepend an element to this list.
    *
    *  @param elem  the element to prepend.
    */
-  override def prepend(elems: A*): Unit = synchronized {
-    super.prependAll(elems)
-  }
+  override def prepend(elems: A*): Unit = prependAll(elems)
 
-  /** Prepends a number of elements provided by an iterable object
-   *  via its <code>iterator</code> method. The identity of the
-   *  buffer is returned.
+  /** Prepends a number of elements provided by a traversable object
+   *  via its `foreach` method. The identity of the buffer is returned.
    *
-   *  @param iter  the iterable object.
+   *  @param xs the traversable object.
    */
-  override def prependAll(elems: Traversable[A]): Unit = synchronized {
-    super.prependAll(elems)
+  override def prependAll(xs: TraversableOnce[A]): Unit = synchronized {
+    super.prependAll(xs)
   }
 
-  /** Inserts new elements at the index <code>n</code>. Opposed to method
-   *  <code>update</code>, this method will not replace an element with a
-   *  one. Instead, it will insert the new elements at index <code>n</code>.
+  /** Inserts new elements at the index `n`. Opposed to method `update`,
+   *  this method will not replace an element with a one.
+   *  Instead, it will insert the new elements at index `n`.
    *
    *  @param n      the index where a new element will be inserted.
    *  @param elems  the new elements to insert.
@@ -136,19 +126,18 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
     super.insertAll(n, elems)
   }
 
-  /** Inserts new elements at the index <code>n</code>. Opposed to method
-   *  <code>update</code>, this method will not replace an element with a
-   *  one. Instead, it will insert a new element at index <code>n</code>.
+  /** Inserts new elements at the index `n`. Opposed to method `update`,
+   *  this method will not replace an element with a one.
+   *  Instead, it will insert a new element at index `n`.
    *
    *  @param n     the index where a new element will be inserted.
-   *  @param iter  the iterable object providing all elements to insert.
+   *  @param xs    the traversable object providing all elements to insert.
    */
-  abstract override def insertAll(n: Int, iter: Traversable[A]): Unit = synchronized {
-     super.insertAll(n, iter)
+  abstract override def insertAll(n: Int, xs: Traversable[A]): Unit = synchronized {
+     super.insertAll(n, xs)
   }
 
-  /** Replace element at index <code>n</code> with the new element
-   *  <code>newelem</code>.
+  /** Replace element at index `n` with the new element `newelem`.
    *
    *  @param n       the index of the element to replace.
    *  @param newelem the new element.
@@ -177,13 +166,13 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
 
   /** Return a clone of this buffer.
    *
-   *  @return an <code>ArrayBuffer</code> with the same elements.
+   *  @return an `ArrayBuffer` with the same elements.
    */
-  override def clone(): Buffer[A] = synchronized {
+  override def clone(): Self = synchronized {
     super.clone()
   }
 
-  /** The hashCode method always yields an error, since it is not
+  /** The `hashCode` method always yields an error, since it is not
    *  safe to use buffers as keys in hash tables.
    *
    *  @return never.

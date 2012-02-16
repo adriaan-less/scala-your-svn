@@ -1,5 +1,5 @@
 class TestSealedExhaustive { // compile only
-    sealed class Foo
+    sealed abstract class Foo
 
     case class Bar(x:Int) extends Foo
     case object Baz extends Foo
@@ -12,7 +12,7 @@ class TestSealedExhaustive { // compile only
       case Baz    => // not exhaustive
     }
 
-    sealed class Mult
+    sealed abstract class Mult
     case class Kult(s:Mult) extends Mult
     case class Qult() extends Mult
 
@@ -32,7 +32,7 @@ class TestSealedExhaustive { // compile only
       case (Qult(), Kult(_))    => 
     }
 
-    sealed class Deep
+    sealed abstract class Deep
 
     case object Ga extends Deep
     sealed class Gp extends Deep
@@ -56,18 +56,76 @@ class TestSealedExhaustive { // compile only
       case Ga =>
     }
 
-  def ma6  = List(1,2) match { // give up
+  def ma6()  = List(1,2) match { // give up
     case List(1,2) =>
     case x :: xs =>
   }
 
-  def ma7 = List(1,2) match { //exhaustive
+  def ma7() = List(1,2) match { //exhaustive
     case 1::2::Nil =>
       case _ =>
   }
-  def redundant = 1 match { // include this otherwise script won't test this in files/neg
-    case 1 =>
-      case 1 => 
+  
+  sealed class B
+  case class B1() extends B
+  case object B2 extends B
+  def ma8(x: B) = x match {
+    case _: B => true
   }
+  def ma9(x: B) = x match {
+    case B1() => true       // missing B, which is not abstract so must be included
+    case B2   => true
+  }
+  
+  object ob1 {
+    sealed abstract class C
+    sealed abstract class C1 extends C
+    object C2 extends C
+    case class C3() extends C
+    case object C4 extends C
 
+    def ma10(x: C) = x match {  // exhaustive: abstract sealed C1 is dead end.
+      case C3()     => true
+      case C2 | C4  => true
+    }
+  }
+  
+  object ob2 {
+    sealed abstract class C
+    abstract class C1 extends C
+    object C2 extends C
+    case class C3() extends C
+    case object C4 extends C
+
+    def ma10(x: C) = x match { // not exhaustive: C1 is not sealed.
+      case C3()     => true
+      case C2 | C4  => true
+    }
+  }
+  object ob3 {
+    sealed abstract class C
+    sealed abstract class C1 extends C
+    object D1 extends C1
+    case class D2() extends C1
+    object C2 extends C
+    case class C3() extends C
+    case object C4 extends C
+
+    def ma10(x: C) = x match {  // not exhaustive: C1 has subclasses.
+      case C3()     => true
+      case C2 | C4  => true
+    }
+  }
+  object ob4 {
+    sealed abstract class C
+    sealed class C1 extends C
+    object C2 extends C
+    case class C3() extends C
+    case object C4 extends C
+
+    def ma10(x: C) = x match { // not exhaustive: C1 is not abstract.
+      case C3()     => true
+      case C2 | C4  => true
+    }
+  }
 }

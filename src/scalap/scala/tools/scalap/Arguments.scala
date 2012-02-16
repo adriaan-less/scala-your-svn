@@ -1,28 +1,25 @@
 /*     ___ ____ ___   __   ___   ___
 **    / _// __// _ | / /  / _ | / _ \  Scala classfile decoder
-**  __\ \/ /__/ __ |/ /__/ __ |/ ___/  (c) 2003-2006, LAMP/EPFL
-** /____/\___/_/ |_/____/_/ |_/_/
+**  __\ \/ /__/ __ |/ /__/ __ |/ ___/  (c) 2003-2011, LAMP/EPFL
+** /____/\___/_/ |_/____/_/ |_/_/      http://scala-lang.org/
 **
 */
 
-// $Id: Arguments.scala 5837 2006-02-23 17:37:25 +0000 (Thu, 23 Feb 2006) michelou $
 
 package scala.tools.scalap
 
-import scala.collection.mutable._
-
+import scala.collection.mutable
+import mutable.{ Buffer, ListBuffer }
 
 object Arguments {
-
   case class Parser(optionPrefix: Char) {
+    val options: mutable.Set[String]                = new mutable.HashSet
+    val prefixes: mutable.Set[String]               = new mutable.HashSet
+    val optionalArgs: mutable.Set[String]           = new mutable.HashSet
+    val prefixedBindings: mutable.Map[String, Char] = new mutable.HashMap
+    val optionalBindings: mutable.Map[String, Char] = new mutable.HashMap
 
-    val options: Set[String] = new HashSet
-    val prefixes: Set[String] = new HashSet
-    val optionalArgs: Set[String] = new HashSet
-    val prefixedBindings: Map[String, Char] = new HashMap
-    val optionalBindings: Map[String, Char] = new HashMap
-
-    def error(message: String): Unit = Console.println(message)
+    def argumentError(message: String): Unit = Console.println(message)
 
     def withOption(option: String): Parser = {
       options += option
@@ -49,14 +46,9 @@ object Arguments {
       this
     }
 
-    def parseBinding(str: String, separator: Char): Pair[String, String] = {
-      val eqls = str.indexOf(separator)
-      if (eqls < 0) {
-        error("missing '" + separator + "' in binding '" + str + "'")
-        Pair("", "")
-      } else
-        Pair(str.substring(0, eqls).trim(),
-           str.substring(eqls + 1).trim())
+    def parseBinding(str: String, separator: Char): (String, String) = (str indexOf separator) match {
+      case -1   => argumentError("missing '" + separator + "' in binding '" + str + "'") ; Pair("", "")
+      case idx  => Pair(str take idx trim, str drop (idx + 1) trim)
     }
 
     def parse(args: Array[String]): Arguments = {
@@ -65,34 +57,34 @@ object Arguments {
       res
     }
 
-    def parse(args: Array[String], res: Arguments): Unit = {
+    def parse(args: Array[String], res: Arguments) {
       if (args != null) {
-        var i = 0;
+        var i = 0
         while (i < args.length)
           if ((args(i) == null) || (args(i).length() == 0))
-            i = i + 1
+            i += 1
           else if (args(i).charAt(0) != optionPrefix) {
             res.addOther(args(i))
-            i = i + 1
-          } else if (options contains args(i)) {
+            i += 1
+          } else if (options(args(i))) {
             res.addOption(args(i))
-            i = i + 1
+            i += 1
           } else if (optionalArgs contains args(i)) {
             if ((i + 1) == args.length) {
-              error("missing argument for '" + args(i) + "'")
-              i = i + 1
+              argumentError("missing argument for '" + args(i) + "'")
+              i += 1
             } else {
               res.addArgument(args(i), args(i + 1))
-              i = i + 2
+              i += 2
             }
           } else if (optionalBindings contains args(i)) {
             if ((i + 1) == args.length) {
-              error("missing argument for '" + args(i) + "'")
-              i = i + 1
+              argumentError("missing argument for '" + args(i) + "'")
+              i += 1
             } else {
               res.addBinding(args(i),
                 parseBinding(args(i + 1), optionalBindings(args(i))));
-              i = i + 2
+              i += 2
             }
           } else {
             var iter = prefixes.iterator
@@ -101,7 +93,7 @@ object Arguments {
               val prefix = iter.next
               if (args(i) startsWith prefix) {
                 res.addPrefixed(prefix, args(i).substring(prefix.length()).trim());
-                i = i + 1
+                i += 1
               }
             }
             if (i == j) {
@@ -116,7 +108,7 @@ object Arguments {
                 }
               }
               if (i == j) {
-                error("unknown option '" + args(i) + "'")
+                argumentError("unknown option '" + args(i) + "'")
                 i = i + 1
               }
             }
@@ -127,75 +119,49 @@ object Arguments {
 
   def parse(options: String*)(args: Array[String]): Arguments = {
     val parser = new Parser('-')
-    val iter = options.iterator
-    while (iter.hasNext)
-      parser withOption iter.next
-    parser.parse(args)
+    options foreach (parser withOption _)
+    parser parse args
   }
 }
 
 class Arguments {
-
-  private val options: Set[String] = new HashSet
-  private val arguments: Map[String, String] = new HashMap
-  private val prefixes: Map[String, Set[String]] = new HashMap
-  private val bindings: Map[String, Map[String, String]] = new HashMap
-  private val others: Buffer[String] = new ListBuffer
+  private val options   = new mutable.HashSet[String]
+  private val arguments = new mutable.HashMap[String, String]
+  private val prefixes  = new mutable.HashMap[String, mutable.HashSet[String]]
+  private val bindings  = new mutable.HashMap[String, mutable.HashMap[String, String]]
+  private val others    = new ListBuffer[String]
 
   def addOption(option: String): Unit = options += option
 
   def addArgument(option: String, arg: String): Unit = arguments(option) = arg
 
   def addPrefixed(prefix: String, arg: String): Unit =
-    if (prefixes isDefinedAt prefix)
-      prefixes(prefix) += arg
-    else {
-      prefixes(prefix) = new HashSet
-      prefixes(prefix) += arg
-    }
+    prefixes.getOrElseUpdate(prefix, new mutable.HashSet) += arg
 
   def addBinding(tag: String, key: String, value: String): Unit =
-    if (key.length() > 0) {
-      if (bindings isDefinedAt tag)
-        bindings(tag)(key) = value
-      else {
-        bindings(tag) = new HashMap
-        bindings(tag)(key) = value
-      }
-    }
+    if (key.length > 0)
+      bindings.getOrElseUpdate(tag, new mutable.HashMap)(key) = value
 
   def addBinding(tag: String, binding: Pair[String, String]): Unit =
     addBinding(tag, binding._1, binding._2)
 
   def addOther(arg: String): Unit = others += arg
 
-  def contains(option: String): Boolean = options contains option
+  def contains(option: String): Boolean = options(option)
 
   def getArgument(option: String): Option[String] = arguments get option
 
-  def getSuffixes(prefix: String): Set[String] =
-    prefixes.get(prefix) match {
-      case None => new HashSet
-      case Some(set) => set
-    }
+  def getSuffixes(prefix: String): mutable.Set[String] =
+    prefixes.getOrElse(prefix, new mutable.HashSet)
 
   def containsSuffix(prefix: String, suffix: String): Boolean =
-    prefixes.get(prefix) match {
-      case None => false
-      case Some(set) => set contains suffix
-    }
+    prefixes get prefix exists (set => set(suffix))
 
-  def getBindings(tag: String): Map[String, String] =
-    bindings.get(tag) match {
-      case None => new HashMap
-      case Some(map) => map
-    }
+  def getBindings(tag: String): mutable.Map[String, String] =
+    bindings.getOrElse(tag, new mutable.HashMap)
 
   def getBinding(option: String, key: String): Option[String] =
-    bindings.get(option) match {
-      case None => None
-      case Some(map) => map get key
-    }
+    bindings get option flatMap (_ get key)
 
   def getOthers: List[String] = others.toList
 

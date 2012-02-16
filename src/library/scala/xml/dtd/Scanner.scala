@@ -1,19 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 
 package scala.xml
 package dtd
 
-
-/** Scanner for regexps (content models in DTD element declarations) 
+/** Scanner for regexps (content models in DTD element declarations)
  *  todo: cleanup
  */
 class Scanner extends Tokens with parsing.TokenTests {
@@ -22,7 +19,7 @@ class Scanner extends Tokens with parsing.TokenTests {
 
   var token:Int = END
   var value:String = _
-  
+
   private var it: Iterator[Char] = null
   private var c: Char = 'z'
 
@@ -36,23 +33,23 @@ class Scanner extends Tokens with parsing.TokenTests {
   }
 
   /** scans the next token */
-  final def nextToken {
+  final def nextToken() {
     if (token != END) token = readToken
   }
 
   // todo: see XML specification... probably isLetter,isDigit is fine
-  final def isIdentChar = ( ('a' <= c && c <= 'z') 
+  final def isIdentChar = ( ('a' <= c && c <= 'z')
                            || ('A' <= c && c <= 'Z'));
-  
-  final def next = if (it.hasNext) c = it.next else c = ENDCH
 
-  final def acc(d: Char) { 
-    if (c == d) next else error("expected '"+d+"' found '"+c+"' !");
+  final def next() = if (it.hasNext) c = it.next else c = ENDCH
+
+  final def acc(d: Char) {
+    if (c == d) next else sys.error("expected '"+d+"' found '"+c+"' !");
   }
 
   final def accS(ds: Seq[Char]) { ds foreach acc }
 
-  final def readToken: Int = 
+  final def readToken: Int =
     if (isSpace(c)) {
       while (isSpace(c)) c = it.next
       S
@@ -66,11 +63,11 @@ class Scanner extends Tokens with parsing.TokenTests {
       case '|'   => next; CHOICE
       case '#'   => next; accS( "PCDATA" ); TOKEN_PCDATA
       case ENDCH => END
-      case _     => 
-        if (isNameStart(c)) name; // NAME 
-        else { error("unexpected character:"+c); END }
+      case _     =>
+        if (isNameStart(c)) name; // NAME
+        else sys.error("unexpected character:" + c)
     }
-  
+
   final def name = {
     val sb = new StringBuilder()
     do { sb.append(c); next } while (isNameChar(c));

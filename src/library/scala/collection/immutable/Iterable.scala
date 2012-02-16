@@ -1,40 +1,43 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.collection.immutable
+package scala.collection
+package immutable
 
-import scala.collection.generic._
-import scala.collection.mutable
+import generic._
+import mutable.Builder
+import parallel.immutable.ParIterable
 
-/** A subtrait of collection.Iterable which represents iterables
- *  that cannot be mutated.
- *        
- *  @author  Matthias Zenger
- *  @author   Martin Odersky
- *  @version 2.8
- */
-trait Iterable[+A] extends Traversable[A] 
-                      with collection.Iterable[A] 
-                      with TraversableClass[A, Iterable]
-                      with IterableTemplate[A, Iterable[A]] { 
-  override def companion: Companion[Iterable] = Iterable
-}	
-
-/** A factory object for the trait <code>Iterable</code>.
+/** A base trait for iterable collections that are guaranteed immutable.
+ *  $iterableInfo
  *
- *  @author   Martin Odersky
- *  @version 2.8
+ *  @define Coll immutable.Iterable
+ *  @define coll immutable iterable collection
  */
-object Iterable extends TraversableFactory[Iterable] {
-  implicit def builderFactory[A]: BuilderFactory[A, Iterable[A], Coll] = new VirtualBuilderFactory[A]
-  def newBuilder[A]: Builder[A, Iterable[A]] = new mutable.ListBuffer
+trait Iterable[+A] extends Traversable[A]
+//                      with GenIterable[A]
+                      with scala.collection.Iterable[A]
+                      with GenericTraversableTemplate[A, Iterable]
+                      with IterableLike[A, Iterable[A]]
+                      with Parallelizable[A, ParIterable[A]]
+{
+  override def companion: GenericCompanion[Iterable] = Iterable
+  protected[this] override def parCombiner = ParIterable.newCombiner[A] // if `immutable.IterableLike` gets introduced, please move this there!
+  override def seq: Iterable[A] = this
 }
 
+/** $factoryInfo
+ *  @define Coll immutable.Iterable
+ *  @define coll immutable iterable collection
+ */
+object Iterable extends TraversableFactory[Iterable] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+  def newBuilder[A]: Builder[A, Iterable[A]] = new mutable.ListBuffer
+}
