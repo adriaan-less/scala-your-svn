@@ -19,7 +19,7 @@ import io.Streamable.slurp
 class JLineReader(_completion: => Completion) extends InteractiveReader {
   val interactive = true
   val consoleReader = new JLineConsoleReader()
-  
+
   lazy val completion = _completion
   lazy val history: JLineHistory = JLineHistory()
   lazy val keyBindings =
@@ -29,16 +29,16 @@ class JLineReader(_completion: => Completion) extends InteractiveReader {
   private def term = consoleReader.getTerminal()
   def reset() = term.reset()
   def init()  = term.init()
-  
+
   def scalaToJline(tc: ScalaCompleter): Completer = new Completer {
     def complete(_buf: String, cursor: Int, candidates: JList[CharSequence]): Int = {
-      val buf   = if (_buf == null) "" else _buf      
+      val buf   = if (_buf == null) "" else _buf
       val Candidates(newCursor, newCandidates) = tc.complete(buf, cursor)
       newCandidates foreach (candidates add _)
       newCursor
     }
   }
-    
+
   class JLineConsoleReader extends ConsoleReader with ConsoleReaderHelper {
     // working around protected/trait/java insufficiencies.
     def goBack(num: Int): Unit = back(num)
@@ -54,26 +54,25 @@ class JLineReader(_completion: => Completion) extends InteractiveReader {
     // A hook for running code after the repl is done initializing.
     lazy val postInit: Unit = {
       this setBellEnabled false
-      if (history ne NoHistory)
+      if ((history: History) ne NoHistory)
         this setHistory history
-    
+
       if (completion ne NoCompletion) {
         val argCompletor: ArgumentCompleter =
           new ArgumentCompleter(new JLineDelimiter, scalaToJline(completion.completer()))
         argCompletor setStrict false
-      
+
         this addCompleter argCompletor
         this setAutoprintThreshold 400 // max completion candidates without warning
       }
     }
   }
- 
-  def currentLine: String = consoleReader.getCursorBuffer.buffer.toString
+
+  def currentLine = consoleReader.getCursorBuffer.buffer.toString
   def redrawLine() = consoleReader.redrawLineAndFlush()
-  def eraseLine() = {
-    // while (consoleReader.delete()) { }
-    consoleReader.eraseLine()
-  }
+  def eraseLine() = consoleReader.eraseLine()
+  // Alternate implementation, not sure if/when I need this.
+  // def eraseLine() = while (consoleReader.delete()) { }
   def readOneLine(prompt: String) = consoleReader readLine prompt
   def readOneKey(prompt: String)  = consoleReader readOneKey prompt
 }
