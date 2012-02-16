@@ -1,71 +1,58 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.actors
 
-import java.lang.Runnable
-
-/** <p>
- *    The class <code>ActorTask</code>...
- *  </p>
- *
+/**
  *  @author Philipp Haller
+ *  @note   This class inherits a public var called 'msg' from ReactorTask,
+ *  and also defines a constructor parameter which shadows it (which makes any
+ *  changes to the underlying var invisible.) I can't figure out what's supposed
+ *  to happen, so I renamed the constructor parameter to at least be less confusing.
  */
-class ActorTask extends Runnable {
+private[actors] class ActorTask(actor: Actor,
+                                fun: () => Unit,
+                                handler: PartialFunction[Any, Any],
+                                initialMsg: Any)
+  extends ReplyReactorTask(actor, fun, handler, initialMsg) {
 
-  private var a: Actor = null
-  private var fun: () => Unit = null
-
-  def this(a: Actor, fun: () => Unit) {
-    this()
-    this.a = a
-    this.fun = fun
+  protected override def beginExecution() {
+    super.beginExecution()
+    actor.synchronized { // shouldExit guarded by actor
+      if (actor.shouldExit)
+        actor.exit()
+    }
   }
 
-  def run() {
-    val saved = Actor.tl.get
-    Actor.tl set a
-    try {
-      if (a.shouldExit) // links
-        a.exit()
-      try {
-        try {
-          fun()
-        } catch {
-          case e: Exception if (a.exceptionHandler.isDefinedAt(e)) =>
-            a.exceptionHandler(e)
-        }
-      } catch {
-        case _: KillActorException =>
-      }
-      a.kill()
+  protected override def terminateExecution(e: Throwable) {
+    val senderInfo = try { Some(actor.sender) } catch {
+      case _: Exception => None
     }
-    catch {
-      case _: SuspendActorException => {
-        // do nothing
+    // !!! If this is supposed to be setting the current contents of the
+    // inherited mutable var rather than always the value given in the constructor,
+    // then it should be changed from initialMsg to msg.
+    val uncaught = UncaughtException(actor,
+                                     if (initialMsg != null) Some(initialMsg) else None,
+                                     senderInfo,
+                                     Thread.currentThread,
+                                     e)
+
+    val todo = actor.synchronized {
+      if (!actor.links.isEmpty)
+        actor.exitLinked(uncaught)
+      else {
+        super.terminateExecution(e)
+        () => {}
       }
-      case t: Exception => {
-        Debug.info(a+": caught "+t)
-        a.terminated()
-        // links
-        a.synchronized {
-          if (!a.links.isEmpty)
-            a.exitLinked(t)
-        }
-      }
-    } finally {
-      Actor.tl set saved
-      this.a = null
-      this.fun = null
     }
+    todo()
   }
 
 }

@@ -1,22 +1,22 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.util
+
+import collection.mutable.ArrayBuffer
+import collection.generic.CanBuildFrom
+import scala.collection.immutable.{ List, Stream }
 
 /**
  *  @author Stephane Micheloud
  *
  */
 class Random(val self: java.util.Random) {
-
   /** Creates a new random number generator using a single long seed. */
   def this(seed: Long) = this(new java.util.Random(seed))
 
@@ -68,41 +68,76 @@ class Random(val self: java.util.Random) {
    */
   def nextLong(): Long = self.nextLong()
 
-  def setSeed(seed: Long) { self.setSeed(seed) }
-}
-
-/** The object <code>Random</code> offers a default implementation
- *  of scala.util.Random and random-related convenience methods.
- *
- *  @since 2.8
- */
-object Random extends Random
-{
-  import collection.Sequence
-  
-  /** Returns a new sequence in random order.
-   *  @param  seq   the sequence to shuffle
-   *  @return       the shuffled sequence
+  /** Returns a pseudorandomly generated String.  This routine does
+   *  not take any measures to preserve the randomness of the distribution
+   *  in the face of factors like unicode's variable-length encoding,
+   *  so please don't use this for anything important.  It's primarily
+   *  intended for generating test data.
+   *
+   *  @param  length    the desired length of the String
+   *  @return           the String
    */
-  def shuffle[T](seq: Sequence[T]): Sequence[T] = {
-    // It would be better if this preserved the shape of its container, but I have
-    // again been defeated by the lack of higher-kinded type inference.  I can
-    // only make it work that way if it's called like
-    //   shuffle[Int,List](List.range(0,100))
-    // which nicely defeats the "convenience" portion of "convenience method".
-    val buf: Array[T] = seq.toArray
-        
+  def nextString(length: Int) = {
+    def safeChar() = {
+      val surrogateStart: Int = 0xD800
+      val res = nextInt(surrogateStart - 1) + 1
+      res.toChar
+    }
+
+    List.fill(length)(safeChar()).mkString
+  }
+
+  /** Returns the next pseudorandom, uniformly distributed value
+   *  from the ASCII range 33-126.
+   */
+  def nextPrintableChar(): Char = {
+    val low  = 33
+    val high = 127
+    (self.nextInt(high - low) + low).toChar
+  }
+
+  def setSeed(seed: Long) { self.setSeed(seed) }
+
+  /** Returns a new collection of the same type in a randomly chosen order.
+   *
+   *  @param  coll    the [[scala.collection.TraversableOnce]] to shuffle
+   *  @return         the shuffled [[scala.collection.TraversableOnce]]
+   */
+  def shuffle[T, CC[X] <: TraversableOnce[X]](xs: CC[T])(implicit bf: CanBuildFrom[CC[T], T, CC[T]]): CC[T] = {
+    val buf = new ArrayBuffer[T] ++= xs
+
     def swap(i1: Int, i2: Int) {
       val tmp = buf(i1)
       buf(i1) = buf(i2)
       buf(i2) = tmp
     }
-    
+
     for (n <- buf.length to 2 by -1) {
       val k = nextInt(n)
       swap(n - 1, k)
     }
-    
-    buf.toSeq
+
+    bf(xs) ++= buf result
   }
+
+}
+
+/** The object `Random` offers a default implementation
+ *  of scala.util.Random and random-related convenience methods.
+ *
+ *  @since 2.8
+ */
+object Random extends Random {
+
+  /** Returns a Stream of pseudorandomly chosen alphanumeric characters,
+   *  equally chosen from A-Z, a-z, and 0-9.
+   *
+   *  @since 2.8
+   */
+  def alphanumeric: Stream[Char] = {
+    def isAlphaNum(c: Char) = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+
+    Stream continually nextPrintableChar filter isAlphaNum
+  }
+
 }

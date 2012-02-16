@@ -1,80 +1,83 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.io
 
-import java.io.{ InputStream, Reader, BufferedReader, InputStreamReader, IOException }
-import java.nio.charset.{ Charset, CharsetDecoder, CodingErrorAction, CharacterCodingException, MalformedInputException }
-import java.nio.channels.Channels
-import Source._
-
-object BufferedSource
-{  
-  /** Reads data from <code>inputStream</code> with a buffered reader,
-   *  using encoding in implicit parameter <code>codec</code>.
-   * 
-   *  @param  inputStream  the input stream from which to read
-   *  @param  bufferSize   buffer size (defaults to Source.DefaultBufSize)
-   *  @param  reset        a () => Source which resets the stream (defaults to Source.NoReset)
-   *  @param  codec        (implicit) a scala.io.Codec specifying behavior (defaults to Codec.default)
-   *  @return              the buffered source
-   */
-  def fromInputStream(
-    inputStream: InputStream,
-    bufferSize: Int = DefaultBufSize,
-    reset: () => Source = null
-  )(implicit codec: Codec = Codec.default) =
-  {
-    if (reset == null) new BufferedSource(inputStream, bufferSize, codec)
-    else {    
-      def _reset = reset        
-      new BufferedSource(inputStream, bufferSize, codec) {
-        override def reset = _reset()
-      }
-    }
-  }
-}
+import java.io.{ InputStream, BufferedReader, InputStreamReader, PushbackReader }
+import Source.DefaultBufSize
+import scala.collection.{ Iterator, AbstractIterator }
 
 /** This object provides convenience methods to create an iterable
  *  representation of a source file.
  *
- *  @author  Burak Emir
- *  @version 1.0, 19/08/2004
+ *  @author  Burak Emir, Paul Phillips
  */
-class BufferedSource(
-  inputStream: InputStream,
-  bufferSize: Int,
-  codec: Codec)
-extends Source
-{
-  val decoder = codec.decoder
-  decoder.reset
-  decoder onMalformedInput codec.malformedAction
-  val reader = new BufferedReader(new InputStreamReader(inputStream, decoder), bufferSize)
-  
-  override val iter = new Iterator[Char] {
-    private def getc(): Int = 
-      try     { reader.read() }
-      catch   { case e: CharacterCodingException => codec receivedMalformedInput e }
-        
-    private[this] var buf_char = getc
-    def peek = buf_char
-    def hasNext = { buf_char != -1 }
-    def next = {
-      val c = buf_char.toChar
-      buf_char = getc
-      c
+class BufferedSource(inputStream: InputStream, bufferSize: Int)(implicit val codec: Codec) extends Source {
+  def this(inputStream: InputStream)(implicit codec: Codec) = this(inputStream, DefaultBufSize)(codec)
+  def reader() = new InputStreamReader(inputStream, codec.decoder)
+  def bufferedReader() = new BufferedReader(reader(), bufferSize)
+
+  // The same reader has to be shared between the iterators produced
+  // by iter and getLines. This is because calling hasNext can cause a
+  // block of data to be read from the stream, which will then be lost
+  // to getLines if it creates a new reader, even though next() was
+  // never called on the original.
+  private var charReaderCreated = false
+  private lazy val charReader = {
+    charReaderCreated = true
+    bufferedReader()
+  }
+
+  override lazy val iter = (
+    Iterator
+    continually (codec wrap charReader.read())
+    takeWhile (_ != -1)
+    map (_.toChar)
+  )
+
+  class BufferedLineIterator extends AbstractIterator[String] with Iterator[String] {
+    // Don't want to lose a buffered char sitting in iter either. Yes,
+    // this is ridiculous, but if I can't get rid of Source, and all the
+    // Iterator bits are designed into Source, and people create Sources
+    // in the repl, and the repl calls toString for the result line, and
+    // that calls hasNext to find out if they're empty, and that leads
+    // to chars being buffered, and no, I don't work here, they left a
+    // door unlocked.
+    private val lineReader: BufferedReader = {
+      // To avoid inflicting this silliness indiscriminately, we can
+      // skip it if the char reader was never created: and almost always
+      // it will not have been created, since getLines will be called
+      // immediately on the source.
+      if (charReaderCreated && iter.hasNext) {
+        val pb = new PushbackReader(charReader)
+        pb unread iter.next()
+        new BufferedReader(pb, bufferSize)
+      }
+      else charReader
+    }
+    var nextLine: String = null
+
+    override def hasNext = {
+      if (nextLine == null)
+        nextLine = lineReader.readLine
+
+      nextLine != null
+    }
+    override def next(): String = {
+      val result = {
+        if (nextLine == null) lineReader.readLine
+        else try nextLine finally nextLine = null
+      }
+      if (result == null) Iterator.empty.next
+      else result
     }
   }
-  def close: Unit     = reader.close
-  def reset(): Source = NoReset()
+
+  override def getLines(): Iterator[String] = new BufferedLineIterator
 }
 

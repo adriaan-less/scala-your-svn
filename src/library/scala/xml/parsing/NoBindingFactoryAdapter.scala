@@ -1,18 +1,16 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
-package scala.xml.parsing
+package scala.xml
+package parsing
 
-import scala.xml.factory.NodeFactory
-import org.xml.sax.InputSource
-import javax.xml.parsers.{ SAXParser, SAXParserFactory }
+import factory.NodeFactory
 
 /** nobinding adaptor providing callbacks to parser to create elements.
 *   implements hash-consing
@@ -29,7 +27,7 @@ class NoBindingFactoryAdapter extends FactoryAdapter with NodeFactory[Elem]
   /** From FactoryAdapter.  Creates a node. never creates the same node twice, using hash-consing. */
   def createNode(pre: String, label: String, attrs: MetaData, scope: NamespaceBinding, children: List[Node]): Elem =
     Elem(pre, label, attrs, scope, children: _*)
-  
+
   /** Creates a text node. */
   def createText(text: String) = Text(text)
 

@@ -1,185 +1,83 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
+package scala.collection
+package generic
 
-package scala.collection.generic
+import annotation.bridge
 
-/** A template for companion objects of Traversable and subclasses thereof.
+/** A template for companion objects of `Traversable` and subclasses thereof.
+ *  This class provides a set of operations to create `$Coll` objects.
+ *  It is typically inherited by companion objects of subclasses of `Traversable`.
+ *
+ *  @since 2.8
+ *
+ *  @define coll collection
+ *  @define Coll Traversable
+ *  @define factoryInfo
+ *    This object provides a set of operations to create `$Coll` values.
+ *    @author Martin Odersky
+ *    @version 2.8
+ *  @define canBuildFromInfo
+ *    The standard `CanBuildFrom` instance for $Coll objects.
+ *    @see CanBuildFrom
+ *  @define genericCanBuildFromInfo
+ *    The standard `CanBuildFrom` instance for $Coll objects.
+ *    The created value is an instance of class `GenericCanBuildFrom`,
+ *    which forwards calls to create a new builder to the
+ *    `genericBuilder` method of the requesting collection.
+ *    @see CanBuildFrom
+ *    @see GenericCanBuildFrom
  */
-abstract class TraversableFactory[CC[X] <: Traversable[X] with TraversableClass[X, CC]]
-  extends Companion[CC] {
+trait TraversableFactory[CC[X] <: Traversable[X] with GenericTraversableTemplate[X, CC]]
+  extends GenTraversableFactory[CC] with GenericSeqCompanion[CC] {
 
-  class VirtualBuilderFactory[A] extends BuilderFactory[A, CC[A], CC[_]] {
-    def apply(from: Coll) = from.genericBuilder[A] 
-  }
+  @bridge
+  override def concat[A](xss: Traversable[A]*): CC[A] = super.concat(xss: _*)
 
-  /** Concatenate all the argument collections into a single collection.
-   *
-   *  @param xss the collections that are to be concatenated
-   *  @return the concatenation of all the collections
-   */
-  def concat[A](xss: Traversable[A]*): CC[A] = {
-    val b = newBuilder[A]
-    for (xs <- xss) b ++= xs
-    b.result
-  }
+  @bridge
+  override def fill[A](n: Int)(elem: => A): CC[A] = super.fill(n)(elem)
 
-  /** An iterable that contains the results of some element computation a number of times.
-   *  @param   n  the number of elements returned
-   *  @param   elem the element computation
-   */
-  def fill[A](n: Int)(elem: => A): CC[A] = {
-    val b = newBuilder[A]
-    var i = 0
-    while (i < n) {
-      b += elem
-      i += 1
-    }
-    b.result
-  }
+  @bridge
+  override def fill[A](n1: Int, n2: Int)(elem: => A): CC[CC[A]] = super.fill(n1, n2)(elem)
 
-  /** A two-dimensional iterable that contains the results of some element computation a number of times.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   elem the element computation
-   */
-  def fill[A](n1: Int, n2: Int)(elem: => A): CC[CC[A]] = 
-    tabulate(n1)(_ => fill(n2)(elem))
+  @bridge
+  override def fill[A](n1: Int, n2: Int, n3: Int)(elem: => A): CC[CC[CC[A]]] = super.fill(n1, n2, n3)(elem)
 
-  /** A three-dimensional iterable that contains the results of some element computation a number of times.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   n3  the number of elements in the 3nd dimension
-   *  @param   elem the element computation
-   */
-  def fill[A](n1: Int, n2: Int, n3: Int)(elem: => A): CC[CC[CC[A]]] = 
-    tabulate(n1)(_ => fill(n2, n3)(elem))
+  @bridge
+  override def fill[A](n1: Int, n2: Int, n3: Int, n4: Int)(elem: => A): CC[CC[CC[CC[A]]]] = super.fill(n1, n2, n3, n4)(elem)
 
-  /** A four-dimensional iterable that contains the results of some element computation a number of times.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   n3  the number of elements in the 3nd dimension
-   *  @param   n4  the number of elements in the 4th dimension
-   *  @param   elem the element computation
-   */
-  def fill[A](n1: Int, n2: Int, n3: Int, n4: Int)(elem: => A): CC[CC[CC[CC[A]]]] = 
-    tabulate(n1)(_ => fill(n2, n3, n4)(elem))
+  @bridge
+  override def fill[A](n1: Int, n2: Int, n3: Int, n4: Int, n5: Int)(elem: => A): CC[CC[CC[CC[CC[A]]]]] = super.fill(n1, n2, n3, n4, n5)(elem)
 
-  /** A five-dimensional iterable that contains the results of some element computation a number of times.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   n3  the number of elements in the 3nd dimension
-   *  @param   n4  the number of elements in the 4th dimension
-   *  @param   n5  the number of elements in the 5th dimension
-   *  @param   elem the element computation
-   */
-  def fill[A](n1: Int, n2: Int, n3: Int, n4: Int, n5: Int)(elem: => A): CC[CC[CC[CC[CC[A]]]]] = 
-    tabulate(n1)(_ => fill(n2, n3, n4, n5)(elem))
+  @bridge
+  override def tabulate[A](n: Int)(f: Int => A): CC[A] = super.tabulate(n)(f)
 
-  /** An iterable containing values of a given function over a range of integer values starting from 0.
-   *  @param  n   The number of elements in the iterable
-   *  @param  f   The function computing element values
-   *  @return An iterable consisting of elements `f(0), ..., f(n -1)`
-   */	
-  def tabulate[A](n: Int)(f: Int => A): CC[A] = {
-    val b = newBuilder[A]
-    var i = 0
-    while (i < n) {
-      b += f(i)
-      i += 1
-    }
-    b.result
-  }
+  @bridge
+  override def tabulate[A](n1: Int, n2: Int)(f: (Int, Int) => A): CC[CC[A]] = super.tabulate(n1, n2)(f)
 
-  /** A two-dimensional iterable containing values of a given function over ranges of integer values starting from 0.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   f   The function computing element values
-   */	
-  def tabulate[A](n1: Int, n2: Int)(f: (Int, Int) => A): CC[CC[A]] = 
-    tabulate(n1)(i1 => tabulate(n2)(f(i1, _)))
+  @bridge
+  override def tabulate[A](n1: Int, n2: Int, n3: Int)(f: (Int, Int, Int) => A): CC[CC[CC[A]]] = super.tabulate(n1, n2, n3)(f)
 
-  /** A three-dimensional iterable containing values of a given function over ranges of integer values starting from 0.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   n3  the number of elements in the 3nd dimension
-   *  @param   f   The function computing element values
-   */	
-  def tabulate[A](n1: Int, n2: Int, n3: Int)(f: (Int, Int, Int) => A): CC[CC[CC[A]]] = 
-    tabulate(n1)(i1 => tabulate(n2, n3)(f(i1, _, _)))
+  @bridge
+  override def tabulate[A](n1: Int, n2: Int, n3: Int, n4: Int)(f: (Int, Int, Int, Int) => A): CC[CC[CC[CC[A]]]] = super.tabulate(n1, n2, n3, n4)(f)
 
-  /** A four-dimensional iterable containing values of a given function over ranges of integer values starting from 0.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   n3  the number of elements in the 3nd dimension
-   *  @param   n4  the number of elements in the 4th dimension
-   *  @param   f   The function computing element values
-   */	
-  def tabulate[A](n1: Int, n2: Int, n3: Int, n4: Int)(f: (Int, Int, Int, Int) => A): CC[CC[CC[CC[A]]]] = 
-    tabulate(n1)(i1 => tabulate(n2, n3, n4)(f(i1, _, _, _)))
+  @bridge
+  override def tabulate[A](n1: Int, n2: Int, n3: Int, n4: Int, n5: Int)(f: (Int, Int, Int, Int, Int) => A): CC[CC[CC[CC[CC[A]]]]] = super.tabulate(n1, n2, n3, n4, n5)(f)
 
-  /** A five-dimensional iterable containing values of a given function over ranges of integer values starting from 0.
-   *  @param   n1  the number of elements in the 1st dimension
-   *  @param   n2  the number of elements in the 2nd dimension
-   *  @param   n3  the number of elements in the 3nd dimension
-   *  @param   n4  the number of elements in the 4th dimension
-   *  @param   n5  the number of elements in the 5th dimension
-   *  @param   f   The function computing element values
-   */	
-  def tabulate[A](n1: Int, n2: Int, n3: Int, n4: Int, n5: Int)(f: (Int, Int, Int, Int, Int) => A): CC[CC[CC[CC[CC[A]]]]] = 
-    tabulate(n1)(i1 => tabulate(n2, n3, n4, n5)(f(i1, _, _, _, _)))
+  @bridge
+  override def range[T: Integral](start: T, end: T): CC[T] = super.range(start, end)
 
-  /** An iterable containing a sequence of increasing integers in a range.
-   *
-   *  @param from the start value of the iterable
-   *  @param end the end value of the iterable (the first value NOT returned)
-   *  @return  the iterable with values in range `start, start + 1, ..., end - 1`
-   *  up to, but exclusding, `end`.
-   */
-  def range[A](start: Int, end: Int): CC[Int] = range(start, end, 1)
+  @bridge
+  override def range[T: Integral](start: T, end: T, step: T): CC[T] = super.range(start, end, step)
 
-  /** An iterable containing equally spaced values in some integer interval.
- 
-   *  @param start the start value of the iterable
-   *  @param end   the end value of the iterable (the first value NOT returned)
-   *  @param step  the increment value of the iterable (must be positive or negative)
-   *  @return      the iterable with values in `start, start + step, ...` up to, but excluding `end`
-   */
-  def range(start: Int, end: Int, step: Int): CC[Int] = {
-    if (step == 0) throw new IllegalArgumentException("zero step")
-    val b = newBuilder[Int]
-    var i = start
-    while (if (step < 0) end < i else i < end) {
-      b += i
-      i += step
-    }
-    b.result
-  }
-
-  /** An iterable containing repeated applications of a function to a start value.
-   *
-   *  @param start the start value of the iterable
-   *  @param len   the number of elements returned by the iterable
-   *  @param f     the function that's repeatedly applied
-   *  @return      the iterable returning `len` values in the sequence `start, f(start), f(f(start)), ...`
-   */
-  def iterate(start: Int, len: Int)(f: Int => Int): CC[Int] = {
-    val b = newBuilder[Int]
-    var acc = start
-    var i = 0
-    while (i < len) {
-      b += acc
-      acc = f(acc)
-      i += 1
-    }
-    b.result
-  }
+  @bridge
+  override def iterate[A](start: A, len: Int)(f: A => A): CC[A] = super.iterate(start, len)(f)
 }
 

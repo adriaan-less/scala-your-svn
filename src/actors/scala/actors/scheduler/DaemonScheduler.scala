@@ -1,12 +1,13 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-package scala.actors.scheduler
+package scala.actors
+package scheduler
 
 /**
  * Default scheduler for actors with daemon semantics, such as those backing futures.
@@ -15,6 +16,18 @@ package scala.actors.scheduler
  */
 object DaemonScheduler extends DelegatingScheduler {
 
-  def makeNewScheduler(): IScheduler = new DefaultExecutorScheduler(true)
+  protected def makeNewScheduler(): IScheduler = {
+    val sched = if (!ThreadPoolConfig.useForkJoin) {
+      val s = new ResizableThreadPoolScheduler(true)
+      s.start()
+      s
+    } else {
+      val s = new ForkJoinScheduler(true)
+      s.start()
+      s
+    }
+    Debug.info(this+": starting new "+sched+" ["+sched.getClass+"]")
+    sched
+  }
 
 }

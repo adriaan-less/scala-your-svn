@@ -1,26 +1,55 @@
-package scala.tools.scalap.scalax.rules.scalasig
+/*     ___ ____ ___   __   ___   ___
+**    / _// __// _ | / /  / _ | / _ \    Scala classfile decoder
+**  __\ \/ /__/ __ |/ /__/ __ |/ ___/    (c) 2003-2011, LAMP/EPFL
+** /____/\___/_/ |_/____/_/ |_/_/        http://scala-lang.org/
+**
+*/
+
+
+package scala.tools.scalap
+package scalax
+package rules
+package scalasig
+
+import ClassFileParser.{ ConstValueIndex, Annotation }
+import scala.reflect.internal.pickling.ByteCodecs
 
 object ScalaSigParser {
+  import Main.{ SCALA_SIG, SCALA_SIG_ANNOTATION, BYTES_VALUE }
 
-  def getScalaSig(clazz : Class[_]) : Option[ByteCode] = {
-    val byteCode = ByteCode.forClass(clazz)
-    val classFile = ClassFileParser.parse(byteCode)
+  def scalaSigFromAnnotation(classFile: ClassFile): Option[ScalaSig] = {
+    import classFile._
 
-    /*
-    println("ClassFile version: " + classFile.majorVersion + "." + classFile.minorVersion)
-    println("Class: " + classFile.className)
-    println("Superclass: " + classFile.superClass)
-    println("Interfaces: " + classFile.interfaces.mkString(", "))
-    println("Constant pool:")
-    val constantPool = classFile.header.constants
-    for (i <- 1 to constantPool.size) println(i + "\t" + constantPool(i))
-    */
+    classFile.annotation(SCALA_SIG_ANNOTATION) map {
+      case Annotation(_, elements) =>
+        val bytesElem = elements.find(elem => constant(elem.elementNameIndex) == BYTES_VALUE).get
+        val bytes = ((bytesElem.elementValue match {case ConstValueIndex(index) => constantWrapped(index)})
+                .asInstanceOf[StringBytesPair].bytes)
+        val length = ByteCodecs.decode(bytes)
 
-    classFile.attribute("ScalaSig").map(_.byteCode)
+        ScalaSigAttributeParsers.parse(ByteCode(bytes.take(length)))
+    }
   }
 
-  def parse(clazz : Class[_]) : Option[ScalaSig] = {
-    getScalaSig(clazz).map(ScalaSigAttributeParsers.parse)
+  def scalaSigFromAttribute(classFile: ClassFile) : Option[ScalaSig] =
+    classFile.attribute(SCALA_SIG).map(_.byteCode).map(ScalaSigAttributeParsers.parse)
+
+  def parse(classFile: ClassFile): Option[ScalaSig] = {
+    val scalaSig  = scalaSigFromAttribute(classFile)
+
+    scalaSig match {
+      // No entries in ScalaSig attribute implies that the signature is stored in the annotation
+      case Some(ScalaSig(_, _, entries)) if entries.length == 0 =>
+        scalaSigFromAnnotation(classFile)
+      case x => x
+    }
+  }
+
+  def parse(clazz : Class[_]): Option[ScalaSig] = {
+    val byteCode  = ByteCode.forClass(clazz)
+    val classFile = ClassFileParser.parse(byteCode)
+
+    parse(classFile)
   }
 }
 
@@ -43,7 +72,7 @@ object ScalaSigAttributeParsers extends ByteCodeReader  {
   val symtab = nat >> entry.times
   val scalaSig = nat ~ nat ~ symtab ^~~^ ScalaSig
 
-  val utf8 = read(_ toUTF8String)
+  val utf8 = read(x => x.fromUTF8StringAndBytes.string)
   val longValue = read(_ toLong)
 }
 
@@ -152,21 +181,21 @@ object ScalaSigEntryParsers extends RulesWithState with MemoisableRules {
    *                  | 5 ALIASsym len_Nat SymbolInfo
    *                  | 6 CLASSsym len_Nat SymbolInfo [thistype_Ref]
    *                  | 7 MODULEsym len_Nat SymbolInfo
-   *                  | 8 VALsym len_Nat [defaultGetter_Ref] SymbolInfo [alias_Ref]
+   *                  | 8 VALsym len_Nat [defaultGetter_Ref /* no longer needed*/] SymbolInfo [alias_Ref]
    *                  | 9 EXTref len_Nat name_Ref [owner_Ref]
    *                  | 10 EXTMODCLASSref len_Nat name_Ref [owner_Ref]
    *                  | 11 NOtpe len_Nat
    *                  | 12 NOPREFIXtpe len_Nat
    *                  | 13 THIStpe len_Nat sym_Ref
    *                  | 14 SINGLEtpe len_Nat type_Ref sym_Ref
-   *                  | 15 CONSTANTtpe len_Nat type_Ref constant_Ref
+   *                  | 15 CONSTANTtpe len_Nat constant_Ref
    *                  | 16 TYPEREFtpe len_Nat type_Ref sym_Ref {targ_Ref}
    *                  | 17 TYPEBOUNDStpe len_Nat tpe_Ref tpe_Ref
    *                  | 18 REFINEDtpe len_Nat classsym_Ref {tpe_Ref}
    *                  | 19 CLASSINFOtpe len_Nat classsym_Ref {tpe_Ref}
    *                  | 20 METHODtpe len_Nat tpe_Ref {sym_Ref}
    *                  | 21 POLYTtpe len_Nat tpe_Ref {sym_Ref}
-   *                  | 22 IMPLICITMETHODtpe len_Nat tpe_Ref {tpe_Ref}
+   *                  | 22 IMPLICITMETHODtpe len_Nat tpe_Ref {sym_Ref} /* no longer needed */
    *                  | 52 SUPERtpe len_Nat tpe_Ref tpe_Ref
    *                  | 24 LITERALunit len_Nat
    *                  | 25 LITERALboolean len_Nat value_Long
@@ -183,13 +212,12 @@ object ScalaSigEntryParsers extends RulesWithState with MemoisableRules {
    *                  | 36 LITERALenum len_Nat sym_Ref
    *                  | 40 SYMANNOT len_Nat sym_Ref AnnotInfoBody
    *                  | 41 CHILDREN len_Nat sym_Ref {sym_Ref}
-   *                  | 42 ANNOTATEDtpe len_Nat [sym_Ref] tpe_Ref {annotinfo_Ref}
+   *                  | 42 ANNOTATEDtpe len_Nat [sym_Ref /* no longer needed */] tpe_Ref {annotinfo_Ref}
    *                  | 43 ANNOTINFO len_Nat AnnotInfoBody
    *                  | 44 ANNOTARGARRAY len_Nat {constAnnotArg_Ref}
    *                  | 47 DEBRUIJNINDEXtpe len_Nat level_Nat index_Nat
    *                  | 48 EXISTENTIALtpe len_Nat type_Ref {symbol_Ref}
    */
-
   val noSymbol = 3 -^ NoSymbol
   val typeSymbol = symbolEntry(4) ^^ TypeSymbol as "typeSymbol"
   val aliasSymbol = symbolEntry(5) ^^ AliasSymbol as "alias"
@@ -225,22 +253,25 @@ object ScalaSigEntryParsers extends RulesWithState with MemoisableRules {
       18 -~ classSymRef ~ (typeRef*) ^~^ RefinedType,
       19 -~ symbolRef ~ (typeRef*) ^~^ ClassInfoType,
       20 -~ typeRef ~ (symbolRef*) ^~^ MethodType,
-      21 -~ typeRef ~ (refTo(typeSymbol)*) ^~^ PolyType,
-      22 -~ typeRef ~ (symbolRef*) ^~^ ImplicitMethodType,
+      21 -~ typeRef ~ (refTo(typeSymbol)+) ^~^ PolyType,
+      // TODO: make future safe for past by doing the same transformation as in the
+      // full unpickler in case we're reading pre-2.9 classfiles
+      21 -~ typeRef ^^ NullaryMethodType,
+      22 -~ typeRef ~ (symbolRef*) ^~^ MethodType,
       42 -~ typeRef ~ (attribTreeRef*) ^~^ AnnotatedType,
       51 -~ typeRef ~ symbolRef ~ (attribTreeRef*) ^~~^ AnnotatedWithSelfType,
       47 -~ typeLevel ~ typeIndex ^~^ DeBruijnIndexType,
       48 -~ typeRef ~ (symbolRef*) ^~^ ExistentialType) as "type"
 
   lazy val literal = oneOf(
-      24 -^ (),
-      25 -~ longValue ^^ (_ != 0),
-      26 -~ longValue ^^ (_.asInstanceOf[Byte]),
-      27 -~ longValue ^^ (_.asInstanceOf[Short]),
-      28 -~ longValue ^^ (_.asInstanceOf[Char]),
-      29 -~ longValue ^^ (_.asInstanceOf[Int]),
-      30 -~ longValue ^^ (_.asInstanceOf[Long]),
-      31 -~ longValue ^^ (l => java.lang.Float.intBitsToFloat(l.asInstanceOf[Int])),
+      24 -^ (()),
+      25 -~ longValue ^^ (_ != 0L),
+      26 -~ longValue ^^ (_.toByte),
+      27 -~ longValue ^^ (_.toShort),
+      28 -~ longValue ^^ (_.toChar),
+      29 -~ longValue ^^ (_.toInt),
+      30 -~ longValue ^^ (_.toLong),
+      31 -~ longValue ^^ (l => java.lang.Float.intBitsToFloat(l.toInt)),
       32 -~ longValue ^^ (java.lang.Double.longBitsToDouble),
       33 -~ nameRef,
       34 -^ null,
@@ -319,5 +350,5 @@ object ScalaSigEntryParsers extends RulesWithState with MemoisableRules {
    *   AnnotArg       = Tree | Constant
    *   ConstAnnotArg  = Constant | AnnotInfo | AnnotArgArray
    *
-   *   len is remaining length after `len'.
+   *   len is remaining length after `len`.
    */
