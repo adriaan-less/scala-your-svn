@@ -6,61 +6,61 @@
 package scala.tools.nsc
 
 import java.io.{ BufferedReader, File, InputStreamReader, PrintWriter }
-import Properties.fileEndings
-import io.Path
 import settings.FscSettings
+import scala.tools.util.CompileOutputCommon
+import sys.SystemProperties.preferIPv4Stack
 
 /** The client part of the fsc offline compiler.  Instead of compiling
  *  things itself, it send requests to a CompileServer.
  */
-class StandardCompileClient extends HasCompileSocket {
+class StandardCompileClient extends HasCompileSocket with CompileOutputCommon {
   lazy val compileSocket: CompileSocket = CompileSocket
 
-  val versionMsg  = "Fast " + Properties.versionMsg
-  var verbose = false
+  val versionMsg = "Fast " + Properties.versionMsg
+  var verbose    = false
 
-  def logVerbose(msg: String) =
-    if (verbose)
-      Console println msg
+  def process(args: Array[String]): Boolean = {
+    // Trying to get out in front of the log messages in case we're
+    // going from verbose to not verbose.
+    verbose = (args contains "-verbose")
 
-  def main0(argsIn: Array[String]): Int = {
-    // TODO: put -J -and -D options back.  Right now they are lost
-    // because bash parses them out and they don't arrive.
-    val (vmArgs, fscArgs) = (Nil, argsIn.toList)
-    val settings = new FscSettings
-    val command  = new CompilerCommand(fscArgs, settings)
-    verbose = settings.verbose.value
-    val shutdown = settings.shutdown.value
-    
+    val settings     = new FscSettings(Console.println)
+    val command      = new OfflineCompilerCommand(args.toList, settings)
+    val shutdown     = settings.shutdown.value
+    val extraVmArgs  = if (settings.preferIPv4.value) List("-D%s=true".format(preferIPv4Stack.key)) else Nil
+
+    val vmArgs  = settings.jvmargs.unparse ++ settings.defines.unparse ++ extraVmArgs
+    val fscArgs = args.toList ++ command.extraFscArgs
+
     if (settings.version.value) {
       Console println versionMsg
-      return 0
+      return true
     }
-      
-    logVerbose(versionMsg)
-    logVerbose(fscArgs.mkString("[Given arguments: ", " ", "]"))
-    logVerbose(vmArgs.mkString("[VM arguments: ", " ", "]"))
+
+    info(versionMsg)
+    info(args.mkString("[Given arguments: ", " ", "]"))
+    info(fscArgs.mkString("[Transformed arguments: ", " ", "]"))
+    info(vmArgs.mkString("[VM arguments: ", " ", "]"))
 
     val socket =
       if (settings.server.value == "") compileSocket.getOrCreateSocket(vmArgs mkString " ", !shutdown)
       else Some(compileSocket.getSocket(settings.server.value))
-    
-    val success = socket match {
+
+    socket match {
       case Some(sock) => compileOnServer(sock, fscArgs)
       case _          =>
-        Console.println(
+        echo(
           if (shutdown) "[No compilation server running.]"
           else "Compilation failed."
         )
         shutdown
     }
-    if (success) 1 else 0
   }
 }
 
 object CompileClient extends StandardCompileClient {
   def main(args: Array[String]): Unit = sys exit {
-    try main0(args)
+    try   { if (process(args)) 0 else 1 }
     catch { case _: Exception => 1 }
   }
 }

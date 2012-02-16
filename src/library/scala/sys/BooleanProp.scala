@@ -11,17 +11,16 @@ package scala.sys
 /** A few additional conveniences for Boolean properties.
  */
 trait BooleanProp extends Prop[Boolean] {
-  /** The default implementation of `value` adheres to java's definition
-   *  of truth, which means it is true only if there is a value in the map and
-   *  that value, once converted to all lower case, is equal to "true".
+  /** The semantics of value are determined at Prop creation.  See methods
+   *  `valueIsTrue` and `keyExists` in object BooleanProp for examples.
    *
    *  @return   true if the current String is considered true, false otherwise
    */
   def value: Boolean
-  
+
   /** Alter this property so that `value` will be true. */
   def enable(): Unit
-  
+
   /** Alter this property so that `value` will be false. */
   def disable(): Unit
 
@@ -30,5 +29,47 @@ trait BooleanProp extends Prop[Boolean] {
 }
 
 object BooleanProp {
+  private[sys]
+  class BooleanPropImpl(key: String, valueFn: String => Boolean) extends PropImpl(key, valueFn) with BooleanProp {
+    override def setValue[T1 >: Boolean](newValue: T1): Boolean = newValue match {
+      case x: Boolean if !x   => val old = value ; clear() ; old
+      case x                  => super.setValue(newValue)
+    }
+    def enable()  = this setValue true
+    def disable() = this.clear()
+    def toggle()  = if (value) disable() else enable()
+  }
+  private[sys]
+  class ConstantImpl(val key: String, val value: Boolean) extends BooleanProp {
+    val isSet = value
+    def set(newValue: String) = "" + value
+    def setValue[T1 >: Boolean](newValue: T1): Boolean = value
+    def get: String = "" + value
+    val clear, enable, disable, toggle = ()
+    def option = if (isSet) Some(value) else None
+
+    protected def zero = false
+  }
+
+  /** The java definition of property truth is that the key be in the map and
+   *  the value be equal to the String "true", case insensitively.  This method
+   *  creates a BooleanProp instance which adheres to that definition.
+   *
+   *  @return   A BooleanProp which acts like java's Boolean.getBoolean
+   */
+  def valueIsTrue[T](key: String): BooleanProp = new BooleanPropImpl(key, _.toLowerCase == "true")
+
+  /** As an alternative, this method creates a BooleanProp which is true
+   *  if the key exists in the map.  This way -Dfoo.bar is enough to be
+   *  considered true.
+   *
+   *  @return   A BooleanProp with a liberal truth policy
+   */
+  def keyExists[T](key: String): BooleanProp = new BooleanPropImpl(key, _ => true)
+
+  /** A constant true or false property which ignores all method calls.
+   */
+  def constant(key: String, isOn: Boolean): BooleanProp = new ConstantImpl(key, isOn)
+
   implicit def booleanPropAsBoolean(b: BooleanProp): Boolean = b.value
 }

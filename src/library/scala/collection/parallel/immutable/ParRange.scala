@@ -6,29 +6,26 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala.collection.parallel.immutable
-
-
 
 import scala.collection.immutable.Range
 import scala.collection.parallel.Combiner
+import scala.collection.parallel.SeqSplitter
 import scala.collection.generic.CanCombineFrom
-import scala.collection.parallel.ParIterableIterator
-
-
+import scala.collection.parallel.IterableSplitter
+import scala.collection.Iterator
 
 /** Parallel ranges.
- *  
+ *
  *  $paralleliterableinfo
- *  
+ *
  *  $sideeffects
- *  
+ *
  *  @param range    the sequential range this parallel range was obtained from
- *  
+ *
  *  @author Aleksandar Prokopec
  *  @since 2.9
- *  
+ *
  *  @define Coll immutable.ParRange
  *  @define coll immutable parallel range
  */
@@ -38,76 +35,69 @@ extends ParSeq[Int]
    with Serializable
 {
 self =>
-  
-  def seq = range
-  
+
+  override def seq = range
+
   @inline final def length = range.length
-  
+
   @inline final def apply(idx: Int) = range.apply(idx);
-  
-  def parallelIterator = new ParRangeIterator with SCPI
-  
-  type SCPI = SignalContextPassingIterator[ParRangeIterator]
-  
-  override def toParSeq = this
-  
-  override def toParSet[U >: Int] = toParCollection[U, ParSet[U]](() => HashSetCombiner[U])
-  
+
+  def splitter = new ParRangeIterator
+
   class ParRangeIterator(range: Range = self.range)
-  extends ParIterator {
-  me: SignalContextPassingIterator[ParRangeIterator] =>
+  extends SeqSplitter[Int] {
     override def toString = "ParRangeIterator(over: " + range + ")"
     private var ind = 0
     private val len = range.length
-    
+
     final def remaining = len - ind
-    
+
     final def hasNext = ind < len
-    
+
     final def next = if (hasNext) {
       val r = range.apply(ind)
       ind += 1
       r
     } else Iterator.empty.next
-    
+
     private def rangeleft = range.drop(ind)
-    
-    def dup = new ParRangeIterator(rangeleft) with SCPI
-    
+
+    def dup = new ParRangeIterator(rangeleft)
+
     def split = {
       val rleft = rangeleft
       val elemleft = rleft.length
-      if (elemleft < 2) Seq(new ParRangeIterator(rleft) with SCPI)
+      if (elemleft < 2) Seq(new ParRangeIterator(rleft))
       else Seq(
-        new ParRangeIterator(rleft.take(elemleft / 2)) with SCPI,
-        new ParRangeIterator(rleft.drop(elemleft / 2)) with SCPI
+        new ParRangeIterator(rleft.take(elemleft / 2)),
+        new ParRangeIterator(rleft.drop(elemleft / 2))
       )
     }
-    
+
     def psplit(sizes: Int*) = {
       var rleft = rangeleft
       for (sz <- sizes) yield {
         val fronttaken = rleft.take(sz)
         rleft = rleft.drop(sz)
-        new ParRangeIterator(fronttaken) with SCPI
+        new ParRangeIterator(fronttaken)
       }
     }
-    
+
     /* accessors */
-    
+
     override def foreach[U](f: Int => U): Unit = {
-      rangeleft.foreach(f)
+      rangeleft.foreach(f.asInstanceOf[Int => Unit])
       ind = len
     }
-    
+
     override def reduce[U >: Int](op: (U, U) => U): U = {
       val r = rangeleft.reduceLeft(op)
       ind = len
       r
     }
-    
+
     /* transformers */
-    
+
     override def map2combiner[S, That](f: Int => S, cb: Combiner[S, That]): Combiner[S, That] = {
       while (hasNext) {
         cb += f(next)
@@ -115,9 +105,7 @@ self =>
       cb
     }
   }
-  
 }
-
 
 object ParRange {
   def apply(start: Int, end: Int, step: Int, inclusive: Boolean) = new ParRange(
@@ -125,8 +113,3 @@ object ParRange {
     else new Range(start, end, step)
   )
 }
-
-
-
-
-

@@ -37,9 +37,9 @@ trait LoggedNodeFactory[A <: Node] extends NodeFactory[A] with scala.util.loggin
   final val NONE  = 0
   final val CACHE = 1
   final val FULL  = 2
-  /** 0 = no loggging, 1 = cache hits, 2 = detail */
+  /** 0 = no logging, 1 = cache hits, 2 = detail */
   val logCompressLevel  = 1
-  
+
   // methods of NodeFactory
 
   /** logged version of makeNode method */
@@ -63,7 +63,7 @@ trait LoggedNodeFactory[A <: Node] extends NodeFactory[A] with scala.util.loggin
 
     super.makeNode(pre, label, attrSeq, scope, children)
   }
-  
+
   override def makeText(s: String) = {
     if (logText)
       log("[makeText:\""+s+"\"]");

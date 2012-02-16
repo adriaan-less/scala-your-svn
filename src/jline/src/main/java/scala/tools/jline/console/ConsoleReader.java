@@ -85,7 +85,7 @@ public class ConsoleReader
     {
         this.in = in;
         this.terminal = term != null ? term : TerminalFactory.get();
-        this.out = new PrintWriter(terminal.wrapOutIfNeeded(out));
+        this.out = new PrintWriter(getTerminal().wrapOutIfNeeded(out));
         this.keyBindings = loadKeyBindings(bindings);
 
         setBellEnabled(!Configuration.getBoolean(JLINE_NOBELL, false));
@@ -555,9 +555,9 @@ public class ConsoleReader
             if (mask != null) {
                 Arrays.fill(chars, mask);
             }
-            if (terminal.hasWeirdWrap()) {
+            if (getTerminal().hasWeirdWrap()) {
                 // need to determine if wrapping will occur:
-                int width = terminal.getWidth();
+                int width = getTerminal().getWidth();
                 int pos = getCursorPosition();
                 for (int i = 0; i < chars.length; i++) {
                     print(chars[i]);
@@ -570,7 +570,7 @@ public class ConsoleReader
                 print(chars);
             }
             clearAhead(clear, chars.length);
-            if (terminal.isAnsiSupported()) {
+            if (getTerminal().isAnsiSupported()) {
                 if (chars.length > 0) {
                     back(chars.length);
                 }
@@ -578,8 +578,8 @@ public class ConsoleReader
                 back(chars.length);
             }
         }
-        if (terminal.hasWeirdWrap()) {
-            int width = terminal.getWidth();
+        if (getTerminal().hasWeirdWrap()) {
+            int width = getTerminal().getWidth();
             // best guess on whether the cursor is in that weird location...
             // Need to do this without calling ansi cursor location methods
             // otherwise it breaks paste of wrapped lines in xterm.
@@ -614,8 +614,8 @@ public class ConsoleReader
             return;
         }
 
-        if (terminal.isAnsiSupported()) {
-            int width = terminal.getWidth();
+        if (getTerminal().isAnsiSupported()) {
+            int width = getTerminal().getWidth();
             int screenCursorCol = getCursorPosition() + delta;
             // clear current line
             printAnsiSequence("K");
@@ -652,7 +652,7 @@ public class ConsoleReader
      */
     protected void back(final int num) throws IOException {
         if (num == 0) return;
-        if (terminal.isAnsiSupported()) {
+        if (getTerminal().isAnsiSupported()) {
             int width = getTerminal().getWidth();
             int cursor = getCursorPosition();
             int realCursor = cursor + num;
@@ -700,7 +700,7 @@ public class ConsoleReader
         count = moveCursor(-1 * num) * -1;
         buf.buffer.delete(buf.cursor, buf.cursor + count);
         if (getCursorPosition() / termwidth != lines) {
-            if (terminal.isAnsiSupported()) {
+            if (getTerminal().isAnsiSupported()) {
                 // debug("doing backspace redraw: " + getCursorPosition() + " on " + termwidth + ": " + lines);
                 printAnsiSequence("K");
                 // if cursor+num wraps, then we need to clear the line(s) below too
@@ -754,11 +754,11 @@ public class ConsoleReader
     }
 
     private boolean previousWord() throws IOException {
-        while (isDelimiter(buf.current()) && (moveCursor(-1) != 0)) {
+        while (isDelimiter(buf.charLeftOfCursor()) && (moveCursor(-1) != 0)) {
             // nothing
         }
 
-        while (!isDelimiter(buf.current()) && (moveCursor(-1) != 0)) {
+        while (!isDelimiter(buf.charLeftOfCursor()) && (moveCursor(-1) != 0)) {
             // nothing
         }
 
@@ -766,11 +766,11 @@ public class ConsoleReader
     }
 
     private boolean nextWord() throws IOException {
-        while (isDelimiter(buf.current()) && (moveCursor(1) != 0)) {
+        while (isDelimiter(buf.charAtCursor()) && (moveCursor(1) != 0)) {
             // nothing
         }
 
-        while (!isDelimiter(buf.current()) && (moveCursor(1) != 0)) {
+        while (!isDelimiter(buf.charAtCursor()) && (moveCursor(1) != 0)) {
             // nothing
         }
 
@@ -778,11 +778,23 @@ public class ConsoleReader
     }
 
     private boolean deletePreviousWord() throws IOException {
-        while (isDelimiter(buf.current()) && backspace()) {
+        while (isDelimiter(buf.charLeftOfCursor()) && backspace()) {
             // nothing
         }
 
-        while (!isDelimiter(buf.current()) && backspace()) {
+        while (!isDelimiter(buf.charLeftOfCursor()) && backspace()) {
+            // nothing
+        }
+
+        return true;
+    }
+
+    private boolean deleteNextWord() throws IOException {
+        while (isDelimiter(buf.charAtCursor()) && deleteCurrentCharacter()) {
+            // nothing
+        }
+
+        while (!isDelimiter(buf.charAtCursor()) && deleteCurrentCharacter()) {
             // nothing
         }
 
@@ -828,7 +840,7 @@ public class ConsoleReader
         // + buf.cursor + " => " + (buf.cursor + where) + ")");
         buf.cursor += where;
 
-        if (terminal.isAnsiSupported()) {
+        if (getTerminal().isAnsiSupported()) {
             if (where < 0) {
                 back(Math.abs(where));
             } else {
@@ -837,12 +849,12 @@ public class ConsoleReader
                 int oldLine = (cursor - where) / width;
                 int newLine = cursor / width;
                 if (newLine > oldLine) {
-                    if (terminal.hasWeirdWrap()) {
+                    if (getTerminal().hasWeirdWrap()) {
                         // scroll up if at bottom
                         // note:
-                        //   on rxvt cywgin terminal.getHeight() is incorrect
+                        //   on rxvt cywgin getTerminal().getHeight() is incorrect
                         //   MacOs xterm does not seem to support scrolling
-                        if (getCurrentAnsiRow() == terminal.getHeight()) {
+                        if (getCurrentAnsiRow() == getTerminal().getHeight()) {
                             printAnsiSequence((newLine - oldLine) + "S");
                         }
                     }
@@ -918,7 +930,7 @@ public class ConsoleReader
      * @return the character, or -1 if an EOF is received.
      */
     public final int readVirtualKey() throws IOException {
-        int c = terminal.readVirtualKey(in);
+        int c = getTerminal().readVirtualKey(in);
 
         Log.trace("Keystroke: ", c);
 
@@ -933,7 +945,7 @@ public class ConsoleReader
      */
     private int clearEcho(final int c) throws IOException {
         // if the terminal is not echoing, then ignore
-        if (!terminal.isEchoEnabled()) {
+        if (!getTerminal().isEchoEnabled()) {
             return 0;
         }
 
@@ -1108,6 +1120,15 @@ public class ConsoleReader
         return getKeyForAction(op.code);
     }
 
+    public void printBindings() {
+        System.out.println("printBindings(): keyBindings.length = " + keyBindings.length);
+        for (int i = 0; i < keyBindings.length; i++) {
+            if (keyBindings[i] != Operation.UNKNOWN.code) {
+                System.out.println("keyBindings[" + i + "] = " + keyBindings[i]);
+            }
+        }
+    }
+
     /**
      * Reads the console input and returns an array of the form [raw, key binding].
      */
@@ -1171,7 +1192,7 @@ public class ConsoleReader
         }
 
         try {
-            if (!terminal.isSupported()) {
+            if (!getTerminal().isSupported()) {
                 beforeReadLine(prompt, mask);
             }
 
@@ -1181,7 +1202,7 @@ public class ConsoleReader
             }
 
             // if the terminal is unsupported, just use plain-java reading
-            if (!terminal.isSupported()) {
+            if (!getTerminal().isSupported()) {
                 return readLine(in);
             }
 
@@ -1283,7 +1304,7 @@ public class ConsoleReader
                             if (buf.buffer.length() == 0) {
                                 return null;
                             } else {
-                                deleteCurrentCharacter();
+                                success = deleteCurrentCharacter();
                             }
                             break;
 
@@ -1351,6 +1372,10 @@ public class ConsoleReader
 
                         case DELETE_PREV_WORD:
                             success = deletePreviousWord();
+                            break;
+
+                        case DELETE_NEXT_WORD:
+                            success = deleteNextWord();
                             break;
 
                         case PREV_WORD:
@@ -1428,7 +1453,7 @@ public class ConsoleReader
             }
         }
         finally {
-            if (!terminal.isSupported()) {
+            if (!getTerminal().isSupported()) {
                 afterReadLine();
             }
         }
@@ -1756,7 +1781,7 @@ public class ConsoleReader
      * Clear the screen by issuing the ANSI "clear screen" code.
      */
     public boolean clearScreen() throws IOException {
-        if (!terminal.isAnsiSupported()) {
+        if (!getTerminal().isAnsiSupported()) {
             return false;
         }
 
@@ -2109,7 +2134,7 @@ public class ConsoleReader
     // return column position, reported by the terminal
     private int getCurrentPosition() {
         // check for ByteArrayInputStream to disable for unit tests
-        if (terminal.isAnsiSupported() && !(in instanceof ByteArrayInputStream)) {
+        if (getTerminal().isAnsiSupported() && !(in instanceof ByteArrayInputStream)) {
             try {
                 printAnsiSequence("6n");
                 flush();
@@ -2136,7 +2161,7 @@ public class ConsoleReader
     // wrapping terminals - not tested for anything else
     private int getCurrentAnsiRow() {
         // check for ByteArrayInputStream to disable for unit tests
-        if (terminal.isAnsiSupported() && !(in instanceof ByteArrayInputStream)) {
+        if (getTerminal().isAnsiSupported() && !(in instanceof ByteArrayInputStream)) {
             try {
                 printAnsiSequence("6n");
                 flush();

@@ -5,18 +5,9 @@
 
 package scala.tools.nsc
 
-import java.io.{
-  InputStream, OutputStream,
-  BufferedReader, FileInputStream, FileOutputStream,
-  FileReader, InputStreamReader, PrintWriter, FileWriter,
-  IOException
-}
-import io.{ Directory, File, Path, PlainFile }
+import io.{ Directory, File, Path }
+import java.io.IOException
 import java.net.URL
-import java.util.jar.{ JarEntry, JarOutputStream }
-
-import util.{ waitingForThreads }
-import scala.tools.util.PathResolver
 import scala.tools.nsc.reporters.{Reporter,ConsoleReporter}
 import util.Exceptional.unwrap
 
@@ -49,12 +40,6 @@ import util.Exceptional.unwrap
 class ScriptRunner extends HasCompileSocket {
   lazy val compileSocket = CompileSocket
 
-  /* While I'm chasing down the fsc and script bugs. */
-  def DBG(msg: Any) {
-    System.err.println(msg.toString)
-    System.err.flush()
-  }
-
   /** Default name to use for the wrapped script */
   val defaultScriptMain = "Main"
 
@@ -67,13 +52,10 @@ class ScriptRunner extends HasCompileSocket {
   def isScript(settings: Settings) = settings.script.value != ""
 
   /** Choose a jar filename to hold the compiled version of a script. */
-  private def jarFileFor(scriptFile: String): File = {
-    val name =
-      if (scriptFile endsWith ".jar") scriptFile
-      else scriptFile + ".jar"
-
-    File(name)
-  }
+  private def jarFileFor(scriptFile: String)= File(
+    if (scriptFile endsWith ".jar") scriptFile
+    else scriptFile.stripSuffix(".scala") + ".jar"
+  )
 
   /** Read the entire contents of a file as a String. */
   private def contentsOfFile(filename: String) = File(filename).slurp()
@@ -94,7 +76,7 @@ class ScriptRunner extends HasCompileSocket {
     val compSettings     = settings.visibleSettings.toList filter (compSettingNames contains _.name)
     val coreCompArgs     = compSettings flatMap (_.unparse)
     val compArgs         = coreCompArgs ++ List("-Xscript", scriptMain(settings), scriptFile)
-    
+
     CompileSocket getOrCreateSocket "" match {
       case Some(sock) => compileOnServer(sock, compArgs)
       case _          => false
@@ -102,7 +84,7 @@ class ScriptRunner extends HasCompileSocket {
   }
 
   protected def newGlobal(settings: Settings, reporter: Reporter) =
-    new Global(settings, reporter)
+    Global(settings, reporter)
 
   /** Compile a script and then run the specified closure with
     * a classpath for the compiled script.
@@ -139,14 +121,14 @@ class ScriptRunner extends HasCompileSocket {
         if (reporter.hasErrors) None else Some(compiledPath)
       }
       else if (compileWithDaemon(settings, scriptFile)) Some(compiledPath)
-      else None            
+      else None
     }
 
     /** The script runner calls sys.exit to communicate a return value, but this must
      *  not take place until there are no non-daemon threads running.  Tickets #1955, #2006.
      */
-    waitingForThreads {
-      if (settings.savecompiled.value) {
+    util.waitingForThreads {
+      if (settings.save.value) {
         val jarFile = jarFileFor(scriptFile)
         def jarOK   = jarFile.canRead && (jarFile isFresher File(scriptFile))
 
@@ -157,11 +139,11 @@ class ScriptRunner extends HasCompileSocket {
             case Some(compiledPath) =>
               try io.Jar.create(jarFile, compiledPath, mainClass)
               catch { case _: Exception => jarFile.delete() }
-              
+
               if (jarOK) {
                 compiledPath.deleteRecursively()
                 handler(jarFile.toAbsolute.path)
-              }            
+              }
               // jar failed; run directly from the class files
               else handler(compiledPath.path)
             case _  => false
@@ -176,7 +158,7 @@ class ScriptRunner extends HasCompileSocket {
     }
   }
 
-  /** Run a script after it has been compiled 
+  /** Run a script after it has been compiled
    *
    * @return true if execution succeeded, false otherwise
    */
@@ -184,11 +166,9 @@ class ScriptRunner extends HasCompileSocket {
     settings: GenericRunnerSettings,
     compiledLocation: String,
     scriptArgs: List[String]): Boolean =
-  {      
-    val pr = new PathResolver(settings)
-    val classpath = File(compiledLocation).toURL +: pr.asURLs
-
-    ObjectRunner.runAndCatch(classpath, scriptMain(settings), scriptArgs) match {
+  {
+    val cp = File(compiledLocation).toURL +: settings.classpathURLs
+    ObjectRunner.runAndCatch(cp, scriptMain(settings), scriptArgs) match {
       case Left(ex) => ex.printStackTrace() ; false
       case _        => true
     }
@@ -222,7 +202,7 @@ class ScriptRunner extends HasCompileSocket {
     catch { case e => Left(unwrap(e)) }
   }
 
-  /** Run a command 
+  /** Run a command
    *
    * @return true if compilation and execution succeeded, false otherwise.
    */
@@ -230,11 +210,11 @@ class ScriptRunner extends HasCompileSocket {
     settings: GenericRunnerSettings,
     command: String,
     scriptArgs: List[String]): Boolean =
-  {    
+  {
     val scriptFile = File.makeTemp("scalacmd", ".scala")
     // save the command to the file
     scriptFile writeAll command
-    
+
     try withCompiledScript(settings, scriptFile.path) { runCompiled(settings, _, scriptArgs) }
     finally scriptFile.delete()  // in case there was a compilation error
   }

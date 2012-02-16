@@ -9,7 +9,8 @@ package transform
 import symtab._
 import Flags._
 import util.TreeSet
-import scala.collection.mutable.{ LinkedHashMap, ListBuffer }
+import scala.collection.{ mutable, immutable }
+import scala.collection.mutable.LinkedHashMap
 
 abstract class LambdaLift extends InfoTransform {
   import global._
@@ -17,6 +18,19 @@ abstract class LambdaLift extends InfoTransform {
 
   /** the following two members override abstract members in Transform */
   val phaseName: String = "lambdalift"
+    
+  /** Converts types of captured variables to *Ref types.
+   */
+  def boxIfCaptured(sym: Symbol, tpe: Type, erasedTypes: Boolean) =
+    if (sym.isCapturedVariable) {
+      val symClass = tpe.typeSymbol
+      def refType(valueRef: Map[Symbol, Symbol], objectRefClass: Symbol) =
+        if (isValueClass(symClass) && symClass != UnitClass) valueRef(symClass).tpe
+        else if (erasedTypes) objectRefClass.tpe
+        else appliedType(objectRefClass.typeConstructor, List(tpe))
+      if (sym.hasAnnotation(VolatileAttr)) refType(volatileRefClass, VolatileObjectRefClass)
+      else refType(refClass, ObjectRefClass)
+    } else tpe
 
   private val lifted = new TypeMap {
     def apply(tp: Type): Type = tp match {
@@ -31,7 +45,8 @@ abstract class LambdaLift extends InfoTransform {
     }
   }
 
-  def transformInfo(sym: Symbol, tp: Type): Type = lifted(tp)
+  def transformInfo(sym: Symbol, tp: Type): Type =
+    boxIfCaptured(sym, lifted(tp), erasedTypes = true)
 
   protected def newTransformer(unit: CompilationUnit): Transformer =
     new LambdaLifter(unit)
@@ -50,66 +65,38 @@ abstract class LambdaLift extends InfoTransform {
     /** The set of symbols that need to be renamed. */
     private val renamable = newSymSet
 
+    // (trait, name) -> owner
+    private val localTraits      = mutable.HashMap[(Symbol, Name), Symbol]()
+    // (owner, name) -> implClass
+    private val localImplClasses = mutable.HashMap[(Symbol, Name), Symbol]()
+
     /** A flag to indicate whether new free variables have been found */
     private var changedFreeVars: Boolean = _
 
     /** Buffers for lifted out classes and methods */
-    private val liftedDefs = new LinkedHashMap[Symbol, ListBuffer[Tree]]
-
+    private val liftedDefs = new LinkedHashMap[Symbol, List[Tree]]
+    
+    /** True if we are transforming under a ReferenceToBoxed node */
+    private var isBoxedRef = false
+    
     private type SymSet = TreeSet[Symbol]
 
     private def newSymSet = new TreeSet[Symbol](_ isLess _)
 
-    private def symSet(f: LinkedHashMap[Symbol, SymSet], sym: Symbol): SymSet = 
+    private def symSet(f: LinkedHashMap[Symbol, SymSet], sym: Symbol): SymSet =
       f.getOrElseUpdate(sym, newSymSet)
 
-    private def outer(sym: Symbol): Symbol =
-      if (sym.isConstructor) sym.owner.owner else sym.owner
-    
     private def isSameOwnerEnclosure(sym: Symbol) =
-      enclMethOrClass(sym.owner) == enclMethOrClass(currentOwner)
+      sym.owner.logicallyEnclosingMember == currentOwner.logicallyEnclosingMember
 
-    /** The method or class which logically encloses the current symbol.
-     *  If the symbol is defined in the initialization part of a template
-     *  this is the template's primary constructor, otherwise it is
-     *  the physically enclosing method or class.
-     *
-     *  Example 1:
-     *
-     *  def f() { val x = { def g() = ...; g() } }
-     *
-     *  In this case the owner chain of `g' is `x', followed by `f' and 
-     *  enclMethOrClass(`g') == `f'.
-     *
-     *  Example 2:
-     *
-     *  class C {
-     *    def <init> = { ... }
-     *    val x = { def g() = ...; g() } }
-     *  }
-     *
-     *  In this case the owner chain of `g' is `x', followed by `C' but 
-     *  enclMethOrClass(`g') is the primary constructor symbol `<init>'
-     *  (or, for traits: `$init') of `C'.
-     *
-     */
-    private def enclMethOrClass(sym: Symbol): Symbol = {
-      def localToConstr(sym: Symbol) =
-        if (sym.isLocalDummy) sym.owner.primaryConstructor else sym;
-      var encl = localToConstr(sym)
-      while (!encl.isMethod && !encl.isClass)
-        encl = localToConstr(outer(encl))
-      encl
-    }
-
-    /** Mark symbol `sym' as being free in `owner', unless `sym'
-     *  is defined in `owner' or there is a class between `owner's owner
-     *  and the owner of `sym'.
-     *  Return `true' if there is no class between `owner' and 
+    /** Mark symbol `sym` as being free in `enclosure`, unless `sym`
+     *  is defined in `enclosure` or there is a class between `enclosure`s owner
+     *  and the owner of `sym`.
+     *  Return `true` if there is no class between `enclosure` and
      *  the owner of sym.
-     *  pre: sym.isLocal, (owner.isMethod || owner.isClass)
+     *  pre: sym.isLocal, (enclosure.isMethod || enclosure.isClass)
      *
-     *  The idea of `markFree' is illustrated with an example:
+     *  The idea of `markFree` is illustrated with an example:
      *
      *  def f(x: int) = {
      *    class C {
@@ -119,8 +106,8 @@ abstract class LambdaLift extends InfoTransform {
      *    }
      *  }
      *
-     *  In this case `x' is free in the primary constructor of class `C'.
-     *  but it is not free in `D', because after lambda lift the code would be transformed 
+     *  In this case `x` is free in the primary constructor of class `C`.
+     *  but it is not free in `D`, because after lambda lift the code would be transformed
      *  as follows:
      *
      *  def f(x$0: int) {
@@ -132,13 +119,12 @@ abstract class LambdaLift extends InfoTransform {
      *    }
      *  }
      */
-    private def markFree(sym: Symbol, owner: Symbol): Boolean = {
-      if (settings.debug.value)
-        log("mark " + sym + " of " + sym.owner + " free in " + owner)
-      if (owner == enclMethOrClass(sym.owner)) true
-      else if (owner.isPackageClass || !markFree(sym, enclMethOrClass(outer(owner)))) false
+    private def markFree(sym: Symbol, enclosure: Symbol): Boolean = {
+      debuglog("mark free: " + sym + " of " + sym.owner + " marked free in " + enclosure)
+      if (enclosure == sym.owner.logicallyEnclosingMember) true
+      else if (enclosure.isPackageClass || !markFree(sym, enclosure.skipConstructor.owner.logicallyEnclosingMember)) false
       else {
-        val ss = symSet(free, owner)
+        val ss = symSet(free, enclosure)
         if (!ss(sym)) {
           ss addEntry sym
           renamable addEntry sym
@@ -149,47 +135,20 @@ abstract class LambdaLift extends InfoTransform {
             // would have the signature
             //     closure: (x$1: Int)() => Int
             if (sym.isParameter && sym.owner.info.paramss.exists(_ contains sym))
-              sym.owner.setInfo(sym.owner.info.cloneInfo(sym.owner))
+              sym.owner modifyInfo (_ cloneInfo sym.owner)
           }
           changedFreeVars = true
-          if (settings.debug.value) log("" + sym + " is free in " + owner);
-          if ((sym.isVariable || (sym.isValue && sym.isLazy)) && !sym.hasFlag(CAPTURED)) {
-            sym setFlag CAPTURED
-            val symClass = sym.tpe.typeSymbol
-            atPhase(phase.next) {
-              sym updateInfo (
-                if (sym.hasAnnotation(VolatileAttr))
-                  if (isValueClass(symClass)) volatileRefClass(symClass).tpe else VolatileObjectRefClass.tpe
-                else
-                  if (isValueClass(symClass)) refClass(symClass).tpe else ObjectRefClass.tpe
-              )
-            }
-          }
+          debuglog("" + sym + " is free in " + enclosure);
+          if (sym.isVariable) sym setFlag CAPTURED
         }
-        !owner.isClass
+        !enclosure.isClass
       }
     }
 
     private def markCalled(sym: Symbol, owner: Symbol) {
-      if (settings.debug.value)
-        log("mark " + sym + " of " + sym.owner + " called by " + owner);
+      debuglog("mark called: " + sym + " of " + sym.owner + " is called by " + owner)
       symSet(called, owner) addEntry sym
     }
-/*
-      if (owner == enclMethOrClass(sym.owner)) true
-      else if (owner.isPackageClass || !markCalled(sym, enclMethOrClass(outer(owner)))) false
-      else {
-        val ss = symSet(called, owner);
-        if (!(ss contains sym)) {
-          ss addEntry sym;
-          if (settings.debug.value) log("" + sym + " is called by " + owner);
-        }
-        !owner.isClass
-      }
-    }
-*/
-    def freeVars(sym: Symbol): Iterator[Symbol] =
-      free get sym map (_.iterator) getOrElse Iterator.empty
 
     /** The traverse function */
     private val freeVarTraverser = new Traverser {
@@ -198,12 +157,31 @@ abstract class LambdaLift extends InfoTransform {
         val sym = tree.symbol;
         tree match {
           case ClassDef(_, _, _, _) =>
-            liftedDefs(tree.symbol) = new ListBuffer
-            if (sym.isLocal) renamable addEntry sym
+            liftedDefs(tree.symbol) = Nil
+            if (sym.isLocal) {
+              // Don't rename implementation classes independently of their interfaces. If
+              // the interface is to be renamed, then we will rename the implementation
+              // class at that time. You'd think we could call ".implClass" on the trait
+              // rather than collecting them in another map, but that seems to fail for
+              // exactly the traits being renamed here (i.e. defined in methods.)
+              //
+              // !!! - it makes no sense to have methods like "implClass" and
+              // "companionClass" which fail for an arbitrary subset of nesting
+              // arrangements, and then have separate methods which attempt to compensate
+              // for that failure. There should be exactly one method for any given
+              // entity which always gives the right answer.
+              if (sym.isImplClass)
+                localImplClasses((sym.owner, nme.interfaceName(sym.name))) = sym
+              else {
+                renamable addEntry sym
+                if (sym.isTrait)
+                  localTraits((sym, sym.name)) = sym.owner
+              }
+            }
           case DefDef(_, _, _, _, _, _) =>
             if (sym.isLocal) {
               renamable addEntry sym
-              sym setFlag (PRIVATE | LOCAL | FINAL)
+              sym setFlag (PrivateLocal | FINAL)
             } else if (sym.isPrimaryConstructor) {
               symSet(called, sym) addEntry sym.owner
             }
@@ -211,16 +189,14 @@ abstract class LambdaLift extends InfoTransform {
             if (sym == NoSymbol) {
               assert(name == nme.WILDCARD)
             } else if (sym.isLocal) {
-              val owner = enclMethOrClass(currentOwner)
+              val owner = currentOwner.logicallyEnclosingMember
               if (sym.isTerm && !sym.isMethod) markFree(sym, owner)
               else if (sym.isMethod) markCalled(sym, owner)
                 //symSet(called, owner) addEntry sym
             }
           case Select(_, _) =>
-            if (sym.isConstructor && sym.owner.isLocal) {
-              val owner = enclMethOrClass(currentOwner);
-              markCalled(sym, owner) //symSet(called, owner) addEntry sym
-            }
+            if (sym.isConstructor && sym.owner.isLocal)
+              markCalled(sym, currentOwner.logicallyEnclosingMember)
           case _ =>
         }
         super.traverse(tree)
@@ -232,46 +208,68 @@ abstract class LambdaLift extends InfoTransform {
       }
     }
 
-    /** Compute free variables map `fvs'.
+    /** Compute free variables map `fvs`.
      *  Also assign unique names to all
      *  value/variable/let that are free in some function or class, and to
      *  all class/function symbols that are owned by some function.
      */
-    private def computeFreeVars {
+    private def computeFreeVars() {
       freeVarTraverser.traverse(unit.body)
 
       do {
         changedFreeVars = false
-        for (caller <- called.keys;
-             callee <- called(caller);
-             fv <- freeVars(callee))
+        for (caller <- called.keys ; callee <- called(caller) ; fvs <- free get callee ; fv <- fvs)
           markFree(fv, caller)
       } while (changedFreeVars)
-
-      for (sym <- renamable) {
-        val base = sym.name + "$" + (
+      
+      def renameSym(sym: Symbol) {
+        val originalName = sym.name
+        val base = sym.name + nme.NAME_JOIN_STRING + (
           if (sym.isAnonymousFunction && sym.owner.isMethod)
-            sym.owner.name + "$"
+            sym.owner.name + nme.NAME_JOIN_STRING
           else ""
         )
-        sym.name = 
+        sym.name =
           if (sym.name.isTypeName) unit.freshTypeName(base)
           else unit.freshTermName(base)
 
-        if (settings.debug.value) log("renamed: " + sym.name)
+        debuglog("renaming in %s: %s => %s".format(sym.owner.fullLocationString, originalName, sym.name))
+      }
+
+      /** Rename a trait's interface and implementation class in coordinated fashion.
+       */
+      def renameTrait(traitSym: Symbol, implSym: Symbol) {
+        val originalImplName = implSym.name
+        renameSym(traitSym)
+        implSym.name = nme.implClassName(traitSym.name)
+
+        debuglog("renaming impl class in step with %s: %s => %s".format(traitSym, originalImplName, implSym.name))
+      }
+      
+      for (sym <- renamable) {
+        // If we renamed a trait from Foo to Foo$1, we must rename the implementation
+        // class from Foo$class to Foo$1$class.  (Without special consideration it would
+        // become Foo$class$1 instead.) Since the symbols are being renamed out from
+        // under us, and there's no reliable link between trait symbol and impl symbol,
+        // we have maps from ((trait, name)) -> owner and ((owner, name)) -> impl.
+        localTraits remove ((sym, sym.name)) match {
+          case None        => renameSym(sym)
+          case Some(owner) =>
+            localImplClasses remove ((owner, sym.name)) match {
+              case Some(implSym)  => renameTrait(sym, implSym)
+              case _              => renameSym(sym) // pure interface, no impl class
+            }
+        }
       }
 
       atPhase(phase.next) {
-        for (owner <- free.keys) {
-          if (settings.debug.value)
-            log("free(" + owner + owner.locationString + ") = " + free(owner).toList)
+        for ((owner, freeValues) <- free.toList) {
+          val newFlags = SYNTHETIC | ( if (owner.isClass) PARAMACCESSOR | PrivateLocal else PARAM )
+          debuglog("free var proxy: %s, %s".format(owner.fullLocationString, freeValues.toList.mkString(", ")))
           proxies(owner) =
-            for (fv <- free(owner).toList) yield {
-              val proxy = owner.newValue(owner.pos, fv.name)
-                .setFlag(if (owner.isClass) PARAMACCESSOR | PRIVATE | LOCAL else PARAM)
-                .setFlag(SYNTHETIC)
-                .setInfo(fv.info);
-              if (owner.isClass) owner.info.decls enter proxy;
+            for (fv <- freeValues.toList) yield {
+              val proxy = owner.newValue(fv.name, owner.pos, newFlags) setInfo fv.info
+              if (owner.isClass) owner.info.decls enter proxy
               proxy
             }
         }
@@ -279,22 +277,17 @@ abstract class LambdaLift extends InfoTransform {
     }
 
     private def proxy(sym: Symbol) = {
-      def searchIn(owner: Symbol): Symbol = {
-        if (settings.debug.value)
-          log("searching for " + sym + "(" + sym.owner + ") in " + owner +
-              " " + enclMethOrClass(owner));//debug
-        proxies.get(enclMethOrClass(owner)) match {
-          case Some(ps) => 
-            ps filter (p => p.name == sym.name) match {
-              case List(p) => p
-              case List() => searchIn(outer(owner))
-            }
-          case None => searchIn(outer(owner))
-        }
+      def searchIn(enclosure: Symbol): Symbol = {
+        if (enclosure eq NoSymbol) throw new IllegalArgumentException("Could not find proxy for "+ sym.defString +" in "+ sym.ownerChain +" (currentOwner= "+ currentOwner +" )")
+        debuglog("searching for " + sym + "(" + sym.owner + ") in " + enclosure + " " + enclosure.logicallyEnclosingMember)
+
+        val ps = (proxies get enclosure.logicallyEnclosingMember).toList.flatten filter (_.name == sym.name)
+        if (ps.isEmpty) searchIn(enclosure.skipConstructor.owner)
+        else ps.head
       }
-      if (settings.debug.value)
-        log("proxy " + sym + " in " + sym.owner + " from " + currentOwner.ownerChain +
-            " " + enclMethOrClass(sym.owner));//debug
+      debuglog("proxy " + sym + " in " + sym.owner + " from " + currentOwner.ownerChain.mkString(" -> ") +
+          " " + sym.owner.logicallyEnclosingMember)
+
       if (isSameOwnerEnclosure(sym)) sym
       else searchIn(currentOwner)
     }
@@ -317,20 +310,21 @@ abstract class LambdaLift extends InfoTransform {
     }
 
     private def addFreeArgs(pos: Position, sym: Symbol, args: List[Tree]) = {
-      def freeArg(fv: Symbol) = atPos(pos)(proxyRef(fv))
-      val fvs = freeVars(sym).toList
-      if (fvs.isEmpty) args else args ::: (fvs map freeArg)
+      free get sym match {
+        case Some(fvs) => args ++ (fvs.toList map (fv => atPos(pos)(proxyRef(fv))))
+        case _         => args
+      }
     }
 
     private def addFreeParams(tree: Tree, sym: Symbol): Tree = proxies.get(sym) match {
       case Some(ps) =>
-        val freeParams = ps map (p => ValDef(p) setPos tree.pos setType NoType);
+        val freeParams = ps map (p => ValDef(p) setPos tree.pos setType NoType)
         tree match {
-          case DefDef(mods, name, tparams, List(vparams), tpt, rhs) =>
-            val addParams = cloneSymbols(ps).map(_.setFlag(PARAM))            
+          case DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
+            val addParams = cloneSymbols(ps).map(_.setFlag(PARAM))
             sym.updateInfo(
               lifted(MethodType(sym.info.params ::: addParams, sym.info.resultType)))
-            treeCopy.DefDef(tree, mods, name, tparams, List(vparams ::: freeParams), tpt, rhs)
+            treeCopy.DefDef(tree, mods, name, tparams, List(vparamss.head ++ freeParams), tpt, rhs)
           case ClassDef(mods, name, tparams, impl @ Template(parents, self, body)) =>
             // Disabled attempt to to add getters to freeParams
             // this does not work yet. Problem is that local symbols need local names
@@ -349,13 +343,13 @@ abstract class LambdaLift extends InfoTransform {
       case None =>
         tree
     }
-    
+
 /*  Something like this will be necessary to eliminate the implementation
  *  restiction from paramGetter above:
  *  We need to pass getters to the interface of an implementation class.
-    private def fixTraitGetters(lifted: List[Tree]): List[Tree] = 
+    private def fixTraitGetters(lifted: List[Tree]): List[Tree] =
       for (stat <- lifted) yield stat match {
-        case ClassDef(mods, name, tparams, templ @ Template(parents, self, body)) 
+        case ClassDef(mods, name, tparams, templ @ Template(parents, self, body))
         if stat.symbol.isTrait && !stat.symbol.isImplClass =>
           val iface = stat.symbol
           lifted.find(l => l.symbol.isImplClass && l.symbol.toInterface == iface) match {
@@ -373,7 +367,7 @@ abstract class LambdaLift extends InfoTransform {
                 treeCopy.ClassDef(
                   stat, mods, name, tparams,
                   treeCopy.Template(templ, parents, self, body ::: ifaceGetterDefs))
-              } else 
+              } else
                 stat
             case None =>
               stat
@@ -384,18 +378,19 @@ abstract class LambdaLift extends InfoTransform {
 */
     private def liftDef(tree: Tree): Tree = {
       val sym = tree.symbol
-      if (sym.owner.isAuxiliaryConstructor && sym.isMethod)  // # bug 1909 
+      val oldOwner = sym.owner
+      if (sym.owner.isAuxiliaryConstructor && sym.isMethod)  // # bug 1909
     	  sym setFlag STATIC
       sym.owner = sym.owner.enclClass
       if (sym.isClass) sym.owner = sym.owner.toInterface
       if (sym.isMethod) sym setFlag LIFTED
-      liftedDefs(sym.owner) += tree
+      liftedDefs(sym.owner) ::= tree
       sym.owner.info.decls enterUnique sym
-      if (settings.debug.value) log("lifted: " + sym + sym.locationString)
+      debuglog("lifted: " + sym + " from " + oldOwner + " to " + sym.owner)
       EmptyTree
     }
 
-    private def postTransform(tree: Tree): Tree = {
+    private def postTransform(tree: Tree, isBoxedRef: Boolean = false): Tree = {
       val sym = tree.symbol
       tree match {
         case ClassDef(_, _, _, _) =>
@@ -418,8 +413,19 @@ abstract class LambdaLift extends InfoTransform {
                 }
               case arg => arg
             }
+            /** Wrap expr argument in new *Ref(..) constructor, but make
+             *  sure that Try expressions stay at toplevel.
+             */
+            def refConstr(expr: Tree): Tree = expr match {
+              case Try(block, catches, finalizer) =>
+                Try(refConstr(block), catches map refConstrCase, finalizer)
+              case _ => 
+                Apply(Select(New(TypeTree(sym.tpe)), nme.CONSTRUCTOR), List(expr))
+            }
+            def refConstrCase(cdef: CaseDef): CaseDef = 
+              CaseDef(cdef.pat, cdef.guard, refConstr(cdef.body))
             treeCopy.ValDef(tree, mods, name, tpt1, typer.typedPos(rhs.pos) {
-              Apply(Select(New(TypeTree(sym.tpe)), nme.CONSTRUCTOR), List(constructorArg))
+              refConstr(constructorArg)
             })
           } else tree
         case Return(Block(stats, value)) =>
@@ -437,13 +443,13 @@ abstract class LambdaLift extends InfoTransform {
         case Ident(name) =>
           val tree1 =
             if (sym != NoSymbol && sym.isTerm && !sym.isLabel)
-              if (sym.isMethod) 
+              if (sym.isMethod)
                 atPos(tree.pos)(memberRef(sym))
               else if (sym.isLocal && !isSameOwnerEnclosure(sym))
                 atPos(tree.pos)(proxyRef(sym))
               else tree
             else tree
-          if (sym.isCapturedVariable)
+          if (sym.isCapturedVariable && !isBoxedRef)
             atPos(tree.pos) {
               val tp = tree.tpe
               val elemTree = typer typed Select(tree1 setType sym.tpe, nme.elem)
@@ -451,24 +457,34 @@ abstract class LambdaLift extends InfoTransform {
             }
           else tree1
         case Block(stats, expr0) =>
-          val (lzyVals, rest) = stats.partition {
-                      case stat@ValDef(_, _, _, _) if stat.symbol.isLazy => true
-                      case _                                             => false
-                  }
-          treeCopy.Block(tree, lzyVals:::rest, expr0)
+          val (lzyVals, rest) = stats partition {
+            case stat: ValDef => stat.symbol.isLazy || stat.symbol.isModuleVar
+            case _            => false
+          }
+          if (lzyVals.isEmpty) tree
+          else treeCopy.Block(tree, lzyVals ::: rest, expr0)
         case _ =>
           tree
       }
     }
+    
+    private def preTransform(tree: Tree) = super.transform(tree) setType lifted(tree.tpe)
 
-    override def transform(tree: Tree): Tree =
-      postTransform(super.transform(tree) setType lifted(tree.tpe))
-
+    override def transform(tree: Tree): Tree = tree match {
+      case ReferenceToBoxed(idt) =>
+        postTransform(preTransform(idt), isBoxedRef = true)
+      case _ =>
+        postTransform(preTransform(tree))
+    }
+      
     /** Transform statements and add lifted definitions to them. */
     override def transformStats(stats: List[Tree], exprOwner: Symbol): List[Tree] = {
       def addLifted(stat: Tree): Tree = stat match {
         case ClassDef(mods, name, tparams, impl @ Template(parents, self, body)) =>
-          val lifted = /*fixTraitGetters*/(liftedDefs(stat.symbol).toList map addLifted)
+          val lifted = liftedDefs get stat.symbol match {
+            case Some(xs) => xs reverseMap addLifted
+            case _        => log("unexpectedly no lifted defs for " + stat.symbol) ; Nil
+          }
           val result = treeCopy.ClassDef(
             stat, mods, name, tparams, treeCopy.Template(impl, parents, self, body ::: lifted))
           liftedDefs -= stat.symbol
@@ -484,7 +500,7 @@ abstract class LambdaLift extends InfoTransform {
     override def transformUnit(unit: CompilationUnit) {
       computeFreeVars
       atPhase(phase.next)(super.transformUnit(unit))
-      assert(liftedDefs.isEmpty, liftedDefs.keys.toList)
+      assert(liftedDefs.isEmpty, liftedDefs.keys mkString ", ")
     }
   } // class LambdaLifter
 

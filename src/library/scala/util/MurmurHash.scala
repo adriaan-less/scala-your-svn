@@ -20,15 +20,17 @@ package scala.util
  */
 
 import java.lang.Integer.{ rotateLeft => rotl }
+import scala.collection.Iterator
 
 /** A class designed to generate well-distributed non-cryptographic
  *  hashes.  It is designed to be passed to a collection's foreach method,
  *  or can take individual hash values with append.  Its own hash code is
  *  set equal to the hash code of whatever it is hashing.
  */
+@deprecated("Use the object MurmurHash3 instead.", "2.10.0")
 class MurmurHash[@specialized(Int,Long,Float,Double) T](seed: Int) extends (T => Unit) {
   import MurmurHash._
-  
+
   private var h = startHash(seed)
   private var c = hiddenMagicA
   private var k = hiddenMagicB
@@ -42,7 +44,7 @@ class MurmurHash[@specialized(Int,Long,Float,Double) T](seed: Int) extends (T =>
     k = hiddenMagicB
     hashed = false
   }
-  
+
   /** Incorporate the hash value of one item. */
   def apply(t: T) {
     h = extendHash(h,t.##,c,k)
@@ -50,7 +52,7 @@ class MurmurHash[@specialized(Int,Long,Float,Double) T](seed: Int) extends (T =>
     k = nextMagicB(k)
     hashed = false
   }
-  
+
   /** Incorporate a known hash value. */
   def append(i: Int) {
     h = extendHash(h,i,c,k)
@@ -58,7 +60,7 @@ class MurmurHash[@specialized(Int,Long,Float,Double) T](seed: Int) extends (T =>
     k = nextMagicB(k)
     hashed = false
   }
-  
+
   /** Retrieve the hash value */
   def hash = {
     if (!hashed) {
@@ -78,7 +80,7 @@ class MurmurHash[@specialized(Int,Long,Float,Double) T](seed: Int) extends (T =>
  *  incorporate a new integer) to update the values.  Only one method
  *  needs to be called to finalize the hash.
  */
-
+@deprecated("Use the object MurmurHash3 instead.", "2.10.0")
 object MurmurHash {
   // Magic values used for MurmurHash's 32 bit hash.
   // Don't change these without consulting a hashing expert!
@@ -100,7 +102,7 @@ object MurmurHash {
     Iterator.iterate(hiddenMagicA)(nextMagicA).take(23).toArray
 
   /** The first 23 magic integers from the second stream are stored here */
-  val storedMagicB = 
+  val storedMagicB =
     Iterator.iterate(hiddenMagicB)(nextMagicB).take(23).toArray
 
   /** Begin a new hash with a seed value. */
@@ -176,10 +178,10 @@ object MurmurHash {
    *  where the order of appearance of elements does not matter.
    *  This is useful for hashing sets, for example.
    */
-  def symmetricHash[T](xs: TraversableOnce[T], seed: Int) = {
+  def symmetricHash[T](xs: collection.TraversableOnce[T], seed: Int) = {
     var a,b,n = 0
     var c = 1
-    xs.foreach(i => {
+    xs.seq.foreach(i => {
       val h = i.##
       a += h
       b ^= h
