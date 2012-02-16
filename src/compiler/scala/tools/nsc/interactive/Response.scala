@@ -1,3 +1,7 @@
+/* NSC -- new Scala compiler
+ * Copyright 2009-2011 Scala Solutions and LAMP/EPFL
+ * @author Martin Odersky
+ */
 package scala.tools.nsc
 package interactive
 
@@ -13,8 +17,8 @@ package interactive
  *      case Some(Right(exc)) => <handle>(exc)
  *      case None =>
  *    }
- *  } 
- */ 
+ *  }
+ */
 class Response[T] {
 
   private var data: Option[Either[T, Throwable]] = None
@@ -47,37 +51,37 @@ class Response[T] {
    *  When interrupted will return with Right(InterruptedException)
    */
   def get: Either[T, Throwable] = synchronized {
-    while (!complete) { 
+    while (!complete) {
       try {
         wait()
-      } catch { 
+      } catch {
         case exc: InterruptedException => raise(exc)
       }
     }
     data.get
-  } 
+  }
 
   /** Optionally get data within `timeout` milliseconds.
    *  When interrupted will return with Some(Right(InterruptedException))
    *  When timeout ends, will return last stored provisional result,
    *  or else None if no provisional result was stored.
    */
-  def get(timeout: Long): Option[Either[T, Throwable]] = {
+  def get(timeout: Long): Option[Either[T, Throwable]] = synchronized {
     val start = System.currentTimeMillis
     var current = start
     while (!complete && start + timeout > current) {
       try {
         wait(timeout - (current - start))
-      } catch { 
+      } catch {
         case exc: InterruptedException => raise(exc)
-      } 
+      }
       current = System.currentTimeMillis
     }
     data
   }
 
   /** Final data set was stored
-   */ 
+   */
   def isComplete = synchronized { complete }
 
   /** Cancel action computing this response (Only the
@@ -95,3 +99,7 @@ class Response[T] {
     cancelled = false
   }
 }
+
+
+
+
