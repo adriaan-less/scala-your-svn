@@ -1,59 +1,81 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
-package scala.collection.mutable
+package scala.collection
+package mutable
 
-import scala.collection.generic.{ Addable, Cloneable, Growable }
-
+import generic._
+import annotation.bridge
 
 /** This class implements priority queues using a heap.
- *  To prioritize elements of type T there must be an implicit
- *  Ordering[T] available at creation.
+ *  To prioritize elements of type A there must be an implicit
+ *  Ordering[A] available at creation.
+ *
+ *  @tparam A    type of the elements in this priority queue.
+ *  @param ord   implicit ordering used to compare the elements of type `A`.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
+ *  @since   1
+ *
+ *  @define Coll PriorityQueue
+ *  @define coll priority queue
+ *  @define orderDependent
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-
-@serializable @cloneable
-class PriorityQueue[A](implicit ord: Ordering[A]) 
-      extends ResizableArray[A]
-      with Addable[A, PriorityQueue[A]]
+@cloneable
+class PriorityQueue[A](implicit val ord: Ordering[A])
+   extends AbstractIterable[A]
+      with Iterable[A]
+      with GenericOrderedTraversableTemplate[A, PriorityQueue]
+      with IterableLike[A, PriorityQueue[A]]
       with Growable[A]
-      with Cloneable[PriorityQueue[A]]
+      with Builder[A, PriorityQueue[A]]
+      with Serializable
 {
   import ord._
 
-  size0 += 1                                    // we do not use array(0)
-  override def length: Int = super.length - 1   // adjust length accordingly
-  override def isEmpty: Boolean = size0 < 2
-  override protected def thisCollection = this
-  
-  // hey foreach, our 0th element doesn't exist
-  override def foreach[U](f: A => U) {
-    var i = 1
-    while (i < size) {
-      f(toA(array(i)))
-      i += 1
-    }
+  private final class ResizableArrayAccess[A] extends AbstractSeq[A] with ResizableArray[A] {
+    @inline def p_size0 = size0
+    @inline def p_size0_=(s: Int) = size0 = s
+    @inline def p_array = array
+    @inline def p_ensureSize(n: Int) = super.ensureSize(n)
+    @inline def p_swap(a: Int, b: Int) = super.swap(a, b)
   }
+
+  protected[this] override def newBuilder = new PriorityQueue[A]
+
+  private val resarr = new ResizableArrayAccess[A]
+
+  resarr.p_size0 += 1                  // we do not use array(0)
+  def length: Int = resarr.length - 1  // adjust length accordingly
+  override def size: Int = length
+  override def isEmpty: Boolean = resarr.p_size0 < 2
+  override def repr = this
+
+  def result = this
+
+  override def orderedCompanion = PriorityQueue
 
   private def toA(x: AnyRef): A = x.asInstanceOf[A]
   protected def fixUp(as: Array[AnyRef], m: Int): Unit = {
     var k: Int = m
     while (k > 1 && toA(as(k / 2)) < toA(as(k))) {
-      swap(k, k / 2)
+      resarr.p_swap(k, k / 2)
       k = k / 2
-    }    
+    }
   }
-  protected def fixDown(as: Array[AnyRef], m: Int, n: Int): Unit = {    
+
+  protected def fixDown(as: Array[AnyRef], m: Int, n: Int): Unit = {
     var k: Int = m
     while (n >= 2 * k) {
       var j = 2 * k
@@ -72,37 +94,27 @@ class PriorityQueue[A](implicit ord: Ordering[A])
 
   /** Inserts a single element into the priority queue.
    *
-   *  @param  elem        the element to insert
+   *  @param  elem        the element to insert.
+   *  @return             this $coll.
    */
   def +=(elem: A): this.type = {
-    ensureSize(size0 + 1)
-    array(size0) = elem.asInstanceOf[AnyRef]
-    fixUp(array, size0)
-    size0 += 1
+    resarr.p_ensureSize(resarr.p_size0 + 1)
+    resarr.p_array(resarr.p_size0) = elem.asInstanceOf[AnyRef]
+    fixUp(resarr.p_array, resarr.p_size0)
+    resarr.p_size0 += 1
     this
   }
 
-  def +(elem: A): PriorityQueue[A] = { this.clone() += elem }
-  
-  /** Add two or more elements to this set. 
-   *  @param    elem1 the first element.
-   *  @param    kv2 the second element.
-   *  @param    kvs the remaining elements.
-   */
-  override def +(elem1: A, elem2: A, elems: A*) = { this.clone().+=(elem1, elem2, elems : _*) }
-
-  /** Adds all elements provided by an <code>Iterable</code> object
+  /** Adds all elements provided by a `TraversableOnce` object
    *  into the priority queue.
    *
-   *  @param  iter        an iterable object
+   *  @param  xs    a traversable object.
+   *  @return       a new priority queue containing elements of both `xs` and `this`.
    */
-  def ++(elems: Traversable[A]) = { this.clone() ++= elems }  // ??? XXX why does this "override nothing" with override?
+  def ++(xs: GenTraversableOnce[A]): PriorityQueue[A] = { this.clone() ++= xs.seq }
 
-  /** Adds all elements provided by an iterator into the priority queue.
-   *
-   *  @param  it        an iterator
-   */
-  override def ++(iter: Iterator[A]) = { this.clone() ++= iter } // ...whereas this doesn't?
+  @bridge
+  def ++(xs: TraversableOnce[A]): PriorityQueue[A] = ++ (xs: GenTraversableOnce[A])
 
   /** Adds all elements to the queue.
    *
@@ -117,52 +129,87 @@ class PriorityQueue[A](implicit ord: Ordering[A])
    *  @return   the element with the highest priority.
    */
   def dequeue(): A =
-    if (size0 > 1) {
-      size0 = size0 - 1
-      swap(1, size0)
-      fixDown(array, 1, size0 - 1)
-      toA(array(size0))
+    if (resarr.p_size0 > 1) {
+      resarr.p_size0 = resarr.p_size0 - 1
+      resarr.p_swap(1, resarr.p_size0)
+      fixDown(resarr.p_array, 1, resarr.p_size0 - 1)
+      toA(resarr.p_array(resarr.p_size0))
     } else
       throw new NoSuchElementException("no element to remove from heap")
+
+  def dequeueAll[A1 >: A, That](implicit bf: CanBuildFrom[_, A1, That]): That = {
+    val b = bf.apply
+    while (nonEmpty) {
+      b += dequeue()
+    }
+    b.result
+  }
 
   /** Returns the element with the highest priority in the queue,
    *  or throws an error if there is no element contained in the queue.
    *
    *  @return   the element with the highest priority.
    */
-  def max: A = if (size0 > 1) toA(array(1)) else throw new NoSuchElementException("queue is empty")
+  @deprecated("Use `head` instead.", "2.9.0")
+  def max: A = if (resarr.p_size0 > 1) toA(resarr.p_array(1)) else throw new NoSuchElementException("queue is empty")
+
+  /** Returns the element with the highest priority in the queue,
+   *  or throws an error if there is no element contained in the queue.
+   *
+   *  @return   the element with the highest priority.
+   */
+  override def head: A = if (resarr.p_size0 > 1) toA(resarr.p_array(1)) else throw new NoSuchElementException("queue is empty")
 
   /** Removes all elements from the queue. After this operation is completed,
    *  the queue will be empty.
    */
-  def clear(): Unit = { size0 = 1 }
+  def clear(): Unit = { resarr.p_size0 = 1 }
 
   /** Returns an iterator which yields all the elements of the priority
    *  queue in descending priority order.
    *
    *  @return  an iterator over all elements sorted in descending order.
    */
-  override def iterator: Iterator[A] = new Iterator[A] {
-    val as: Array[AnyRef] = new Array[AnyRef](size0)
-    Array.copy(array, 0, as, 0, size0)
-    var i = size0 - 1
-    def hasNext: Boolean = i > 0
+  override def iterator: Iterator[A] = new AbstractIterator[A] {
+    private var i = 1
+    def hasNext: Boolean = i < resarr.p_size0
     def next(): A = {
-      val res = toA(as(1))
-      as(1) = as(i)
-      i = i - 1
-      fixDown(as, 1, i)
-      res
+      val n = resarr.p_array(i)
+      i += 1
+      toA(n)
     }
   }
 
-  /** Checks if two queues are structurally identical.
+
+  /** Returns the reverse of this queue. The priority queue that gets
+   *  returned will have an inversed ordering - if for some elements
+   *  `x` and `y` the original queue's ordering
+   *  had `compare` returning an integer ''w'', the new one will return ''-w'',
+   *  assuming the original ordering abides its contract.
    *
-   *  @return true, iff both queues contain the same sequence of elements.
+   *  Note that the order of the elements will be reversed unless the
+   *  `compare` method returns 0. In this case, such elements
+   *  will be subsequent, but their corresponding subinterval may be inappropriately
+   *  reversed. However, due to the compare-equals contract, they will also be equal.
+   *
+   *  @return   A reversed priority queue.
    */
-  override def equals(obj: Any): Boolean = obj match {
-    case that: PriorityQueue[_] => (this.iterator zip that.iterator) forall { case (x, y) => x == y }
-    case _                      => false
+  def reverse = {
+    val revq = new PriorityQueue[A]()(new math.Ordering[A] {
+      def compare(x: A, y: A) = ord.compare(y, x)
+    })
+    for (i <- 1 until resarr.length) revq += resarr(i)
+    revq
+  }
+
+  def reverseIterator: Iterator[A] = new AbstractIterator[A] {
+    private var i = resarr.p_size0 - 1
+    def hasNext: Boolean = i >= 1
+    def next(): A = {
+      val n = resarr.p_array(i)
+      i -= 1
+      toA(n)
+    }
   }
 
   /** The hashCode method always yields an error, since it is not
@@ -189,4 +236,18 @@ class PriorityQueue[A](implicit ord: Ordering[A])
    *  @return  a priority queue with the same elements.
    */
   override def clone(): PriorityQueue[A] = new PriorityQueue[A] ++= this.iterator
+
+  // def printstate() {
+  //   println("-----------------------")
+  //   println("Size: " + resarr.p_size0)
+  //   println("Internal array: " + resarr.p_array.toList)
+  //   println(toString)
+  // }
 }
+
+
+object PriorityQueue extends OrderedTraversableFactory[PriorityQueue] {
+  def newBuilder[A](implicit ord: Ordering[A]) = new PriorityQueue[A]
+  implicit def canBuildFrom[A](implicit ord: Ordering[A]): CanBuildFrom[Coll, A, PriorityQueue[A]] = new GenericCanBuildFrom[A]
+}
+

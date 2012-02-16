@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id: LocalBuilder.java 168 2005-12-12 14:20:06Z mihaylov $
 
 package ch.epfl.lamp.compiler.msil.emit
 
