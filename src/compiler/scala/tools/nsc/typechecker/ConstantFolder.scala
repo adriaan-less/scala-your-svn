@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package typechecker
@@ -28,13 +27,13 @@ abstract class ConstantFolder {
     case _ => null
   })
 
-  /** If tree is a constant value that can be converted to type `pt', perform
+  /** If tree is a constant value that can be converted to type `pt`, perform
    *  the conversion.
    *
    *  @param tree ...
    *  @param pt ...
    */
-  def apply(tree: Tree, pt: Type): Tree = fold(tree, tree.tpe match {
+  def apply(tree: Tree, pt: Type): Tree = fold(apply(tree), tree.tpe match {
     case ConstantType(x) => x convertTo pt
     case _ => null
   })
@@ -42,7 +41,7 @@ abstract class ConstantFolder {
   private def fold(tree: Tree, compX: => Constant): Tree =
     try {
       val x = compX
-      if ((x ne null) && x.tag != UnitTag) tree setType mkConstantType(x) 
+      if ((x ne null) && x.tag != UnitTag) tree setType ConstantType(x)
       else tree
     } catch {
       case _: ArithmeticException => tree   // the code will crash at runtime,
@@ -121,7 +120,7 @@ abstract class ConstantFolder {
     case nme.DIV => Constant(x.longValue / y.longValue)
     case nme.MOD => Constant(x.longValue % y.longValue)
     case _ => null
-  }  
+  }
   private def foldFloatOp(op: Name, x: Constant, y: Constant): Constant = op match {
     case nme.EQ  => Constant(x.floatValue == y.floatValue)
     case nme.NE  => Constant(x.floatValue != y.floatValue)
@@ -152,17 +151,11 @@ abstract class ConstantFolder {
   }
 
   private def foldBinop(op: Name, x: Constant, y: Constant): Constant = {
-    // temporarily logging folded ==/!= so the log doesn't have unexplained absences
-    // Careful, these four lines added 3 minutes to the time to compile this file under -optimise
-    // if ((op == nme.EQ || op == nme.NE) && x.tag != y.tag && settings.logEqEq.value) {
-    //   val opstr = if (op == nme.EQ) "==" else "!="
-    //   scala.runtime.Equality.log("Folding constant expression (%s %s %s)".format(x.value, opstr, y.value))
-    // }
     val optag =
       if (x.tag == y.tag) x.tag
-      else if (isNumeric(x.tag) && isNumeric(y.tag)) Math.max(x.tag, y.tag)
+      else if (x.isNumeric && y.isNumeric) math.max(x.tag, y.tag)
       else NoTag
-      
+
     try optag match {
       case BooleanTag                               => foldBooleanOp(op, x, y)
       case ByteTag | ShortTag | CharTag | IntTag    => foldSubrangeOp(op, x, y)
