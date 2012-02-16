@@ -1,18 +1,17 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id: CharArrayReader.scala 17610 2009-04-30 22:38:36Z extempore $
 
 package scala.tools.nsc
 package util
 
-import scala.tools.nsc.util.SourceFile.{LF, FF, CR, SU}
+import scala.reflect.internal.Chars._
 
-class JavaCharArrayReader(buf: RandomAccessSeq[Char], start: Int, /* startline: int, startcol: int, */
+class JavaCharArrayReader(buf: IndexedSeq[Char], start: Int, /* startline: int, startcol: int, */
                       decodeUni: Boolean, error: String => Unit) extends Iterator[Char] with Cloneable {
 
-  def this(buf: RandomAccessSeq[Char], decodeUni: Boolean, error: String => Unit) =
+  def this(buf: IndexedSeq[Char], decodeUni: Boolean, error: String => Unit) =
     this(buf, 0, /* 1, 1, */ decodeUni, error)
 
   /** produce a duplicate of this char array reader which starts reading
@@ -30,7 +29,7 @@ class JavaCharArrayReader(buf: RandomAccessSeq[Char], start: Int, /* startline: 
   var bp = start
   var oldBp = -1
   var oldCh: Char = _
-  
+
   //private var cline: Int = _
   //private var ccol: Int = _
   def cpos = bp
@@ -52,20 +51,20 @@ class JavaCharArrayReader(buf: RandomAccessSeq[Char], start: Int, /* startline: 
     //nextcol = 1
   }
 
-  def hasNext: Boolean = if (bp < buf.length) true 
+  def hasNext: Boolean = if (bp < buf.length) true
   else {
     false
   }
 
   def last: Char = if (bp > start + 2) buf(bp - 2) else ' ' // XML literals
 
-  def next: Char = {
+  def next(): Char = {
     //cline = nextline
     //ccol = nextcol
-    val buf = this.buf.asInstanceOf[runtime.BoxedCharArray].value
+    val buf = this.buf.asInstanceOf[collection.mutable.WrappedArray[Char]].array
     if(!hasNext) {
       ch = SU
-      return SU  // there is an endless stream of SU's at the end 
+      return SU  // there is an endless stream of SU's at the end
     }
     oldBp = bp
     oldCh = ch
@@ -111,7 +110,7 @@ class JavaCharArrayReader(buf: RandomAccessSeq[Char], start: Int, /* startline: 
     ch
   }
 
-  def rewind {
+  def rewind() {
     if (oldBp == -1) throw new IllegalArgumentException
     bp = oldBp
     ch = oldCh
@@ -121,15 +120,4 @@ class JavaCharArrayReader(buf: RandomAccessSeq[Char], start: Int, /* startline: 
 
   def copy: JavaCharArrayReader =
     new JavaCharArrayReader(buf, bp, /* nextcol, nextline, */ decodeUni, error)
-
-  def digit2int(ch: Char, base: Int): Int = {
-    if ('0' <= ch && ch <= '9' && ch < '0' + base)
-      ch - '0'
-    else if ('A' <= ch && ch < 'A' + base - 10)
-      ch - 'A' + 10
-    else if ('a' <= ch && ch < 'a' + base - 10)
-      ch - 'a' + 10
-    else
-      -1
-  }
 }

@@ -1,8 +1,9 @@
 import scala.actors._
 import scala.actors.Actor._
 
-class MyActor extends ReplyReactor with ReplyableReactor {
+class MyActor extends ReplyReactor {
   def act() {
+    try {
     loop {
       react {
         case 'hello =>
@@ -10,6 +11,10 @@ class MyActor extends ReplyReactor with ReplyableReactor {
         case 'stop =>
           exit()
       }
+    }
+    } catch {
+      case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+        e.printStackTrace()
     }
   }
 }
@@ -19,21 +24,26 @@ object Test {
     val a = new MyActor
     a.start()
 
-    val b = new Reactor {
+    val b = new Reactor[Any] {
       def act() {
+        try {
         react {
           case r: MyActor =>
             var i = 0
             loop {
               i += 1
               val msg = r !? (500, 'hello)
-              if (i % 10000 == 0)
+              if (i % 200000 == 0)
                 println(msg)
-              if (i >= 50000) {
+              if (i >= 1000000) {
                 r ! 'stop
                 exit()
               }
             }
+        }
+        } catch {
+          case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+            e.printStackTrace()
         }
       }
     }

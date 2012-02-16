@@ -1,20 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
 package dtd
 
-import scala.util.regexp.WordExp
-import scala.util.automata.{DetWordAutom, SubsetConstruction, WordBerrySethi}
-import scala.collection.mutable.HashSet
+import util.regexp.WordExp
+import util.automata._
 import Utility.sbToString
 import PartialFunction._
 
@@ -34,29 +32,26 @@ object ContentModel extends WordExp {
   def containsText(cm: ContentModel) = (cm == PCDATA) || isMixed(cm)
   def parse(s: String): ContentModel = ContentModelParser.parse(s)
 
-  def getLabels(r: RegExp): Set[String] = {    
+  def getLabels(r: RegExp): Set[String] = {
     def traverse(r: RegExp): Set[String] = r match { // !!! check for match translation problem
       case Letter(ElemName(name)) => Set(name)
       case Star(  x @ _  ) => traverse( x ) // bug if x@_*
       case Sequ( xs @ _* ) => Set(xs map traverse flatten: _*)
       case Alt(  xs @ _* ) => Set(xs map traverse flatten: _*)
     }
-    
+
     traverse(r)
   }
 
   def buildString(r: RegExp): String = sbToString(buildString(r, _))
 
   /* precond: rs.length >= 1 */
-  private def buildString(rs: Seq[RegExp], sb: StringBuilder, sep: Char) {    
-    val it = rs.iterator
-    val fst = it.next
-    buildString(fst, sb)
-    for (z <- it) {
-      sb.append(sep)
+  private def buildString(rs: Seq[RegExp], sb: StringBuilder, sep: Char) {
+    buildString(rs.head, sb)
+    for (z <- rs.tail) {
+      sb append sep
       buildString(z, sb)
     }
-    sb
   }
 
   def buildString(c: ContentModel, sb: StringBuilder): StringBuilder = c match {
@@ -68,13 +63,13 @@ object ContentModel extends WordExp {
 
   def buildString(r: RegExp, sb: StringBuilder): StringBuilder =
     r match {  // !!! check for match translation problem
-      case Eps => 
+      case Eps =>
         sb
-      case Sequ(rs @ _*) => 
+      case Sequ(rs @ _*) =>
         sb.append( '(' ); buildString(rs, sb, ','); sb.append( ')' )
       case Alt(rs @ _*) =>
         sb.append( '(' ); buildString(rs, sb, '|');  sb.append( ')' )
-      case Star(r: RegExp) => 
+      case Star(r: RegExp) =>
         sb.append( '(' ); buildString(r, sb); sb.append( ")*" )
       case Letter(ElemName(name)) =>
         sb.append(name)
@@ -100,7 +95,7 @@ case object ANY extends ContentModel {
 sealed abstract class DFAContentModel extends ContentModel {
   import ContentModel.{ ElemName, Translator }
   def r: ContentModel.RegExp
-  
+
   lazy val dfa: DetWordAutom[ElemName] = {
     val nfa = Translator.automatonFrom(r, 1)
     new SubsetConstruction(nfa).determinize
@@ -119,7 +114,7 @@ case class MIXED(r: ContentModel.RegExp) extends DFAContentModel {
   }
 }
 
-case class  ELEMENTS(r: ContentModel.RegExp) extends DFAContentModel {
-  override def buildString(sb: StringBuilder): StringBuilder =  
+case class ELEMENTS(r: ContentModel.RegExp) extends DFAContentModel {
+  override def buildString(sb: StringBuilder): StringBuilder =
     ContentModel.buildString(r, sb)
 }
