@@ -1,5 +1,5 @@
 /* NEST (New Scala Test)
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author Philipp Haller
  */
 
@@ -42,7 +42,7 @@ object NestUI {
   def outline(msg: String, wr: PrintWriter) = synchronized {
     wr.print(_outline + msg + _default)
   }
-  
+
   def success(msg: String) = print(_success  + msg + _default)
   def success(msg: String, wr: PrintWriter) = synchronized {
     wr.print(_success + msg + _default)
@@ -80,12 +80,15 @@ object NestUI {
     println("    --scalacheck    run ScalaCheck tests")
     println("    --script        run script runner tests")
     println("    --shootout      run shootout tests")
+    println("    --presentation  run presentation compiler tests")
+    println("    --grep <expr>    run all tests whose source file contains <expr>")
     println
     println("  Other options:")
     println("    --pack       pick compiler/library in build/pack, and run all tests")
     println("    --show-log   show log")
     println("    --show-diff  show diff between log and check file")
     println("    --failed     run only those tests that failed during the last run")
+    println("    --update-check instead of failing tests with output change, update checkfile. (Use with care!)")
     println("    --verbose    show progress information")
     println("    --buildpath  set (relative) path to build jars")
     println("                 ex.: --buildpath build/pack")
@@ -96,7 +99,7 @@ object NestUI {
     println
     println(utils.Properties.versionString)
     println("maintained by Philipp Haller (EPFL)")
-    exit(1)
+    sys.exit(1)
   }
 
   var _verbose = false
