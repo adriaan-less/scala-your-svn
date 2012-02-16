@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2007-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2007-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.swing
@@ -16,7 +15,7 @@ import scala.collection.mutable.{Buffer, ListBuffer}
 
 object Reactions {
   import scala.ref._
-  
+
   class Impl extends Reactions {
     private val parts: Buffer[Reaction] = new ListBuffer[Reaction]
     def isDefinedAt(e: Event) = parts.exists(_ isDefinedAt e)
@@ -26,14 +25,14 @@ object Reactions {
       for (p <- parts) if (p isDefinedAt e) p(e)
     }
   }
-  
+
   type Reaction = PartialFunction[Event, Unit]
-  
+
   /**
    * A Reaction implementing this trait is strongly referenced in the reaction list
    */
   trait StronglyReferenced
-  
+
   class Wrapper(listener: Any)(r: Reaction) extends Reaction with StronglyReferenced with Proxy {
     def self = listener
     def isDefinedAt(e: Event) = r.isDefinedAt(e)
