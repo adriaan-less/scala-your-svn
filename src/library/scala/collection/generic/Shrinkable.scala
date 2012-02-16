@@ -1,26 +1,25 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.collection
 package generic
 
 /** This trait forms part of collections that can be reduced
  *  using a `-=` operator.
- *        
+ *
  *  @author   Martin Odersky
  *  @version 2.8
  *  @since   2.8
  *  @define coll shrinkable collection
  *  @define Coll Shrinkable
  */
-trait Shrinkable[-A] { 
+trait Shrinkable[-A] {
 
   /** Removes a single element from this $coll.
    *
@@ -37,7 +36,7 @@ trait Shrinkable[-A] {
    *  @return the $coll itself
    */
   def -=(elem1: A, elem2: A, elems: A*): this.type = {
-    this -= elem1 
+    this -= elem1
     this -= elem2
     this --= elems
   }
@@ -47,16 +46,9 @@ trait Shrinkable[-A] {
    *  @param iter  the iterator producing the elements to remove.
    *  @return the $coll itself
    */
-  def --=(iter: Iterator[A]): this.type = { iter foreach -=; this }
-
-  /** Removes all elements contained in a traversable collection from this $coll.
-   *
-   *  @param iter  the collection containing the elements to remove.
-   *  @return the $coll itself
-   */
-  def --=(iter: Traversable[A]): this.type = { iter foreach -=; this }
+  def --=(xs: TraversableOnce[A]): this.type = { xs.seq foreach -= ; this }
 }
-  
 
-  
+
+
 

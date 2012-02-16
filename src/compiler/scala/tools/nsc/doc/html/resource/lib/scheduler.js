@@ -3,13 +3,18 @@
 
 function Scheduler() {
     var scheduler = this;
-    var resolution = 1;
+    var resolution = 0;
     this.timeout = undefined;
     this.queues = new Array(0); // an array of work pacakges indexed by index in the labels table.
     this.labels = new Array(0); // an indexed array of labels indexed by priority. This should be short.
     this.label = function(name, priority) {
         this.name = name;
         this.priority = priority;
+    }
+    this.work = function(fn, self, args) {
+        this.fn = fn;
+        this.self = self;
+        this.args = args;
     }
     this.addLabel = function(name, priority) {
         var idx = 0;
@@ -34,12 +39,13 @@ function Scheduler() {
         }
         return fn;
     }
-    this.add = function(labelName, self, fn) {
+    this.add = function(labelName, fn, self, args) {
         var doWork = function() {
             scheduler.timeout = setTimeout(function() {
                 var work = scheduler.nextWork();
                 if (work != undefined) {
-                    work[1].call(work[0]);
+                    if (work.args == undefined) { work.args = new Array(0); }
+                    work.fn.apply(work.self, work.args);
                     doWork();
                 }
                 else {
@@ -50,14 +56,10 @@ function Scheduler() {
         var idx = 0;
         while (idx < scheduler.labels.length && scheduler.labels[idx].name != labelName) { idx = idx + 1; }
         if (idx < scheduler.queues.length && scheduler.labels[idx].name == labelName) {
-            scheduler.queues[idx].push([self, fn]);
-            if (scheduler.timeout == undefined) {
-                doWork();
-            }
+            scheduler.queues[idx].push(new scheduler.work(fn, self, args));
+            if (scheduler.timeout == undefined) doWork();
         }
-        else {
-            throw("queue for add is non existant");
-        }
+        else throw("queue for add is non existant");
     }
     this.clear = function(labelName) {
         var idx = 0;
