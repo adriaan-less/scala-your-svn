@@ -1,12 +1,10 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
-
-// $Id$
 
 
 package scala.xml
@@ -28,14 +26,14 @@ abstract class ExternalID extends parsing.TokenTests
   override def toString(): String = {
     lazy val quotedSystemLiteral = quoted(systemId)
     lazy val quotedPublicLiteral = quoted(publicId)
-    
+
     if (publicId == null) "SYSTEM " + quotedSystemLiteral
     else "PUBLIC " + quotedPublicLiteral +
       (if (systemId == null) "" else " " + quotedSystemLiteral)
   }
   def buildString(sb: StringBuilder): StringBuilder =
     sb.append(this.toString())
-  
+
   def systemId: String
   def publicId: String
 }
