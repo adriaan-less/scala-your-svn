@@ -12,6 +12,17 @@ class C1435 {
   }
 }
 
+// #1492
+class C1492 {
+
+  class X
+
+  def foo(x: X => X) {}
+
+  foo ( implicit x => implicitly[X] )
+  foo { implicit x => implicitly[X] }
+}
+
 // #1579
 object Test1579 {
   class Column
@@ -54,4 +65,25 @@ object Test2188 {
 object TestNumericWidening {
   val y = 1
   val x: java.lang.Long = y
+}
+
+// #2709 
+package foo2709 { 
+  class A 
+  class B 
+ 
+  package object bar { 
+    implicit def a2b(a: A): B = new B 
+  } 
+ 
+  package bar { 
+    object test { 
+      new A: B 
+    } 
+  } 
+} 
+
+// Problem with specs
+object specsProblem {
+  println(implicitly[Manifest[Class[_]]])
 }
