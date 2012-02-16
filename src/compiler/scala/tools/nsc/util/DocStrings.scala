@@ -3,12 +3,10 @@
  * @author  Martin Odersky
  */
 
-
 package scala.tools.nsc
 package util
 
 import scala.reflect.internal.Chars._
-import scala.collection.mutable.{HashMap, ListBuffer, StringBuilder}
 
 /** Utilitity methods for doc comment strings
  */
@@ -21,7 +19,7 @@ object DocStrings {
     if (start < str.length && isWhitespace(str charAt start)) skipWhitespace(str, start + 1)
     else start
 
-  /** Returns index of string `str` following `start` skipping 
+  /** Returns index of string `str` following `start` skipping
    *  sequence of identifier characters.
    */
   def skipIdent(str: String, start: Int): Int =
@@ -73,16 +71,38 @@ object DocStrings {
    *  Every section starts with a `@` and extends to the next `@`, or
    *  to the end of the comment string, but excluding the final two
    *  characters which terminate the comment.
+   *  
+   *  Also take usecases into account - they need to expand until the next 
+   *  usecase or the end of the string, as they might include other sections 
+   *  of their own 
    */
   def tagIndex(str: String, p: Int => Boolean = (idx => true)): List[(Int, Int)] =
     findAll(str, 0) (idx => str(idx) == '@' && p(idx)) match {
       case List() => List()
-      case idxs => idxs zip (idxs.tail ::: List(str.length - 2))
+      case idxs => {
+        val idxs2 = mergeUsecaseSections(str, idxs)
+        idxs2 zip (idxs2.tail ::: List(str.length - 2))
+      }
     }
-
+  
+  /**
+   * Merge sections following an usecase into the usecase comment, so they 
+   * can override the parent symbol's sections 
+   */
+  def mergeUsecaseSections(str: String, idxs: List[Int]): List[Int] = {
+    idxs.find(str.substring(_).startsWith("@usecase")) match {
+      case Some(firstUC) =>
+        val commentSections = idxs.take(idxs.indexOf(firstUC))
+        val usecaseSections = idxs.drop(idxs.indexOf(firstUC)).filter(str.substring(_).startsWith("@usecase"))
+        commentSections ::: usecaseSections
+      case None =>
+        idxs
+    }
+  }
+  
   /** Does interval `iv` start with given `tag`?
    */
-  def startsWithTag(str: String, section: (Int, Int), tag: String): Boolean = 
+  def startsWithTag(str: String, section: (Int, Int), tag: String): Boolean =
     startsWithTag(str, section._1, tag)
 
   def startsWithTag(str: String, start: Int, tag: String): Boolean =
@@ -111,11 +131,11 @@ object DocStrings {
   /** Optionally start and end index of return section in `str`, or `None`
    *  if `str` does not have a @return.
    */
-  def returnDoc(str: String, sections: List[(Int, Int)]): Option[(Int, Int)] = 
+  def returnDoc(str: String, sections: List[(Int, Int)]): Option[(Int, Int)] =
     sections find (startsWithTag(str, _, "@return"))
-    
+
   /** Extracts variable name from a string, stripping any pair of surrounding braces */
-  def variableName(str: String): String = 
+  def variableName(str: String): String =
     if (str.length >= 2 && (str charAt 0) == '{' && (str charAt (str.length - 1)) == '}')
       str.substring(1, str.length - 1)
     else

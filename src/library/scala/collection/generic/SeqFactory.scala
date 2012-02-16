@@ -5,13 +5,11 @@
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
- 
+
 
 
 package scala.collection
 package generic
-
-import annotation.bridge
 
 /** A template for companion objects of Seq and subclasses thereof.
  *
@@ -19,7 +17,7 @@ import annotation.bridge
  */
 abstract class SeqFactory[CC[X] <: Seq[X] with GenericTraversableTemplate[X, CC]]
 extends GenSeqFactory[CC] with TraversableFactory[CC] {
-  
+
   /** This method is called in a pattern match { case Seq(...) => }.
    *
    *  @param x the selector value

@@ -29,7 +29,7 @@ trait StdTokens extends Tokens {
   /** The class of string literal tokens */
   case class StringLit(chars: String) extends Token {
     override def toString = "\""+chars+"\""
-  }    
+  }
 
   /** The class of identifier tokens */
   case class Identifier(chars: String) extends Token {

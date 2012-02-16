@@ -3,51 +3,54 @@
  * @author  Martin Odersky
  */
 
-
 package scala.tools.nsc
 package backend
 package icode
 
 import java.io.PrintWriter
 import scala.collection.{ mutable, immutable }
-import mutable.{ HashMap, ListBuffer }
+import util.{ SourceFile, NoSourceFile }
 import symtab.Flags.{ DEFERRED }
-  
+
 trait ReferenceEquality {
   override def hashCode = System.identityHashCode(this)
   override def equals(that: Any) = this eq that.asInstanceOf[AnyRef]
 }
 
-trait Members { self: ICodes =>
-  import global._
+trait Members {
+  self: ICodes =>
 
-  /** 
+  import global._
+  
+  object NoCode extends Code(null, "NoCode") {
+    override def blocksList: List[BasicBlock] = Nil
+  }
+
+  /**
    * This class represents the intermediate code of a method or
    * other multi-block piece of code, like exception handlers.
    */
-  class Code(label: String, method: IMethod) {
-    def this(method: IMethod) = this(method.symbol.simpleName.toString, method)
-
+  class Code(method: IMethod, name: String) {
+    def this(method: IMethod) = this(method, method.symbol.decodedName.toString.intern)
     /** The set of all blocks */
-    val blocks: ListBuffer[BasicBlock] = new ListBuffer
+    val blocks = mutable.ListBuffer[BasicBlock]()
 
     /** The start block of the method */
-    var startBlock: BasicBlock = null
+    var startBlock: BasicBlock = NoBasicBlock
 
-    /** The stack produced by this method */
-    var producedStack: TypeStack = null
-    
     private var currentLabel: Int = 0
     private var _touched = false
-    
-    def blockCount       = blocks.size
-    def instructionCount = blocks map (_.length) sum
+
+    def blocksList: List[BasicBlock] = blocks.toList
+    def instructions                 = blocksList flatMap (_.iterator)
+    def blockCount                   = blocks.size
+    def instructionCount             = blocks map (_.length) sum
 
     def touched = _touched
     def touched_=(b: Boolean): Unit = {
       if (b)
         blocks foreach (_.touched = true)
-      
+
       _touched = b
     }
 
@@ -66,16 +69,16 @@ trait Members { self: ICodes =>
 
       if (b == startBlock)
         startBlock = b.successors.head
-        
-      blocks -= b      
+
+      blocks -= b
       assert(!blocks.contains(b))
       method.exh filter (_ covers b) foreach (_.covered -= b)
       touched = true
     }
 
     /** This methods returns a string representation of the ICode */
-    override def toString() : String = "ICode '" + label + "'";
-    
+    override def toString = "ICode '" + name + "'";
+
     /* Compute a unique new label */
     def nextLabel: Int = {
       currentLabel += 1
@@ -84,19 +87,19 @@ trait Members { self: ICodes =>
 
     /* Create a new block and append it to the list
      */
-    def newBlock: BasicBlock = {
+    def newBlock(): BasicBlock = {
       touched = true
       val block = new BasicBlock(nextLabel, method);
       blocks += block;
       block
-    }    
+    }
   }
-  
+
   /** Common interface for IClass/IField/IMethod. */
   trait IMember extends Ordered[IMember] {
     def symbol: Symbol
-      
-    def compare(other: IMember) = 
+
+    def compare(other: IMember) =
       if (symbol eq other.symbol) 0
       else if (symbol isLess other.symbol) -1
       else 1
@@ -107,7 +110,6 @@ trait Members { self: ICodes =>
     var fields: List[IField] = Nil
     var methods: List[IMethod] = Nil
     var cunit: CompilationUnit = _
-    var bootstrapClass: Option[String] = None
 
     def addField(f: IField): this.type = {
       fields = f :: fields;
@@ -136,26 +138,37 @@ trait Members { self: ICodes =>
 
   /** Represent a field in ICode */
   class IField(val symbol: Symbol) extends IMember { }
+  
+  object NoIMethod extends IMethod(NoSymbol) { }
 
-  /** 
+  /**
    * Represents a method in ICode. Local variables contain
-   * both locals and parameters, similar to the way the JVM 
+   * both locals and parameters, similar to the way the JVM
    * 'sees' them.
-   * 
+   *
    * Locals and parameters are added in reverse order, as they
    * are kept in cons-lists. The 'builder' is responsible for
    * reversing them and putting them back, when the generation is
    * finished (GenICode does that).
    */
   class IMethod(val symbol: Symbol) extends IMember {
-    var code: Code = null
+    var code: Code = NoCode
+
+    def newBlock() = code.newBlock
+    def startBlock = code.startBlock
+    def lastBlock  = blocks.last
+    def blocks = code.blocksList
+    def linearizedBlocks(lin: Linearizer = self.linearizer): List[BasicBlock] = lin linearize this
+
+    def foreachBlock[U](f: BasicBlock  => U): Unit = blocks foreach f
+    def foreachInstr[U](f: Instruction => U): Unit = foreachBlock(_.toList foreach f)
+
     var native = false
 
     /** The list of exception handlers, ordered from innermost to outermost. */
     var exh: List[ExceptionHandler] = Nil
-    var sourceFile: String = _
+    var sourceFile: SourceFile = NoSourceFile
     var returnType: TypeKind = _
-
     var recursive: Boolean = false
 
     /** local variables and method parameters */
@@ -164,7 +177,7 @@ trait Members { self: ICodes =>
     /** method parameters */
     var params: List[Local] = Nil
 
-    def hasCode = code != null
+    def hasCode = code ne NoCode
     def setCode(code: Code): IMethod = {
       this.code = code;
       this
@@ -195,19 +208,21 @@ trait Members { self: ICodes =>
     /** Is this method deferred ('abstract' in Java sense)?
      */
     def isAbstractMethod = symbol.isDeferred || symbol.owner.isInterface || native
-    
+
     def isStatic: Boolean = symbol.isStaticMember
-    
+
     override def toString() = symbol.fullName
-    
+
     import opcodes._
     def checkLocals(): Unit = {
-      def localsSet = code.blocks.flatten collect {
-        case LOAD_LOCAL(l)  => l
-        case STORE_LOCAL(l) => l
-      } toSet
-      
-      if (code != null) {
+      def localsSet = (code.blocks flatMap { bb =>
+        bb.iterator collect {
+          case LOAD_LOCAL(l)  => l
+          case STORE_LOCAL(l) => l
+        }
+      }).toSet
+
+      if (hasCode) {
         log("[checking locals of " + this + "]")
         locals filterNot localsSet foreach { l =>
           log("Local " + l + " is not declared in " + this)
@@ -215,25 +230,25 @@ trait Members { self: ICodes =>
       }
     }
 
-    /** Merge together blocks that have a single successor which has a 
+    /** Merge together blocks that have a single successor which has a
      * single predecessor. Exception handlers are taken into account (they
      * might force to break a block of straight line code like that).
      *
      * This method should be most effective after heavy inlining.
      */
-    def normalize(): Unit = if (this.code ne null) {
+    def normalize(): Unit = if (this.hasCode) {
       val nextBlock: mutable.Map[BasicBlock, BasicBlock] = mutable.HashMap.empty
       for (b <- code.blocks.toList
-        if b.successors.length == 1; 
-        val succ = b.successors.head; 
+        if b.successors.length == 1;
+        succ = b.successors.head;
         if succ ne b;
         if succ.predecessors.length == 1;
         if succ.predecessors.head eq b;
-        if !(exh.exists { (e: ExceptionHandler) => 
+        if !(exh.exists { (e: ExceptionHandler) =>
             (e.covers(succ) && !e.covers(b)) || (e.covers(b) && !e.covers(succ)) })) {
           nextBlock(b) = succ
       }
-          
+
       var bb = code.startBlock
       while (!nextBlock.isEmpty) {
         if (nextBlock.isDefinedAt(bb)) {
@@ -248,17 +263,16 @@ trait Members { self: ICodes =>
             exh foreach { e => e.covered = e.covered - succ }
           } while (nextBlock.isDefinedAt(succ))
           bb.close
-        } else 
+        } else
           bb = nextBlock.keysIterator.next
       }
       checkValid(this)
     }
-    
+
     def dump() {
-      val printer = new TextPrinter(new PrintWriter(Console.out, true),
-                                    new DumpLinearizer)
-      printer.printMethod(this)
-    }    
+      Console.println("dumping IMethod(" + symbol + ")")
+      newTextPrinter() printMethod this
+    }
   }
 
   /** Represent local variables and parameters */
@@ -267,10 +281,10 @@ trait Members { self: ICodes =>
 
     /** Starting PC for this local's visibility range. */
     var start: Int = _
-    
+
     /** Ending PC for this local's visibility range. */
     var end: Int = _
-    
+
     /** PC-based ranges for this local variable's visibility */
     var ranges: List[(Int, Int)] = Nil
 

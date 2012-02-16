@@ -6,45 +6,46 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.util.parsing
 package combinator
 package lexical
 
 import token._
 import input.CharArrayReader.EofCh
-import collection.mutable.HashSet
+import scala.collection.mutable
 
-/** This component provides a standard lexical parser for a simple, Scala-like language. 
- *  It parses keywords and identifiers, numeric literals (integers), strings, and delimiters. 
+/** This component provides a standard lexical parser for a simple,
+ *  [[http://scala-lang.org Scala]]-like language. It parses keywords and
+ *  identifiers, numeric literals (integers), strings, and delimiters.
  *
- *  To distinguish between identifiers and keywords, it uses a set of reserved identifiers: 
- *  every string contained in `reserved` is returned as a keyword token.
- *  (Note that "=>" is hard-coded as a keyword.) 
- *  Additionally, the kinds of delimiters can be specified by the `delimiters` set.
+ *  To distinguish between identifiers and keywords, it uses a set of
+ *  reserved identifiers:  every string contained in `reserved` is returned
+ *  as a keyword token. (Note that `=>` is hard-coded as a keyword.)
+ *  Additionally, the kinds of delimiters can be specified by the
+ *  `delimiters` set.
  *
- *  Usually this component is used to break character-based input into bigger tokens,
- *  which are then passed to a token-parser {@see TokenParsers}.
+ *  Usually this component is used to break character-based input into
+ *  bigger tokens, which are then passed to a token-parser {@see
+ *  [[scala.util.parsing.combinator.syntactical.TokenParsers]]}.
  *
  * @author Martin Odersky
  * @author Iulian Dragos
- * @author Adriaan Moors 
+ * @author Adriaan Moors
  */
 class StdLexical extends Lexical with StdTokens {
   // see `token` in `Scanners`
-  def token: Parser[Token] = 
+  def token: Parser[Token] =
     ( identChar ~ rep( identChar | digit )              ^^ { case first ~ rest => processIdent(first :: rest mkString "") }
     | digit ~ rep( digit )                              ^^ { case first ~ rest => NumericLit(first :: rest mkString "") }
     | '\'' ~ rep( chrExcept('\'', '\n', EofCh) ) ~ '\'' ^^ { case '\'' ~ chars ~ '\'' => StringLit(chars mkString "") }
     | '\"' ~ rep( chrExcept('\"', '\n', EofCh) ) ~ '\"' ^^ { case '\"' ~ chars ~ '\"' => StringLit(chars mkString "") }
     | EofCh                                             ^^^ EOF
-    | '\'' ~> failure("unclosed string literal")        
-    | '\"' ~> failure("unclosed string literal")        
-    | delim                                             
+    | '\'' ~> failure("unclosed string literal")
+    | '\"' ~> failure("unclosed string literal")
+    | delim
     | failure("illegal character")
     )
-  
+
   /** Returns the legal identifier chars, except digits. */
   def identChar = letter | elem('_')
 
@@ -62,20 +63,20 @@ class StdLexical extends Lexical with StdTokens {
     )
 
   /** The set of reserved identifiers: these will be returned as `Keyword`s. */
-  val reserved = new HashSet[String]
+  val reserved = new mutable.HashSet[String]
 
   /** The set of delimiters (ordering does not matter). */
-  val delimiters = new HashSet[String]
+  val delimiters = new mutable.HashSet[String]
 
-  protected def processIdent(name: String) = 
+  protected def processIdent(name: String) =
     if (reserved contains name) Keyword(name) else Identifier(name)
 
   private lazy val _delim: Parser[Token] = {
-    // construct parser for delimiters by |'ing together the parsers for the individual delimiters, 
+    // construct parser for delimiters by |'ing together the parsers for the individual delimiters,
     // starting with the longest one -- otherwise a delimiter D will never be matched if there is
-    // another delimiter that is a prefix of D   
+    // another delimiter that is a prefix of D
     def parseDelim(s: String): Parser[Token] = accept(s.toList) ^^ { x => Keyword(s) }
-    
+
     val d = new Array[String](delimiters.size)
     delimiters.copyToArray(d, 0)
     scala.util.Sorting.quickSort(d)

@@ -18,7 +18,7 @@ trait Repository {
   import global._
   import icodes._
 
-  val loaded: mutable.Map[Symbol, IClass] = new mutable.HashMap
+  val loaded: mutable.Map[Symbol, IClass] = perRunCaches.newMap()
 
   /** Is the given class available as icode? */
   def available(sym: Symbol) = classes.contains(sym) || loaded.contains(sym)
@@ -41,7 +41,7 @@ trait Repository {
   def load(sym: Symbol) {
     try {
       val (c1, c2) = icodeReader.readClass(sym)
-    
+
       assert(c1.symbol == sym || c2.symbol == sym,
         "c1.symbol = %s, c2.symbol = %s, sym = %s".format(c1.symbol, c2.symbol, sym))
       loaded += (c1.symbol -> c1)

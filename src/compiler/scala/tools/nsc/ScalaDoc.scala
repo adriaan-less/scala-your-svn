@@ -12,7 +12,7 @@ import scala.tools.nsc.reporters.ConsoleReporter
 import scala.tools.nsc.util.FakePos
 import Properties.msilLibPath
 
-/** The main class for scaladoc, a front-end for the Scala compiler 
+/** The main class for scaladoc, a front-end for the Scala compiler
  *  that generates documentation from source files.
  */
 class ScalaDoc {
@@ -30,21 +30,21 @@ class ScalaDoc {
     def hasFiles = command.files.nonEmpty || docSettings.uncompilableFiles.nonEmpty
 
     if (docSettings.version.value)
-      reporter.info(null, versionMsg, true)
-    else if (docSettings.Xhelp.value) 
-      reporter.info(null, command.xusageMsg, true)
-    else if (docSettings.Yhelp.value) 
-      reporter.info(null, command.yusageMsg, true)
+      reporter.echo(versionMsg)
+    else if (docSettings.Xhelp.value)
+      reporter.echo(command.xusageMsg)
+    else if (docSettings.Yhelp.value)
+      reporter.echo(command.yusageMsg)
     else if (docSettings.showPlugins.value)
       reporter.warning(null, "Plugins are not available when using Scaladoc")
     else if (docSettings.showPhases.value)
       reporter.warning(null, "Phases are restricted when using Scaladoc")
     else if (docSettings.help.value || !hasFiles)
-      reporter.info(null, command.usageMsg, true)
+      reporter.echo(command.usageMsg)
     else try {
       if (docSettings.target.value == "msil")
         msilLibPath foreach (x => docSettings.assemrefs.value += (pathSeparator + x))
-      
+
       new DocFactory(reporter, docSettings) document command.files
     }
     catch {
