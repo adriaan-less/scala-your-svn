@@ -37,25 +37,4 @@ object Scheduler extends DelegatingScheduler {
     Debug.info(this+": starting new "+sched+" ["+sched.getClass+"]")
     sched
   }
-
-  /* Only <code>ForkJoinScheduler</code> implements this method.
-   */
-  @deprecated("snapshot will be removed")
-  def snapshot() {
-    if (sched.isInstanceOf[ForkJoinScheduler]) {
-      sched.asInstanceOf[ForkJoinScheduler].snapshot()
-    } else
-      sys.error("scheduler does not implement snapshot")
-  }
-
-  /* Only <code>ForkJoinScheduler</code> implements this method.
-   */
-  @deprecated("restart will be removed")
-  def restart() {
-    if (sched.isInstanceOf[ForkJoinScheduler]) {
-      sched.asInstanceOf[ForkJoinScheduler].restart()
-    } else
-      sys.error("scheduler does not implement restart")
-  }
-
 }

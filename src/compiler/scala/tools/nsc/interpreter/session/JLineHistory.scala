@@ -18,11 +18,11 @@ trait JLineHistory extends JHistory with History {
   def get(index: Int): CharSequence
   def add(line: CharSequence): Unit
   def replace(item: CharSequence): Unit
-  
+
   def entries(index: Int): JListIterator[JEntry]
   def entries(): JListIterator[JEntry]
   def iterator: JIterator[JEntry]
-  
+
   def current(): CharSequence
   def previous(): Boolean
   def next(): Boolean
@@ -35,7 +35,7 @@ trait JLineHistory extends JHistory with History {
 object JLineHistory {
   class JLineFileHistory extends SimpleHistory with FileBackedHistory {
     override def add(item: CharSequence): Unit = {
-      if (last == item)
+      if (!isEmpty && last == item)
         repldbg("Ignoring duplicate entry '" + item + "'")
       else {
         super.add(item)
@@ -44,7 +44,7 @@ object JLineHistory {
     }
     override def toString = "History(size = " + size + ", index = " + index + ")"
   }
-  
+
   def apply(): JLineHistory =
     try   { new JLineFileHistory }
     catch { case x: Exception =>

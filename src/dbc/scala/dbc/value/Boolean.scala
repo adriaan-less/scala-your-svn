@@ -12,16 +12,16 @@ package scala.dbc
 package value;
 
 
-abstract class Boolean extends Value {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Boolean extends Value {
+
   val dataType: datatype.Boolean;
-  
+
   def sqlString = if (nativeValue) "TRUE" else "FALSE";
-  
+
 }
 
-object Boolean {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") object Boolean {
+
   implicit def booleanToBoolean (obj:value.Boolean): scala.Boolean = obj.nativeValue;
-  
+
 }

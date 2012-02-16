@@ -1,10 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2010-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
+
 package scala
 
 import scala.compat.Platform.currentTime
@@ -13,14 +14,14 @@ import scala.collection.mutable.ListBuffer
 /** The `App` trait can be used to quickly turn objects
  *  into executable programs. Here is an example:
  *  {{{
- *    object Main extends App {
- *      Console.println("Hello World: " + (arguments mkString ", "))
- *    }
+ *  object Main extends App {
+ *    Console.println("Hello World: " + (args mkString ", "))
+ *  }
  *  }}}
  *  Here, object `Main` inherits the `main` method of `App`.
  *
  *  `args` returns the current command line arguments as an array.
- *    
+ *
  *  @author  Martin Odersky
  *  @version 2.1, 15/02/2011
  */
@@ -41,8 +42,8 @@ trait App extends DelayedInit {
   /** The init hook. This saves all initialization code for execution within `main`.
    *  This method is normally never called directly from user code.
    *  Instead it is called as compiler-generated code for those classes and objects
-   *  (but not traits) that inherit from the `DelayedInit` trait and that do not themselves define
-   *  a `delayedInit` method.
+   *  (but not traits) that inherit from the `DelayedInit` trait and that do not
+   *  themselves define a `delayedInit` method.
    *  @param body the initialization code to be stored for later execution
    */
   override def delayedInit(body: => Unit) {
@@ -51,7 +52,7 @@ trait App extends DelayedInit {
 
   /** The main method.
    *  This stores all argument so that they can be retrieved with `args`
-   *  and the executes all initialization code segements in the order they were
+   *  and the executes all initialization code segments in the order they were
    *  passed to `delayedInit`
    *  @param args the arguments passed to the main method
    */

@@ -15,14 +15,14 @@ package statement
 /** A statement that when executed on a database will return a relation.
  * The returned relation will be a subset of a table in the database or
  * a jointure between such subsets. */
-abstract class Select extends Relation {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") abstract class Select extends Relation {
+
   /** Defines if duplicated tuples should be removed from the returned
    * relation. <h3>Compatibility notice</h3> Some DBMS (PostgreSQL) allow
    * uniqueness constrains on an arbitrary field instead of the entire
    * tuple. */
   def setQuantifier: Option[SetQuantifier]
-  
+
   /** Defines the output fields that a tuple in the returned relation will
    * contain, and their content with respect to the tables in the
    * database. If the fields are not specified (that is the list is
@@ -53,7 +53,7 @@ abstract class Select extends Relation {
   def havingClause: Option[Expression]
 
   /* def windowClause: Option[_]; */
-  
+
   /** A SQL-99 compliant string representation of the select statement. */
   def sqlString: String = (
     "SELECT" +
@@ -79,8 +79,8 @@ abstract class Select extends Relation {
       case None => ""
       case Some(gbl) => gbl match {
         case Nil => sys.error("Empty group by clause is not allowed")
-        case _ => 
-          (" GROUP BY " + 
+        case _ =>
+          (" GROUP BY " +
            gbl.tail.foldLeft(gbl.head.sqlInnerString)
            ((name:String, gb) => name + ", " + gb.sqlInnerString))
       }
@@ -90,10 +90,10 @@ abstract class Select extends Relation {
       case Some(expr) => " HAVING " + expr.sqlString
     })
   );
-  
+
   /** A SQL-99 compliant string representation of the relation sub-
    *  statement. This only has a meaning inside a query.
    */
   def sqlInnerString: String = "("+sqlString+")"
-  
+
 }

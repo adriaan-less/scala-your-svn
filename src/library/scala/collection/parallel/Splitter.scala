@@ -6,36 +6,33 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala.collection.parallel
 
-
-import scala.collection.Seq
-
+import scala.collection.{ Seq, Iterator }
 
 /** A splitter (or a split iterator) can be split into more splitters that traverse over
  *  disjoint subsets of elements.
- *  
+ *
  *  @tparam T    type of the elements this splitter traverses
- *  
+ *
  *  @since 2.9
  *  @author Aleksandar Prokopec
  */
 trait Splitter[+T] extends Iterator[T] {
-  
+
   /** Splits the iterator into a sequence of disjunct views.
-   *  
+   *
    *  Returns a sequence of split iterators, each iterating over some subset of the
    *  elements in the collection. These subsets are disjoint and should be approximately
    *  equal in size. These subsets are not empty, unless the iterator is empty in which
    *  case this method returns a sequence with a single empty iterator. If the splitter has
    *  more than two elements, this method will return two or more splitters.
-   *  
+   *
    *  Implementors are advised to keep this partition relatively small - two splitters are
    *  already enough when partitioning the collection, although there may be a few more.
-   *  
+   *
    *  '''Note:''' this method actually invalidates the current splitter.
-   *  
+   *
    *  @return a sequence of disjunct iterators of the collection
    */
   def split: Seq[Splitter[T]]
@@ -43,16 +40,14 @@ trait Splitter[+T] extends Iterator[T] {
    *  '''Note:''' splitters in this sequence may actually be empty and it can contain a splitter
    *  which iterates over the same elements as the original splitter AS LONG AS calling `split`
    *  a finite number of times on the resulting splitters eventually returns a nontrivial partition.
-   *  
+   *
    *  Note that the docs contract above yields implementations which are a subset of implementations
    *  defined by this fineprint.
-   *  
+   *
    *  The rationale behind this is best given by the following example:
    *  try splitting an iterator over a linear hash table.
    */
-  
 }
-
 
 object Splitter {
   def empty[T]: Splitter[T] = new Splitter[T] {
@@ -61,55 +56,3 @@ object Splitter {
     def split = Seq(this)
   }
 }
-
-
-/** A precise splitter (or a precise split iterator) can be split into arbitrary number of splitters
- *  that traverse disjoint subsets of arbitrary sizes. 
- *  
- *  Implementors might want to override the parameterless `split` method for efficiency.
- *  
- *  @tparam T     type of the elements this splitter traverses
- *  
- *  @since 2.9
- *  @author Aleksandar Prokopec
- */
-trait PreciseSplitter[+T] extends Splitter[T] {
-  
-  /** Splits the splitter into disjunct views.
-   *  
-   *  This overloaded version of the `split` method is specific to precise splitters.
-   *  It returns a sequence of splitters, each iterating some subset of the
-   *  elements in this splitter. The sizes of the subsplitters in the partition is equal to
-   *  the size in the corresponding argument, as long as there are enough elements in this
-   *  splitter to split it that way.
-   *  
-   *  If there aren't enough elements, a zero element splitter is appended for each additional argument.
-   *  If there are additional elements, an additional splitter is appended at the end to compensate.
-   *  
-   *  For example, say we have a splitter `ps` with 100 elements. Invoking:
-   *  {{{
-   *    ps.split(50, 25, 25, 10, 5)
-   *  }}}
-   *  will return a sequence of five splitters, last two views being empty. On the other hand, calling:
-   *  {{{
-   *    ps.split(50, 40)
-   *  }}}
-   *  will return a sequence of three splitters, last of them containing ten elements.
-   *  
-   *  '''Note:''' this method actually invalidates the current splitter.
-   *  
-   *  Unlike the case with `split` found in splitters, views returned by this method can be empty.
-   *  
-   *  @param sizes   the sizes used to split this split iterator into iterators that traverse disjunct subsets
-   *  @return        a sequence of disjunct subsequence iterators of this parallel iterator
-   */
-  def psplit(sizes: Int*): Seq[PreciseSplitter[T]]
-  
-  def split: Seq[PreciseSplitter[T]]
-  
-}
-
-
-
-
-
