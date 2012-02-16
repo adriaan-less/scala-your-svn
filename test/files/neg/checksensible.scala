@@ -19,7 +19,7 @@ class RefEqTest {
   null eq new AnyRef
 }
 
-// 11 warnings
+// 13 warnings
 class EqEqValTest {
   var c = 0
   
@@ -27,15 +27,26 @@ class EqEqValTest {
   0 == (c = 1)
   
   1 == "abc"
-  "abc" == 1  // doesn't warn since String defines an equals method
+  1 == ("abc": Any) // doesn't warn because an Any may be a boxed Int
+  1 == (1: Any)     // as above
+  "abc" == 1        // warns because the lub of String and Int is Any
+  Some(1) == 1      // as above
+
+  true == new java.lang.Boolean(true) // none of these should warn
+  new java.lang.Boolean(true) == true
   
   new AnyRef == 1
-  1 == new AnyRef
+  1 == new AnyRef                 // doesn't warn because it could be...
+  1 == (new java.lang.Integer(1)) // ...something like this
+  1 == (new java.lang.Boolean(true))
   
   1 != true
   () == true
   () == ()
   () == println
+  () == scala.runtime.BoxedUnit.UNIT // these should warn for always being true/false
+  scala.runtime.BoxedUnit.UNIT != ()
+  (scala.runtime.BoxedUnit.UNIT: java.io.Serializable) != () // shouldn't warn
   
   (1 != println)
   (1 != 'sym)
@@ -66,12 +77,13 @@ class EqEqRefTest {
   val z1 = new Z1
   val c3 = new C3
 
-  // all but c3 != z1 should warn
-  c3 != z1
+  // these should always warn
   c3 == z1
   z1 == c3
   z1 != c3
   c3 != "abc"
+  // this should warn when feeling chatty
+  c3 != z1
   
   // non-warners
   (null: AnyRef) == (null: AnyRef)
