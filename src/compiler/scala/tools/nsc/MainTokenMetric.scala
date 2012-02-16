@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -13,7 +13,7 @@ import scala.tools.nsc.reporters.ConsoleReporter
 object MainTokenMetric {
 
   private var reporter: ConsoleReporter = _
-  
+
   def tokenMetric(compiler: Global, fnames: List[String]) {
     import compiler.CompilationUnit
     import compiler.syntaxAnalyzer.UnitScanner
@@ -34,7 +34,7 @@ object MainTokenMetric {
   }
 
   def process(args: Array[String]) {
-    val settings = new Settings(error)
+    val settings = new Settings(sys.error)
     reporter = new ConsoleReporter(settings)
     val command = new CompilerCommand(args.toList, settings)
     try {
@@ -50,7 +50,7 @@ object MainTokenMetric {
 
   def main(args: Array[String]) {
     process(args)
-    exit(if (reporter.hasErrors) 1 else 0)
+    sys.exit(if (reporter.hasErrors) 1 else 0)
   }
 
 }
