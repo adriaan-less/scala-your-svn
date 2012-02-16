@@ -1,13 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package util
 
-import Chars._
+import scala.reflect.internal.Chars._
 
 abstract class CharArrayReader { self =>
 
@@ -16,7 +15,7 @@ abstract class CharArrayReader { self =>
   def decodeUni: Boolean = true
 
   /** An error routine to call on bad unicode escapes \\uxxxx. */
-  protected def error(offset: Int, msg: String)
+  protected def error(offset: Int, msg: String): Unit
 
   /** the last read character */
   var ch: Char = _
@@ -34,7 +33,7 @@ abstract class CharArrayReader { self =>
 
   /** Is last character a unicode escape \\uxxxx? */
   def isUnicodeEscape = charOffset == lastUnicodeOffset
-  
+
   /** Advance one character; reducing CR;LF pairs to just LF */
   final def nextChar() {
     if (charOffset >= buf.length) {
@@ -48,7 +47,10 @@ abstract class CharArrayReader { self =>
     }
   }
 
-  /** Advance one character, leaving CR;LF pairs intact */
+  /** Advance one character, leaving CR;LF pairs intact.
+   *  This is for use in multi-line strings, so there are no
+   *  "potential line ends" here.
+   */
   final def nextRawChar() {
     if (charOffset >= buf.length) {
       ch = SU
@@ -57,7 +59,6 @@ abstract class CharArrayReader { self =>
       ch = c
       charOffset += 1
       if (c == '\\') potentialUnicode()
-      else if (c < ' ') potentialLineEnd()
     }
   }
 
@@ -69,10 +70,19 @@ abstract class CharArrayReader { self =>
       (charOffset - p) % 2 == 0
     }
     def udigit: Int = {
-      val d = digit2int(buf(charOffset), 16)
-      if (d >= 0) charOffset += 1
-      else error(charOffset, "error in unicode escape")
-      d
+      if (charOffset >= buf.length) {
+        // Since the positioning code is very insistent about throwing exceptions,
+        // we have to decrement the position so our error message can be seen, since
+        // we are one past EOF.  This happens with e.g. val x = \ u 1 <EOF>
+        error(charOffset - 1, "incomplete unicode escape")
+        SU
+      }
+      else {
+        val d = digit2int(buf(charOffset), 16)
+        if (d >= 0) charOffset += 1
+        else error(charOffset, "error in unicode escape")
+        d
+      }
     }
     if (charOffset < buf.length && buf(charOffset) == 'u' && decodeUni && evenSlashPrefix) {
       do charOffset += 1
@@ -90,7 +100,7 @@ abstract class CharArrayReader { self =>
         charOffset += 1
         ch = LF
       }
-  }    
+  }
 
   /** Handle line ends */
   private def potentialLineEnd() {
@@ -101,7 +111,9 @@ abstract class CharArrayReader { self =>
   }
 
   /** A new reader that takes off at the current character position */
-  def lookaheadReader = new CharArrayReader {
+  def lookaheadReader = new CharArrayLookaheadReader
+
+  class CharArrayLookaheadReader extends CharArrayReader {
     val buf = self.buf
     charOffset = self.charOffset
     ch = self.ch
