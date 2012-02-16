@@ -1,4 +1,4 @@
-object Test extends Application
+object Test extends App
 {
   val xs = List(
     <a></a>,
@@ -8,5 +8,5 @@ object Test extends Application
     <a>{ if (true) "" else "I like turtles" }</a>
   )
   
-  for (x1 <- xs; x2 <- xs) assert (x1 == x2)
+  for (x1 <- xs; x2 <- xs) assert (x1 xml_== x2)
 }
