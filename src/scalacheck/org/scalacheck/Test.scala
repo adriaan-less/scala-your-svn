@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------*\
 **  ScalaCheck                                                             **
-**  Copyright (c) 2007-2010 Rickard Nilsson. All rights reserved.          **
+**  Copyright (c) 2007-2011 Rickard Nilsson. All rights reserved.          **
 **  http://www.scalacheck.org                                              **
 **                                                                         **
 **  This software is released under the terms of the Revised BSD License.  **
@@ -28,7 +28,7 @@ object Test {
   )
 
   /** Test statistics */
-  case class Result(status: Status, succeeded: Int, discarded: Int, freqMap: FM) {
+  case class Result(status: Status, succeeded: Int, discarded: Int, freqMap: FM, time: Long = 0) {
     def passed = status match {
       case Passed => true
       case Proved(_) => true
@@ -65,7 +65,7 @@ object Test {
 
   trait TestCallback { self =>
     /** Called each time a property is evaluated */
-    def onPropEval(name: String, threadIdx: Int, succeeded: Int, 
+    def onPropEval(name: String, threadIdx: Int, succeeded: Int,
       discarded: Int): Unit = ()
 
     /** Called whenever a property has finished testing */
@@ -169,7 +169,7 @@ object Test {
     def worker(workerdIdx: Int) = future {
       var n = 0
       var d = 0
-      var size = workerdIdx*sizeStep
+      var size = minSize + (workerdIdx*sizeStep*iterations)
       var res: Result = null
       var fm = FreqMap.empty[immutable.Set[Any]]
       while(!stop && res == null && n < iterations) {
@@ -206,29 +206,31 @@ object Test {
     }
 
     def mergeResults(r1: () => Result, r2: () => Result) = r1() match {
-      case Result(Passed, s1, d1, fm1) => r2() match {
-        case Result(Passed, s2, d2, fm2) if d1+d2 >= maxDiscardedTests =>
-          () => Result(Exhausted, s1+s2, d1+d2, fm1++fm2)
-        case Result(st, s2, d2, fm2) =>
-          () => Result(st, s1+s2, d1+d2, fm1++fm2)
+      case Result(Passed, s1, d1, fm1, t) => r2() match {
+        case Result(Passed, s2, d2, fm2, t) if d1+d2 >= maxDiscardedTests =>
+          () => Result(Exhausted, s1+s2, d1+d2, fm1++fm2, t)
+        case Result(st, s2, d2, fm2, t) =>
+          () => Result(st, s1+s2, d1+d2, fm1++fm2, t)
       }
       case r => () => r
     }
 
+    val start = System.currentTimeMillis
     val results = for(i <- 0 until workers) yield worker(i)
     val r = results.reduceLeft(mergeResults)()
     stop = true
     results foreach (_.apply())
-    prms.testCallback.onTestResult("", r)
-    r
+    val timedRes = r.copy(time = System.currentTimeMillis-start)
+    prms.testCallback.onTestResult("", timedRes)
+    timedRes
   }
 
   def checkProperties(prms: Params, ps: Properties): Seq[(String,Result)] =
     ps.properties.map { case (name,p) =>
       val testCallback = new TestCallback {
-        override def onPropEval(n: String, t: Int, s: Int, d: Int) = 
+        override def onPropEval(n: String, t: Int, s: Int, d: Int) =
           prms.testCallback.onPropEval(name,t,s,d)
-        override def onTestResult(n: String, r: Result) = 
+        override def onTestResult(n: String, r: Result) =
           prms.testCallback.onTestResult(name,r)
       }
       val res = check(prms copy (testCallback = testCallback), p)
@@ -240,28 +242,28 @@ object Test {
 
   /** Default testing parameters
    *  @deprecated Use <code>Test.Params()</code> instead */
-  @deprecated("Use Test.Params() instead")
+  @deprecated("Use Test.Params() instead", "1.8")
   val defaultParams = Params()
 
   /** Property evaluation callback. Takes number of passed and
    *  discarded tests, respectively */
-  @deprecated("(v1.8)")
+  @deprecated("(v1.8)", "1.8")
   type PropEvalCallback = (Int,Int) => Unit
 
   /** Property evaluation callback. Takes property name, and number of passed
    *  and discarded tests, respectively */
-  @deprecated("(v1.8)")
+  @deprecated("(v1.8)", "1.8")
   type NamedPropEvalCallback = (String,Int,Int) => Unit
 
   /** Test callback. Takes property name, and test results. */
-  @deprecated("(v1.8)")
+  @deprecated("(v1.8)", "1.8")
   type TestResCallback = (String,Result) => Unit
 
   /** @deprecated (v1.8) Use <code>check(prms.copy(testCallback = myCallback), p)</code> instead. */
-  @deprecated("(v1.8) Use check(prms.copy(testCallback = myCallback), p) instead")
+  @deprecated("Use check(prms.copy(testCallback = myCallback), p) instead", "1.8")
   def check(prms: Params, p: Prop, propCallb: PropEvalCallback): Result = {
     val testCallback = new TestCallback {
-      override def onPropEval(n: String, t: Int, s: Int, d: Int) = propCallb(s,d) 
+      override def onPropEval(n: String, t: Int, s: Int, d: Int) = propCallb(s,d)
     }
     check(prms copy (testCallback = testCallback), p)
   }
@@ -270,13 +272,13 @@ object Test {
    *  <code>maxDiscarded</code> parameter specifies how many
    *  discarded tests that should be allowed before ScalaCheck
    *  @deprecated (v1.8) Use <code>check(Params(maxDiscardedTests = n, testCallback = ConsoleReporter()), p)</code> instead. */
-  @deprecated("(v1.8) Use check(Params(maxDiscardedTests = n, testCallback = ConsoleReporter()), p) instead.")
+  @deprecated("Use check(Params(maxDiscardedTests = n, testCallback = ConsoleReporter()), p) instead.", "1.8")
   def check(p: Prop, maxDiscarded: Int): Result =
     check(Params(maxDiscardedTests = maxDiscarded, testCallback = ConsoleReporter()), p)
 
   /** Tests a property and prints results to the console
    *  @deprecated (v1.8) Use <code>check(Params(testCallback = ConsoleReporter()), p)</code> instead. */
-  @deprecated("(v1.8) Use check(Params(testCallback = ConsoleReporter()), p) instead.")
+  @deprecated("Use check(Params(testCallback = ConsoleReporter()), p) instead.", "1.8")
   def check(p: Prop): Result = check(Params(testCallback = ConsoleReporter()), p)
 
   /** Tests all properties with the given testing parameters, and returns
@@ -284,12 +286,12 @@ object Test {
    *  time a property is evaluted. <code>g</code> is a function called each
    *  time a property has been fully tested.
    *  @deprecated (v1.8) Use <code>checkProperties(prms.copy(testCallback = myCallback), ps)</code> instead. */
-  @deprecated("(v1.8) Use checkProperties(prms.copy(testCallback = myCallback), ps) instead.")
+  @deprecated("Use checkProperties(prms.copy(testCallback = myCallback), ps) instead.", "1.8")
   def checkProperties(ps: Properties, prms: Params,
     propCallb: NamedPropEvalCallback, testCallb: TestResCallback
   ): Seq[(String,Result)] = {
     val testCallback = new TestCallback {
-      override def onPropEval(n: String, t: Int, s: Int, d: Int) = propCallb(n,s,d) 
+      override def onPropEval(n: String, t: Int, s: Int, d: Int) = propCallb(n,s,d)
       override def onTestResult(n: String, r: Result) = testCallb(n,r)
     }
     checkProperties(prms copy (testCallback = testCallback), ps)
@@ -298,7 +300,7 @@ object Test {
   /** Tests all properties with the given testing parameters, and returns
    *  the test results.
    *  @deprecated (v1.8) Use checkProperties(prms, ps) instead */
-  @deprecated("(v1.8) Use checkProperties(prms, ps) instead")
+  @deprecated("Use checkProperties(prms, ps) instead", "1.8")
   def checkProperties(ps: Properties, prms: Params): Seq[(String,Result)] =
     checkProperties(ps, prms, (n,s,d) => (), (n,s) => ())
 
@@ -306,7 +308,7 @@ object Test {
    *  the test results. The results are also printed on the console during
    *  testing.
    *  @deprecated (v1.8) Use <code>checkProperties(Params(), ps)</code> instead. */
-  @deprecated("(v1.8) Use checkProperties(Params(), ps) instead.")
+  @deprecated("Use checkProperties(Params(), ps) instead.", "1.8")
   def checkProperties(ps: Properties): Seq[(String,Result)] =
     checkProperties(Params(), ps)
 }
