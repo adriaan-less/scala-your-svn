@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -13,7 +13,7 @@ package persistent
 import scala.collection.mutable
 import java.io.File
 
-/** A persistent store with set semantics. This class allows to add and remove 
+/** A persistent store with set semantics. This class allows to add and remove
  *  trees, but never contains two structurally equal trees.
  *
  *  @author Burak Emir
