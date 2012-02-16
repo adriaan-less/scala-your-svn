@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 package scala.tools.nsc
@@ -14,4 +14,4 @@ package ast.parser
  */
 case class BracePair(loff: Int, lindent: Int, roff: Int, rindent: Int, nested: List[BracePair])
 
-  
+
