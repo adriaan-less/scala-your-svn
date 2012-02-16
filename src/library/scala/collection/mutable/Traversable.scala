@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -18,11 +17,13 @@ import generic._
  *  $traversableInfo
  *  @define mutability mutable
  */
-trait Traversable[A] extends scala.collection.Traversable[A] 
-                        with GenericTraversableTemplate[A, Traversable] 
+trait Traversable[A] extends scala.collection.Traversable[A]
+//                        with GenTraversable[A]
+                        with GenericTraversableTemplate[A, Traversable]
                         with TraversableLike[A, Traversable[A]]
-                        with Mutable { 
+                        with Mutable {
   override def companion: GenericCompanion[Traversable] = Traversable
+  override def seq: Traversable[A] = this
 }
 
 /** $factoryInfo
@@ -31,8 +32,8 @@ trait Traversable[A] extends scala.collection.Traversable[A]
  *  @define Coll mutable.Traversable
  */
 object Traversable extends TraversableFactory[Traversable] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = new GenericCanBuildFrom[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   def newBuilder[A]: Builder[A, Traversable[A]] = new ArrayBuffer
 }
 
-  
+

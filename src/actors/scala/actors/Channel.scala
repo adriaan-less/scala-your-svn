@@ -1,37 +1,33 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
 package scala.actors
 
+import scala.concurrent.SyncVar
 
 /**
- *  This class is used to pattern match on values that were sent
- *  to some channel <code>Chan<sub>n</sub></code> by the current
- *  actor <code>self</code>.
- * 
- *  The following example demonstrates its usage:
- *  {{{
+ * Used to pattern match on values that were sent to some channel `Chan,,n,,`
+ * by the current actor `self`.
+ *
+ *  @example {{{
  *  receive {
- *    <b>case</b> Chan1 ! msg1 => ...
- *    <b>case</b> Chan2 ! msg2 => ...
+ *    case Chan1 ! msg1 => ...
+ *    case Chan2 ! msg2 => ...
  *  }
  *  }}}
- * 
+ *
  * @author Philipp Haller
  */
 case class ! [a](ch: Channel[a], msg: a)
 
 /**
- * This class provides a means for typed communication among
- * actors. Only the actor creating an instance of a
- * <code>Channel</code> may receive from it.
+ * Provides a means for typed communication among actors. Only the
+ * actor creating an instance of a `Channel` may receive from it.
  *
  * @author Philipp Haller
  *
@@ -108,18 +104,26 @@ class Channel[Msg](val receiver: Actor) extends InputChannel[Msg] with OutputCha
   }
 
   def !![A](msg: Msg, handler: PartialFunction[Any, A]): Future[A] = {
-    val ftch = new Channel[A](Actor.self(receiver.scheduler))
-    receiver.send(scala.actors.!(this, msg), new OutputChannel[Any] {
-      def !(msg: Any) =
-        ftch ! handler(msg)
-      def send(msg: Any, replyTo: OutputChannel[Any]) =
-        ftch.send(handler(msg), replyTo)
-      def forward(msg: Any) =
-        ftch.forward(handler(msg))
-      def receiver =
-        ftch.receiver
-    })
-    Futures.fromInputChannel(ftch)
+    val c = new Channel[A](Actor.self(receiver.scheduler))
+    val fun = (res: SyncVar[A]) => {
+      val ftch = new Channel[A](Actor.self(receiver.scheduler))
+      receiver.send(scala.actors.!(this, msg), new OutputChannel[Any] {
+        def !(msg: Any) =
+          ftch ! handler(msg)
+        def send(msg: Any, replyTo: OutputChannel[Any]) =
+          ftch.send(handler(msg), replyTo)
+        def forward(msg: Any) =
+          ftch.forward(handler(msg))
+        def receiver =
+          ftch.receiver
+      })
+      ftch.react {
+        case any => res.set(any)
+      }
+    }
+    val a = new FutureActor[A](fun, c)
+    a.start()
+    a
   }
 
   def !!(msg: Msg): Future[Any] = {

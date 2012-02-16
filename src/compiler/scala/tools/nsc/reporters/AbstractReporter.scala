@@ -1,13 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2002-2010 LAMP/EPFL
+ * Copyright 2002-2011 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package reporters
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 import scala.tools.nsc.Settings
 import scala.tools.nsc.util.Position
 
@@ -15,47 +14,50 @@ import scala.tools.nsc.util.Position
  * This reporter implements filtering.
  */
 abstract class AbstractReporter extends Reporter {
-  private val positions = new HashMap[Position, Severity]
-  
-  override def reset {
+  val settings: Settings
+  def display(pos: Position, msg: String, severity: Severity): Unit
+  def displayPrompt(): Unit
+
+  private val positions = new mutable.HashMap[Position, Severity]
+
+  override def reset() {
     super.reset
     positions.clear
   }
 
-  val settings: Settings
-
-  def display(pos: Position, msg: String, severity: Severity): Unit
-  def displayPrompt: Unit
+  private def isVerbose   = settings.verbose.value
+  private def noWarnings  = settings.nowarnings.value
+  private def isPromptSet = settings.prompt.value
 
   protected def info0(pos: Position, msg: String, _severity: Severity, force: Boolean) {
-    val severity = 
-      if (settings.Xwarnfatal.value && _severity == WARNING) ERROR
+    val severity =
+      if (settings.fatalWarnings.value && _severity == WARNING) ERROR
       else _severity
-    
-    severity match {
-      case INFO =>
-        if (force || settings.verbose.value) display(pos, msg, severity)
-      case WARNING =>
-        val hidden = testAndLog(pos, severity)
-        if (!settings.nowarnings.value) {
-          if (!hidden || settings.prompt.value) display(pos, msg, severity)
-          if (settings.prompt.value) displayPrompt
-        }
-      case ERROR =>
-        val hidden = testAndLog(pos, severity)
-        if (!hidden || settings.prompt.value) display(pos, msg, severity)
-        if (settings.prompt.value) displayPrompt
+
+    if (severity == INFO) {
+      if (isVerbose || force)
+        display(pos, msg, severity)
+    }
+    else {
+      val hidden = testAndLog(pos, severity)
+      if (severity == WARNING && noWarnings) ()
+      else {
+        if (!hidden || isPromptSet)
+          display(pos, msg, severity)
+        else if (settings.debug.value)
+          display(pos, "[ suppressed ] " + msg, severity)
+
+        if (isPromptSet)
+          displayPrompt
+      }
     }
   }
 
-  /** Logs a position and returns <code>true</code> if it was already logged.
+  /** Logs a position and returns true if it was already logged.
    *  @note  Two positions are considered identical for logging if they have the same point.
-   *
-   *  @param pos ...
-   *  @return    <code>true</code> if <code>pos</code> was already logged.
    */
   private def testAndLog(pos: Position, severity: Severity): Boolean =
-    pos != null && pos.isDefined && { 
+    pos != null && pos.isDefined && {
       val fpos = pos.focus
       (positions get fpos) match {
         case Some(level) if level >= severity => true
