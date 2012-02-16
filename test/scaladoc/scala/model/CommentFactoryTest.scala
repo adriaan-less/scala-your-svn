@@ -18,6 +18,9 @@ class Factory(val g: Global, val s: doc.Settings)
 
   def parseComment(s: String): Option[Inline] =
     strip(parse(s, "", scala.tools.nsc.util.NoPosition))
+
+  def createBody(s: String) =
+    parse(s, "", scala.tools.nsc.util.NoPosition).body
 }
 
 object Test extends Properties("CommentFactory") {
@@ -43,7 +46,7 @@ object Test extends Properties("CommentFactory") {
   )
   property("parse") = parse(
     "/** One `two` three */",
-    Chain(List(Text("One "), Monospace("two"), Text(" three")))
+    Chain(List(Text("One "), Monospace(Text("two")), Text(" three")))
   )
 
   property("parse") = parse(
@@ -56,21 +59,21 @@ object Test extends Properties("CommentFactory") {
       """
 /** One `two`
   * three */""",
-      Chain(List(Text("One "), Monospace("two"), Text("\n"), Text("three")))
+      Chain(List(Text("One "), Monospace(Text("two")), Text("\n"), Text("three")))
   )
 
   property("parse") = parse(
       """
 /** One `two`
  *  three */""",
-      Chain(List(Text("One "), Monospace("two"), Text("\n"), Text(" three")))
+      Chain(List(Text("One "), Monospace(Text("two")), Text("\n"), Text(" three")))
   )
 
   property("parse") = parse(
       """
 /** One
   * `two` three */""",
-      Chain(List(Text("One"), Text("\n"), Monospace("two"), Text(" three")))
+      Chain(List(Text("One"), Text("\n"), Monospace(Text("two")), Text(" three")))
   )
 
   property("Trac #4361 - ^...^") = parse(
@@ -89,10 +92,64 @@ object Test extends Properties("CommentFactory") {
  *
  */""",
       Chain(List(Text(""), Text("\n"),
-                 HtmlTag("<pre>"), Text("\n"),
-                 Text("hello "), Chain(List(Text("^"),
-                                            Chain(List(Text("world"),
-                                                       Text("\n"),
-                                                       HtmlTag("</pre>")))))))
+
+
+                 HtmlTag("<pre>\nhello ^world\n</pre>")))
   )
+
+  property("Trac #4366 - body") = {
+    val body = factory.createBody(
+      """
+ /**
+  * <strong><code>foo</code> has been deprecated and will be removed in a future version. Please call <code>bar</code> instead.</strong>
+  */
+      """
+    )
+
+    body == Body(List(Paragraph(Chain(List(
+      Summary(Chain(List(HtmlTag("<strong><code>foo</code> has been deprecated and will be removed in a future version. Please call <code>bar</code> instead.</strong>"), Text("\n"), Text(""))))
+    )))))
+  }
+
+  property("Trac #4366 - summary") = {
+    val body = factory.createBody(
+      """
+ /**
+  * <strong><code>foo</code> has been deprecated and will be removed in a future version. Please call <code>bar</code> instead.</strong>
+  */
+      """
+    )
+    body.summary == Some(Chain(List(HtmlTag("<strong><code>foo</code> has been deprecated and will be removed in a future version. Please call <code>bar</code> instead.</strong>"), Text("\n"), Text(""))))
+  }
+
+  property("Trac #4358 - body") = {
+    factory.createBody(
+      """
+ /**
+   * Implicit conversion that invokes the <code>expect</code> method on the <code>EasyMock</code> companion object (<em>i.e.</em>, the
+   * static <code>expect</code> method in Java class <code>org.easymock.EasyMock</code>).
+  */
+      """
+    ) match {
+      case Body(List(Paragraph(Chain(List(Summary(Chain(List(Chain(List(
+        Text("Implicit conversion that invokes the "),
+        HtmlTag("<code>expect</code>"),
+        Text(" method on the "),
+        HtmlTag("<code>EasyMock</code>"),
+        Text(" companion object ("),
+        HtmlTag("<em>i.e.</em>"),
+        Text(", the\nstatic "),
+        HtmlTag("<code>expect</code>"),
+        Text(" method in Java class "),
+        HtmlTag("<code>org.easymock.EasyMock</code>"),
+        Text(")")
+      )), Text(".")))), Text("\n")))))) =>
+        true
+      case other => {
+        println(other)
+        false
+      }
+    }
+  }
+
 }

@@ -8,7 +8,7 @@
 
 package scala.sys
 
-import scala.collection.mutable
+import scala.collection.{ mutable, Iterator }
 import scala.collection.JavaConverters._
 import java.security.AccessControlException
 
@@ -23,10 +23,13 @@ import java.security.AccessControlException
  *  @version 2.9
  *  @since   2.9
  */
-class SystemProperties extends mutable.Map[String, String] {
+class SystemProperties
+extends mutable.AbstractMap[String, String]
+   with mutable.Map[String, String] {
+
   override def empty = new SystemProperties
   override def default(key: String): String = null
-  
+
   def iterator: Iterator[(String, String)] =
     wrapAccess(System.getProperties().asScala.iterator) getOrElse Iterator.empty
   def get(key: String) =
@@ -36,7 +39,7 @@ class SystemProperties extends mutable.Map[String, String] {
 
   def -= (key: String): this.type = { wrapAccess(System.clearProperty(key)) ; this }
   def += (kv: (String, String)): this.type = { wrapAccess(System.setProperty(kv._1, kv._2)) ; this }
-  
+
   def wrapAccess[T](body: => T): Option[T] =
     try Some(body) catch { case _: AccessControlException => None }
 }
@@ -55,16 +58,17 @@ object SystemProperties {
 
   implicit def systemPropertiesToCompanion(p: SystemProperties): SystemProperties.type = this
   private lazy val propertyHelp = mutable.Map[String, String]()
-  private def bool(key: String, helpText: String): BooleanProp = {
-    val prop = (
-      if (key startsWith "java.") BooleanProp.valueIsTrue(key)
-      else BooleanProp.keyExists(key)
-    )
-    propertyHelp(key) = helpText
-    prop
+  private def addHelp[P <: Prop[_]](p: P, helpText: String): P = {
+    propertyHelp(p.key) = helpText
+    p
   }
+  private def str(key: String, helpText: String) = addHelp(Prop[String](key), helpText)
+  private def bool(key: String, helpText: String): BooleanProp = addHelp[BooleanProp](
+    if (key startsWith "java.") BooleanProp.valueIsTrue(key) else BooleanProp.keyExists(key),
+    helpText
+  )
   def help(key: String) = propertyHelp.getOrElse(key, "")
-  
+
   // Todo: bring some sanity to the intersection of system properties aka "mutable
   // state shared by everyone and everything" and the reality that there is no other
   // mechanism for accomplishing some things on the jvm.
@@ -72,5 +76,6 @@ object SystemProperties {
   lazy val preferIPv4Stack     = bool("java.net.preferIPv4Stack", "system should prefer IPv4 sockets")
   lazy val preferIPv6Addresses = bool("java.net.preferIPv6Addresses", "system should prefer IPv6 addresses")
   lazy val noTraceSupression   = bool("scala.control.noTraceSuppression", "scala should not suppress any stack trace creation")
+  lazy val traceSourcePath     = str("scala.control.sourcepath", "sourcepath for looking up stack trace elements")
 }
 

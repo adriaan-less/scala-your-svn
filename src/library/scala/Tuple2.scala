@@ -21,16 +21,16 @@ import scala.collection.generic.{ CanBuildFrom => CBF }
  */
 case class Tuple2[@specialized(Int, Long, Double) +T1, @specialized(Int, Long, Double) +T2](_1: T1, _2: T2)
   extends Product2[T1, T2]
-{  
-  override def toString() = "(" + _1 + "," + _2 + ")"  
+{
+  override def toString() = "(" + _1 + "," + _2 + ")"
   
   /** Swaps the elements of this `Tuple`.
-   * @return a new Tuple where the first element is the second element of this Tuple and the 
+   * @return a new Tuple where the first element is the second element of this Tuple and the
    * second element is the first element of this Tuple.
    */
   def swap: Tuple2[T2,T1] = Tuple2(_2, _1)
 
-  @deprecated("Use `zipped` instead.")
+  @deprecated("Use `zipped` instead.", "2.9.0")
   def zip[Repr1, El1, El2, To](implicit w1:   T1 => TLike[El1, Repr1],
                                         w2:   T2 => Iterable[El2],
                                         cbf1: CBF[Repr1, (El1, El2), To]): To = {
@@ -49,7 +49,7 @@ case class Tuple2[@specialized(Int, Long, Double) +T1, @specialized(Int, Long, D
    * }}}
    *
    * @see Zipped
-   * $willNotTerminateInf
+   * Note: will not terminate for infinite-sized collections.
    */
   def zipped[Repr1, El1, Repr2, El2](implicit w1: T1 => TLike[El1, Repr1], w2: T2 => ILike[El2, Repr2]): Zipped[Repr1, El1, Repr2, El2]
     = new Zipped[Repr1, El1, Repr2, El2](_1, _2)
@@ -121,7 +121,7 @@ case class Tuple2[@specialized(Int, Long, Double) +T1, @specialized(Int, Long, D
 
     def foreach[U](f: (El1, El2) => U): Unit = {
       val elems2 = coll2.iterator
-      
+
       for (el1 <- coll1) {
         if (elems2.hasNext)
           f(el1, elems2.next)
