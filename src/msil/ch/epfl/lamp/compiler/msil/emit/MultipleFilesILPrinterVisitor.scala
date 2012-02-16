@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies in MSIL
  */
 
-// $Id: ILPrinterVisitor.java 8664 2006-09-12 16:48:03Z mihaylov $
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -12,7 +11,6 @@ import java.io.BufferedWriter
 import java.io.PrintWriter
 import java.io.IOException
 import java.util.Iterator
-import java.util.HashMap
 import java.util.Arrays
 
 import ch.epfl.lamp.compiler.msil._
@@ -20,8 +18,8 @@ import ch.epfl.lamp.compiler.msil.emit
 import ch.epfl.lamp.compiler.msil.util.Table
 
 /**
- * The MSIL printer Vistor. It prints a complete
- * assembly into seperate files. Then these files can be compiled by ilasm.
+ * The MSIL printer Visitor. It prints a complete
+ * assembly into separate files. Then these files can be compiled by ilasm.
  *
  * @author Nikolay Mihaylov
  * @author Daniel Lorch
@@ -40,17 +38,17 @@ final class MultipleFilesILPrinterVisitor(destPath: String, sourceFilesPath: Str
 
 	// all external assemblies
 	as = assemblyBuilder.getExternAssemblies()
-	Arrays.sort(as, assemblyNameComparator)
+	scala.util.Sorting.quickSort(as)(assemblyNameComparator)  // Arrays.sort(as, assemblyNameComparator)
 
 	// print each module
 	var m: Array[Module] = assemblyBuilder.GetModules()
         nomembers = true
-        for(val i <- 0 until m.length) {
+        for(i <- 0 until m.length) {
 	    print(m(i).asInstanceOf[ModuleBuilder])
 	}
 
         nomembers = false
-        for(val i <- 0 until m.length) {
+        for(i <- 0 until m.length) {
 	    print(m(i).asInstanceOf[ModuleBuilder])
 	}
 	ILPrinterVisitor.currAssembly = null
@@ -74,7 +72,7 @@ final class MultipleFilesILPrinterVisitor(destPath: String, sourceFilesPath: Str
 
 	// "Types" contain all the classes
 	var t: Array[Type] = module.GetTypes()
-        for(val i <- 0 until t.length) {
+        for(i <- 0 until t.length) {
         val tBuilder       = t(i).asInstanceOf[TypeBuilder]
         val sourceFilename = tBuilder.sourceFilename
         val sourceFilepath = new File(tBuilder.sourceFilepath).getCanonicalPath
@@ -92,44 +90,44 @@ final class MultipleFilesILPrinterVisitor(destPath: String, sourceFilesPath: Str
             append = true
         } else {
             fileName.getParentFile().mkdirs()
-            assemblyBuilder.generatedFiles.add(fileName.getPath)
+            assemblyBuilder.generatedFiles += (fileName.getPath)
         }
 
 	    out = new PrintWriter(new BufferedWriter(new FileWriter(fileName, append)))
 		// only write assembly boilerplate and class prototypes
 		if (!append && nomembers) {
 			printAssemblyBoilerplate()
-			
+
 			print(".module \'"); print(module.Name); println("\'")
-		    printAttributes(module)	
+		    printAttributes(module)
         }
 
 	    print(t(i).asInstanceOf[TypeBuilder])
 	    out.close()
 	}
-	
+
     // now write the global methods (typically contains the "main" method)
 	if(!nomembers) {
        var globalMethods: File = new File(destPath, ILPrinterVisitor.currAssembly.GetName().Name + ".msil")
        val append = assemblyBuilder.generatedFiles.contains(globalMethods.getPath)
-		
+
 		out = new PrintWriter(new BufferedWriter(new FileWriter(globalMethods, append)))
 
         // make sure we're the first in the list (ilasm uses the first file name to guess the output file name)
-        assemblyBuilder.generatedFiles.add(0, globalMethods.getPath)
+        assemblyBuilder.generatedFiles.insert(0, globalMethods.getPath)
 
 		// if this file hasn't been created by one of the classes, write boilerplate
 		if(!append) {
 			printAssemblyBoilerplate()
-			
+
 			print(".module \'"); print(module.Name); println("\'")
-		    printAttributes(module)	
+		    printAttributes(module)
 		}
 
-                for(val i <- 0 until m.length) {
+                for(i <- 0 until m.length) {
 	   		print(m(i).asInstanceOf[MethodBuilder])
 		}
-	
+
 		out.close()
 	}
 
