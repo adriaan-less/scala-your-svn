@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -27,7 +27,7 @@ abstract class ConstantFolder {
     case _ => null
   })
 
-  /** If tree is a constant value that can be converted to type `pt', perform
+  /** If tree is a constant value that can be converted to type `pt`, perform
    *  the conversion.
    *
    *  @param tree ...
@@ -41,7 +41,7 @@ abstract class ConstantFolder {
   private def fold(tree: Tree, compX: => Constant): Tree =
     try {
       val x = compX
-      if ((x ne null) && x.tag != UnitTag) tree setType ConstantType(x) 
+      if ((x ne null) && x.tag != UnitTag) tree setType ConstantType(x)
       else tree
     } catch {
       case _: ArithmeticException => tree   // the code will crash at runtime,
@@ -120,7 +120,7 @@ abstract class ConstantFolder {
     case nme.DIV => Constant(x.longValue / y.longValue)
     case nme.MOD => Constant(x.longValue % y.longValue)
     case _ => null
-  }  
+  }
   private def foldFloatOp(op: Name, x: Constant, y: Constant): Constant = op match {
     case nme.EQ  => Constant(x.floatValue == y.floatValue)
     case nme.NE  => Constant(x.floatValue != y.floatValue)
@@ -155,7 +155,7 @@ abstract class ConstantFolder {
       if (x.tag == y.tag) x.tag
       else if (x.isNumeric && y.isNumeric) math.max(x.tag, y.tag)
       else NoTag
-      
+
     try optag match {
       case BooleanTag                               => foldBooleanOp(op, x, y)
       case ByteTag | ShortTag | CharTag | IntTag    => foldSubrangeOp(op, x, y)

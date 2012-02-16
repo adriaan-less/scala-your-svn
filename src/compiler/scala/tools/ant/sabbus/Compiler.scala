@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala Ant Tasks                      **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -15,20 +15,20 @@ import java.lang.reflect.InvocationTargetException
 import scala.tools.nsc.util.ScalaClassLoader
 
 class Compiler(classpath: Array[URL], val settings: Settings)
-{  
+{
   val foreignCompilerName: String = "scala.tools.ant.sabbus.ForeignCompiler"
   private lazy val classLoader = ScalaClassLoader fromURLs classpath
   private lazy val foreignCompiler: AnyRef = classLoader create foreignCompilerName
-    
+
   private def settingsArray: Array[String] = settings.toArgs.toArray
   foreignInvoke("args_$eq", Array(classOf[Array[String]]), Array(settingsArray))
-  
+
   private def foreignInvoke(method: String, types: Array[Class[_]], args: Array[AnyRef]) =
     try foreignCompiler.getClass.getMethod(method, types: _*).invoke(foreignCompiler, args: _*)
     catch {
       case e: InvocationTargetException => throw e.getCause
     }
-  
+
   def compile(files: Array[File]): (Int, Int) = //(errors, warnings)
     try {
       foreignInvoke("args_$eq", Array(classOf[Array[String]]), Array(settingsArray))
