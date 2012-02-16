@@ -1,18 +1,14 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.util.automata
 
-
-import scala.collection.{Set, Map}
+import scala.collection.{ mutable, immutable }
 
 /** A deterministic automaton. States are integers, where
  *  0 is always the only initial state. Transitions are represented
@@ -25,59 +21,28 @@ import scala.collection.{Set, Map}
  *  @version 1.0
  */
 abstract class DetWordAutom[T <: AnyRef] {
-
   val nstates: Int
   val finals: Array[Int]
-  val delta: Array[Map[T,Int]]
+  val delta: Array[mutable.Map[T, Int]]
   val default: Array[Int]
 
-  /**
-   *  @param q ...
-   *  @return  ...
-   */
-  def isFinal(q: Int) = finals(q) != 0
-
-  /**
-   *  @param q ...
-   *  @return  ...
-   */
-  def isSink(q: Int) = delta(q).isEmpty && default(q) == q
-
-  /**
-   *  @param q     ...
-   *  @param label ...
-   *  @return      ...
-   */
-  def next(q: Int, label: T) = {
-    delta(q).get(label) match {
-      case Some(p) => p
-      case _       => default(q)
-    }
-  }
+  def isFinal(q: Int)        = finals(q) != 0
+  def isSink(q: Int)         = delta(q).isEmpty && default(q) == q
+  def next(q: Int, label: T) = delta(q).getOrElse(label, default(q))
 
   override def toString() = {
     val sb = new StringBuilder("[DetWordAutom  nstates=")
     sb.append(nstates)
     sb.append(" finals=")
-    var map = scala.collection.immutable.Map[Int,Int]()
-    var j = 0; while( j < nstates ) {
-      if (j < finals.length) 
-        map = map.updated(j, finals(j))
-      j += 1
-    }
+    val map = Map(finals.zipWithIndex map (_.swap): _*)
     sb.append(map.toString())
     sb.append(" delta=\n")
+
     for (i <- 0 until nstates) {
-      sb.append( i )
-      sb.append("->")
-      sb.append(delta(i).toString())
-      sb.append('\n')
-      if (i < default.length) {
-        sb.append("_>")
-        sb.append(default(i).toString())
-        sb.append('\n')
-      }
+      sb append "%d->%s\n".format(i, delta(i))
+      if (i < default.length)
+        sb append "_>%s\n".format(default(i))
     }
-    sb.toString()
+    sb.toString
   }
 }

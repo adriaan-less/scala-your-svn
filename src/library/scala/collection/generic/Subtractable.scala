@@ -1,55 +1,64 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
-package scala.collection.generic
-import scala.collection._
+package scala.collection
+package generic
 
-/** This class represents collections that can be reduced using a - operator.
- *        
+import annotation.bridge
+
+/** This trait represents collection-like objects that can be reduced
+ *  using a '+' operator. It defines variants of `-` and `--`
+ *  as convenience methods in terms of single-element removal `-`.
+ *  @tparam   A    the type of the elements of the $coll.
+ *  @tparam   Repr the type of the $coll itself
  *  @author   Martin Odersky
- *  @owner   Martin Odersky
- *  @version 2.8
+ *  @version  2.8
+ *  @since    2.8
+ *  @define   coll collection
+ *  @define   Coll Subtractable
  */
-trait Subtractable[A, +This <: Subtractable[A, This]] { self =>
+trait Subtractable[A, +Repr <: Subtractable[A, Repr]] { self =>
 
-  protected def thisCollection: This
-
-  /** Returns a new collection that contains all elements of the current collection
-   *  except a given element.
-   *
-   *  @param elem  the element to remove.
+  /** The representation object of type `Repr` which contains the collection's elements
    */
-  def -(elem: A): This
+  protected def repr: Repr
 
-  /** Returns a new collection that contains all elements of the current collection
-   *  except a two or more given elements.
+  /** Creates a new $coll from this $coll with an element removed.
+   *  @param elem the element to remove
+   *  @return a new collection that contains all elements of the current $coll
+   *  except one less occurrence of `elem`.
+   */
+  def -(elem: A): Repr
+
+  /** Creates a new $coll from this $coll with some elements removed.
    *
+   *  This method takes two or more elements to be removed. Another overloaded
+   *  variant of this method handles the case where a single element is
+   *  removed.
    *  @param elem1 the first element to remove.
    *  @param elem2 the second element to remove.
    *  @param elems the remaining elements to remove.
+   *  @return a new $coll that contains all elements of the current $coll
+   *  except one less occurrence of each of the given elements.
    */
-  def -(elem1: A, elem2: A, elems: A*): This =
+  def -(elem1: A, elem2: A, elems: A*): Repr =
     this - elem1 - elem2 -- elems
 
-  /** Returns a new collection that contains all elements of the current collection
-   *  except the elements provided by a traversable object
+  /** Creates a new $coll from this $coll by removing all elements of another
+   *  collection.
    *
-   *  @param elems     the traversable object containing the elements that do not form part of the new collection.
+   *  @param elems     the collection containing the removed elements.
+   *  @return a new $coll that contains all elements of the current $coll
+   *  except one less occurrence of each of the elements of `elems`.
    */
-  def --(elems: Traversable[A]): This = (thisCollection /: elems) (_ - _)
+  def --(xs: GenTraversableOnce[A]): Repr = (repr /: xs.seq) (_ - _)
 
-  /** Returns a new collection that contains all elements of the current collection
-   *  except the elements provided by an iterator
-   *
-   *  @param elems     the iterator containing the elements that do not form part of the new collection
-   *  @note  same as --
-   */
-  def --(iter: Iterator[A]): This = (thisCollection /: iter) (_ - _)
+  @bridge
+  def --(xs: TraversableOnce[A]): Repr = --(xs: GenTraversableOnce[A])
 }

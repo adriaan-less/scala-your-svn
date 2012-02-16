@@ -63,7 +63,7 @@ trait Idioms {
 
   class IdiomaticTarget[idi[x], idiom <: Idiom[idi], s](i: idiom, tgt: s) { 
     def dot [t](fun: s => t, name: String) = new IdiomaticApp2[idi, idiom, t](i, i.liftedApply(i.pureMethod(name, fun))(i.pure(tgt)))
-  } // TODO: `.` -->  java.lang.ClassFormatError: Illegal method name "." in class Idioms$IdiomaticTarget
+  } // TODO: `.` -->  java.lang.ClassFormatError: Illegal method name "." in class Idioms$Id$
 
   class IdiomaticFunction[idi[x], idiom <: Idiom[idi], s, t](i: idiom, fun: s => t) { 
     def <| (a: idi[s]) = new IdiomaticApp[idi, idiom, t](i, i.liftedApply(i.pure(fun))(a))
@@ -104,6 +104,6 @@ trait ParserIdioms extends Parsers with Idioms {
   implicit def curry3[r,s,t,u](fun: (r,s, t)=>u)(a: r)(b: s)(c: t) = fun(a, b, c)  
 }
 
-object Test extends ParserIdioms with Application {
+object Test extends ParserIdioms with App {
   println(expr("12".toList))
 }
