@@ -1,0 +1,9 @@
+META-INF/
+META-INF/MANIFEST.MF
+scala/
+scala/test/
+scala/test/plugins/
+scala/test/plugins/ThePlugin$ThePhase.class
+scala/test/plugins/ThePlugin$thePhase$.class
+scala/test/plugins/ThePlugin.class
+scalac-plugin.xml
