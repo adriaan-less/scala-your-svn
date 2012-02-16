@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://www.scala-lang.org/           **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -21,19 +21,19 @@ object ContentModelParser extends Scanner { // a bit too permissive concerning #
   def accept(tok: Int) = {
     if (token != tok) {
       if ((tok == STAR) && (token == END))                  // common mistake
-        system.error("in DTDs, \n"+
+        sys.error("in DTDs, \n"+
               "mixed content models must be like (#PCDATA|Name|Name|...)*");
       else
-        system.error("expected "+token2string(tok)+
+        sys.error("expected "+token2string(tok)+
               ", got unexpected token:"+token2string(token));
     }
     nextToken
   }
 
   // s [ '+' | '*' | '?' ]
-  def maybeSuffix(s: RegExp) = token match {	
-    case STAR => nextToken; Star(s) 
-    case PLUS => nextToken; Sequ(s, Star(s)) 
+  def maybeSuffix(s: RegExp) = token match {
+    case STAR => nextToken; Star(s)
+    case PLUS => nextToken; Sequ(s, Star(s))
     case OPT  => nextToken; Alt(Eps, s)
     case _    => s
   }
@@ -43,13 +43,13 @@ object ContentModelParser extends Scanner { // a bit too permissive concerning #
   def contentspec: ContentModel = token match {
 
     case NAME => value match {
-      case "ANY"   => ANY 
+      case "ANY"   => ANY
       case "EMPTY" => EMPTY
-      case _       => system.error("expected ANY, EMPTY or '(' instead of " + value );
+      case _       => sys.error("expected ANY, EMPTY or '(' instead of " + value );
     }
-    case LPAREN => 
+    case LPAREN =>
 
-      nextToken; 
+      nextToken;
       sOpt;
       if (token != TOKEN_PCDATA)
         ELEMENTS(regexp);
@@ -65,15 +65,15 @@ object ContentModelParser extends Scanner { // a bit too permissive concerning #
           accept( STAR );
           res
         case _ =>
-          system.error("unexpected token:" + token2string(token) );
+          sys.error("unexpected token:" + token2string(token) );
         }
       }
 
     case _ =>
-      system.error("unexpected token:" + token2string(token) );
+      sys.error("unexpected token:" + token2string(token) );
     }
   //                                  sopt ::= S?
-  def sOpt = if( token == S ) nextToken;
+  def sOpt() = if( token == S ) nextToken;
 
   //                      (' S? mixed ::= '#PCDATA' S? ')'
   //                                    | '#PCDATA' (S? '|' S? atom)* S? ')*'
@@ -90,7 +90,7 @@ object ContentModelParser extends Scanner { // a bit too permissive concerning #
   }
 
   //                                             seqRest ::= (',' S? cp S?)+
-  def seqRest(p: RegExp) = { 
+  def seqRest(p: RegExp) = {
     var k = List(p);
     while( token == COMMA ) {
       nextToken;
@@ -102,7 +102,7 @@ object ContentModelParser extends Scanner { // a bit too permissive concerning #
   }
 
   //                                          choiceRest ::= ('|' S? cp S?)+
-  def choiceRest( p:RegExp ) = { 
+  def choiceRest( p:RegExp ) = {
     var k = List( p );
     while( token == CHOICE ) {
       nextToken;
@@ -116,14 +116,14 @@ object ContentModelParser extends Scanner { // a bit too permissive concerning #
   //                                  particle ::=  '(' S? regexp
   //                                             |  name [ '+' | '*' | '?' ]
   def particle = token match {
-    case LPAREN => nextToken; sOpt; regexp; 
+    case LPAREN => nextToken; sOpt; regexp;
     case NAME   => val a = Letter(ElemName(value)); nextToken; maybeSuffix(a)
-    case _      => system.error("expected '(' or Name, got:"+token2string(token));
+    case _      => sys.error("expected '(' or Name, got:"+token2string(token));
   }
 
   //                                     atom ::= name
   def atom = token match {
     case NAME   => val a = Letter(ElemName(value)); nextToken; a
-    case _      => system.error("expected Name, got:"+token2string(token));
+    case _      => sys.error("expected Name, got:"+token2string(token));
   }
 }

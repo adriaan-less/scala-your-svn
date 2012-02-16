@@ -1,4 +1,4 @@
-object Test extends Application {
+object Test extends App {
 
 def transpose[A](arr: Array[Array[A]]) = {
   for (i <- Array.range(0, arr(0).length)) yield
@@ -12,6 +12,6 @@ for (i <- Array.range(0, my_arr(0).length)) yield
 
 val transposed = transpose(my_arr)
 
-println(transposed.deepToString)
+println(transposed.deep.toString)
 
 }

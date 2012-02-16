@@ -1,9 +1,9 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 /* NSC -- new scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
@@ -24,9 +24,9 @@ import scala.tools.nsc.symtab.classfile.ICodeReader
  */
 abstract class ICodes extends AnyRef
                                  with Members
-                                 with BasicBlocks                
+                                 with BasicBlocks
                                  with Opcodes
-                                 with TypeStacks 
+                                 with TypeStacks
                                  with TypeKinds
                                  with ExceptionHandlers
                                  with Primitives
@@ -35,12 +35,12 @@ abstract class ICodes extends AnyRef
                                  with Repository
 {
   val global: Global
-  import global.{ definitions, settings }
+  import global.{ log, definitions, settings, perRunCaches }
 
   /** The ICode representation of classes */
-  val classes = new mutable.HashMap[global.Symbol, IClass]
-  
-  /** Debugging flag */  
+  val classes = perRunCaches.newMap[global.Symbol, IClass]()
+
+  /** Debugging flag */
   def shouldCheckIcode = settings.check contains global.genicode.phaseName
   def checkerDebug(msg: String) = if (shouldCheckIcode && global.opt.debug) println(msg)
 
@@ -50,33 +50,51 @@ abstract class ICodes extends AnyRef
     case "dfs"    => new DepthFirstLinerizer()
     case "normal" => new NormalLinearizer()
     case "dump"   => new DumpLinearizer()
-    case x        => global.abort("Unknown linearizer: " + x)    
+    case x        => global.abort("Unknown linearizer: " + x)
   }
-    
+
+  def newTextPrinter() =
+    new TextPrinter(new PrintWriter(Console.out, true), new DumpLinearizer)
+
   /** Have to be careful because dump calls around, possibly
    *  re-entering methods which initiated the dump (like foreach
    *  in BasicBlocks) which leads to the icode output olympics.
    */
   private var alreadyDumping = false
-  
-  /** Print all classes and basic blocks. Used for debugging. */
-  
-  def dump {
-    if (alreadyDumping) return
-    else alreadyDumping = true
-    
-    val printer = new TextPrinter(new PrintWriter(Console.out, true),
-                                  new DumpLinearizer)
 
+  /** Print all classes and basic blocks. Used for debugging. */
+
+  def dumpClassesAndAbort(msg: String): Nothing = {
+    if (alreadyDumping) global.abort(msg)
+    else alreadyDumping = true
+
+    Console.println(msg)
+    val printer = newTextPrinter()
     classes.values foreach printer.printClass
+    global.abort(msg)
   }
 
+  def dumpMethodAndAbort(m: IMethod, msg: String): Nothing = {
+    Console.println("Fatal bug in inlinerwhile traversing " + m + ": " + msg)
+    m.dump()
+    global.abort("" + m)
+  }
+  def dumpMethodAndAbort(m: IMethod, b: BasicBlock): Nothing =
+    dumpMethodAndAbort(m, "found open block " + b + " " + b.flagsString)
+
   def checkValid(m: IMethod) {
-    for (b <- m.code.blocks)
+    // always slightly dicey to iterate over mutable structures
+    m foreachBlock { b =>
       if (!b.closed) {
-        m.dump
-        global.abort("Open block: " + b + " " + b.flagsString)
+        // Something is leaving open/empty blocks around (see SI-4840) so
+        // let's not kill the deal unless it's nonempty.
+        if (b.isEmpty) {
+          log("!!! Found open but empty block while inlining " + m + ": removing from block list.")
+          m.code removeBlock b
+        }
+        else dumpMethodAndAbort(m, b)
       }
+    }
   }
 
   object liveness extends Liveness {
@@ -98,13 +116,13 @@ abstract class ICodes extends AnyRef
   object icodeReader extends ICodeReader {
     lazy val global: ICodes.this.global.type = ICodes.this.global
   }
-  
+
   /** A phase which works on icode. */
   abstract class ICodePhase(prev: Phase) extends global.GlobalPhase(prev) {
     override def erasedTypes = true
     override def apply(unit: global.CompilationUnit): Unit =
       unit.icode foreach apply
-        
+
     def apply(cls: global.icodes.IClass): Unit
   }
 }

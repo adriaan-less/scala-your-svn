@@ -1,85 +1,12 @@
-/* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
- * @author  Martin Odersky
- */
-
 package scala.tools.nsc
 
-import Predef.{ println => _, _ }
-import java.io.{ PrintWriter }
-import java.io.File.pathSeparator
-import java.lang.reflect
-import java.net.URL
-import util.{ Set => _, _ }
 import interpreter._
-import io.VirtualDirectory
-import reporters.{ ConsoleReporter, Reporter }
-import symtab.{ Flags, Names }
-import scala.tools.nsc.{ InterpreterResults => IR }
-import scala.tools.util.PathResolver
-import scala.tools.nsc.util.{ ScalaClassLoader, Exceptional }
-import ScalaClassLoader.URLClassLoader
-import Exceptional.unwrap
+import java.io._
 
-import scala.collection.{ mutable, immutable }
-import scala.collection.mutable.{ ListBuffer, ArrayBuffer }
-import scala.PartialFunction.{ cond, condOpt }
-import scala.util.control.Exception.{ ultimately }
-import scala.reflect.NameTransformer
-
-import Interpreter._
-
-/** <p>
- *    An interpreter for Scala code.
- *  </p>
- *  <p>
- *    The main public entry points are <code>compile()</code>,
- *    <code>interpret()</code>, and <code>bind()</code>.
- *    The <code>compile()</code> method loads a
- *    complete Scala file.  The <code>interpret()</code> method executes one
- *    line of Scala code at the request of the user.  The <code>bind()</code>
- *    method binds an object to a variable that can then be used by later
- *    interpreted code.
- *  </p>
- *  <p>
- *    The overall approach is based on compiling the requested code and then
- *    using a Java classloader and Java reflection to run the code
- *    and access its results.
- *  </p>
- *  <p>  
- *    In more detail, a single compiler instance is used
- *    to accumulate all successfully compiled or interpreted Scala code.  To
- *    "interpret" a line of code, the compiler generates a fresh object that
- *    includes the line of code and which has public member(s) to export
- *    all variables defined by that code.  To extract the result of an
- *    interpreted line to show the user, a second "result object" is created
- *    which imports the variables exported by the above object and then
- *    exports a single member named "scala_repl_result".  To accomodate user expressions
- *    that read from variables or methods defined in previous statements, "import"
- *    statements are used.
- *  </p>
- *  <p>
- *    This interpreter shares the strengths and weaknesses of using the
- *    full compiler-to-Java.  The main strength is that interpreted code
- *    behaves exactly as does compiled code, including running at full speed.
- *    The main weakness is that redefining classes and methods is not handled
- *    properly, because rebinding at the Java level is technically difficult.
- *  </p>
- *
- * @author Moez A. Abdel-Gawad
- * @author Lex Spoon
+/** A compatibility stub.
  */
-class Interpreter(val settings: Settings, out: PrintWriter) {
-  repl =>
-  
-  private val RESULT_OBJECT_PREFIX = "RequestResult$"
-
-  def println(x: Any) = {
-    out.println(x)
-    out.flush()
-  }
-  
-  /** construct an interpreter that reports to Console */
+@deprecated("Use a class in the scala.tools.nsc.interpreter package.", "2.9.0")
+class Interpreter(settings: Settings, out: PrintWriter) extends IMain(settings, out) {
   def this(settings: Settings) = this(settings, new NewLinePrintWriter(new ConsoleWriter, true))
   def this() = this(new Settings())
   
