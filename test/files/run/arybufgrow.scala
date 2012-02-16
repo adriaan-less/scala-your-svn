@@ -1,8 +1,8 @@
 import scala.collection.mutable._;
 
-object Test extends Application {
+object Test extends App {
   val buf = new ArrayBuffer[String];
-  for(val i <- List.range(0,1000)) {
+  for (i <- List.range(0,1000)) {
     buf += "hello";
   }
 

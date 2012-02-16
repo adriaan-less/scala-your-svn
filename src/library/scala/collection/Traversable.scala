@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,24 +13,35 @@ package scala.collection
 import generic._
 import mutable.{Builder, Buffer, ArrayBuffer, ListBuffer}
 import scala.util.control.Breaks
+import annotation.bridge
 
-/** A template trait for traversable collections.
- *  $traversableinfo
- * 
- *  @tparam A    The element type of the collection
+/** A trait for traversable collections.
+ *  All operations are guaranteed to be performed in a single-threaded manner.
+ *
+ *  $traversableInfo
  */
-trait Traversable[+A] extends TraversableLike[A, Traversable[A]] 
+trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
+                         with GenTraversable[A]
+                         with TraversableOnce[A]
                          with GenericTraversableTemplate[A, Traversable] {
-  def companion: GenericCompanion[Traversable] = Traversable
+  override def companion: GenericCompanion[Traversable] = Traversable
+
+  override def seq: Traversable[A] = this
+
+  @bridge
+  def flatten[B](implicit asTraversable: A => /*<:<!!!*/ GenTraversableOnce[B]): Traversable[B] = super.flatten(asTraversable)
+
+  @bridge
+  def transpose[B](implicit asTraversable: A => /*<:<!!!*/ GenTraversableOnce[B]): Traversable[Traversable[B]] = super.transpose(asTraversable)
 
   /* The following methods are inherited from TraversableLike
-   * 
+   *
   override def isEmpty: Boolean
   override def size: Int
   override def hasDefiniteSize
-  override def ++[B >: A, That](xs: TraversableOnce[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def ++[B >: A, That](xs: GenTraversableOnce[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
   override def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
-  override def flatMap[B, That](f: A => Traversable[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
+  override def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Traversable[A], B, That]): That
   override def filter(p: A => Boolean): Traversable[A]
   override def remove(p: A => Boolean): Traversable[A]
   override def partition(p: A => Boolean): (Traversable[A], Traversable[A])
@@ -84,15 +94,19 @@ trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
   */
 }
 
-/** $factoryInfo */
+/** $factoryInfo
+ *  The current default implementation of a $Coll is a `Vector`.
+ */
 object Traversable extends TraversableFactory[Traversable] { self =>
 
   /** Provides break functionality separate from client code */
   private[collection] val breaks: Breaks = new Breaks
-  
+
   /** $genericCanBuildFromInfo */
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = new GenericCanBuildFrom[A]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
 
   def newBuilder[A]: Builder[A, Traversable[A]] = immutable.Traversable.newBuilder[A]
 }
 
+/** Explicit instantiation of the `Traversable` trait to reduce class file size in subclasses. */
+private[scala] abstract class AbstractTraversable[+A] extends Traversable[A]

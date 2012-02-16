@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -14,16 +13,41 @@ package mutable
 
 import generic._
 
-/** <code>Queue</code> objects implement data structures that allow to
+/** `Queue` objects implement data structures that allow to
  *  insert and retrieve elements in a first-in-first-out (FIFO) manner.
  *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-mutable-collection-classes.html#mutable_queues "Scala's Collection Library overview"]]
+ *  section on `Queues` for more information.
+ *
+ *  @define Coll mutable.Queue
+ *  @define coll mutable queue
+ *  @define orderDependent
+ *  @define orderDependentFold
+ *  @define mayNotTerminateInf
+ *  @define willNotTerminateInf
  */
-@serializable @cloneable
-class Queue[A] extends MutableList[A] with Cloneable[Queue[A]] {
+@cloneable
+class Queue[A]
+extends MutableList[A]
+   with GenericTraversableTemplate[A, Queue]
+   with Cloneable[Queue[A]]
+   with Serializable
+{
+  override def companion: GenericCompanion[Queue] = Queue
+
+  override protected[this] def newBuilder = companion.newBuilder[A]
+
+  private[mutable] def this(fst: LinkedList[A], lst: LinkedList[A], lng: Int) {
+    this()
+    first0 = fst
+    last0 = lst
+    len = lng
+  }
+
   /** Adds all elements to the queue.
    *
    *  @param  elems       the elements to add.
@@ -141,10 +165,12 @@ class Queue[A] extends MutableList[A] with Cloneable[Queue[A]] {
    *
    *  @return the first element.
    */
-  def front: A = first0.elem
+  def front: A = head
 }
 
-// !!! TODO - integrate
-object Queue {
-  def apply[A](xs: A*): Queue[A] = new Queue[A] ++= xs
+
+object Queue extends SeqFactory[Queue] {
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Queue[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+
+  def newBuilder[A]: Builder[A, Queue[A]] = new MutableList[A] mapResult { _.toQueue }
 }

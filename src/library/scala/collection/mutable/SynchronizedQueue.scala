@@ -1,25 +1,28 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 package mutable
 
 
-/** This is a synchronized version of the <code>Queue[T]</code> class. It
+/** This is a synchronized version of the `Queue[T]` class. It
  *  implements a data structure that allows one to insert and retrieve
  *  elements in a first-in-first-out (FIFO) manner.
+ *
+ *  @tparam A     type of elements contained in this synchronized queue.
  *
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
  *  @since   1
+ *  @define Coll SynchronizedQueue
+ *  @define coll synchronized queue
  */
 class SynchronizedQueue[A] extends Queue[A] {
   import scala.collection.Traversable
@@ -36,11 +39,11 @@ class SynchronizedQueue[A] extends Queue[A] {
    */
   override def +=(elem: A): this.type = synchronized[this.type] { super.+=(elem) }
 
-  /** Adds all elements provided by an <code>Iterable</code> object
+  /** Adds all elements provided by a `TraversableOnce` object
    *  at the end of the queue. The elements are prepended in the order they
    *  are given out by the iterator.
    *
-   *  @param  iter        an iterable object
+   *  @param  xs        a traversable object
    */
   override def ++=(xs: TraversableOnce[A]): this.type = synchronized[this.type] { super.++=(xs) }
 
@@ -56,6 +59,23 @@ class SynchronizedQueue[A] extends Queue[A] {
    *  @return the first element of the queue.
    */
   override def dequeue(): A = synchronized { super.dequeue }
+
+  /** Returns the first element in the queue which satisfies the
+   *  given predicate, and removes this element from the queue.
+   *
+   *  @param p   the predicate used for choosing the first element
+   *  @return the first element of the queue for which p yields true
+   */
+  override def dequeueFirst(p: A => Boolean): Option[A] = synchronized { super.dequeueFirst(p) }
+
+  /** Returns all elements in the queue which satisfy the
+   *  given predicate, and removes those elements from the queue.
+   *
+   *  @param p   the predicate used for choosing elements
+   *  @return    a sequence of all elements in the queue for which
+   *             p yields true.
+   */
+  override def dequeueAll(p: A => Boolean): Seq[A] = synchronized { super.dequeueAll(p) }
 
   /** Returns the first element in the queue, or throws an error if there
    *  is no element contained in the queue.

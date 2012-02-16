@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.actors
 
@@ -39,34 +38,35 @@ private[actors] object Reactor {
     }
   }
 
-  val waitingForNone = new PartialFunction[Any, Unit] {
-    def isDefinedAt(x: Any) = false
+  val waitingForNone: PartialFunction[Any, Unit] = new scala.runtime.AbstractPartialFunction[Any, Unit] {
+    def _isDefinedAt(x: Any) = false
     def apply(x: Any) {}
   }
-
 }
 
 /**
- * The Reactor trait provides lightweight actors.
+ * Super trait of all actor traits.
  *
  * @author Philipp Haller
+ *
+ * @define actor reactor
  */
 trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
 
-  /* The actor's mailbox. */
+  /* The $actor's mailbox. */
   private[actors] val mailbox = new MQueue[Msg]("Reactor")
 
   // guarded by this
   private[actors] val sendBuffer = new MQueue[Msg]("SendBuffer")
 
-  /* Whenever this actor executes on some thread, `waitingFor` is
+  /* Whenever this $actor executes on some thread, `waitingFor` is
    * guaranteed to be equal to `Reactor.waitingForNone`.
    *
    * In other words, whenever `waitingFor` is not equal to
-   * `Reactor.waitingForNone`, this actor is guaranteed not to execute
+   * `Reactor.waitingForNone`, this $actor is guaranteed not to execute
    * on some thread.
    *
-   * If the actor waits in a `react`, `waitingFor` holds the
+   * If the $actor waits in a `react`, `waitingFor` holds the
    * message handler that `react` was called with.
    *
    * guarded by this
@@ -78,11 +78,14 @@ trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
   private[actors] var _state: Actor.State.Value = Actor.State.New
 
   /**
-   * The behavior of a <code>Reactor</code> is specified by implementing
-   * this method.
+   * The $actor's behavior is specified by implementing this method.
    */
   def act(): Unit
 
+  /**
+   * This partial function is applied to exceptions that propagate out of
+   * this $actor's body.
+   */
   protected[actors] def exceptionHandler: PartialFunction[Exception, Unit] =
     Map()
 
@@ -92,13 +95,6 @@ trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
   protected[actors] def mailboxSize: Int =
     mailbox.size
 
-  /**
-   * Sends <code>msg</code> to this actor (asynchronous) supplying
-   * explicit reply destination.
-   *
-   * @param  msg      the message to send
-   * @param  replyTo  the reply destination
-   */
   def send(msg: Msg, replyTo: OutputChannel[Any]) {
     val todo = synchronized {
       if (waitingFor ne Reactor.waitingForNone) {
@@ -194,21 +190,21 @@ trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
   }
 
   /**
-   * Receives a message from this actor's mailbox.
-   * <p>
+   * Receives a message from this $actor's mailbox.
+   *
    * This method never returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *
    * @param  handler  a partial function with message patterns and actions
    */
-  protected[actors] def react(handler: PartialFunction[Msg, Unit]): Nothing = {
+  protected def react(handler: PartialFunction[Msg, Unit]): Nothing = {
     synchronized { drainSendBuffer(mailbox) }
     searchMailbox(mailbox, handler, false)
     throw Actor.suspendException
   }
 
   /* This method is guaranteed to be executed from inside
-   * an actors act method.
+   * an $actor's act method.
    *
    * assume handler != null
    *
@@ -218,18 +214,36 @@ trait Reactor[Msg >: Null] extends OutputChannel[Msg] with Combinators {
     scheduler executeFromActor makeReaction(null, handler, msg)
   }
 
-  def start(): Reactor[Msg] = synchronized {
-    if (_state == Actor.State.New) {
-      _state = Actor.State.Runnable
-      scheduler newActor this
-      scheduler execute makeReaction(() => act())
-      this
-    } else
-      this
+  // guarded by this
+  private[actors] def dostart() {
+    _state = Actor.State.Runnable
+    scheduler newActor this
+    scheduler execute makeReaction(() => act(), null, null)
   }
 
-  /** Returns the execution state of this actor.
-   *  
+  /**
+   * Starts this $actor. This method is idempotent.
+   */
+  def start(): Reactor[Msg] = synchronized {
+    if (_state == Actor.State.New)
+      dostart()
+    this
+  }
+
+  /**
+   * Restarts this $actor.
+   *
+   * @throws java.lang.IllegalStateException  if the $actor is not in state `Actor.State.Terminated`
+   */
+  def restart(): Unit = synchronized {
+    if (_state == Actor.State.Terminated)
+      dostart()
+    else
+      throw new IllegalStateException("restart only in state "+Actor.State.Terminated)
+  }
+
+  /** Returns the execution state of this $actor.
+   *
    *  @return the execution state
    */
   def getState: Actor.State.Value = synchronized {
