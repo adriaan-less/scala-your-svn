@@ -1,12 +1,12 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
 
 package scala.tools.nsc
 package util
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 
 trait FreshNameCreator {
   /** Do not call before after type checking ends.
@@ -15,16 +15,16 @@ trait FreshNameCreator {
   def newName(): String
   def newName(prefix: String): String
 
-  @deprecated("use newName(prefix)")
+  @deprecated("use newName(prefix)", "2.9.0")
   def newName(pos: util.Position, prefix: String): String = newName(prefix)
-  @deprecated("use newName()")
+  @deprecated("use newName()", "2.9.0")
   def newName(pos: util.Position): String = newName()
 }
 
-object FreshNameCreator {  
+object FreshNameCreator {
   class Default extends FreshNameCreator {
     protected var counter = 0
-    protected val counters = new HashMap[String, Int] withDefaultValue 0
+    protected val counters = mutable.HashMap[String, Int]() withDefaultValue 0
 
     /**
      * Create a fresh name with the given prefix. It is guaranteed
@@ -34,7 +34,7 @@ object FreshNameCreator {
     def newName(prefix: String): String = {
       val safePrefix = prefix.replaceAll("""[<>]""", """\$""")
       counters(safePrefix) += 1
-      
+
       safePrefix + counters(safePrefix)
     }
     def newName(): String = {

@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -24,8 +24,7 @@ final class RichDouble(val self: Double) extends FractionalProxy[Double] {
   def toRadians: Double = math.toRadians(self)
 
   /** Converts an angle measured in radians to an approximately equivalent
-   *  angle measured in degrees
-   *
+   *  angle measured in degrees.
    *  @param  x angle, in radians
    *  @return the measurement of the angle x in degrees.
    */
