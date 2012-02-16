@@ -1,15 +1,13 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-
 
 package scala.tools.nsc
 package backend
 package icode
 
 import java.io.PrintWriter
-
 import scala.tools.nsc.symtab.Flags
 import scala.tools.nsc.util.Position
 
@@ -23,11 +21,11 @@ trait Printers { self: ICodes =>
     private var out = writer
 
     final val TAB = 2
-    
+
     def setWriter(w: PrintWriter) { out = w }
 
-    def indent { margin += TAB }
-    def undent { margin -= TAB }
+    def indent() { margin += TAB }
+    def undent() { margin -= TAB }
 
     def print(s: String) { out.print(s) }
     def print(o: Any) { print(o.toString()) }
@@ -37,7 +35,7 @@ trait Printers { self: ICodes =>
       println
     }
 
-    def println {
+    def println() {
       out.println()
       var i = 0
       while (i < margin) {
@@ -58,9 +56,7 @@ trait Printers { self: ICodes =>
       case x :: xs  => pr(x); print(sep); printList(pr)(xs, sep)
     }
 
-    private var clazz: IClass = _
     def printClass(cls: IClass) {
-      this.clazz = cls;
       print(cls.symbol.toString()); print(" extends ");
       printList(cls.symbol.info.parents, ", ");
       indent; println(" {");
@@ -74,24 +70,24 @@ trait Printers { self: ICodes =>
 
     def printField(f: IField) {
       print(f.symbol.keyString); print(" ");
-      print(f.symbol.nameString); print(": "); 
+      print(f.symbol.nameString); print(": ");
       println(f.symbol.info.toString());
     }
 
     def printMethod(m: IMethod) {
-      print("def "); print(m.symbol.name); 
+      print("def "); print(m.symbol.name);
       print("("); printList(printParam)(m.params, ", "); print(")");
       print(": "); print(m.symbol.info.resultType)
 
-      if (!m.isDeferred) {
+      if (!m.isAbstractMethod) {
         println(" {")
         println("locals: " + m.locals.mkString("", ", ", ""))
-        println("startBlock: " + m.code.startBlock)
+        println("startBlock: " + m.startBlock)
         println("blocks: " + m.code.blocks.mkString("[", ",", "]"))
         println
         lin.linearize(m) foreach printBlock
         println("}")
-        
+
         indent; println("Exception handlers: ")
         m.exh foreach printExceptionHandler
 
@@ -107,7 +103,7 @@ trait Printers { self: ICodes =>
 
     def printExceptionHandler(e: ExceptionHandler) {
       indent;
-      println("catch (" + e.cls.simpleName + ") in " + e.covered + " starting at: " + e.startBlock);
+      println("catch (" + e.cls.simpleName + ") in " + e.covered.toSeq.sortBy(_.label) + " starting at: " + e.startBlock);
       println("consisting of blocks: " + e.blocks);
       undent;
       println("with finalizer: " + e.finalizer);
@@ -120,14 +116,14 @@ trait Printers { self: ICodes =>
       print(": ");
       if (settings.debug.value) print("pred: " + bb.predecessors + " succs: " + bb.successors + " flags: " + bb.flagsString)
       indent; println
-      bb foreach printInstruction
+      bb.toList foreach printInstruction
       undent; println
     }
 
     def printInstruction(i: Instruction) {
 //      if (settings.Xdce.value)
 //        print(if (i.useful) "   " else " * ");
-      if (i.pos.isDefined) print(i.pos.line.toString + "\t") else print("undef\t")
+      if (i.pos.isDefined) print(i.pos.line.toString + "\t") else print("?\t")
       println(i.toString())
     }
   }

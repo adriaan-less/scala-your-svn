@@ -6,37 +6,30 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.util
+
 import scala.reflect.ClassManifest
+import scala.math.Ordering
 
 /** The Sorting object provides functions that can sort various kinds of
   * objects. You can provide a comparison function, or you can request a sort
-  * of items that are viewable as <code>Ordered</code>. Some sorts that
+  * of items that are viewable as [[scala.math.Ordered]]. Some sorts that
   * operate directly on a subset of value types are also provided. These
   * implementations are derived from those in the Sun JDK.
   *
-  * Note that stability doesn't matter for value types, so use the quickSort
-  * variants for those. <code>stableSort</code> is intended to be used with
+  * Note that stability doesn't matter for value types, so use the `quickSort`
+  * variants for those. `stableSort` is intended to be used with
   * objects when the prior ordering should be preserved, where possible.
   *
   * @author  Ross Judson
   * @version 1.0
   */
 object Sorting {
-
-  /** Provides implicit access to sorting on arbitrary sequences of orderable
-   *  items. This doesn't quite work the way that I want yet -- K should be
-   *  bounded as viewable, but the compiler rejects that.
-   */
-  // implicit def seq2RichSort[K <: Ordered[K] : ClassManifest](s: Seq[K]) = new RichSorting[K](s)
-
   /** Quickly sort an array of Doubles. */
   def quickSort(a: Array[Double]) { sort1(a, 0, a.length) }
 
   /** Quickly sort an array of items with an implicit Ordering. */
-  def quickSort[K](a: Array[K])(implicit ord: Ordering[K]) { sort1(a, 0, a.length) }
+  def quickSort[K: Ordering](a: Array[K]) { sort1(a, 0, a.length) }
 
   /** Quickly sort an array of Ints. */
   def quickSort(a: Array[Int]) { sort1(a, 0, a.length) }
@@ -45,36 +38,34 @@ object Sorting {
   def quickSort(a: Array[Float]) { sort1(a, 0, a.length) }
 
   /** Sort an array of K where K is Ordered, preserving the existing order
-    * where the values are equal. */      
-  def stableSort[K](a: Array[K])(implicit m: ClassManifest[K], ord: Ordering[K]) {
-    stableSort(a, 0, a.length-1, new Array[K](a.length), ord.lt _)
+    * where the values are equal. */
+  def stableSort[K: ClassManifest: Ordering](a: Array[K]) {
+    stableSort(a, 0, a.length-1, new Array[K](a.length), Ordering[K].lt _)
   }
 
-  /** Sorts an array of <code>K</code> given an ordering function
-   *  <code>f</code>. <code>f</code> should return <code>true</code> iff
-   *  its first parameter is strictly less than its second parameter.
+  /** Sorts an array of `K` given an ordering function `f`.
+   *  `f` should return `true` iff its first parameter is strictly less than its second parameter.
    */
-  def stableSort[K : ClassManifest](a: Array[K], f: (K,K) => Boolean) {
+  def stableSort[K: ClassManifest](a: Array[K], f: (K, K) => Boolean) {
     stableSort(a, 0, a.length-1, new Array[K](a.length), f)
   }
 
   /** Sorts an arbitrary sequence into an array, given a comparison function
-   *  that should return <code>true</code> iff parameter one is strictly less
-   *  than parameter two.
+   *  that should return `true` iff parameter one is strictly less than parameter two.
    *
    *  @param  a the sequence to be sorted.
    *  @param  f the comparison function.
    *  @return the sorted sequence of items.
    */
-  def stableSort[K : ClassManifest](a: Seq[K], f: (K,K) => Boolean): Array[K] = {
+  def stableSort[K: ClassManifest](a: Seq[K], f: (K, K) => Boolean): Array[K] = {
     val ret = a.toArray
     stableSort(ret, f)
     ret
   }
 
   /** Sorts an arbitrary sequence of items that are viewable as ordered. */
-  def stableSort[K](a: Seq[K])(implicit m: ClassManifest[K], ord: Ordering[K]): Array[K] =
-    stableSort(a, ord.lt _)
+  def stableSort[K: ClassManifest: Ordering](a: Seq[K]): Array[K] =
+    stableSort(a, Ordering[K].lt _)
 
   /** Stably sorts a sequence of items given an extraction function that will
    *  return an ordered key from an item.
@@ -83,11 +74,13 @@ object Sorting {
    *  @param  f the comparison function.
    *  @return the sorted sequence of items.
    */
-  def stableSort[K, M](a: Seq[K], f: K => M)(implicit m: ClassManifest[K], ord: Ordering[M]): Array[K] =
-    stableSort(a)(m, ord on f)
+  def stableSort[K: ClassManifest, M: Ordering](a: Seq[K], f: K => M): Array[K] =
+    stableSort(a)(implicitly[ClassManifest[K]], Ordering[M] on f)
 
-  private def sort1[K](x: Array[K], off: Int, len: Int)(implicit ord: Ordering[K]) {
+  private def sort1[K: Ordering](x: Array[K], off: Int, len: Int) {
+    val ord = Ordering[K]
     import ord._
+
     def swap(a: Int, b: Int) {
       val t = x(a)
       x(a) = x(b)
@@ -130,7 +123,7 @@ object Sorting {
           var l = off
           var n = off + len - 1
           if (len > 40) {        // Big arrays, pseudomedian of 9
-            var s = len / 8
+            val s = len / 8
             l = med3(l, l+s, l+2*s)
             m = med3(m-s, m, m+s)
             n = med3(n-2*s, n-s, n)
@@ -231,7 +224,7 @@ object Sorting {
           var l = off
           var n = off + len - 1
           if (len > 40) {        // Big arrays, pseudomedian of 9
-            var s = len / 8
+            val s = len / 8
             l = med3(l, l+s, l+2*s)
             m = med3(m-s, m, m+s)
             n = med3(n-2*s, n-s, n)
@@ -335,7 +328,7 @@ object Sorting {
           var l = off
           var n = off + len - 1
           if (len > 40) {        // Big arrays, pseudomedian of 9
-            var s = len / 8
+            val s = len / 8
             l = med3(l, l+s, l+2*s)
             m = med3(m-s, m, m+s)
             n = med3(n-2*s, n-s, n)
@@ -443,7 +436,7 @@ object Sorting {
           var l = off
           var n = off + len - 1
           if (len > 40) {        // Big arrays, pseudomedian of 9
-            var s = len / 8
+            val s = len / 8
             l = med3(l, l+s, l+2*s)
             m = med3(m-s, m, m+s)
             n = med3(n-2*s, n-s, n)
@@ -513,12 +506,12 @@ object Sorting {
       var k, t_lo = lo
       var t_hi = mid + 1
       while (k <= hi) {
-        if ((t_lo <= mid) && ((t_hi > hi) || (!f(a(t_hi), a(t_lo))))) { 
-          scratch(k) = a(t_lo) 
-          t_lo += 1 
-        } else { 
-          scratch(k) = a(t_hi) 
-          t_hi += 1 
+        if ((t_lo <= mid) && ((t_hi > hi) || (!f(a(t_hi), a(t_lo))))) {
+          scratch(k) = a(t_lo)
+          t_lo += 1
+        } else {
+          scratch(k) = a(t_hi)
+          t_hi += 1
         }
         k += 1
       }
@@ -529,16 +522,4 @@ object Sorting {
       }
     }
   }
-}
-
-/** <p>
- *    A <code>RichSorting</code> object is generally created implicitly through
- *    the use of the <code>sort</code> function on an arbitrary sequence, where
- *    the items are ordered.
- *  </p>
- */
-class RichSorting[K](s: Seq[K])(implicit m: ClassManifest[K], ord: Ordering[K]) {
-  /** Returns an array with a sorted copy of the RichSorting's sequence.
-   */
-  def sort = Sorting.stableSort(s)
 }
