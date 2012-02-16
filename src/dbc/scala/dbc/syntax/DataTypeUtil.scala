@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -15,11 +15,11 @@ package syntax;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-object DataTypeUtil {
+@deprecated(DbcIsDeprecated, "2.9.0") object DataTypeUtil {
 
   final val java_lang_Integer_SIZE = 32;
   final val java_lang_Long_SIZE    = 64;
-  
+
   def boolean = new datatype.Boolean;
   def tinyint = new datatype.ExactNumeric[Byte](dbc.DataType.BYTE) {
     val precisionRadix = 2;
@@ -94,5 +94,5 @@ object DataTypeUtil {
     def length = _length;
   }
   def characterLargeObject = new datatype.CharacterLargeObject;
-  
+
 }

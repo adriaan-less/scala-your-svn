@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -30,14 +30,14 @@ abstract class DetWordAutom[T <: AnyRef] {
   def isSink(q: Int)         = delta(q).isEmpty && default(q) == q
   def next(q: Int, label: T) = delta(q).getOrElse(label, default(q))
 
-  override def toString() = {    
+  override def toString() = {
     val sb = new StringBuilder("[DetWordAutom  nstates=")
     sb.append(nstates)
     sb.append(" finals=")
     val map = Map(finals.zipWithIndex map (_.swap): _*)
     sb.append(map.toString())
     sb.append(" delta=\n")
-    
+
     for (i <- 0 until nstates) {
       sb append "%d->%s\n".format(i, delta(i))
       if (i < default.length)
