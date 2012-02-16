@@ -1,7 +1,6 @@
 //############################################################################
 // Programmation IV - 2002 - Week 05
 //############################################################################
-// $Id$
 
 object M0 {
   def partition[a](xs: List[a], pred: a => Boolean): Pair[List[a], List[a]] = {
@@ -179,9 +178,9 @@ object M4 {
             isSafe(col, p.tail, delta + 1)));
 
         for (
-          val placement <- placeQueens(row - 1);
-          val col <- columns;
-          isSafe(col, placement, 1)
+          placement <- placeQueens(row - 1);
+          col <- columns;
+          if isSafe(col, placement, 1)
         ) yield {
           col :: placement
         }

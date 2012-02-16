@@ -14,8 +14,8 @@ x=List('abc), m=scala.collection.immutable.List[scala.Symbol]
 x=[Z, m=Array[Boolean]
 x=[C, m=Array[Char]
 x=[I, m=Array[Int]
-x=Array(abc), m=Array[java.lang.String]
-x=Array('abc), m=Array[scala.Symbol]
+x=[Ljava.lang.String;, m=Array[java.lang.String]
+x=[Lscala.Symbol;, m=Array[scala.Symbol]
 
 x=((),()), m=scala.Tuple2[Unit, Unit]
 x=(true,false), m=scala.Tuple2[Boolean, Boolean]
@@ -23,15 +23,13 @@ x=(1,2), m=scala.Tuple2[Int, Int]
 x=(abc,xyz), m=scala.Tuple2[java.lang.String, java.lang.String]
 x=('abc,'xyz), m=scala.Tuple2[scala.Symbol, scala.Symbol]
 
-x=Test$, m=Test$
-x=scala.collection.immutable.List$, m=scala.collection.immutable.List$
 
 x=Foo, m=Foo[Int]
 x=Foo, m=Foo[scala.collection.immutable.List[Int]]
 x=Foo, m=Foo[Foo[Int]]
 x=Foo, m=Foo[scala.collection.immutable.List[Foo[Int]]]
 
-x=Test1$$anon$1, m=Test1$$anon$1
+x=Test1$$anon$1, m=Object with Bar[java.lang.String]
 
 ()=()
 true=true
