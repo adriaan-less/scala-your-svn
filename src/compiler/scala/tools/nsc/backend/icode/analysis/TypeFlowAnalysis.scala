@@ -1,33 +1,29 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-
-// $Id$
 
 package scala.tools.nsc
 package backend.icode.analysis
 
 import scala.collection.{mutable, immutable}
 
-/** A data-flow analysis on types, that works on <code>ICode</code>.
+/** A data-flow analysis on types, that works on `ICode`.
  *
  *  @author Iulian Dragos
  */
 abstract class TypeFlowAnalysis {
   val global: Global
   import global._
+  import definitions.{ ObjectClass, NothingClass, AnyRefClass, StringClass, ThrowableClass }
 
   /** The lattice of ICode types.
    */
-  object typeLattice extends CompleteLattice {
+  object typeLattice extends SemiLattice {
     type Elem = icodes.TypeKind
 
-    val Object = icodes.REFERENCE(global.definitions.ObjectClass)
-    val All    = icodes.REFERENCE(global.definitions.NothingClass)
-
-    def top    = Object
-    def bottom = All
+    val top    = icodes.REFERENCE(ObjectClass)
+    val bottom = icodes.REFERENCE(NothingClass)
 
     def lub2(exceptional: Boolean)(a: Elem, b: Elem) =
       if (a eq bottom) b
@@ -38,18 +34,18 @@ abstract class TypeFlowAnalysis {
   /** The lattice of type stacks. It is a straight forward extension of
    *  the type lattice (lub is pairwise lub of the list elements).
    */
-  object typeStackLattice extends CompleteLattice {
+  object typeStackLattice extends SemiLattice {
     import icodes._
     type Elem = TypeStack
 
-    override val top    = new TypeStack
-    override val bottom = new TypeStack
-    val exceptionHandlerStack: TypeStack = new TypeStack(List(REFERENCE(definitions.AnyRefClass)))
+    val top                   = new TypeStack
+    val bottom                = new TypeStack
+    val exceptionHandlerStack = new TypeStack(List(REFERENCE(AnyRefClass)))
 
     def lub2(exceptional: Boolean)(s1: TypeStack, s2: TypeStack) = {
       if (s1 eq bottom) s2
       else if (s2 eq bottom) s1
-      else if ((s1 eq exceptionHandlerStack) || (s2 eq exceptionHandlerStack)) Predef.error("merging with exhan stack") 
+      else if ((s1 eq exceptionHandlerStack) || (s2 eq exceptionHandlerStack)) sys.error("merging with exhan stack")
       else {
 //        if (s1.length != s2.length)
 //          throw new CheckerException("Incompatible stacks: " + s1 + " and " + s2);
@@ -60,10 +56,7 @@ abstract class TypeFlowAnalysis {
 
   /** A map which returns the bottom type for unfound elements */
   class VarBinding extends mutable.HashMap[icodes.Local, icodes.TypeKind] {
-    override def get(l: icodes.Local) = super.get(l) match {
-      case Some(t) => Some(t)
-      case None    => Some(typeLattice.bottom)
-    }
+    override def default(l: icodes.Local) = typeLattice.bottom
 
     def this(o: VarBinding) = {
       this()
@@ -74,41 +67,34 @@ abstract class TypeFlowAnalysis {
   /** The type flow lattice contains a binding from local variable
    *  names to types and a type stack.
    */
-  object typeFlowLattice extends CompleteLattice {
+  object typeFlowLattice extends SemiLattice {
     import icodes._
     type Elem = IState[VarBinding, icodes.TypeStack]
 
-    override val top    = new Elem(new VarBinding, typeStackLattice.top)
-    override val bottom = new Elem(new VarBinding, typeStackLattice.bottom)
-
-//    var lubs = 0
+    val top    = new Elem(new VarBinding, typeStackLattice.top)
+    val bottom = new Elem(new VarBinding, typeStackLattice.bottom)
 
     def lub2(exceptional: Boolean)(a: Elem, b: Elem) = {
-      val IState(env1, s1) = a
-      val IState(env2, s2) = b
-
-//      lubs += 1
+      val IState(env1, _) = a
+      val IState(env2, _) = b
 
       val resultingLocals = new VarBinding
-
-      for (binding1 <- env1.iterator) {
-        val tp2 = env2(binding1._1)
-        resultingLocals += ((binding1._1, typeLattice.lub2(exceptional)(binding1._2, tp2)))
+      env1 foreach { case (k, v) =>
+        resultingLocals += ((k, typeLattice.lub2(exceptional)(v, env2(k))))
       }
-
-      for (binding2 <- env2.iterator if resultingLocals(binding2._1) eq typeLattice.bottom) {
-        val tp1 = env1(binding2._1)
-        resultingLocals += ((binding2._1, typeLattice.lub2(exceptional)(binding2._2, tp1)))
+      env2 collect { case (k, v) if resultingLocals(k) eq typeLattice.bottom =>
+        resultingLocals += ((k, typeLattice.lub2(exceptional)(v, env1(k))))
       }
-
-      IState(resultingLocals,
+      val stack =
         if (exceptional) typeStackLattice.exceptionHandlerStack
-        else typeStackLattice.lub2(exceptional)(a.stack, b.stack))
+        else typeStackLattice.lub2(exceptional)(a.stack, b.stack)
+
+      IState(resultingLocals, stack)
     }
   }
 
   val timer = new Timer
-  
+
   class MethodTFA extends DataFlowAnalysis[typeFlowLattice.type] {
     import icodes._
     import icodes.opcodes._
@@ -116,7 +102,7 @@ abstract class TypeFlowAnalysis {
     type P = BasicBlock
     val lattice = typeFlowLattice
 
-    val STRING = icodes.REFERENCE(TypeFlowAnalysis.this.global.definitions.StringClass)
+    val STRING = icodes.REFERENCE(StringClass)
     var method: IMethod = _
 
     /** Initialize the in/out maps for the analysis of the given method. */
@@ -124,17 +110,16 @@ abstract class TypeFlowAnalysis {
       this.method = m
       //typeFlowLattice.lubs = 0
       init {
-        worklist += m.code.startBlock
+        worklist += m.startBlock
         worklist ++= (m.exh map (_.startBlock))
-        m.code.blocks.foreach { b =>
+        m foreachBlock { b =>
           in(b)  = typeFlowLattice.bottom
           out(b) = typeFlowLattice.bottom
         }
 
         // start block has var bindings for each of its parameters
-        val entryBindings = new VarBinding
-        m.params.foreach(p => entryBindings += ((p, p.kind)))
-        in(m.code.startBlock) = lattice.IState(entryBindings, typeStackLattice.bottom)
+        val entryBindings     = new VarBinding ++= (m.params map (p => ((p, p.kind))))
+        in(m.startBlock) = lattice.IState(entryBindings, typeStackLattice.bottom)
 
         m.exh foreach { e =>
           in(e.startBlock) = lattice.IState(in(e.startBlock).vars, typeStackLattice.exceptionHandlerStack)
@@ -144,23 +129,28 @@ abstract class TypeFlowAnalysis {
 
     /** reinitialize the analysis, keeping around solutions from a previous run. */
     def reinit(m: icodes.IMethod) {
-      if ((this.method eq null) || (this.method.symbol != m.symbol)) 
+      if (this.method == null || this.method.symbol != m.symbol)
         init(m)
       else reinit {
-        for (b <- m.code.blocks; if !in.isDefinedAt(b)) {
-          for (p <- b.predecessors) {
-            if (out.isDefinedAt(p)) {
-              in(b) = out(p)
-              worklist += p
-            }
-/*            else
-              in(b)  = typeFlowLattice.bottom
-*/          }
-          out(b) = typeFlowLattice.bottom
+        m foreachBlock { b =>
+          if (!in.contains(b)) {
+            for (p <- b.predecessors) {
+              if (out.isDefinedAt(p)) {
+                in(b) = out(p)
+                worklist += p
+              }
+  /*            else
+                in(b)  = typeFlowLattice.bottom
+  */        }
+            out(b) = typeFlowLattice.bottom
+          }
         }
-        for (exh <- m.exh; if !in.isDefinedAt(exh.startBlock)) {
-          worklist += exh.startBlock
-          in(exh.startBlock) = lattice.IState(in(exh.startBlock).vars, typeStackLattice.exceptionHandlerStack)
+        for (handler <- m.exh) {
+          val start = handler.startBlock
+          if (!in.contains(start)) {
+            worklist += start
+            in(start) = lattice.IState(in(start).vars, typeStackLattice.exceptionHandlerStack)
+          }
         }
       }
     }
@@ -176,8 +166,8 @@ abstract class TypeFlowAnalysis {
       forwardAnalysis(blockTransfer)
       val t = timer.stop
       if (settings.debug.value) {
-        linearizer.linearize(method).foreach(b => if (b != method.code.startBlock)
-          assert(visited.contains(b), 
+        linearizer.linearize(method).foreach(b => if (b != method.startBlock)
+          assert(visited.contains(b),
             "Block " + b + " in " + this.method + " has input equal to bottom -- not visited? .." + visited));
       }
 //      log("" + method.symbol.fullName + " ["  + method.code.blocks.size + " blocks] "
@@ -186,19 +176,19 @@ abstract class TypeFlowAnalysis {
     }
 
     def blockTransfer(b: BasicBlock, in: lattice.Elem): lattice.Elem = {
-      b.foldLeft(in)(interpret)
+      b.iterator.foldLeft(in)(interpret)
     }
-    
     /** The flow function of a given basic block. */
-    var flowFun: immutable.Map[BasicBlock, TransferFunction] = new immutable.HashMap
-    
+    /* var flowFun: immutable.Map[BasicBlock, TransferFunction] = new immutable.HashMap */
+
     /** Fill flowFun with a transfer function per basic block. */
-/*    private def buildFlowFunctions(blocks: List[BasicBlock]) {
+/*
+    private def buildFlowFunctions(blocks: List[BasicBlock]) {
       def transfer(b: BasicBlock): TransferFunction = {
         var gens: List[Gen] = Nil
         var consumed: Int = 0
         val stack = new SimulatedStack
-        
+
         for (instr <- b) instr match {
         case THIS(clasz) =>
           stack push toTypeKind(clasz.tpe)
@@ -228,7 +218,7 @@ abstract class TypeFlowAnalysis {
         case STORE_LOCAL(local) =>
           val t = stack.pop
           bindings += (local -> t)
-        
+
         case STORE_THIS(_) =>
           stack.pop
 
@@ -361,23 +351,21 @@ abstract class TypeFlowAnalysis {
 
         case MONITOR_EXIT() =>
           stack.pop
-          
+
         case SCOPE_ENTER(_) | SCOPE_EXIT(_) =>
           ()
 
-        case LOAD_EXCEPTION() =>
+        case LOAD_EXCEPTION(_) =>
           stack.pop(stack.length)
           stack.push(typeLattice.Object)
-          
-        case _ =>
-          dump
-          abort("Unknown instruction: " + i)
 
+        case _ =>
+          dumpClassesAndAbort("Unknown instruction: " + i)
         }
-        
+
         new TransferFunction(consumed, gens)
       }
-      
+
       for (b <- blocks) {
         flowFun = flowFun + (b -> transfer(b))
       }
@@ -390,8 +378,8 @@ abstract class TypeFlowAnalysis {
       val stack = out.stack
 
       if (settings.debug.value) {
-        Console.println("[before] Stack: " + stack);
-        Console.println(i);
+//        Console.println("[before] Stack: " + stack);
+//        Console.println(i);
       }
       i match {
 
@@ -428,7 +416,7 @@ abstract class TypeFlowAnalysis {
         case STORE_LOCAL(local) =>
           val t = stack.pop
           bindings += (local -> t)
-        
+
         case STORE_THIS(_) =>
           stack.pop
 
@@ -488,25 +476,9 @@ abstract class TypeFlowAnalysis {
               stack push ConcatClass
           }
 
-        case CALL_METHOD(method, style) => style match {
-          case Dynamic | InvokeDynamic =>
-            stack.pop(1 + method.info.paramTypes.length)
-            stack.push(toTypeKind(method.info.resultType))
-
-          case Static(onInstance) =>
-            if (onInstance) {
-              stack.pop(1 + method.info.paramTypes.length)
-              if (!method.isConstructor)
-                stack.push(toTypeKind(method.info.resultType));
-            } else {
-              stack.pop(method.info.paramTypes.length)
-              stack.push(toTypeKind(method.info.resultType))
-            }
-
-          case SuperCall(mix) =>
-            stack.pop(1 + method.info.paramTypes.length)
-            stack.push(toTypeKind(method.info.resultType))
-        }
+        case cm @ CALL_METHOD(_, _) =>
+          stack pop cm.consumed
+          cm.producedTypes foreach (stack push _)
 
         case BOX(kind) =>
           stack.pop
@@ -547,7 +519,7 @@ abstract class TypeFlowAnalysis {
           if (kind != UNIT)
             stack.pop;
 
-        case THROW() =>
+        case THROW(_) =>
           stack.pop
 
         case DROP(kind) =>
@@ -561,58 +533,56 @@ abstract class TypeFlowAnalysis {
 
         case MONITOR_EXIT() =>
           stack.pop
-          
+
         case SCOPE_ENTER(_) | SCOPE_EXIT(_) =>
           ()
 
-        case LOAD_EXCEPTION() =>
+        case LOAD_EXCEPTION(clasz) =>
           stack.pop(stack.length)
-          stack.push(typeLattice.Object)
-          
-        case _ =>
-          dump
-          abort("Unknown instruction: " + i)
+          stack.push(toTypeKind(clasz.tpe))
 
+        case _ =>
+          dumpClassesAndAbort("Unknown instruction: " + i)
       }
       out
     } // interpret
-    
-    
+
+
     class SimulatedStack {
       private var types: List[InferredType] = Nil
       private var depth = 0
-      
+
       /** Remove and return the topmost element on the stack. If the
        *  stack is empty, return a reference to a negative index on the
-       *  stack, meaning it refers to elements pushed by a predecessor block. 
+       *  stack, meaning it refers to elements pushed by a predecessor block.
        */
       def pop: InferredType = types match {
-        case head :: rest => 
+        case head :: rest =>
           types = rest
           head
         case _ =>
           depth -= 1
           TypeOfStackPos(depth)
       }
-      
+
       def pop2: (InferredType, InferredType) = {
         (pop, pop)
       }
-      
+
       def push(t: InferredType) {
         depth += 1
         types = types ::: List(t)
       }
-      
+
       def push(k: TypeKind) { push(Const(k)) }
     }
-    
+
 	abstract class InferredType {
-      /** Return the type kind pointed by this inferred type. */   
+      /** Return the type kind pointed by this inferred type. */
       def getKind(in: lattice.Elem): icodes.TypeKind = this match {
-        case Const(k) => 
+        case Const(k) =>
           k
-        case TypeOfVar(l: icodes.Local) => 
+        case TypeOfVar(l: icodes.Local) =>
           if (in.vars.isDefinedAt(l)) in.vars(l) else l.kind
         case TypeOfStackPos(n: Int) =>
           assert(in.stack.length >= n)
@@ -625,18 +595,18 @@ abstract class TypeFlowAnalysis {
 	case class TypeOfVar(l: icodes.Local) extends InferredType
 	/** The type found at a stack position. */
 	case class TypeOfStackPos(n: Int) extends InferredType
-	  
+
 	abstract class Gen
 	case class Bind(l: icodes.Local, t: InferredType) extends Gen
 	case class Push(t: InferredType) extends Gen
-	  
+
     /** A flow transfer function of a basic block. */
 	class TransferFunction(consumed: Int, gens: List[Gen]) extends (lattice.Elem => lattice.Elem) {
 	  def apply(in: lattice.Elem): lattice.Elem = {
         val out = lattice.IState(new VarBinding(in.vars), new TypeStack(in.stack))
         val bindings = out.vars
         val stack = out.stack
-        
+
         out.stack.pop(consumed)
         for (g <- gens) g match {
           case Bind(l, t) =>
@@ -646,22 +616,66 @@ abstract class TypeFlowAnalysis {
         }
         out
       }
-	}    
+	}
   }
-  
+
+  class MTFAGrowable extends MethodTFA {
+
+    import icodes._
+
+    /** discards what must be discarded, blanks what needs to be blanked out, and keeps the rest. */
+    def reinit(m: icodes.IMethod, staleOut: List[BasicBlock], inlined: collection.Set[BasicBlock], staleIn: collection.Set[BasicBlock]) {
+      if (this.method == null || this.method.symbol != m.symbol) {
+        init(m)
+        return
+      } else if(staleOut.isEmpty && inlined.isEmpty && staleIn.isEmpty) {
+        // this promotes invoking reinit if in doubt, no performance degradation will ensue!
+        return;
+      }
+
+      reinit {
+        // asserts conveying an idea what CFG shapes arrive here.
+        // staleIn foreach (p => assert( !in.isDefinedAt(p), p))
+        // staleIn foreach (p => assert(!out.isDefinedAt(p), p))
+        // inlined foreach (p => assert( !in.isDefinedAt(p), p))
+        // inlined foreach (p => assert(!out.isDefinedAt(p), p))
+        // inlined foreach (p => assert(!p.successors.isEmpty || p.lastInstruction.isInstanceOf[icodes.opcodes.THROW], p))
+        // staleOut foreach (p => assert(  in.isDefinedAt(p), p))
+
+        // never rewrite in(m.startBlock)
+        staleOut foreach { b =>
+          if(!inlined.contains(b)) { worklist += b }
+          out(b)    = typeFlowLattice.bottom
+        }
+        // nothing else is added to the worklist, bb's reachable via succs will be tfa'ed
+        blankOut(inlined)
+        blankOut(staleIn)
+        // no need to add startBlocks from m.exh
+      }
+    }
+
+    private def blankOut(blocks: collection.Set[BasicBlock]) {
+      blocks foreach { b =>
+        in(b)     = typeFlowLattice.bottom
+        out(b)    = typeFlowLattice.bottom
+      }
+    }
+
+  }
+
   class Timer {
     var millis = 0L
-    
+
     private var lastStart = 0L
-    
-    def reset {
+
+    def reset() {
       millis = 0L
     }
-    
-    def start {
+
+    def start() {
       lastStart = System.currentTimeMillis
     }
-    
+
     /** Stop the timer and return the number of milliseconds since the last
      * call to start. The 'millis' field is increased by the elapsed time.
      */
