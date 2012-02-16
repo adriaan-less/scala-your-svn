@@ -1,6 +1,0 @@
-bug1275.scala:8: error: type mismatch;
- found   : xs.MyType[a]
- required: s
-    = xs f // xs: s <: Seq[a]{type MyType <: s }
-         ^
-one error found
