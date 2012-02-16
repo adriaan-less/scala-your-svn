@@ -2,7 +2,6 @@
  * System.Reflection.Emit-like API for writing .NET assemblies to MSIL
  */
 
-// $Id$
 
 package ch.epfl.lamp.compiler.msil.emit
 
@@ -40,12 +39,12 @@ class MethodBuilder(name: String, declType: Type, attrs: Int, returnType: Type, 
     def GetILGenerator(): ILGenerator = {
 	if (ilGenerator == null)
 	    throw new RuntimeException
-		("No code generator avaiable for this method: " + this)
+		("No code generator available for this method: " + this)
 	return ilGenerator
     }
 
     /** Sets a custom attribute. */
-    def SetCustomAttribute(constr: ConstructorInfo, value: Array[byte]) {
+    def SetCustomAttribute(constr: ConstructorInfo, value: Array[Byte]) {
 	addCustomAttribute(constr, value)
     }
 

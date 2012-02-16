@@ -1,13 +1,12 @@
 
 import scala.actors.Reactor
-import scala.actors.Actor._
 
-case class Ping(from: Reactor)
+case class Ping(from: Reactor[Any])
 case object Pong
 case object Stop
 
 /**
- * Ping pong example for OutputChannelActor.
+ * Ping pong example for Reactor.
  *
  * @author  Philipp Haller
  */
@@ -20,8 +19,9 @@ object Test {
   }
 }
 
-class PingActor(count: Int, pong: Reactor) extends Reactor {
+class PingActor(count: Int, pong: Reactor[Any]) extends Reactor[Any] {
   def act() {
+    try {
     var pingsLeft = count - 1
     pong ! Ping(this)
     loop {
@@ -39,11 +39,16 @@ class PingActor(count: Int, pong: Reactor) extends Reactor {
           }
       }
     }
+    } catch {
+      case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+        e.printStackTrace()
+    }
   }
 }
 
-class PongActor extends Reactor {
+class PongActor extends Reactor[Any] {
   def act() {
+    try {
     var pongCount = 0
     loop {
       react {
@@ -56,6 +61,10 @@ class PongActor extends Reactor {
           println("Pong: stop")
           exit()
       }
+    }
+    } catch {
+      case e: Throwable if !e.isInstanceOf[scala.util.control.ControlThrowable] =>
+        e.printStackTrace()
     }
   }
 }
