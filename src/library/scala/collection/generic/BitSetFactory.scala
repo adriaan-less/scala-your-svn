@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -26,7 +26,7 @@ import mutable.Builder
  *  @define bitsetCanBuildFrom
  *    The standard `CanBuildFrom` instance for bitsets.
  */
-trait BitSetFactory[Coll <: BitSet with BitSetLike[Coll]] { 
+trait BitSetFactory[Coll <: BitSet with BitSetLike[Coll]] {
   def empty: Coll
   def newBuilder: Builder[Int, Coll]
   def apply(elems: Int*): Coll = (empty /: elems) (_ + _)
