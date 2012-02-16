@@ -1,22 +1,20 @@
 /* NSC -- new scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Nikolay Mihaylov
  */
 
-// $Id$
 
 package scala.tools.nsc
 package backend.msil
 
 import java.io.{File, IOException}
 import java.nio.{ByteBuffer, ByteOrder}
-
-import scala.collection.mutable.{Map, HashMap, HashSet, Stack, ListBuffer}
+import scala.collection.{ mutable, immutable }
 import scala.tools.nsc.symtab._
-import scala.tools.nsc.util.Position
 
 import ch.epfl.lamp.compiler.msil.{Type => MsilType, _}
 import ch.epfl.lamp.compiler.msil.emit._
+import ch.epfl.lamp.compiler.msil.util.PECustomMod
 
 abstract class GenMSIL extends SubComponent {
   import global._
@@ -24,6 +22,8 @@ abstract class GenMSIL extends SubComponent {
   import clrTypes.{types, constructors, methods, fields}
   import icodes._
   import icodes.opcodes._
+
+  val x = loaders
 
   /** Create a new phase */
   override def newPhase(p: Phase) = new MsilPhase(p)
@@ -37,21 +37,26 @@ abstract class GenMSIL extends SubComponent {
 
     override def erasedTypes = true
 
-    override def run {
+    override def run() {
       if (settings.debug.value) inform("[running phase " + name + " on icode]")
 
       val codeGenerator = new BytecodeGenerator
 
       //classes is ICodes.classes, a HashMap[Symbol, IClass]
-      classes.valuesIterator foreach codeGenerator.findEntryPoint
+      classes.values foreach codeGenerator.findEntryPoint
+      if( opt.showClass.isDefined && (codeGenerator.entryPoint == null) ) { // TODO introduce dedicated setting instead
+        val entryclass = opt.showClass.get.toString
+        warning("Couldn't find entry class " + entryclass)
+      }
 
       codeGenerator.initAssembly
 
-      classes.valuesIterator foreach codeGenerator.createTypeBuilder
-      classes.valuesIterator foreach codeGenerator.createClassMembers
+      val classesSorted = classes.values.toList.sortBy(c => c.symbol.id) // simplifies comparing cross-compiler vs. .exe output
+      classesSorted foreach codeGenerator.createTypeBuilder
+      classesSorted foreach codeGenerator.createClassMembers
 
       try {
-        classes.valuesIterator foreach codeGenerator.genClass
+        classesSorted foreach codeGenerator.genClass
       } finally {
         codeGenerator.writeAssembly
       }
@@ -70,7 +75,7 @@ abstract class GenMSIL extends SubComponent {
 
     val MODULE_INSTANCE_NAME = "MODULE$"
 
-    import clrTypes.{VOID => MVOID, BOOLEAN => MBOOL, UBYTE => MBYTE, SHORT => MSHORT,
+    import clrTypes.{VOID => MVOID, BOOLEAN => MBOOL, BYTE => MBYTE, SHORT => MSHORT,
                    CHAR => MCHAR, INT => MINT, LONG => MLONG, FLOAT => MFLOAT,
                    DOUBLE => MDOUBLE, OBJECT => MOBJECT, STRING => MSTRING,
                    STRING_ARRAY => MSTRING_ARRAY,
@@ -100,20 +105,18 @@ abstract class GenMSIL extends SubComponent {
     val JOBJECT = definitions.ObjectClass
     val JSTRING = definitions.StringClass
 
-    var JSTRING_SUBSTRING_INT_INT: Symbol = _
-
     val SystemConvert = clrTypes.getType("System.Convert")
 
     val objParam = Array(MOBJECT)
 
-//     val toBool:   MethodInfo = SystemConvert.GetMethod("ToBoolean", objParam)
-    val toByte:   MethodInfo = SystemConvert.GetMethod("ToByte", objParam)
-    val toShort:  MethodInfo = SystemConvert.GetMethod("ToInt16", objParam)
-    val toChar:   MethodInfo = SystemConvert.GetMethod("ToChar", objParam)
-    val toInt:    MethodInfo = SystemConvert.GetMethod("ToInt32", objParam)
-    val toLong:   MethodInfo = SystemConvert.GetMethod("ToInt64", objParam)
-    val toFloat:  MethodInfo = SystemConvert.GetMethod("ToSingle", objParam)
-    val toDouble: MethodInfo = SystemConvert.GetMethod("ToDouble", objParam)
+    val toBool:   MethodInfo = SystemConvert.GetMethod("ToBoolean", objParam) // see comment in emitUnbox
+    val toSByte:  MethodInfo = SystemConvert.GetMethod("ToSByte",   objParam)
+    val toShort:  MethodInfo = SystemConvert.GetMethod("ToInt16",   objParam)
+    val toChar:   MethodInfo = SystemConvert.GetMethod("ToChar",    objParam)
+    val toInt:    MethodInfo = SystemConvert.GetMethod("ToInt32",   objParam)
+    val toLong:   MethodInfo = SystemConvert.GetMethod("ToInt64",   objParam)
+    val toFloat:  MethodInfo = SystemConvert.GetMethod("ToSingle",  objParam)
+    val toDouble: MethodInfo = SystemConvert.GetMethod("ToDouble",  objParam)
 
     //val boxedUnit: FieldInfo = msilType(definitions.BoxedUnitModule.info).GetField("UNIT")
     val boxedUnit: FieldInfo = fields(definitions.BoxedUnit_UNIT)
@@ -121,14 +124,14 @@ abstract class GenMSIL extends SubComponent {
     // Scala attributes
     // symtab.Definitions -> object (singleton..)
     val SerializableAttr = definitions.SerializableAttr.tpe
-    val CloneableAttr    = definitions.getClass("scala.cloneable").tpe
-    val TransientAtt     = definitions.getClass("scala.transient").tpe
+    val CloneableAttr    = definitions.CloneableAttr.tpe
+    val TransientAtt     = definitions.TransientAttr.tpe
     // remoting: the architectures are too different, no mapping (no portable code
     // possible)
 
     // java instance methods that are mapped to static methods in .net
     // these will need to be called with OpCodes.Call (not Callvirt)
-    val dynToStatMapped: HashSet[Symbol] = new HashSet()
+    val dynToStatMapped = mutable.HashSet[Symbol]()
 
     initMappings()
 
@@ -141,58 +144,6 @@ abstract class GenMSIL extends SubComponent {
       // FIXME: for some reason the upper two lines map to null
       mapType(definitions.NullClass, EXCEPTION)
       mapType(definitions.NothingClass, EXCEPTION)
-
-      val jEmpty = new Array[Type](0)
-      val jString1 = Array(JSTRING.tpe)
-      val jInt1 = Array(definitions.IntClass.tpe)
-      val jInt2 = Array(definitions.IntClass.tpe, definitions.IntClass.tpe)
-      val jLong1 = Array(definitions.LongClass.tpe)
-      val jStringInt = Array(JSTRING.tpe, definitions.IntClass.tpe)
-      val jChar2 = Array(definitions.CharClass.tpe, definitions.CharClass.tpe)
-
-      val mObject1 = Array(MOBJECT)
-      val mString1 = Array(MSTRING)
-      val mString2 = Array(MSTRING, MSTRING)
-      val mChar1 = Array(MCHAR)
-      val mCharInt = Array(MCHAR, MINT)
-
-      JSTRING_SUBSTRING_INT_INT = lookupMethod(JSTRING, "substring", jInt2)
-
-      mapMethod(JOBJECT, "clone", MOBJECT, "MemberwiseClone")
-      mapMethod(JOBJECT, nme.equals_, MOBJECT, "Equals")
-      mapMethod(JOBJECT, nme.hashCode_, MOBJECT, "GetHashCode")
-      mapMethod(JOBJECT, nme.toString_, MOBJECT, "ToString")
-      mapMethod(JOBJECT, nme.finalize_, MOBJECT, "Finalize")
-      mapMethod(JOBJECT, nme.wait_, jEmpty, MMONITOR, "Wait", mObject1)
-      mapMethod(JOBJECT, nme.wait_, jLong1, MMONITOR, "Wait", Array(MOBJECT, MINT))
-      mapMethod(JOBJECT, nme.notify_, jEmpty, MMONITOR, "Pulse", mObject1)
-      mapMethod(JOBJECT, nme.notifyAll_, jEmpty, MMONITOR, "PulseAll", mObject1)
-
-      mapMethod(JSTRING, "compareTo",MSTRING, "CompareTo")
-      mapMethod(JSTRING, "length", MSTRING, "get_Length")
-      mapMethod(JSTRING, "charAt", MSTRING, "get_Chars")
-
-      mapMethod(JSTRING, "concat", jString1, MSTRING, "Concat", mString2)
-      mapMethod(JSTRING, "indexOf", jInt1, MSTRING, "IndexOf", mChar1)
-      mapMethod(JSTRING, "indexOf", jInt2, MSTRING, "IndexOf", mCharInt)
-
-      mapMethod(JSTRING, "indexOf", jString1, MSTRING, "IndexOf")
-      mapMethod(JSTRING, "indexOf", jStringInt, MSTRING, "IndexOf")
-      mapMethod(JSTRING, "lastIndexOf", jInt1, MSTRING, "LastIndexOf", mChar1)
-      mapMethod(JSTRING, "lastIndexOf", jInt2, MSTRING, "LastIndexOf", mCharInt)
-      mapMethod(JSTRING, "lastIndexOf", jString1, MSTRING, "LastIndexOf")
-      mapMethod(JSTRING, "lastIndexOf", jStringInt, MSTRING, "LastIndexOf")
-
-      mapMethod(JSTRING, "toLowerCase", jEmpty, MSTRING, "ToLower")
-      mapMethod(JSTRING, "toUpperCase", jEmpty, MSTRING, "ToUpper")
-      mapMethod(JSTRING, "startsWith", jString1, MSTRING, "StartsWith")
-      mapMethod(JSTRING, "endsWith", jString1, MSTRING, "EndsWith")
-      mapMethod(JSTRING, "substring", jInt1, MSTRING, "Substring")
-      mapMethod(JSTRING, "substring", jInt2, MSTRING, "Substring")
-      mapMethod(JSTRING, "trim", jEmpty, MSTRING, "Trim")
-      mapMethod(JSTRING, "intern", jEmpty, MSTRING, "Intern", mString1)
-      mapMethod(JSTRING, "replace", jChar2, MSTRING, "Replace")
-      mapMethod(JSTRING, "toCharArray", MSTRING, "ToCharArray")
 
       mapType(definitions.BooleanClass, MBOOL)
       mapType(definitions.ByteClass, MBYTE)
@@ -239,7 +190,7 @@ abstract class GenMSIL extends SubComponent {
         val f: File = new File(assemName)
         assemName = f.getName()
       }
-      
+
       outDir = new File(settings.outdir.value)
 
       srcPath = new File(settings.sourcedir.value)
@@ -248,7 +199,7 @@ abstract class GenMSIL extends SubComponent {
       assemblyName.Name = assemName
       massembly = AssemblyBuilderFactory.DefineDynamicAssembly(assemblyName)
 
-      moduleName = assemName + (if (entryPoint == null) ".dll" else ".exe")
+      moduleName = assemName // + (if (entryPoint == null) ".dll" else ".exe")
       // filename here: .dll or .exe (in both parameters), second: give absolute-path
       mmodule = massembly.DefineDynamicModule(moduleName,
                                               new File(outDir, moduleName).getAbsolutePath())
@@ -288,12 +239,12 @@ abstract class GenMSIL extends SubComponent {
               symtab(i) = (size & 0xff).toByte
               size = size >> 8
             }
-            System.arraycopy(pickle.bytes, 0, symtab, 6, pickle.writeIndex)
+            java.lang.System.arraycopy(pickle.bytes, 0, symtab, 6, pickle.writeIndex)
 
             tBuilder.SetCustomAttribute(SYMTAB_ATTRIBUTE_CONSTRUCTOR, symtab)
 
             currentRun.symData -= sym
-            currentRun.symData -= sym.linkedSym
+            currentRun.symData -= sym.companionSymbol
 
           case _ =>
             addMarker()
@@ -301,15 +252,37 @@ abstract class GenMSIL extends SubComponent {
       }
     }
 
+    /**
+     * Mutates `member` adding CLR attributes (if any) based on sym.annotations.
+     * Please notice that CLR custom modifiers are a different beast (see customModifiers below)
+     * and thus shouldn't be added by this method.
+     */
     def addAttributes(member: ICustomAttributeSetter, annotations: List[AnnotationInfo]) {
+      val attributes = annotations.map(_.atp.typeSymbol).collect {
+        case definitions.TransientAttr => null // TODO this is just an example
+      }
       return // TODO: implement at some point
     }
-/*
-      if (settings.debug.value)
-        log("creating annotations: " + annotations + " for member : " + member)
+
+    /**
+     * What's a CLR custom modifier? Intro available as source comments in compiler.msil.CustomModifier.
+     * It's basically a marker associated with a location (think of FieldInfo, ParameterInfo, and PropertyInfo)
+     * and thus that marker (be it optional or required) becomes part of the signature of that location.
+     * Some annotations will become CLR attributes (see addAttributes above), others custom modifiers (this method).
+     */
+    def customModifiers(annotations: List[AnnotationInfo]): Array[CustomModifier] = {
+      annotations.map(_.atp.typeSymbol).collect {
+        case definitions.VolatileAttr  => new CustomModifier(true, CustomModifier.VolatileMarker)
+      } toArray
+    }
+
+
+
+    /*
+      debuglog("creating annotations: " + annotations + " for member : " + member)
       for (annot@ AnnotationInfo(typ, annArgs, nvPairs) <- annotations ;
            if annot.isConstant)
-           //!typ.typeSymbol.hasFlag(Flags.JAVA)
+           //!typ.typeSymbol.isJavaDefined
       {
 //        assert(consts.length <= 1,
 //               "too many constant arguments for annotations; "+consts.toString())
@@ -326,7 +299,7 @@ abstract class GenMSIL extends SubComponent {
         annType.CreateType() // else, GetConstructors can't be used
         val constr: ConstructorInfo = annType.GetConstructors()(0)
         // prevent a second call of CreateType, only needed because there's no
-        // otehr way than GetConstructors()(0) to get the constructor, if there's
+        // other way than GetConstructors()(0) to get the constructor, if there's
         // no constructor symbol available.
 
         val args: Array[Byte] =
@@ -459,33 +432,40 @@ abstract class GenMSIL extends SubComponent {
         code.Emit(OpCodes.Ret)
       }
       createTypes()
-      val filename = outDir.getPath() 
-      if (settings.debug.value)
-        log("Output path: " + filename)
+      var outDirName: String = null
       try {
-        massembly.Save(filename, srcPath.getPath())
+        if (settings.Ygenjavap.isDefault) { // we reuse the JVM-sounding setting because it's conceptually similar
+          outDirName = outDir.getPath()
+          massembly.Save(outDirName + "\\" + assemName + ".msil") /* use SingleFileILPrinterVisitor */
+        } else {
+          outDirName = srcPath.getPath()
+          massembly.Save(settings.Ygenjavap.value, outDirName)  /* use MultipleFilesILPrinterVisitor */
+        }
       } catch {
-        case e:IOException => abort("Could not write to " + filename + ": " + e.getMessage())
+        case e:IOException => abort("Could not write to " + outDirName + ": " + e.getMessage())
       }
     }
 
     private def createTypes() {
-      for (sym <- classes.keysIterator) {
+      for (sym <- classes.keys) {
         val iclass   = classes(sym)
         val tBuilder = types(sym).asInstanceOf[TypeBuilder]
-          
-        if (settings.debug.value)
-          log("Calling CreatType for " + sym + ", " + tBuilder.toString)
+
+        debuglog("Calling CreatType for " + sym + ", " + tBuilder.toString)
 
         tBuilder.CreateType()
         tBuilder.setSourceFilepath(iclass.cunit.source.file.path)
       }
     }
 
+    private[GenMSIL] def ilasmFileName(iclass: IClass) : String = {
+      // method.sourceFile contains just the filename
+      iclass.cunit.source.file.toString.replace("\\", "\\\\")
+    }
+
     private[GenMSIL] def genClass(iclass: IClass) {
       val sym = iclass.symbol
-      if (settings.debug.value)
-        log("Generating class " + sym + " flags: " + Flags.flagsToString(sym.flags))
+      debuglog("Generating class " + sym + " flags: " + Flags.flagsToString(sym.flags))
       clasz = iclass
 
       val tBuilder = getType(sym).asInstanceOf[TypeBuilder]
@@ -494,11 +474,10 @@ abstract class GenMSIL extends SubComponent {
         // "Clone": if the code is non-portable, "Clone" is defined, not "clone"
         // TODO: improve condition (should override AnyRef.clone)
         if (iclass.methods.forall(m => {
-          !((m.symbol.name.toString() != "clone" || m.symbol.name.toString() != "Clone") &&
+          !((m.symbol.name.toString != "clone" || m.symbol.name.toString != "Clone") &&
             m.symbol.tpe.paramTypes.length != 0)
         })) {
-          if (settings.debug.value)
-            log("auto-generating cloneable method for " + sym)
+          debuglog("auto-generating cloneable method for " + sym)
           val attrs: Short = (MethodAttributes.Public | MethodAttributes.Virtual |
                               MethodAttributes.HideBySig).toShort
           val cloneMethod = tBuilder.DefineMethod("Clone", attrs, MOBJECT,
@@ -511,14 +490,14 @@ abstract class GenMSIL extends SubComponent {
       }
 
       val line = sym.pos.line
-      tBuilder.setPosition(line, iclass.cunit.source.file.name)
+      tBuilder.setPosition(line, ilasmFileName(iclass))
 
       if (isTopLevelModule(sym)) {
-        if (sym.linkedClassOfModule == NoSymbol)
-          dumpMirrorClass(sym)
+        if (sym.companionClass == NoSymbol)
+          generateMirrorClass(sym)
         else
           log("No mirror class for module with linked class: " +
-              sym.fullNameString)
+              sym.fullName)
       }
 
       addSymtabAttribute(sym, tBuilder)
@@ -531,8 +510,7 @@ abstract class GenMSIL extends SubComponent {
 
 
     private def genMethod(m: IMethod) {
-      if (settings.debug.value)
-        log("Generating method " + m.symbol + " flags: " + Flags.flagsToString(m.symbol.flags) +
+      debuglog("Generating method " + m.symbol + " flags: " + Flags.flagsToString(m.symbol.flags) +
             " owner: " + m.symbol.owner)
       method = m
       localBuilders.clear
@@ -547,10 +525,10 @@ abstract class GenMSIL extends SubComponent {
             mcode = mBuilder.GetILGenerator()
           } catch {
             case e: Exception =>
-              System.out.println("m.symbol       = " + Flags.flagsToString(m.symbol.flags) + " " + m.symbol)
-              System.out.println("m.symbol.owner = " + Flags.flagsToString(m.symbol.owner.flags) + " " + m.symbol.owner)
-              System.out.println("mBuilder       = " + mBuilder)
-              System.out.println("mBuilder.DeclaringType = " +
+              java.lang.System.out.println("m.symbol       = " + Flags.flagsToString(m.symbol.flags) + " " + m.symbol)
+              java.lang.System.out.println("m.symbol.owner = " + Flags.flagsToString(m.symbol.owner.flags) + " " + m.symbol.owner)
+              java.lang.System.out.println("mBuilder       = " + mBuilder)
+              java.lang.System.out.println("mBuilder.DeclaringType = " +
                                  TypeAttributes.toString(mBuilder.DeclaringType.Attributes) +
                                  "::" + mBuilder.DeclaringType)
               throw e
@@ -561,8 +539,7 @@ abstract class GenMSIL extends SubComponent {
 
       if (mcode != null) {
         for (local <- m.locals ; if !(m.params contains local)) {
-          if (settings.debug.value)
-            log("add local var: " + local + ", of kind " + local.kind)
+          debuglog("add local var: " + local + ", of kind " + local.kind)
           val t: MsilType = msilType(local.kind)
           val localBuilder = mcode.DeclareLocal(t)
           localBuilder.SetLocalSymInfo(msilName(local.sym))
@@ -579,32 +556,50 @@ abstract class GenMSIL extends SubComponent {
      */
     val msilLinearizer = new MSILLinearizer()
 
-    val labels: HashMap[BasicBlock, Label] = new HashMap()
+    val labels = mutable.HashMap[BasicBlock, Label]()
+
+    /* when emitting .line, it's enough to include the full filename just once per method, thus reducing filesize.
+     * this scheme relies on the fact that the entry block is emitted first. */
+    var dbFilenameSeen = false
 
     def genCode(m: IMethod) {
 
       def makeLabels(blocks: List[BasicBlock]) = {
-        if (settings.debug.value)
-          log("Making labels for: " + method)
+        debuglog("Making labels for: " + method)
         for (bb <- blocks) labels(bb) = mcode.DefineLabel()
       }
 
       labels.clear
 
-      var linearization = if(m.exh != Nil) msilLinearizer.linearize(m)
+      var linearization = if(!m.exh.isEmpty) msilLinearizer.linearize(m)
                           else linearizer.linearize(m)
 
-      if (m.exh != Nil)
+      if (!m.exh.isEmpty)
         linearization = computeExceptionMaps(linearization, m)
 
       makeLabels(linearization)
 
+      // debug val blocksInM = m.code.blocks.toList.sortBy(bb => bb.label)
+      // debug val blocksInL = linearization.sortBy(bb => bb.label)
+      // debug val MButNotL  = (blocksInM.toSet) diff (blocksInL.toSet) // if non-empty, a jump to B fails to find a label for B (case CJUMP, case CZJUMP)
+      // debug if(!MButNotL.isEmpty) { }
+
+      dbFilenameSeen = false
       genBlocks(linearization)
+
+      // RETURN inside exception blocks are replaced by Leave. The target of the
+      // leave is a `Ret` outside any exception block (generated here).
+      if (handlerReturnMethod == m) {
+        mcode.MarkLabel(handlerReturnLabel)
+        if (handlerReturnKind != UNIT)
+          mcode.Emit(OpCodes.Ldloc, handlerReturnLocal)
+        mcode.Emit(OpCodes.Ret)
+      }
 
       beginExBlock.clear()
       beginCatchBlock.clear()
       endExBlock.clear()
-      omitJumpBlocks.clear()
+      endFinallyLabels.clear()
     }
 
     def genBlocks(blocks: List[BasicBlock], previous: BasicBlock = null) {
@@ -616,21 +611,52 @@ abstract class GenMSIL extends SubComponent {
     }
 
     // the try blocks starting at a certain BasicBlock
-    val beginExBlock = new HashMap[BasicBlock, List[ExceptionHandler]]()
+    val beginExBlock = mutable.HashMap[BasicBlock, List[ExceptionHandler]]()
 
     // the catch blocks starting / endling at a certain BasicBlock
-    val beginCatchBlock = new HashMap[BasicBlock, ExceptionHandler]()
-    val endExBlock = new HashMap[BasicBlock, List[ExceptionHandler]]()
+    val beginCatchBlock = mutable.HashMap[BasicBlock, ExceptionHandler]()
+    val endExBlock = mutable.HashMap[BasicBlock, List[ExceptionHandler]]()
 
-    // at the end of a try or catch block, the jumps must not be emitted.
-    // the automatically generated leave will do the job.
-    val omitJumpBlocks: HashSet[BasicBlock] = new HashSet()
+    /** When emitting the code (genBlock), the number of currently active try / catch
+     *  blocks. When seeing a `RETURN` inside a try / catch, we need to
+     *   - store the result in a local (if it's not UNIT)
+     *   - emit `Leave handlerReturnLabel` instead of the Return
+     *   - emit code at the end: load the local and return its value
+     */
+    var currentHandlers = new mutable.Stack[ExceptionHandler]
+    // The IMethod the Local/Label/Kind below belong to
+    var handlerReturnMethod: IMethod = _
+    // Stores the result when returning inside an exception block
+    var handlerReturnLocal: LocalBuilder = _
+    // Label for a return instruction outside any exception block
+    var handlerReturnLabel: Label = _
+    // The result kind.
+    var handlerReturnKind: TypeKind = _
+    def returnFromHandler(kind: TypeKind): (LocalBuilder, Label) = {
+      if (handlerReturnMethod != method) {
+        handlerReturnMethod = method
+        if (kind != UNIT) {
+          handlerReturnLocal = mcode.DeclareLocal(msilType(kind))
+          handlerReturnLocal.SetLocalSymInfo("$handlerReturn")
+        }
+        handlerReturnLabel = mcode.DefineLabel()
+        handlerReturnKind = kind
+      }
+      (handlerReturnLocal, handlerReturnLabel)
+    }
+
+    /** For try/catch nested inside a finally, we can't use `Leave OutsideFinally`, the
+     *  Leave target has to be inside the finally (and it has to be the `endfinally` instruction).
+     *  So for every finalizer, we have a label which marks the place of the `endfinally`,
+     *  nested try/catch blocks will leave there.
+     */
+    val endFinallyLabels = mutable.HashMap[ExceptionHandler, Label]()
 
     /** Computes which blocks are the beginning / end of a try or catch block */
     private def computeExceptionMaps(blocks: List[BasicBlock], m: IMethod): List[BasicBlock] = {
-      val visitedBlocks = new HashSet[BasicBlock]()
+      val visitedBlocks = new mutable.HashSet[BasicBlock]()
 
-      // handlers which have not been intruduced so far
+      // handlers which have not been introduced so far
       var openHandlers = m.exh
 
 
@@ -655,13 +681,11 @@ abstract class GenMSIL extends SubComponent {
 
       // Stack of nested try blocks. Each bloc has a List of ExceptionHandler (multiple
       // catch statements). Example *1*: Stack(List(h2, h3), List(h1))
-      val currentTryHandlers = new Stack[List[ExceptionHandler]]()
+      val currentTryHandlers = new mutable.Stack[List[ExceptionHandler]]()
 
       // Stack of nested catch blocks. The head of the list is the current catch block. The
       // tail is all following catch blocks. Example *2*: Stack(List(h3), List(h4, h5))
-      val currentCatchHandlers = new Stack[List[ExceptionHandler]]()
-
-      var prev: BasicBlock = null
+      val currentCatchHandlers = new mutable.Stack[List[ExceptionHandler]]()
 
       for (b <- blocks) {
 
@@ -676,12 +700,12 @@ abstract class GenMSIL extends SubComponent {
                      "Bad linearization of basic blocks inside catch. Found block not part of the handler\n"+
                      b.fullString +"\nwhile in catch-part of\n"+ handler)
 
-              omitJumpBlocks += prev
-
               val rest = currentCatchHandlers.pop.tail
               if (rest.isEmpty) {
+                // all catch blocks of that exception handler are covered
                 res = handler :: endHandlers()
               } else {
+                // there are more catch blocks for that try (handlers covering the same)
                 currentCatchHandlers.push(rest)
                 beginCatchBlock(b) = rest.head
               }
@@ -708,7 +732,6 @@ abstract class GenMSIL extends SubComponent {
             val handlers = currentTryHandlers.pop
             currentCatchHandlers.push(handlers)
             beginCatchBlock(b) = handler
-            omitJumpBlocks += prev
           }
         }
 
@@ -719,9 +742,9 @@ abstract class GenMSIL extends SubComponent {
         val newHandlersBySize = newHandlers.groupBy(_.covered.size)
         // big handlers first, smaller ones are nested inside the try of the big one
         // (checked by the assertions below)
-        val sizes = newHandlersBySize.keysIterator.toList.sortWith(_ > _)
+        val sizes = newHandlersBySize.keys.toList.sortWith(_ > _)
 
-        val beginHandlers = new ListBuffer[ExceptionHandler]
+        val beginHandlers = new mutable.ListBuffer[ExceptionHandler]
         for (s <- sizes) {
           val sHandlers = newHandlersBySize(s)
           for (h <- sHandlers) {
@@ -745,7 +768,6 @@ abstract class GenMSIL extends SubComponent {
         }
         beginExBlock(b) = beginHandlers.toList
         visitedBlocks += b
-        prev = b
       }
 
       // if there handlers left (i.e. handlers covering nothing, or a
@@ -756,7 +778,7 @@ abstract class GenMSIL extends SubComponent {
 
       /** There might be open handlers, but no more blocks. happens when try/catch end
        *  with `throw` or `return`
-       *     def foo { try { .. throw } catch { _ => .. throw } }
+       *     def foo() { try { .. throw } catch { _ => .. throw } }
        *
        *  In this case we need some code after the catch block for the auto-generated
        *  `leave` instruction. So we're adding a (dead) `throw new Exception`.
@@ -769,13 +791,12 @@ abstract class GenMSIL extends SubComponent {
       if (rest.isEmpty) {
         liveBlocks
       } else {
-        omitJumpBlocks += prev
         val b = m.code.newBlock
         b.emit(Seq(
           NEW(REFERENCE(definitions.ThrowableClass)),
           DUP(REFERENCE(definitions.ObjectClass)),
           CALL_METHOD(definitions.ThrowableClass.primaryConstructor, Static(true)),
-          THROW()
+          THROW(definitions.ThrowableClass)
         ))
         b.close
         endExBlock(b) = rest
@@ -788,6 +809,77 @@ abstract class GenMSIL extends SubComponent {
      *  @param next  the following BasicBlock, `null` if `block` is the last one
      */
     def genBlock(block: BasicBlock, prev: BasicBlock, next: BasicBlock) {
+
+      def loadLocalOrAddress(local: Local, msg : String , loadAddr : Boolean) {
+        debuglog(msg + " for " + local)
+        val isArg = local.arg
+        val i = local.index
+        if (isArg)
+          loadArg(mcode, loadAddr)(i)
+        else
+          loadLocal(i, local, mcode, loadAddr)
+      }
+
+      def loadFieldOrAddress(field: Symbol, isStatic: Boolean, msg: String, loadAddr : Boolean) {
+        debuglog(msg + " with owner: " + field.owner +
+              " flags: " + Flags.flagsToString(field.owner.flags))
+        var fieldInfo = fields.get(field) match {
+          case Some(fInfo) => fInfo
+          case None =>
+            val fInfo = getType(field.owner).GetField(msilName(field))
+            fields(field) = fInfo
+            fInfo
+        }
+        if (fieldInfo.IsVolatile) {
+          mcode.Emit(OpCodes.Volatile)
+        }
+        if (!fieldInfo.IsLiteral) {
+          if (loadAddr) {
+            mcode.Emit(if (isStatic) OpCodes.Ldsflda else OpCodes.Ldflda, fieldInfo)
+          } else {
+            mcode.Emit(if (isStatic) OpCodes.Ldsfld else OpCodes.Ldfld, fieldInfo)
+          }
+        } else {
+          assert(!loadAddr, "can't take AddressOf a literal field (not even with readonly. prefix) because no memory was allocated to such field ...")
+          // TODO the above can be overcome by loading the value, boxing, and finally unboxing. An address to a copy of the raw value will be on the stack.
+         /*  We perform `field inlining' as required by CLR.
+          *  Emit as for a CONSTANT ICode stmt, with the twist that the constant value is available
+          *  as a java.lang.Object and its .NET type allows constant initialization in CLR, i.e. that type
+          *  is one of I1, I2, I4, I8, R4, R8, CHAR, BOOLEAN, STRING, or CLASS (in this last case,
+          *  only accepting nullref as value). See Table 9-1 in Lidin's book on ILAsm. */
+          val value = fieldInfo.getValue()
+          if (value == null) {
+            mcode.Emit(OpCodes.Ldnull)
+          } else {
+            val typ = if (fieldInfo.FieldType.IsEnum) fieldInfo.FieldType.getUnderlyingType
+                      else fieldInfo.FieldType
+            if (typ == clrTypes.STRING) {
+              mcode.Emit(OpCodes.Ldstr, value.asInstanceOf[String])
+            } else if (typ == clrTypes.BOOLEAN) {
+                mcode.Emit(if (value.asInstanceOf[Boolean]) OpCodes.Ldc_I4_1
+                           else OpCodes.Ldc_I4_0)
+            } else if (typ == clrTypes.BYTE || typ == clrTypes.UBYTE) {
+              loadI4(value.asInstanceOf[Byte], mcode)
+            } else if (typ == clrTypes.SHORT || typ == clrTypes.USHORT) {
+              loadI4(value.asInstanceOf[Int], mcode)
+            } else if (typ == clrTypes.CHAR) {
+              loadI4(value.asInstanceOf[Char], mcode)
+            } else if (typ == clrTypes.INT || typ == clrTypes.UINT) {
+              loadI4(value.asInstanceOf[Int], mcode)
+            } else if (typ == clrTypes.LONG || typ == clrTypes.ULONG) {
+              mcode.Emit(OpCodes.Ldc_I8, value.asInstanceOf[Long])
+            } else if (typ == clrTypes.FLOAT) {
+              mcode.Emit(OpCodes.Ldc_R4, value.asInstanceOf[Float])
+            } else if (typ == clrTypes.DOUBLE) {
+              mcode.Emit(OpCodes.Ldc_R8, value.asInstanceOf[Double])
+            } else {
+              /* TODO one more case is described in Partition II, 16.2: bytearray(...) */
+              abort("Unknown type for static literal field: " + fieldInfo)
+            }
+          }
+        }
+      }
+
       /** Creating objects works differently on .NET. On the JVM
        *  - NEW(type) => reference on Stack
        *  - DUP, load arguments, CALL_METHOD(constructor)
@@ -796,21 +888,32 @@ abstract class GenMSIL extends SubComponent {
        *  - load arguments
        *  - NewObj(constructor) => reference on stack
        *
-       * This variable tells wether the previous instruction was a NEW,
+       * This variable tells whether the previous instruction was a NEW,
        * we expect a DUP which is not emitted. */
       var previousWasNEW = false
 
       var lastLineNr: Int = 0
+      var lastPos: Position = NoPosition
 
-      mcode.MarkLabel(labels(block))
 
-      if (settings.debug.value)
-        log("Generating code for block: " + block)
-
+      // EndExceptionBlock must happen before MarkLabel because it adds the
+      // Leave instruction. Otherwise, labels(block) points to the Leave
+      // (inside the catch) instead of the instruction afterwards.
       for (handlers <- endExBlock.get(block); exh <- handlers) {
+        currentHandlers.pop()
+        for (l <- endFinallyLabels.get(exh))
+          mcode.MarkLabel(l)
         mcode.EndExceptionBlock()
       }
+
+      mcode.MarkLabel(labels(block))
+      debuglog("Generating code for block: " + block)
+
       for (handler <- beginCatchBlock.get(block)) {
+        if (!currentHandlers.isEmpty && currentHandlers.top.covered == handler.covered) {
+          currentHandlers.pop()
+          currentHandlers.push(handler)
+        }
         if (handler.cls == NoSymbol) {
           // `finally` blocks are represented the same as `catch`, but with no catch-type
           mcode.BeginFinallyBlock()
@@ -820,22 +923,29 @@ abstract class GenMSIL extends SubComponent {
         }
       }
       for (handlers <- beginExBlock.get(block); exh <- handlers) {
+        currentHandlers.push(exh)
         mcode.BeginExceptionBlock()
       }
 
       for (instr <- block) {
-        val currentLineNr = try {
-          instr.pos.line
-        } catch {
-          case _: UnsupportedOperationException =>
-            log("Warning: wrong position in: " + method)
-            lastLineNr
-        }
-
-        if (currentLineNr != lastLineNr) {
-          mcode.setPosition(currentLineNr)
-          lastLineNr = currentLineNr
-        }
+        try {
+          val currentLineNr = instr.pos.line
+          val skip = if(instr.pos.isRange) instr.pos.sameRange(lastPos) else (currentLineNr == lastLineNr);
+          if(!skip || !dbFilenameSeen) {
+            val fileName = if(dbFilenameSeen) "" else {dbFilenameSeen = true; ilasmFileName(clasz)};
+            if(instr.pos.isRange) {
+              val startLine = instr.pos.focusStart.line
+              val endLine   = instr.pos.focusEnd.line
+              val startCol  = instr.pos.focusStart.column
+              val endCol    = instr.pos.focusEnd.column
+              mcode.setPosition(startLine, endLine, startCol, endCol, fileName)
+            } else {
+              mcode.setPosition(instr.pos.line, fileName)
+            }
+            lastLineNr = currentLineNr
+            lastPos = instr.pos
+          }
+        } catch { case _: UnsupportedOperationException => () }
 
         if (previousWasNEW)
           assert(instr.isInstanceOf[DUP], block)
@@ -867,7 +977,7 @@ abstract class GenMSIL extends SubComponent {
           case LOAD_ARRAY_ITEM(kind) =>
             (kind: @unchecked) match {
               case BOOL           => mcode.Emit(OpCodes.Ldelem_I1)
-              case BYTE           => mcode.Emit(OpCodes.Ldelem_U1)
+              case BYTE           => mcode.Emit(OpCodes.Ldelem_I1) // I1 for System.SByte, i.e. a scala.Byte
               case SHORT          => mcode.Emit(OpCodes.Ldelem_I2)
               case CHAR           => mcode.Emit(OpCodes.Ldelem_U2)
               case INT            => mcode.Emit(OpCodes.Ldelem_I4)
@@ -875,40 +985,29 @@ abstract class GenMSIL extends SubComponent {
               case FLOAT          => mcode.Emit(OpCodes.Ldelem_R4)
               case DOUBLE         => mcode.Emit(OpCodes.Ldelem_R8)
               case REFERENCE(cls) => mcode.Emit(OpCodes.Ldelem_Ref)
-
-              // case ARRAY(elem) is not possible, for Array[Array[Int]], the
-              //  load will be case REFERENCE(java.lang.Object)
+              case ARRAY(elem)    => mcode.Emit(OpCodes.Ldelem_Ref)
 
               // case UNIT is not possible: an Array[Unit] will be an
               //  Array[scala.runtime.BoxedUnit] (-> case REFERENCE)
             }
 
-          case LOAD_LOCAL(local) =>
-            if (settings.debug.value)
-              log("load_local for " + local)
-            val isArg = local.arg
-            val i = local.index
-            if (isArg)
-              loadArg(mcode)(i)
-            else
-              loadLocal(i, local, mcode)
+          case LOAD_LOCAL(local) => loadLocalOrAddress(local, "load_local", false)
 
-          case LOAD_FIELD(field, isStatic) =>
-            if (settings.debug.value)
-              log("LOAD_FIELD with owner: " + field.owner +
-                  " flags: " + Flags.flagsToString(field.owner.flags))
-            var fieldInfo = fields.get(field) match {
-              case Some(fInfo) => fInfo
-              case None =>
-                val fInfo = getType(field.owner).GetField(msilName(field))
-                fields(field) = fInfo
-                fInfo
-            }
-            mcode.Emit(if (isStatic) OpCodes.Ldsfld else OpCodes.Ldfld, fieldInfo)
+          case CIL_LOAD_LOCAL_ADDRESS(local) => loadLocalOrAddress(local, "cil_load_local_address", true)
+
+          case LOAD_FIELD(field, isStatic) => loadFieldOrAddress(field, isStatic, "load_field", false)
+
+          case CIL_LOAD_FIELD_ADDRESS(field, isStatic) => loadFieldOrAddress(field, isStatic, "cil_load_field_address", true)
+
+          case CIL_LOAD_ARRAY_ITEM_ADDRESS(kind) => mcode.Emit(OpCodes.Ldelema, msilType(kind))
+
+          case CIL_NEWOBJ(msym) =>
+            assert(msym.isClassConstructor)
+            val constructorInfo: ConstructorInfo = getConstructor(msym)
+            mcode.Emit(OpCodes.Newobj, constructorInfo)
 
           case LOAD_MODULE(module) =>
-            if (settings.debug.value)
-              log("Generating LOAD_MODULE for: " + showsym(module))
+            debuglog("Generating LOAD_MODULE for: " + showsym(module))
             mcode.Emit(OpCodes.Ldsfld, getModuleInstanceField(module))
 
           case STORE_ARRAY_ITEM(kind) =>
@@ -922,15 +1021,15 @@ abstract class GenMSIL extends SubComponent {
               case FLOAT          => mcode.Emit(OpCodes.Stelem_R4)
               case DOUBLE         => mcode.Emit(OpCodes.Stelem_R8)
               case REFERENCE(cls) => mcode.Emit(OpCodes.Stelem_Ref)
+              case ARRAY(elem)    => mcode.Emit(OpCodes.Stelem_Ref) // @TODO: test this! (occurs when calling a Array[Object]* vararg param method)
 
-              // case UNIT / ARRRAY are not possible (see comment at LOAD_ARRAY_ITEM)
+              // case UNIT not possible (see comment at LOAD_ARRAY_ITEM)
             }
 
           case STORE_LOCAL(local) =>
             val isArg = local.arg
             val i = local.index
-            if (settings.debug.value)
-              log("store_local for " + local + ", index " + i)
+            debuglog("store_local for " + local + ", index " + i)
 
             // there are some locals defined by the compiler that
             // are isArg and are need to be stored.
@@ -981,7 +1080,7 @@ abstract class GenMSIL extends SubComponent {
                     // we're generating a constructor (method: IMethod is a constructor), and we're
                     // calling another constructor of the same class.
 
-                    // @LUC TODO: this can probably break, namely when having: class A { def this { new A() } }
+                    // @LUC TODO: this can probably break, namely when having: class A { def this() { new A() } }
                     // instead, we should instruct the CALL_METHOD with additional information, know whether it's
                     // an instance creation constructor call or not.
                     mcode.Emit(OpCodes.Call, constructorInfo)
@@ -990,7 +1089,8 @@ abstract class GenMSIL extends SubComponent {
                 case SuperCall(_) =>
                   mcode.Emit(OpCodes.Call, constructorInfo)
                   if (isStaticModule(clasz.symbol) &&
-                     notInitializedModules.contains(clasz.symbol))
+                      notInitializedModules.contains(clasz.symbol) &&
+                      method.symbol.isClassConstructor)
                     {
                       notInitializedModules -= clasz.symbol
                       mcode.Emit(OpCodes.Ldarg_0)
@@ -999,22 +1099,11 @@ abstract class GenMSIL extends SubComponent {
               }
 
             } else {
-              // java.lang.String.substring(int start_incl, int end_excl)
-              // System.String.Substring(int start_incl, int length)
-              if (msym == JSTRING_SUBSTRING_INT_INT) {
-                val endLocal = mcode.DeclareLocal(MINT)
-                endLocal.SetLocalSymInfo("$substring_end")
-                mcode.Emit(OpCodes.Stloc, endLocal)
-                mcode.Emit(OpCodes.Dup) // duplicate start_incl
-                mcode.Emit(OpCodes.Neg)
-                mcode.Emit(OpCodes.Ldloc, endLocal) // load end_excl
-                mcode.Emit(OpCodes.Add) // compute length (-start + end)
-              }
 
               var doEmit = true
-              types.get(msym.owner) match {
+              getTypeOpt(msym.owner) match {
                 case Some(typ) if (typ.IsEnum) => {
-                  def negBool = {
+                  def negBool() = {
                     mcode.Emit(OpCodes.Ldc_I4_0)
                     mcode.Emit(OpCodes.Ceq)
                   }
@@ -1069,13 +1158,13 @@ abstract class GenMSIL extends SubComponent {
                   case MethodType(_, retType) => retType
                   case _ => abort("not a method type: " + msym.tpe)
                 }
-                val method: MethodInfo = getMethod(methodSym)
+                val methodInfo: MethodInfo = getMethod(methodSym)
                 val delegCtor = msilType(delegateType).GetConstructor(Array(MOBJECT, INT_PTR))
                 if (methodSym.isStatic) {
-                  mcode.Emit(OpCodes.Ldftn, method)
+                  mcode.Emit(OpCodes.Ldftn, methodInfo)
                 } else {
                   mcode.Emit(OpCodes.Dup)
-                  mcode.Emit(OpCodes.Ldvirtftn, method)
+                  mcode.Emit(OpCodes.Ldvirtftn, methodInfo)
                 }
                 mcode.Emit(OpCodes.Newobj, delegCtor)
               }
@@ -1086,17 +1175,39 @@ abstract class GenMSIL extends SubComponent {
                   case SuperCall(_) =>
                     mcode.Emit(OpCodes.Call, methodInfo)
                   case Dynamic =>
-                    mcode.Emit(if (dynToStatMapped(msym)) OpCodes.Call else OpCodes.Callvirt,
-                               methodInfo)
+                    // methodInfo.DeclaringType is null for global methods
+                    val isValuetypeMethod = (methodInfo.DeclaringType ne null) && (methodInfo.DeclaringType.IsValueType)
+                    val isValuetypeVirtualMethod = isValuetypeMethod && (methodInfo.IsVirtual)
+                    if (dynToStatMapped(msym)) {
+                      mcode.Emit(OpCodes.Call, methodInfo)
+                    } else if (isValuetypeVirtualMethod) {
+                      mcode.Emit(OpCodes.Constrained, methodInfo.DeclaringType)
+                      mcode.Emit(OpCodes.Callvirt, methodInfo)
+                    } else if (isValuetypeMethod) {
+                      // otherwise error "Callvirt on a value type method" ensues
+                      mcode.Emit(OpCodes.Call, methodInfo)
+                    } else {
+                      mcode.Emit(OpCodes.Callvirt, methodInfo)
+                    }
                   case Static(_) =>
-                    mcode.Emit(OpCodes.Call, methodInfo)
-                }
+                    if(methodInfo.IsVirtual && !mcode.Ldarg0WasJustEmitted) {
+                      mcode.Emit(OpCodes.Callvirt, methodInfo)
+                    } else mcode.Emit(OpCodes.Call, methodInfo)
               }
             }
+            }
 
-          case BOX(boxType) => emitBox(mcode, boxType)
+          case BOX(boxType) =>
+            emitBox(mcode, boxType)
 
-          case UNBOX(boxType) => emitUnbox(mcode, boxType)
+          case UNBOX(boxType) =>
+            emitUnbox(mcode, boxType)
+
+          case CIL_UNBOX(boxType) =>
+            mcode.Emit(OpCodes.Unbox, msilType(boxType))
+
+          case CIL_INITOBJ(valueType) =>
+            mcode.Emit(OpCodes.Initobj, msilType(valueType))
 
           case NEW(REFERENCE(cls)) =>
             // the next instruction must be a DUP, see comment on `var previousWasNEW`
@@ -1121,7 +1232,9 @@ abstract class GenMSIL extends SubComponent {
           //  Array[S] <: Array[T] in Scala. However, it is possible
           //  to cast an array of S to an array of T if such a cast
           //  is permitted in the host environment."
-          case CHECK_CAST(tpe) => mcode.Emit(OpCodes.Castclass, msilType(tpe))
+          case CHECK_CAST(tpknd) =>
+            val tMSIL = msilType(tpknd)
+              mcode.Emit(OpCodes.Castclass, tMSIL)
 
           // no SWITCH is generated when there's
           //  - a default case ("case _ => ...") in the matching expr
@@ -1131,7 +1244,7 @@ abstract class GenMSIL extends SubComponent {
             //    if the int on stack is 4, and 4 is in the second list => jump
             //    to second label
             // branches is List[BasicBlock]
-            //    the labels to jump to (the last one ist the default one)
+            //    the labels to jump to (the last one is the default one)
 
             val switchLocal = mcode.DeclareLocal(MINT)
             // several switch variables will appear with the same name in the
@@ -1150,12 +1263,18 @@ abstract class GenMSIL extends SubComponent {
               i += 1
             }
             val defaultTarget = labels(branches(i))
-            if (next != defaultTarget && !omitJumpBlocks.contains(block))
+            if (next != branches(i))
               mcode.Emit(OpCodes.Br, defaultTarget)
 
-
           case JUMP(whereto) =>
-            if (next != whereto && !omitJumpBlocks.contains(block))
+            val (leaveHandler, leaveFinally, lfTarget) = leavesHandler(block, whereto)
+            if (leaveHandler) {
+              if (leaveFinally) {
+                if (lfTarget.isDefined) mcode.Emit(OpCodes.Leave, lfTarget.get)
+                else mcode.Emit(OpCodes.Endfinally)
+              } else
+                mcode.Emit(OpCodes.Leave, labels(whereto))
+            } else if (next != whereto)
               mcode.Emit(OpCodes.Br, labels(whereto))
 
           case CJUMP(success, failure, cond, kind) =>
@@ -1163,32 +1282,23 @@ abstract class GenMSIL extends SubComponent {
             // values EQ, NE, LT, GE LE, GT
             // kind is TypeKind
             val isFloat = kind == FLOAT || kind == DOUBLE
-            if (next == success || omitJumpBlocks.contains(block)) {
-              emitBr(cond.negate, labels(failure), isFloat)
-            } else {
-              emitBr(cond, labels(success), isFloat)
-              if (next != failure && !omitJumpBlocks.contains(block)) {
-                mcode.Emit(OpCodes.Br, labels(failure))
-              }
-            }
+            val emit = (c: TestOp, l: Label) => emitBr(c, l, isFloat)
+            emitCondBr(block, cond, success, failure, next, emit)
 
           case CZJUMP(success, failure, cond, kind) =>
-            (kind: @unchecked) match {
-              case BOOL | REFERENCE(_) =>
-                if (next == success || omitJumpBlocks.contains(block)) {
-                  emitBrBool(cond.negate, labels(failure))
-                } else {
-                  emitBrBool(cond, labels(success))
-                  if (next != failure && !omitJumpBlocks.contains(block)) {
-                    mcode.Emit(OpCodes.Br, labels(failure))
-                  }
-                }
-            }
+            emitCondBr(block, cond, success, failure, next, emitBrBool(_, _))
 
           case RETURN(kind) =>
-            mcode.Emit(OpCodes.Ret)
+            if (currentHandlers.isEmpty)
+              mcode.Emit(OpCodes.Ret)
+            else {
+              val (local, label) = returnFromHandler(kind)
+              if (kind != UNIT)
+                mcode.Emit(OpCodes.Stloc, local)
+              mcode.Emit(OpCodes.Leave, label)
+            }
 
-          case THROW() =>
+          case THROW(_) =>
             mcode.Emit(OpCodes.Throw)
 
           case DROP(kind) =>
@@ -1207,12 +1317,12 @@ abstract class GenMSIL extends SubComponent {
           case MONITOR_EXIT() =>
             mcode.Emit(OpCodes.Call, MMONITOR_EXIT)
 
-          case SCOPE_ENTER(_) | SCOPE_EXIT(_) | LOAD_EXCEPTION() =>
+          case SCOPE_ENTER(_) | SCOPE_EXIT(_) | LOAD_EXCEPTION(_) =>
             ()
         }
 
       } // end for (instr <- b) { .. }
-    }
+    } // end genBlock
 
     def genPrimitive(primitive: Primitive, pos: Position) {
       primitive match {
@@ -1249,11 +1359,10 @@ abstract class GenMSIL extends SubComponent {
         }
 
         case Conversion(src, dst) =>
-          if (settings.debug.value)
-            log("Converting from: " + src + " to: " + dst)
+          debuglog("Converting from: " + src + " to: " + dst)
 
           dst match {
-            case BYTE =>   mcode.Emit(OpCodes.Conv_U1)
+            case BYTE =>   mcode.Emit(OpCodes.Conv_I1) // I1 for System.SByte, i.e. a scala.Byte
             case SHORT =>  mcode.Emit(OpCodes.Conv_I2)
             case CHAR =>   mcode.Emit(OpCodes.Conv_U2)
             case INT =>    mcode.Emit(OpCodes.Conv_I4)
@@ -1288,7 +1397,7 @@ abstract class GenMSIL extends SubComponent {
         case _ =>
           abort("Unimplemented primitive " + primitive)
       }
-    }
+    } // end genPrimitive
 
 
     ////////////////////// loading ///////////////////////
@@ -1311,32 +1420,125 @@ abstract class GenMSIL extends SubComponent {
           code.Emit(OpCodes.Ldc_I4, value)
     }
 
-    def loadArg(code: ILGenerator)(i: Int) = i match {
-      case 0 => code.Emit(OpCodes.Ldarg_0)
-      case 1 => code.Emit(OpCodes.Ldarg_1)
-      case 2 => code.Emit(OpCodes.Ldarg_2)
-      case 3 => code.Emit(OpCodes.Ldarg_3)
-      case _      =>
+    def loadArg(code: ILGenerator, loadAddr: Boolean)(i: Int) =
+      if (loadAddr) {
         if (i >= -128 && i <= 127)
-          code.Emit(OpCodes.Ldarg_S, i)
+          code.Emit(OpCodes.Ldarga_S, i)
         else
-          code.Emit(OpCodes.Ldarg, i)
-    }
+          code.Emit(OpCodes.Ldarga, i)
+      } else {
+        i match {
+          case 0 => code.Emit(OpCodes.Ldarg_0)
+          case 1 => code.Emit(OpCodes.Ldarg_1)
+          case 2 => code.Emit(OpCodes.Ldarg_2)
+          case 3 => code.Emit(OpCodes.Ldarg_3)
+          case _      =>
+            if (i >= -128 && i <= 127)
+              code.Emit(OpCodes.Ldarg_S, i)
+            else
+              code.Emit(OpCodes.Ldarg, i)
+        }
+      }
 
-    def loadLocal(i: Int, local: Local, code: ILGenerator) = i match {
-      case 0 => code.Emit(OpCodes.Ldloc_0)
-      case 1 => code.Emit(OpCodes.Ldloc_1)
-      case 2 => code.Emit(OpCodes.Ldloc_2)
-      case 3 => code.Emit(OpCodes.Ldloc_3)
-      case _      =>
+    def loadLocal(i: Int, local: Local, code: ILGenerator, loadAddr: Boolean) =
+      if (loadAddr) {
         if (i >= -128 && i <= 127)
-          code.Emit(OpCodes.Ldloc_S, localBuilders(local))
+          code.Emit(OpCodes.Ldloca_S, localBuilders(local))
         else
-          code.Emit(OpCodes.Ldloc, localBuilders(local))
+          code.Emit(OpCodes.Ldloca, localBuilders(local))
+      } else {
+        i match {
+          case 0 => code.Emit(OpCodes.Ldloc_0)
+          case 1 => code.Emit(OpCodes.Ldloc_1)
+          case 2 => code.Emit(OpCodes.Ldloc_2)
+          case 3 => code.Emit(OpCodes.Ldloc_3)
+          case _      =>
+            if (i >= -128 && i <= 127)
+              code.Emit(OpCodes.Ldloc_S, localBuilders(local))
+            else
+              code.Emit(OpCodes.Ldloc, localBuilders(local))
+        }
+      }
+
+    ////////////////////// branches ///////////////////////
+
+    /** Returns a Triple (Boolean, Boolean, Option[Label])
+     *   - whether the jump leaves some exception block (try / catch / finally)
+     *   - whether it leaves a finally handler (finally block, but not it's try / catch)
+     *   - a label where to jump for leaving the finally handler
+     *     . None to leave directly using `endfinally`
+     *     . Some(label) to emit `leave label` (for try / catch inside a finally handler)
+     */
+    def leavesHandler(from: BasicBlock, to: BasicBlock): (Boolean, Boolean, Option[Label]) =
+      if (currentHandlers.isEmpty) (false, false, None)
+      else {
+        val h = currentHandlers.head
+        val leaveHead = { h.covers(from) != h.covers(to) ||
+                          h.blocks.contains(from) != h.blocks.contains(to) }
+        if (leaveHead) {
+          // we leave the innermost exception block.
+          // find out if we also leave som e `finally` handler
+          currentHandlers.find(e => {
+            e.cls == NoSymbol && e.blocks.contains(from) != e.blocks.contains(to)
+          }) match {
+            case Some(finallyHandler) =>
+              if (h == finallyHandler) {
+                // the finally handler is the innermost, so we can emit `endfinally` directly
+                (true, true, None)
+              } else {
+                // we need to `Leave` to the `endfinally` of the next outer finally handler
+                val l = endFinallyLabels.getOrElseUpdate(finallyHandler, mcode.DefineLabel())
+                (true, true, Some(l))
+              }
+            case None =>
+              (true, false, None)
+          }
+        } else (false, false, None)
+      }
+
+    def emitCondBr(block: BasicBlock, cond: TestOp, success: BasicBlock, failure: BasicBlock,
+                   next: BasicBlock, emitBrFun: (TestOp, Label) => Unit) {
+      val (sLeaveHandler, sLeaveFinally, slfTarget) = leavesHandler(block, success)
+      val (fLeaveHandler, fLeaveFinally, flfTarget) = leavesHandler(block, failure)
+
+      if (sLeaveHandler || fLeaveHandler) {
+        val sLabelOpt = if (sLeaveHandler) {
+          val leaveSLabel = mcode.DefineLabel()
+          emitBrFun(cond, leaveSLabel)
+          Some(leaveSLabel)
+        } else {
+          emitBrFun(cond, labels(success))
+          None
+        }
+
+        if (fLeaveHandler) {
+          if (fLeaveFinally) {
+            if (flfTarget.isDefined) mcode.Emit(OpCodes.Leave, flfTarget.get)
+            else mcode.Emit(OpCodes.Endfinally)
+          } else
+            mcode.Emit(OpCodes.Leave, labels(failure))
+        } else
+          mcode.Emit(OpCodes.Br, labels(failure))
+
+        sLabelOpt.map(l => {
+          mcode.MarkLabel(l)
+          if (sLeaveFinally) {
+            if (slfTarget.isDefined) mcode.Emit(OpCodes.Leave, slfTarget.get)
+            else mcode.Emit(OpCodes.Endfinally)
+          } else
+            mcode.Emit(OpCodes.Leave, labels(success))
+        })
+      } else {
+        if (next == success) {
+          emitBrFun(cond.negate, labels(failure))
+        } else {
+          emitBrFun(cond, labels(success))
+          if (next != failure) {
+            mcode.Emit(OpCodes.Br, labels(failure))
+          }
+        }
+      }
     }
-
-    ////////////////////// labels ///////////////////////
-
 
     def emitBr(condition: TestOp, dest: Label, isFloat: Boolean) {
       condition match {
@@ -1352,7 +1554,7 @@ abstract class GenMSIL extends SubComponent {
     def emitBrBool(cond: TestOp, dest: Label) {
       cond match {
         // EQ -> Brfalse, NE -> Brtrue; this is because we come from
-        // a CZJUMP. If the value on the stack is 0 (e.g. a boolen
+        // a CZJUMP. If the value on the stack is 0 (e.g. a boolean
         // method returned false), and we are in the case EQ, then
         // we need to emit Brfalse (EQ Zero means false). vice versa
         case EQ => mcode.Emit(OpCodes.Brfalse, dest)
@@ -1367,14 +1569,11 @@ abstract class GenMSIL extends SubComponent {
      * method.
      */
     def computeLocalVarsIndex(m: IMethod) {
-      val params = m.params
-      var idx = 1
-      if (m.symbol.isStaticMember)
-        idx = 0
+      var idx = if (m.symbol.isStaticMember) 0 else 1
 
+      val params = m.params
       for (l <- params) {
-        if (settings.debug.value)
-          log("Index value for parameter " + l + ": " + idx)
+        debuglog("Index value for parameter " + l + ": " + idx)
         l.index = idx
         idx += 1 // sizeOf(l.kind)
       }
@@ -1383,8 +1582,7 @@ abstract class GenMSIL extends SubComponent {
       idx = 0
 
       for (l <- locvars) {
-        if (settings.debug.value)
-          log("Index value for local variable " + l + ": " + idx)
+        debuglog("Index value for local variable " + l + ": " + idx)
         l.index = idx
         idx += 1 // sizeOf(l.kind)
       }
@@ -1405,9 +1603,7 @@ abstract class GenMSIL extends SubComponent {
      * not exist in the classpath: the type checker will be very confused.
      */
     def msilName(sym: Symbol): String = {
-      val suffix: String = if (sym.hasFlag(Flags.MODULE) && !sym.isMethod &&
-                               !sym.isImplClass &&
-                               !sym.hasFlag(Flags.JAVA)) "$" else ""
+      val suffix = sym.moduleSuffix
       // Flags.JAVA: "symbol was not defined by a scala-class" (java, or .net-class)
 
       if (sym == definitions.NothingClass)
@@ -1415,10 +1611,11 @@ abstract class GenMSIL extends SubComponent {
       else if (sym == definitions.NullClass)
         return "scala.runtime.Null$"
 
-      (if (sym.isClass || (sym.isModule && !sym.isMethod))
-        sym.fullNameString
-       else
-         sym.simpleName.toString().trim()) + suffix
+      (if (sym.isClass || (sym.isModule && !sym.isMethod)) {
+        if (sym.isNestedClass) sym.simpleName
+        else sym.fullName
+       } else
+         sym.simpleName.toString.trim()) + suffix
     }
 
 
@@ -1458,14 +1655,24 @@ abstract class GenMSIL extends SubComponent {
 
       if (!sym.isClassConstructor) {
         if (sym.isStaticMember)
-          mf = mf | FieldAttributes.Static
+          mf = mf | FieldAttributes.Static // coincidentally, same value as for MethodAttributes.Static ...
         else {
           mf = mf | MethodAttributes.Virtual
-          if (sym.isFinal && !types(sym.owner).IsInterface)
+          if (sym.isFinal && !getType(sym.owner).IsInterface)
             mf = mf | MethodAttributes.Final
-          if (sym.hasFlag(Flags.DEFERRED) || types(sym.owner).IsInterface)
+          if (sym.isDeferred || getType(sym.owner).IsInterface)
             mf = mf | MethodAttributes.Abstract
         }
+      }
+
+      if (sym.isStaticMember) {
+        mf = mf | MethodAttributes.Static
+      }
+
+      // constructors of module classes should be private
+      if (sym.isPrimaryConstructor && isTopLevelModule(sym.owner)) {
+        mf |= MethodAttributes.Private
+        mf &= ~(MethodAttributes.Public)
       }
 
       mf.toShort
@@ -1483,7 +1690,7 @@ abstract class GenMSIL extends SubComponent {
       if (sym.isStaticMember)
         mf = mf | FieldAttributes.Static
 
-      // TRANSIENT: "not nerialized", VOLATILE: doesn't exist on .net
+      // TRANSIENT: "not serialized", VOLATILE: doesn't exist on .net
       // TODO: add this annotation also if the class has the custom attribute
       // System.NotSerializedAttribute
       sym.annotations.foreach( a => a match {
@@ -1499,15 +1706,16 @@ abstract class GenMSIL extends SubComponent {
 
     var entryPoint: Symbol = _
 
-    val notInitializedModules: HashSet[Symbol] = new HashSet()
+    val notInitializedModules = mutable.HashSet[Symbol]()
 
     // TODO: create fields also in def createType, and not in genClass,
     // add a getField method (it only works as it is because fields never
     // accessed from outside a class)
 
-    val localBuilders: HashMap[Local, LocalBuilder] = new HashMap()
+    val localBuilders = mutable.HashMap[Local, LocalBuilder]()
 
     private[GenMSIL] def findEntryPoint(cls: IClass) {
+
       def isEntryPoint(sym: Symbol):Boolean = {
         if (isStaticModule(sym.owner) && msilName(sym) == "main")
           if (sym.tpe.paramTypes.length == 1) {
@@ -1522,12 +1730,15 @@ abstract class GenMSIL extends SubComponent {
         false
       }
 
-      for (m <- cls.methods) {
-        if (isEntryPoint(m.symbol)) {
-          if (entryPoint == null)
-            entryPoint = m.symbol
+      if((entryPoint == null) && opt.showClass.isDefined) {  // TODO introduce dedicated setting instead
+        val entryclass = opt.showClass.get.toString
+        val cfn = cls.symbol.fullName
+        if(cfn == entryclass) {
+          for (m <- cls.methods; if isEntryPoint(m.symbol)) { entryPoint = m.symbol }
+          if(entryPoint == null) { warning("Couldn't find main method in class " + cfn) }
         }
       }
+
       if (firstSourceName == "")
         if (cls.symbol.sourceFile != null) // is null for nested classes
           firstSourceName = cls.symbol.sourceFile.name
@@ -1547,7 +1758,14 @@ abstract class GenMSIL extends SubComponent {
       case FLOAT          => MFLOAT
       case DOUBLE         => MDOUBLE
       case REFERENCE(cls) => getType(cls)
-      case ARRAY(elem)    => clrTypes.mkArrayType(msilType(elem))
+      case ARRAY(elem)    =>
+        msilType(elem) match {
+          // For type builders, cannot call "clrTypes.mkArrayType" because this looks up
+          // the type "tp" in the assembly (not in the HashMap "types" of the backend).
+          // This can fail for nested types because the builders are not complete yet.
+          case tb: TypeBuilder => tb.MakeArrayType()
+          case tp: MsilType => clrTypes.mkArrayType(tp)
+        }
     }
 
     private def msilType(tpe: Type): MsilType = msilType(toTypeKind(tpe))
@@ -1556,22 +1774,31 @@ abstract class GenMSIL extends SubComponent {
       sym.tpe.paramTypes.map(msilType).toArray
     }
 
-    def getType(sym: Symbol): MsilType = types.get(sym) match {
-      case Some(typ) => typ
-      case None =>
-        def typeString(sym: Symbol): String = {
-          val s = if (sym.isNestedClass) typeString(sym.owner) +"+"+ sym.simpleName
-                  else sym.fullNameString
-          if (sym.isModuleClass && !sym.isTrait) s + "$" else s
-        }
-        val name = typeString(sym)
-        val typ = clrTypes.getType(name)
-        if (typ == null)
-          throw new Error(showsym(sym) + " with name " + name)
-        else {
-          clrTypes.types(sym) = typ
-          typ
-        }
+    def getType(sym: Symbol) = getTypeOpt(sym).getOrElse(abort(showsym(sym)))
+
+    /**
+     * Get an MSIL type from a symbol. First look in the clrTypes.types map, then
+     * lookup the name using clrTypes.getType
+     */
+    def getTypeOpt(sym: Symbol): Option[MsilType] = {
+      val tmp = types.get(sym)
+      tmp match {
+        case typ @ Some(_) => typ
+        case None =>
+          def typeString(sym: Symbol): String = {
+            val s = if (sym.isNestedClass) typeString(sym.owner) +"+"+ sym.simpleName
+                    else sym.fullName
+            if (sym.isModuleClass && !sym.isTrait) s + "$" else s
+          }
+          val name = typeString(sym)
+          val typ = clrTypes.getType(name)
+          if (typ == null)
+            None
+          else {
+            types(sym) = typ
+            Some(typ)
+          }
+      }
     }
 
     def mapType(sym: Symbol, mType: MsilType) {
@@ -1580,24 +1807,41 @@ abstract class GenMSIL extends SubComponent {
     }
 
     def createTypeBuilder(iclass: IClass) {
+      /**
+       * First look in the clrTypes.types map, if that fails check if it's a class being compiled, otherwise
+       * lookup by name (clrTypes.getType calls the static method msil.Type.GetType(fullname)).
+       */
       def msilTypeFromSym(sym: Symbol): MsilType = {
-	types.get(sym) match {
-          case Some(mtype) => mtype
-          case None => createTypeBuilder(classes(sym)); types(sym)
+        types.get(sym).getOrElse {
+          classes.get(sym) match {
+            case Some(iclass) =>
+	              msilTypeBuilderFromSym(sym)
+            case None =>
+              getType(sym)
+          }
         }
       }
 
+      def msilTypeBuilderFromSym(sym: Symbol): TypeBuilder = {
+        if(!(types.contains(sym) && types(sym).isInstanceOf[TypeBuilder])){
+          val iclass = classes(sym)
+          assert(iclass != null)
+          createTypeBuilder(iclass)
+        }
+        types(sym).asInstanceOf[TypeBuilder]
+      }
+
       val sym = iclass.symbol
-      if (types contains sym) return
+      if (types.contains(sym) && types(sym).isInstanceOf[TypeBuilder])
+        return
 
       def isInterface(s: Symbol) = s.isTrait && !s.isImplClass
       val parents: List[Type] =
         if (sym.info.parents.isEmpty) List(definitions.ObjectClass.tpe)
-        else sym.info.parents.removeDuplicates
+        else sym.info.parents.distinct
 
-      val superType = if (isInterface(sym)) null else msilTypeFromSym(parents.head.typeSymbol)
-      if (settings.debug.value)
-        log("super type: " + parents(0).typeSymbol + ", msil type: " + superType)
+      val superType : MsilType = if (isInterface(sym)) null else msilTypeFromSym(parents.head.typeSymbol)
+      debuglog("super type: " + parents(0).typeSymbol + ", msil type: " + superType)
 
       val interfaces: Array[MsilType] =
 	parents.tail.map(p => msilTypeFromSym(p.typeSymbol)).toArray
@@ -1610,16 +1854,13 @@ abstract class GenMSIL extends SubComponent {
         }
       }
 
-      if (sym.isNestedClass) {
-	val ownerT = msilTypeFromSym(sym.owner).asInstanceOf[TypeBuilder]
-	val tBuilder =
-	  ownerT.DefineNestedType(msilName(sym), msilTypeFlags(sym), superType, interfaces)
-	mapType(sym, tBuilder)
+      val tBuilder = if (sym.isNestedClass) {
+        val ownerT = msilTypeBuilderFromSym(sym.owner).asInstanceOf[TypeBuilder]
+        ownerT.DefineNestedType(msilName(sym), msilTypeFlags(sym), superType, interfaces)
       } else {
-	val tBuilder =
-          mmodule.DefineType(msilName(sym), msilTypeFlags(sym), superType, interfaces)
-	mapType(sym, tBuilder)
+        mmodule.DefineType(msilName(sym), msilTypeFlags(sym), superType, interfaces)
       }
+      mapType(sym, tBuilder)
     } // createTypeBuilder
 
     def createClassMembers(iclass: IClass) {
@@ -1628,31 +1869,51 @@ abstract class GenMSIL extends SubComponent {
       }
       catch {
         case e: Throwable =>
-          System.err.println(showsym(iclass.symbol))
-          System.err.println("with methods = " + iclass.methods)
+          java.lang.System.err.println(showsym(iclass.symbol))
+          java.lang.System.err.println("with methods = " + iclass.methods)
           throw e
       }
     }
 
     def createClassMembers0(iclass: IClass) {
+
       val mtype = getType(iclass.symbol).asInstanceOf[TypeBuilder]
+
       for (ifield <- iclass.fields) {
         val sym = ifield.symbol
-        if (settings.debug.value)
-          log("Adding field: " + sym.fullNameString)
+        debuglog("Adding field: " + sym.fullName)
 
         var attributes = msilFieldFlags(sym)
-        val fBuilder = mtype.DefineField(msilName(sym), msilType(sym.tpe), attributes)
+        val fieldTypeWithCustomMods =
+          new PECustomMod(msilType(sym.tpe),
+                          customModifiers(sym.annotations))
+        val fBuilder = mtype.DefineField(msilName(sym),
+                                         fieldTypeWithCustomMods,
+                                         attributes)
         fields(sym) = fBuilder
         addAttributes(fBuilder, sym.annotations)
+      } // all iclass.fields iterated over
+
+      if (isStaticModule(iclass.symbol)) {
+        val sc = iclass.lookupStaticCtor
+        if (sc.isDefined) {
+          val m = sc.get
+          val oldLastBlock = m.lastBlock
+          val lastBlock = m.newBlock()
+          oldLastBlock.replaceInstruction(oldLastBlock.length - 1, JUMP(lastBlock))
+          // call object's private ctor from static ctor
+          lastBlock.emit(CIL_NEWOBJ(iclass.symbol.primaryConstructor))
+          lastBlock.emit(DROP(toTypeKind(iclass.symbol.tpe)))
+          lastBlock emit RETURN(UNIT)
+          lastBlock.close
+        }
       }
 
-      if (iclass.symbol != definitions.ArrayClass)
+      if (iclass.symbol != definitions.ArrayClass) {
       for (m: IMethod <- iclass.methods) {
         val sym = m.symbol
-        if (settings.debug.value)
-          log("Creating MethodBuilder for " + Flags.flagsToString(sym.flags) + " " +
-              sym.owner.fullNameString + "::" + sym.name)
+        debuglog("Creating MethodBuilder for " + Flags.flagsToString(sym.flags) + " " +
+              sym.owner.fullName + "::" + sym.name)
 
         val ownerType = getType(sym.enclClass).asInstanceOf[TypeBuilder]
         assert(mtype == ownerType, "mtype = " + mtype + "; ownerType = " + ownerType)
@@ -1670,25 +1931,27 @@ abstract class GenMSIL extends SubComponent {
         } else {
           var resType = msilType(m.returnType)
           val method =
-            ownerType.DefineMethod(getMethodName(sym), attr, resType, paramTypes)
+            ownerType.DefineMethod(msilName(sym), attr, resType, paramTypes)
           for (i <- 0.until(paramTypes.length)) {
             method.DefineParameter(i, ParameterAttributes.None, msilName(m.params(i).sym))
           }
           if (!methods.contains(sym))
             mapMethod(sym, method)
           addAttributes(method, sym.annotations)
-          if (settings.debug.value)
-            log("\t created MethodBuilder " + method)
+          debuglog("\t created MethodBuilder " + method)
         }
       }
+      } // method builders created for non-array iclass
 
       if (isStaticModule(iclass.symbol)) {
         addModuleInstanceField(iclass.symbol)
         notInitializedModules += iclass.symbol
-        addStaticInit(iclass.symbol)
+        if (iclass.lookupStaticCtor.isEmpty) {
+          addStaticInit(iclass.symbol)
+        }
       }
 
-    } // createClassMembers
+    } // createClassMembers0
 
     private def isTopLevelModule(sym: Symbol): Boolean =
       atPhase (currentRun.refchecksPhase) {
@@ -1712,8 +1975,7 @@ abstract class GenMSIL extends SubComponent {
     }
 
     private def addModuleInstanceField(sym: Symbol) {
-      if (settings.debug.value)
-        log("Adding Module-Instance Field for " + showsym(sym))
+      debuglog("Adding Module-Instance Field for " + showsym(sym))
       val tBuilder = getType(sym).asInstanceOf[TypeBuilder]
       val fb = tBuilder.DefineField(MODULE_INSTANCE_NAME,
                            tBuilder,
@@ -1739,7 +2001,8 @@ abstract class GenMSIL extends SubComponent {
         case Some(sym) => sym
         case None =>
           //val mclass = types(moduleClassSym)
-          val mClass = clrTypes.getType(moduleClassSym.fullNameString + "$")
+          val nameInMetadata = nestingAwareFullClassname(moduleClassSym)
+          val mClass = clrTypes.getType(nameInMetadata)
           val mfield = mClass.GetField("MODULE$")
           assert(mfield ne null, "module not found " + showsym(moduleClassSym))
           fields(moduleClassSym) = mfield
@@ -1749,9 +2012,18 @@ abstract class GenMSIL extends SubComponent {
       //fields(moduleClassSym)
     }
 
+    def nestingAwareFullClassname(csym: Symbol) : String = {
+      val suffix = csym.moduleSuffix
+      val res = if (csym.isNestedClass)
+        nestingAwareFullClassname(csym.owner) + "+" + csym.encodedName
+      else
+        csym.fullName
+      res + suffix
+    }
+
     /** Adds a static initializer which creates an instance of the module
      *  class (calls the primary constructor). A special primary constructor
-     *  will be generated (notInitializedModules) which stores the new intance
+     *  will be generated (notInitializedModules) which stores the new instance
      *  in the MODULE$ field right after the super call.
      */
     private def addStaticInit(sym: Symbol) {
@@ -1776,11 +2048,10 @@ abstract class GenMSIL extends SubComponent {
       sicode.Emit(OpCodes.Ret)
     }
 
-    private def dumpMirrorClass(sym: Symbol) {
+    private def generateMirrorClass(sym: Symbol) {
       val tBuilder = getType(sym)
       assert(sym.isModuleClass, "Can't generate Mirror-Class for the Non-Module class " + sym)
-      if (settings.debug.value)
-        log("Dumping mirror class for object: " + sym)
+      debuglog("Dumping mirror class for object: " + sym)
       val moduleName = msilName(sym)
       val mirrorName = moduleName.substring(0, moduleName.length() - 1)
       val mirrorTypeBuilder = mmodule.DefineType(mirrorName,
@@ -1793,18 +2064,18 @@ abstract class GenMSIL extends SubComponent {
       val iclass = classes(sym)
 
       for (m <- sym.tpe.nonPrivateMembers
-           if m.owner != definitions.ObjectClass && !m.hasFlag(Flags.PROTECTED) &&
-           m.isMethod && !m.isClassConstructor && !m.isStaticMember && !m.hasFlag(Flags.CASE))
+           if m.owner != definitions.ObjectClass && !m.isProtected &&
+           m.isMethod && !m.isClassConstructor && !m.isStaticMember && !m.isCase &&
+           !m.isDeferred)
         {
-          if (settings.debug.value)
-            log("   Mirroring method: " + m)
+          debuglog("   Mirroring method: " + m)
           val paramTypes = msilParamTypes(m)
           val paramNames: Array[String] = new Array[String](paramTypes.length)
           for (i <- 0 until paramTypes.length)
             paramNames(i) = "x_" + i
 
           // CHECK: verify if getMethodName is better than msilName
-          val mirrorMethod = mirrorTypeBuilder.DefineMethod(getMethodName(m),
+          val mirrorMethod = mirrorTypeBuilder.DefineMethod(msilName(m),
                                                             (MethodAttributes.Public |
                                                             MethodAttributes.Static).toShort,
                                                             msilType(m.tpe.resultType),
@@ -1818,7 +2089,12 @@ abstract class GenMSIL extends SubComponent {
 
           val mirrorCode = mirrorMethod.GetILGenerator()
           mirrorCode.Emit(OpCodes.Ldsfld, getModuleInstanceField(sym))
-          0.until(paramTypes.length) foreach loadArg(mirrorCode)
+          val mInfo = getMethod(m)
+          for (paramidx <- 0.until(paramTypes.length)) {
+            val mInfoParams = mInfo.GetParameters
+            val loadAddr = mInfoParams(paramidx).ParameterType.IsByRef
+            loadArg(mirrorCode, loadAddr)(paramidx)
+          }
 
           mirrorCode.Emit(OpCodes.Callvirt, getMethod(m))
           mirrorCode.Emit(OpCodes.Ret)
@@ -1863,7 +2139,7 @@ abstract class GenMSIL extends SubComponent {
         (MethodAttributes.Final | MethodAttributes.Public | MethodAttributes.Static).toShort,
         msilType(returnType), (params map (_.tpe)).map(msilType).toArray)
       for (i <- 0 until params.length)
-        caller.DefineParameter(i, ParameterAttributes.None, "arg" + i) // FIXME: use name of parameter symbol 
+        caller.DefineParameter(i, ParameterAttributes.None, "arg" + i) // FIXME: use name of parameter symbol
       val delegCtor = msilType(delegateType).GetConstructor(Array(MOBJECT, INT_PTR))
       mcode.Emit(OpCodes.Ldnull)
       mcode.Emit(OpCodes.Ldftn, caller)
@@ -1875,7 +2151,7 @@ abstract class GenMSIL extends SubComponent {
       val dcode: ILGenerator = caller.GetILGenerator()
       dcode.Emit(OpCodes.Ldsfld, anonfunField)
       for (i <- 0 until params.length) {
-        loadArg(dcode)(i)
+        loadArg(dcode, false /* TODO confirm whether passing actual as-is to formal is correct wrt the ByRef attribute of the param */)(i)
         emitBox(dcode, toTypeKind(params(i).tpe))
       }
       dcode.Emit(OpCodes.Callvirt, functionApply)
@@ -1891,39 +2167,48 @@ abstract class GenMSIL extends SubComponent {
       case UNIT   => code.Emit(OpCodes.Ldsfld, boxedUnit)
       case BOOL | BYTE | SHORT | CHAR | INT | LONG | FLOAT | DOUBLE =>
         code.Emit(OpCodes.Box, msilType(boxType))
-      case REFERENCE(cls) if (definitions.unboxMethod.contains(cls)) =>
+      case REFERENCE(cls) if clrTypes.isValueType(cls) =>
         code.Emit(OpCodes.Box, (msilType(boxType)))
-      case REFERENCE(_) | ARRAY(_) => ()
+      case REFERENCE(_) | ARRAY(_) =>
+        warning("Tried to BOX a non-valuetype.")
+        ()
     }
 
     def emitUnbox(code: ILGenerator, boxType: TypeKind) = (boxType: @unchecked) match {
       case UNIT   => code.Emit(OpCodes.Pop)
-      case BOOL   => code.Emit(OpCodes.Unbox, MBOOL); code.Emit(OpCodes.Ldind_I1)
-      case BYTE   => code.Emit(OpCodes.Call, toByte)
+      /* (1) it's essential to keep the code emitted here (as of now plain calls to System.Convert.ToBlaBla methods)
+             behaviorally.equiv.wrt. BoxesRunTime.unboxToBlaBla methods
+             (case null: that's easy, case boxed: track changes to unboxBlaBla)
+         (2) See also: asInstanceOf to cast from Any to number,
+             tracked in http://lampsvn.epfl.ch/trac/scala/ticket/4437  */
+      case BOOL   => code.Emit(OpCodes.Call, toBool)
+      case BYTE   => code.Emit(OpCodes.Call, toSByte)
       case SHORT  => code.Emit(OpCodes.Call, toShort)
       case CHAR   => code.Emit(OpCodes.Call, toChar)
       case INT    => code.Emit(OpCodes.Call, toInt)
       case LONG   => code.Emit(OpCodes.Call, toLong)
       case FLOAT  => code.Emit(OpCodes.Call, toFloat)
       case DOUBLE => code.Emit(OpCodes.Call, toDouble)
-      case REFERENCE(cls) if (definitions.unboxMethod.contains(cls)) =>
+      case REFERENCE(cls) if clrTypes.isValueType(cls) =>
         code.Emit(OpCodes.Unbox, msilType(boxType))
         code.Emit(OpCodes.Ldobj, msilType(boxType))
-      case REFERENCE(_) | ARRAY(_) => ()
+      case REFERENCE(_) | ARRAY(_) =>
+        warning("Tried to UNBOX a non-valuetype.")
+        ()
     }
 
     // #####################################################################
     // get and create methods / constructors
- 
+
     def getConstructor(sym: Symbol): ConstructorInfo = constructors.get(sym) match {
       case Some(constr) => constr
       case None =>
         val mClass = getType(sym.owner)
         val constr = mClass.GetConstructor(msilParamTypes(sym))
         if (constr eq null) {
-          System.out.println("Cannot find constructor " + sym.owner + "::" + sym.name)
-          System.out.println("scope = " + sym.owner.tpe.decls)
-          throw new Error(sym.fullNameString)
+          java.lang.System.out.println("Cannot find constructor " + sym.owner + "::" + sym.name)
+          java.lang.System.out.println("scope = " + sym.owner.tpe.decls)
+          abort(sym.fullName)
         }
         else {
           mapConstructor(sym, constr)
@@ -1936,28 +2221,18 @@ abstract class GenMSIL extends SubComponent {
     }
 
     private def getMethod(sym: Symbol): MethodInfo = {
-    //private def getMethod(sym: Symbol): MethodInfo = sym match {
-//       case SRToInt => toInt
-//       case SRToDouble => toDouble
-//       case SRToLong => toLong
-//       case SRToChar => toChar
-//       case SRToFloat => toFloat
-//       case SRToBool => toBool
-//       case SRToByte => toByte
-//       case SRToShort => toShort
-//       case _ =>
 
         methods.get(sym) match {
         case Some(method) => method
         case None =>
           val mClass = getType(sym.owner)
           try {
-            val method = mClass.GetMethod(getMethodName(sym), msilParamTypes(sym),
+            val method = mClass.GetMethod(msilName(sym), msilParamTypes(sym),
                                           msilType(sym.tpe.resultType))
             if (method eq null) {
-              System.out.println("Cannot find method " + sym.owner + "::" + msilName(sym))
-              System.out.println("scope = " + sym.owner.tpe.decls)
-              throw new Error(sym.fullNameString)
+              java.lang.System.out.println("Cannot find method " + sym.owner + "::" + msilName(sym))
+              java.lang.System.out.println("scope = " + sym.owner.tpe.decls)
+              abort(sym.fullName)
             }
             else {
               mapMethod(sym, method)
@@ -1989,7 +2264,7 @@ abstract class GenMSIL extends SubComponent {
       assert(methodInfo != null, "Can't find mapping for " + sym + " -> " +
              newName + "(" + paramTypes + ")")
       mapMethod(sym, methodInfo)
-      if (methodInfo.IsStatic) 
+      if (methodInfo.IsStatic)
         dynToStatMapped += sym
     }
 
@@ -2008,7 +2283,7 @@ abstract class GenMSIL extends SubComponent {
       }
 
     /*
-     * add maping for member with name and paramTypes to member
+     * add mapping for member with name and paramTypes to member
      * newName of newClass (same parameters)
      */
     private def mapMethod(
@@ -2070,25 +2345,6 @@ abstract class GenMSIL extends SubComponent {
 
         case _ => abort("member not found: " + name + " of " + clazz)
       }
-    }
-
-    def getMethodName(methodSym: Symbol): String = {
-      val name = methodSym.name
-      val params = methodSym.tpe.paramTypes
-      if (name == nme.finalize_ && params.length == 0)
-        "Finalize"
-      else if (name == nme.toString_ && params.length == 0)
-        "ToString"
-      else if (name == nme.hashCode_ && params.length == 0)
-        "GetHashCode"
-      else if (name == nme.equals_ && params.length == 1 &&
-              params(0) == definitions.ObjectClass.tpe)
-        "Equals"
-      // FIXME: why is there no nme.clone_ ?
-      else if (name.toString() == "clone" && params.length == 0)
-        "Clone"
-      else
-        msilName(methodSym)
     }
 
     private def showsym(sym: Symbol): String = (sym.toString +

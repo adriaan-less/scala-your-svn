@@ -1,22 +1,18 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.concurrent
 
 import java.util.concurrent.{ExecutorService, Callable, TimeUnit}
 
-/** The <code>ThreadPoolRunner</code> trait uses
- *  a <code>java.util.concurrent.ExecutorService</code>
+/** The `ThreadPoolRunner` trait uses a `java.util.concurrent.ExecutorService`
  *  to run submitted tasks.
- *  
+ *
  *  @author Philipp Haller
  */
 trait ThreadPoolRunner extends FutureTaskRunner {
