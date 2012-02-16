@@ -21,11 +21,14 @@ import immutable.StringLike
  *  @author Martin Odersky
  *  @version 2.8
  *  @since   2.7
+ *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-mutable-collection-classes.html# "Scala's Collection Library overview"]]
+ *  section on `StringBuilders` for more information.
  */
 @SerialVersionUID(0 - 8525408645367278351L)
 final class StringBuilder(private val underlying: JavaStringBuilder)
-      extends java.lang.CharSequence
-         with IndexedSeq[Char] 
+      extends AbstractSeq[Char]
+         with java.lang.CharSequence
+         with IndexedSeq[Char]
          with StringLike[StringBuilder]
          with Builder[Char, String]
          with Serializable {
@@ -42,20 +45,20 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
   def this(initCapacity: Int, initValue: String) =
     this(new JavaStringBuilder(initValue.length + initCapacity) append initValue)
 
-  /** Constructs a string builder with no characters in it and an 
+  /** Constructs a string builder with no characters in it and an
    *  initial capacity of 16 characters.
    */
   def this() = this(16, "")
 
-  /** Constructs a string builder with no characters in it and an 
-   *  initial capacity specified by the `capacity` argument. 
+  /** Constructs a string builder with no characters in it and an
+   *  initial capacity specified by the `capacity` argument.
    *
    *  @param  capacity  the initial capacity.
    *  @throws NegativeArraySizeException  if capacity < 0.
    */
   def this(capacity: Int) = this(capacity, "")
 
-  /** Constructs a string builder with initial characters 
+  /** Constructs a string builder with initial characters
    *  equal to characters of `str`.
    */
   def this(str: String) = this(16, str)
@@ -68,7 +71,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
 
   override def length: Int = underlying.length()
   def length_=(n: Int) { underlying.setLength(n) }
- 
+
   /** Clears the builder contents.
    */
   def clear(): Unit = setLength(0)
@@ -89,10 +92,6 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
    */
   def capacity: Int = underlying.capacity()
 
-  @deprecated("Use `ensureCapacity` instead. An assignment is misleading because\n"+
-              "it can never decrease the capacity.", "2.8.0")
-  def capacity_=(n: Int) { ensureCapacity(n) }
-
   /** Ensure that the capacity is at least the given argument.
    *  If the argument is greater than the current capacity, new
    *  storage will be allocated with size equal to the given
@@ -101,7 +100,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
    *  @param newCapacity    the minimum desired capacity.
    */
   def ensureCapacity(newCapacity: Int) { underlying ensureCapacity newCapacity }
-      
+
   /** Returns the Char at the specified index, counting from 0 as in Arrays.
    *
    *  @param  index   the index to look up
@@ -142,7 +141,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
    *  beginning at the given index and extending to the end of the sequence.
    *
    *  target.substring(start)  is equivalent to  target.drop(start)
-   * 
+   *
    *  @param  start  The starting index, inclusive.
    *  @return        The new String.
    *  @throws IndexOutOfBoundsException  if the index is out of bounds.
@@ -171,7 +170,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
   /** Appends the given Char to the end of the sequence.
    */
   def +=(x: Char): this.type = { append(x); this }
-  
+
   /** Optimization.
    */
   def ++=(s: String): this.type = {
@@ -212,7 +211,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
   /** Appends the specified string builder to this sequence.
    *
    *  @param sb
-   *  @return 
+   *  @return
    */
   def append(sb: StringBuilder): StringBuilder = {
     underlying append sb
@@ -280,7 +279,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
 
   /** Replaces a subsequence of Chars with the given String.  The semantics
    *  are as in delete, with the String argument then inserted at index 'start'.
-   * 
+   *
    *  @param  start  The beginning index, inclusive.
    *  @param  end    The ending index, exclusive.
    *  @param  str    The String to be inserted at the start index.
@@ -318,7 +317,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
    *  @throws StringIndexOutOfBoundsException  if the index is out of bounds.
    */
   def insert(index: Int, x: Any): StringBuilder = insert(index, String.valueOf(x))
-  
+
   /** Inserts the String into this character sequence.
    *
    *  @param  index the index at which to insert.
@@ -367,31 +366,6 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
   def insert(index: Int, x: Float): StringBuilder   = insert(index, String.valueOf(x))
   def insert(index: Int, x: Double): StringBuilder  = insert(index, String.valueOf(x))
   def insert(index: Int, x: Char): StringBuilder    = insert(index, String.valueOf(x))
-  
-  @deprecated("Use appendAll instead. This method is deprecated because of the\n"+
-              "possible confusion with `append(Any)`.", "2.8.0")
-  def append(x: Seq[Char]): StringBuilder = appendAll(x)
-
-  @deprecated("use appendAll instead. This method is deprecated because\n"+
-              "of the possible confusion with `append(Any)`.", "2.8.0")
-  def append(x: Array[Char]): StringBuilder = appendAll(x)
-
-  @deprecated("use appendAll instead. This method is deprecated because\n"+
-              "of the possible confusion with `append(Any, Int, Int)'.", "2.8.0")
-  def append(x: Array[Char], offset: Int, len: Int): StringBuilder = appendAll(x, offset, len)
-
-  @deprecated("use insertAll instead. This method is deprecated because of the\n"+
-              "possible confusion with `insert(Int, Any, Int, Int)'.", "2.8.0")
-  def insert(index: Int, str: Array[Char], offset: Int, len: Int): StringBuilder = 
-    insertAll(index, str, offset, len)
-
-  @deprecated("use insertAll instead. This method is deprecated because of\n"+
-              "the possible confusion with `insert(Int, Any)'.", "2.8.0")
-  def insert(at: Int, x: Seq[Char]): StringBuilder = insertAll(at, x)
-
-  @deprecated("use insertAll instead. This method is deprecated because of\n"+
-              "the possible confusion with `insert(Int, Any)'.", "2.8.0")
-  def insert(at: Int, x: Array[Char]): StringBuilder = insertAll(at, x)
 
   /** Finds the index of the first occurrence of the specified substring.
    *
@@ -422,16 +396,16 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
    *  @return             the last applicable index where target occurs, or -1 if not found.
    */
   def lastIndexOf(str: String, fromIndex: Int): Int = underlying.lastIndexOf(str, fromIndex)
-  
+
   /** Creates a new StringBuilder with the reversed contents of this one.
    *  If surrogate pairs are present, they are treated as indivisible units: each
    *  pair will appear in the same order in the updated sequence.
    *
    *  @return   the reversed StringBuilder
    */
-  @migration(2, 8, "Since 2.8 reverse returns a new instance.  Use 'reverseContents' to update in place.")
+  @migration("`reverse` returns a new instance.  Use `reverseContents` to update in place and return that StringBuilder itself.", "2.8.0")
   override def reverse: StringBuilder = new StringBuilder(new JavaStringBuilder(underlying) reverse)
-  
+
   override def clone(): StringBuilder = new StringBuilder(new JavaStringBuilder(underlying))
 
   /** Like reverse, but destructively updates the target StringBuilder.
@@ -451,7 +425,7 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
    *  @return  the current contents of this sequence as a String
    */
   override def toString = underlying.toString
-  
+
   /** Returns a new String representing the data in this sequence.
    *
    *  @return  the current contents of this sequence as a String

@@ -2,7 +2,7 @@
  * Copyright 2007-2011 LAMP/EPFL
  * @author  David Bernard, Manohar Jonnalagedda
  */
- 
+
 package scala.tools.nsc
 package doc
 package html
@@ -13,7 +13,6 @@ import comment._
 import xml.{XML, NodeSeq}
 import xml.dtd.{DocType, PublicID}
 import scala.collection._
-import scala.reflect.NameTransformer
 import java.nio.channels.Channels
 
 /** An html page that is part of a Scaladoc site.
@@ -172,14 +171,14 @@ abstract class HtmlPage extends Page { thisPage =>
   }
 
   /** Returns the _big image name corresponding to the DocTemplate Entity (upper left icon) */
-  def docEntityKindToBigImage(ety: DocTemplateEntity) = 
-    if (ety.isTrait && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None) "trait_to_object_big.png" 
-    else if (ety.isTrait) "trait_big.png" 
-    else if (ety.isClass && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None) "class_to_object_big.png" 
-    else if (ety.isClass) "class_big.png" 
-    else if (ety.isObject && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None && ety.companion.get.isClass) "object_to_class_big.png" 
-    else if (ety.isObject && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None && ety.companion.get.isTrait) "object_to_trait_big.png" 
-    else if (ety.isObject) "object_big.png" 
+  def docEntityKindToBigImage(ety: DocTemplateEntity) =
+    if (ety.isTrait && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None) "trait_to_object_big.png"
+    else if (ety.isTrait) "trait_big.png"
+    else if (ety.isClass && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None) "class_to_object_big.png"
+    else if (ety.isClass) "class_big.png"
+    else if (ety.isObject && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None && ety.companion.get.isClass) "object_to_class_big.png"
+    else if (ety.isObject && !ety.companion.isEmpty && ety.companion.get.visibility.isPublic && ety.companion.get.inSource != None && ety.companion.get.isTrait) "object_to_trait_big.png"
+    else if (ety.isObject) "object_big.png"
     else if (ety.isPackage) "package_big.png"
     else "class_big.png"	// FIXME: an entity *should* fall into one of the above categories, but AnyRef is somehow not
 

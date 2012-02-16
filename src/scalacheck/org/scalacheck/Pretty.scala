@@ -36,7 +36,7 @@ object Pretty {
     def /(s2: String) = if(s2 == "") s1 else s1+"\n"+s2
   }
 
-  def pad(s: String, c: Char, length: Int) = 
+  def pad(s: String, c: Char, length: Int) =
     if(s.length >= length) s
     else s + List.fill(length-s.length)(c).mkString
 
@@ -49,8 +49,8 @@ object Pretty {
 
   implicit def prettyAny(t: Any) = Pretty { p => t.toString }
 
-  implicit def prettyList(l: List[Any]) = Pretty { p => 
-    l.map("\""+_+"\"").mkString("List(", ", ", ")") 
+  implicit def prettyList(l: List[Any]) = Pretty { p =>
+    l.map("\""+_+"\"").mkString("List(", ", ", ")")
   }
 
   implicit def prettyThrowable(e: Throwable) = Pretty { prms =>
@@ -58,12 +58,12 @@ object Pretty {
       import st._
       getClassName+"."+getMethodName + "("+getFileName+":"+getLineNumber+")"
     }
-    
-    val strs2 = 
+
+    val strs2 =
       if(prms.verbosity <= 0) Array[String]()
       else if(prms.verbosity <= 1) strs.take(5)
       else strs
-    
+
     e.getClass.getName + ": " + e.getMessage / strs2.mkString("\n")
   }
 
@@ -71,8 +71,8 @@ object Pretty {
     if(args.isEmpty) "" else {
       for((a,i) <- args.zipWithIndex) yield {
         val l = if(a.label == "") "ARG_"+i else a.label
-        val s = 
-          if(a.shrinks == 0 || prms.verbosity <= 1) "" 
+        val s =
+          if(a.shrinks == 0 || prms.verbosity <= 1) ""
           else " (orig arg: "+a.prettyOrigArg(prms)+")"
 
         "> "+l+": "+a.prettyArg(prms)+""+s
@@ -81,7 +81,7 @@ object Pretty {
   }
 
   implicit def prettyFreqMap(fm: Prop.FM) = Pretty { prms =>
-    if(fm.total == 0) "" 
+    if(fm.total == 0) ""
     else {
       "> Collected test data: " / {
         for {
@@ -94,8 +94,8 @@ object Pretty {
   }
 
   implicit def prettyTestRes(res: Test.Result) = Pretty { prms =>
-    def labels(ls: collection.immutable.Set[String]) = 
-      if(ls.isEmpty) "" 
+    def labels(ls: collection.immutable.Set[String]) =
+      if(ls.isEmpty) ""
       else "> Labels of failing property: " / ls.mkString("\n")
     val s = res.status match {
       case Test.Proved(args) => "OK, proved property."/pretty(args,prms)

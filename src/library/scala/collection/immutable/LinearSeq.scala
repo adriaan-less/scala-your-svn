@@ -18,11 +18,12 @@ import mutable.Builder
  *  are guaranteed immutable.
  *  $linearSeqInfo
  */
-trait LinearSeq[+A] extends Seq[A] 
-                            with scala.collection.LinearSeq[A] 
+trait LinearSeq[+A] extends Seq[A]
+                            with scala.collection.LinearSeq[A]
                             with GenericTraversableTemplate[A, LinearSeq]
                             with LinearSeqLike[A, LinearSeq[A]] {
   override def companion: GenericCompanion[LinearSeq] = LinearSeq
+  override def seq: LinearSeq[A] = this
 }
 
 /** $factoryInfo

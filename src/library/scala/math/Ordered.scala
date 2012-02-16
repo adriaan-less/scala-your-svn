@@ -8,11 +8,11 @@
 
 package scala.math
 
-/** A trait for data that have a single, natural ordering.  See 
- *  [[scala.math.Ordering]] before using this trait for 
+/** A trait for data that have a single, natural ordering.  See
+ *  [[scala.math.Ordering]] before using this trait for
  *  more information about whether to use [[scala.math.Ordering]] instead.
- * 
- *  Classes that implement this trait can be sorted with 
+ *
+ *  Classes that implement this trait can be sorted with
  *  [[scala.utils.Sorting]] and can be compared with standard comparison operators
  *  (e.g. > and <).
  *
@@ -46,9 +46,9 @@ package scala.math
  *  Therefore, if you need to be able compute the hash of an instance of `Ordered[A]` you must
  *  provide it yourself either when inheriting or instantiating.
  *
- *  @see [[scala.math.Ordering]], [[scala.math.PartiallyOrdered]] 
+ *  @see [[scala.math.Ordering]], [[scala.math.PartiallyOrdered]]
  *  @author  Martin Odersky
- *  @version 1.1, 2006-07-24 
+ *  @version 1.1, 2006-07-24
  */
 trait Ordered[A] extends java.lang.Comparable[A] {
 
@@ -58,20 +58,20 @@ trait Ordered[A] extends java.lang.Comparable[A] {
    *
    * Returns `x` where:
    *
-   *   - `x < 0` when `this > that`
+   *   - `x < 0` when `this < that`
    *
    *   - `x == 0` when `this == that`
    *
-   *   - `x < 0` when  `this > that`
+   *   - `x > 0` when  `this > that`
    *
    */
   def compare(that: A): Int
 
-  /** Returns true if `this` is less than `that` 
+  /** Returns true if `this` is less than `that`
     */
   def <  (that: A): Boolean = (this compare that) <  0
 
-  /** Returns true if `this` is greater than `that`. 
+  /** Returns true if `this` is greater than `that`.
     */
   def >  (that: A): Boolean = (this compare that) >  0
 
@@ -88,8 +88,8 @@ trait Ordered[A] extends java.lang.Comparable[A] {
   def compareTo(that: A): Int = compare(that)
 }
 
-object Ordered {  
+object Ordered {
   /** Lens from `Ordering[T]` to `Ordered[T]` */
-  implicit def orderingToOrdered[T](x: T)(implicit ord: Ordering[T]): Ordered[T] = 
+  implicit def orderingToOrdered[T](x: T)(implicit ord: Ordering[T]): Ordered[T] =
     new Ordered[T] { def compare(that: T): Int = ord.compare(x, that) }
 }

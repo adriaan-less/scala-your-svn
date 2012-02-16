@@ -5,11 +5,19 @@
 
 package scala.tools.nsc
 
-import util.{ FreshNameCreator,Position,NoPosition,SourceFile }
+import util.{ FreshNameCreator, Position, NoPosition, SourceFile, NoSourceFile }
 import scala.collection.mutable
 import scala.collection.mutable.{ LinkedHashSet, ListBuffer }
 
 trait CompilationUnits { self: Global =>
+
+  /** An object representing a missing compilation unit.
+   */
+  object NoCompilationUnit extends CompilationUnit(NoSourceFile) {
+    override lazy val isJava = false
+    override def exists = false
+    override def toString() = "NoCompilationUnit"
+  }
 
   /** One unit of compilation that has been submitted to the compiler.
     * It typically corresponds to a single file of source code.  It includes
@@ -18,12 +26,14 @@ trait CompilationUnits { self: Global =>
 
     /** the fresh name creator */
     var fresh: FreshNameCreator = new FreshNameCreator.Default
-    
+
     def freshTermName(prefix: String): TermName = newTermName(fresh.newName(prefix))
     def freshTypeName(prefix: String): TypeName = newTypeName(fresh.newName(prefix))
 
     /** the content of the compilation unit in tree form */
     var body: Tree = EmptyTree
+
+    def exists = source != NoSourceFile && source != null
 
 //    def parseSettings() = {
 //      val argsmarker = "SCALAC_ARGS"
@@ -40,7 +50,7 @@ trait CompilationUnits { self: Global =>
      */
     val depends = mutable.HashSet[Symbol]()
 
-    /** so we can relink 
+    /** so we can relink
      */
     val defined = mutable.HashSet[Symbol]()
 
@@ -64,30 +74,33 @@ trait CompilationUnits { self: Global =>
      *  It is empty up to phase 'icode'.
      */
     val icode: LinkedHashSet[icodes.IClass] = new LinkedHashSet
+    
+    def echo(pos: Position, msg: String) =
+      reporter.echo(pos, msg)
 
     def error(pos: Position, msg: String) =
       reporter.error(pos, msg)
 
-    def warning(pos: Position, msg: String) = 
+    def warning(pos: Position, msg: String) =
       reporter.warning(pos, msg)
 
-    def deprecationWarning(pos: Position, msg: String) = 
+    def deprecationWarning(pos: Position, msg: String) =
       if (opt.deprecation) warning(pos, msg)
-      else currentRun.deprecationWarnings += 1
+      else currentRun.deprecationWarnings ::= ((pos, msg))
 
-    def uncheckedWarning(pos: Position, msg: String) = 
+    def uncheckedWarning(pos: Position, msg: String) =
       if (opt.unchecked) warning(pos, msg)
-      else currentRun.uncheckedWarnings += 1
+      else currentRun.uncheckedWarnings ::= ((pos, msg))
 
     def incompleteInputError(pos: Position, msg:String) =
-      reporter.incompleteInputError(pos, msg) 
+      reporter.incompleteInputError(pos, msg)
 
     def comment(pos: Position, msg: String) =
       reporter.comment(pos, msg)
-      
+
     /** Is this about a .java source file? */
     lazy val isJava = source.file.name.endsWith(".java")
-    
+
     override def toString() = source.toString()
 
     def clear() {

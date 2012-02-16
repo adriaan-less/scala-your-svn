@@ -16,7 +16,7 @@ import scala.collection.mutable
  *
  *  See `GridBagPanel` for an example container with custom constraints.
  *
- *  @note [Java Swing] In scala.swing, panels and layout managers are 
+ *  @note [Java Swing] In scala.swing, panels and layout managers are
  *  combined into subclasses of this base class. This approach allows for
  *  typed component constraints.
  */
@@ -25,7 +25,7 @@ trait LayoutContainer extends Container.Wrapper {
    * The type of component constraints for this container.
    */
   type Constraints <: AnyRef
-  
+
   /**
    * Obtains the constraints for the given component from the underlying
    * Swing layout manager.
@@ -37,21 +37,21 @@ trait LayoutContainer extends Container.Wrapper {
    */
   protected def areValid(c: Constraints): (Boolean, String)
   /**
-   * Adds a component with the given constraints to the underlying layout 
-   * manager and the component peer. This method needs to interact properly 
+   * Adds a component with the given constraints to the underlying layout
+   * manager and the component peer. This method needs to interact properly
    * with method `constraintsFor`, i.e., it might need to remove previously
    * held components in order to maintain layout consistency. See `BorderPanel`
    * for an example.
    */
   protected def add(comp: Component, c: Constraints)
-  
+
   /**
    * A map of components to the associated layout constraints.
-   * Any element in this map is automatically added to the contents of this 
-   * panel. Therefore, specifying the layout of a component via 
-   * 
+   * Any element in this map is automatically added to the contents of this
+   * panel. Therefore, specifying the layout of a component via
+   *
    * layout(myComponent) = myConstraints
-   * 
+   *
    * also ensures that myComponent is properly added to this container.
    */
   def layout: mutable.Map[Component, Constraints] = new mutable.Map[Component, Constraints] {
@@ -61,12 +61,11 @@ trait LayoutContainer extends Container.Wrapper {
       val (v, msg) = areValid(l)
       if (!v) throw new IllegalArgumentException(msg)
       add(c, l)
-      this
     }
     def get(c: Component) = Option(constraintsFor(c))
     override def size = peer.getComponentCount
-    def iterator: Iterator[(Component, Constraints)] = 
-      peer.getComponents.iterator.map { c => 
+    def iterator: Iterator[(Component, Constraints)] =
+      peer.getComponents.iterator.map { c =>
         val comp = UIElement.cachedWrapper[Component](c.asInstanceOf[JComponent])
         (comp, constraintsFor(comp))
       }

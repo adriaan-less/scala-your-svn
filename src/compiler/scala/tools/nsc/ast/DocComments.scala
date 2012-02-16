@@ -40,7 +40,7 @@ trait DocComments { self: Global =>
    */
   def docCommentPos(sym: Symbol): Position =
     getDocComment(sym) map (_.pos) getOrElse NoPosition
-    
+
   /** A version which doesn't consider self types, as a temporary measure:
    *  an infinite loop has broken out between superComment and cookedDocComment
    *  since r23926.
@@ -99,9 +99,9 @@ trait DocComments { self: Global =>
    */
   def useCases(sym: Symbol, site: Symbol): List[(Symbol, String, Position)] = {
     def getUseCases(dc: DocComment) = {
-      for (uc <- dc.useCases; defn <- uc.expandedDefs(site)) yield
+      for (uc <- dc.useCases; defn <- uc.expandedDefs(sym, site)) yield
         (defn,
-         expandVariables(merge(cookedDocComment(sym), uc.comment.raw, defn, copyFirstPara = true), sym, site),
+         expandVariables(merge(cookedDocComment(sym), uc.comment.raw, defn), sym, site),
          uc.pos)
     }
     getDocComment(sym) map getUseCases getOrElse List()
@@ -220,8 +220,8 @@ trait DocComments { self: Global =>
         else site.info.baseClasses
 
       searchList collectFirst { case x if defs(x) contains vble => defs(x)(vble) } match {
-        case Some(str) if str startsWith '$'  => lookupVariable(str.tail, site)
-        case res                              => res orElse lookupVariable(vble, site.owner)
+        case Some(str) if str startsWith "$" => lookupVariable(str.tail, site)
+        case res                             => res orElse lookupVariable(vble, site.owner)
       }
   }
 
@@ -269,7 +269,7 @@ trait DocComments { self: Global =>
               lookupVariable(vname, site) match {
                 case Some(replacement) => replaceWith(replacement)
                 case None              => reporter.warning(sym.pos, "Variable " + vname + " undefined in comment for " + sym)
-              }            
+              }
             }
         }
       }
@@ -279,7 +279,7 @@ trait DocComments { self: Global =>
         expandInternal(out.toString, depth + 1)
       }
     }
-    
+
     // We suppressed expanding \$ throughout the recursion, and now we
     // need to replace \$ with $ so it looks as intended.
     expandInternal(initialStr, 0).replaceAllLiterally("""\$""", "$")
@@ -314,7 +314,7 @@ trait DocComments { self: Global =>
       val commentStart = skipLineLead(raw, codeEnd + 1) min end
       val comment      = "/** " + raw.substring(commentStart, end) + "*/"
       val commentPos   = subPos(commentStart, end)
-      
+
       UseCase(DocComment(comment, commentPos), code, codePos)
     }
 
@@ -346,7 +346,7 @@ trait DocComments { self: Global =>
     var defined: List[Symbol] = List() // initialized by Typer
     var aliases: List[Symbol] = List() // initialized by Typer
 
-    def expandedDefs(site: Symbol): List[Symbol] = {
+    def expandedDefs(sym: Symbol, site: Symbol): List[Symbol] = {
 
       def select(site: Type, name: Name, orElse: => Type): Type = {
         val member = site.nonPrivateMember(name)
@@ -378,7 +378,7 @@ trait DocComments { self: Global =>
         val partnames = (parts.init map newTermName) :+ newTypeName(parts.last)
         val (start, rest) = parts match {
           case "this" :: _      => (site.thisType, partnames.tail)
-          case _ :: "this" :: _ => 
+          case _ :: "this" :: _ =>
             site.ownerChain.find(_.name == partnames.head) match {
               case Some(clazz)  => (clazz.thisType, partnames drop 2)
               case _            => (NoType, Nil)
@@ -397,7 +397,7 @@ trait DocComments { self: Global =>
               if (tpe != NoType) tpe
               else {
                 val alias1 = alias.cloneSymbol(definitions.RootClass)
-                alias1.name = repl.toTypeName
+                alias1.name = newTypeName(repl)
                 typeRef(NoPrefix, alias1, Nil)
               }
             case None =>
@@ -424,8 +424,10 @@ trait DocComments { self: Global =>
       }
 
       for (defn <- defined) yield {
-        defn.cloneSymbol.setFlag(Flags.SYNTHETIC).setInfo(
-          substAliases(defn.info).asSeenFrom(site.thisType, defn.owner))
+        val useCase = defn.cloneSymbol
+        useCase.owner = sym.owner
+        useCase.flags = sym.flags
+        useCase.setFlag(Flags.SYNTHETIC).setInfo(substAliases(defn.info).asSeenFrom(site.thisType, sym.owner))
       }
     }
   }

@@ -27,7 +27,7 @@ private[scheduler] trait TerminationMonitor {
 
   /** Registers a closure to be executed when the specified
    *  actor terminates.
-   * 
+   *
    *  @param  a  the actor
    *  @param  f  the closure to be registered
    */

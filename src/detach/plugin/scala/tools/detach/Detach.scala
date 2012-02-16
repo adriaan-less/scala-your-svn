@@ -93,7 +93,7 @@ abstract class Detach extends PluginComponent
           case MethodType(params, rt) => (params map (_.tpe)) ::: List(rt)
           case t => List(t)
         }
-        val hashes = sym1.nameString.hashCode :: 
+        val hashes = sym1.nameString.hashCode ::
           (ts map (_.typeSymbol.nameString.hashCode))
         (0L /: hashes)((acc, h) => acc ^ h)
       }
@@ -130,7 +130,7 @@ abstract class Detach extends PluginComponent
     ]
     def toInterface(clazz: Symbol) = proxies(clazz)._1
     private val classdefs = new mutable.HashMap[Symbol/*clazz*/, ClassDef]
-    // detachedClosure gathers class definitions containing a "detach" apply 
+    // detachedClosure gathers class definitions containing a "detach" apply
     private val detachedClosure = new mutable.HashMap[Symbol/*clazz*/, ClassDef]
 
     /** <p>
@@ -266,7 +266,7 @@ abstract class Detach extends PluginComponent
               tree.symbol updateInfo to.head.tpe
             }
             else tree.symbol.tpe match {
-              case MethodType(params, restp) => 
+              case MethodType(params, restp) =>
                 for (p <- params if p.tpe == from.head.tpe) {
                   p updateInfo to.head.tpe
                 }
@@ -526,7 +526,7 @@ abstract class Detach extends PluginComponent
         if qual.hasSymbol && (objs contains qual.symbol) =>
           if (DEBUG)
             println("\nTreeAccessorSubstituter: Select4\n\tqual="+qual+
-                    ", qual.tpe="+qual.tpe+", name="+name)//debug                      
+                    ", qual.tpe="+qual.tpe+", name="+name)//debug
           val sym = qual.symbol
           val proxy = proxySyms(objs indexOf sym)
           // substitute the accessor of a member of the enclosing class
@@ -735,7 +735,7 @@ abstract class Detach extends PluginComponent
           iface.sourceFile = clazz.sourceFile
           iface setFlag (ABSTRACT | TRAIT | INTERFACE) // Java interface
           val iparents = List(ObjectClass.tpe, RemoteClass.tpe, ScalaObjectClass.tpe)
-          iface setInfo ClassInfoType(iparents, new Scope, iface)
+          iface setInfo ClassInfoType(iparents, newScope, iface)
           // methods must throw RemoteException
           iface addAnnotation remoteAnnotationInfo
 
@@ -749,7 +749,7 @@ abstract class Detach extends PluginComponent
           // Variant 2: un-/exportObject
           //val cparents = List(ObjectClass.tpe, iface.tpe,
           //                    UnreferencedClass.tpe, ScalaObjectClass.tpe)
-          iclaz setInfo ClassInfoType(cparents, new Scope, iclaz)
+          iclaz setInfo ClassInfoType(cparents, newScope, iclaz)
           val proxy = (iface, iclaz, new mutable.HashMap[Symbol, Symbol])
           proxies(clazz) = proxy
           proxy

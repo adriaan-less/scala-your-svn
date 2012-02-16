@@ -81,7 +81,7 @@ abstract class BaseBerrySethi {
     case x: Alt     => Set(x.rs reverseMap (compFollow1(fol1, _)) flatten: _*)
     case x: Meta    => compFollow1(fol1, x.r)
     case x: Star    => compFollow1(fol1 ++ compFirst(x.r), x.r)
-    case x: Sequ    => 
+    case x: Sequ    =>
       x.rs.foldRight(fol1) { (p, fol) =>
         val first = compFollow1(fol, p)
 

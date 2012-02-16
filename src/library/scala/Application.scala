@@ -22,7 +22,7 @@ import scala.compat.Platform.currentTime
  *  The body of the `Main` object defines the main program. This technique
  *  does not work if the main program depends on command-line arguments
  *  (which are not accessible with the technique presented here).
- *  
+ *
  *  It is possible to time the execution of objects that inherit from class
  *  `Application` by setting the global `scala.time`
  *  property. Here is an example for benchmarking object `Main`:
@@ -31,20 +31,20 @@ import scala.compat.Platform.currentTime
  *  }}}
  *  In practice the `Application` trait has a number of serious pitfalls:
  *
- *  - Threaded code that references the object will block until static 
+ *  - Threaded code that references the object will block until static
  *    initialization is complete.  However, because the entire execution
  *    of an `object` extending `Application` takes place during
- *    static initialization, concurrent code will ''always'' deadlock if 
+ *    static initialization, concurrent code will ''always'' deadlock if
  *    it must synchronize with the enclosing object.
- *  - As described above, there is no way to obtain the 
+ *  - As described above, there is no way to obtain the
  *    command-line arguments because all code in body of an `object`
  *    extending `Application` is run as part of the static initialization
- *    which occurs before `Application`'s `main` method 
+ *    which occurs before `Application`'s `main` method
  *    even begins execution.
- *  - Static initializers are run only once during program execution, and 
- *    JVM authors usually assume their execution to be relatively short.  
+ *  - Static initializers are run only once during program execution, and
+ *    JVM authors usually assume their execution to be relatively short.
  *    Therefore, certain JVM configurations may become confused, or simply
- *    fail to optimize or JIT the code in the body of an `object` extending 
+ *    fail to optimize or JIT the code in the body of an `object` extending
  *    `Application`.  This can lead to a significant performance degradation.
  *
  *  It is recommended to use the [[scala.App]] trait instead.

@@ -15,33 +15,36 @@ import generic._
 import immutable.{List, Nil}
 
 // !!! todo: convert to LinkedListBuffer?
-/** 
+/**
  *  This class is used internally to represent mutable lists. It is the
  *  basis for the implementation of the class `Queue`.
- *  
+ *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-mutable-collection-classes.html#mutable_lists "Scala's Collection Library overview"]]
+ *  section on `Mutable Lists` for more information.
  */
 @SerialVersionUID(5938451523372603072L)
 class MutableList[A]
-extends LinearSeq[A]
+extends AbstractSeq[A]
+   with LinearSeq[A]
    with LinearSeqOptimized[A, MutableList[A]]
    with GenericTraversableTemplate[A, MutableList]
    with Builder[A, MutableList[A]]
    with Serializable
 {
   override def companion: GenericCompanion[MutableList] = MutableList
-  
+
   override protected[this] def newBuilder: Builder[A, MutableList[A]] = new MutableList[A]
 
   protected var first0: LinkedList[A] = new LinkedList[A]
   protected var last0: LinkedList[A] = first0
   protected var len: Int = 0
-  
+
   def toQueue = new Queue(first0, last0, len)
-  
+
   /** Is the list empty?
    */
   override def isEmpty = len == 0
@@ -104,9 +107,6 @@ extends LinearSeq[A]
       len = len + 1
     }
   }
-
-  @deprecated("use clear() instead", "2.8.0")
-  def reset() { clear() }
 
   /** Returns an iterator over all elements of this list.
    */

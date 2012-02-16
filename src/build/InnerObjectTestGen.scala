@@ -29,9 +29,9 @@ object Contexts extends Enumeration {
 object TestGen {
   val testFile = "object-testers-automated.scala"
 
-  val payload = 
+  val payload =
 """      var ObjCounter = 0
-      
+
       object Obj  { ObjCounter += 1}
       Obj // one
 
@@ -50,9 +50,9 @@ object TestGen {
       }
 """
 
-  val payloadPrivate = 
+  val payloadPrivate =
 """      var ObjCounter = 0
-      
+
       private object Obj  { ObjCounter += 1}
       Obj // one
 
@@ -71,9 +71,9 @@ object TestGen {
       }
 """
 
-  val payloadMT = 
+  val payloadMT =
 """     @volatile var ObjCounter = 0
-      
+
       object Obj  { ObjCounter += 1}
 
       def multiThreadedAccess() {
@@ -117,7 +117,7 @@ object Test {
     counter += 1
     name + counter
   }
-    
+
   val bodies = new mutable.ListBuffer[String]
   val triggers = new mutable.ListBuffer[String]
 
@@ -127,14 +127,14 @@ object Test {
                trigger: String,   // the code that needs to be invoked to run the test so far
                nested: List[Contexts.Value],  // the path from the innermost to the outermost context
                p: List[Contexts.Value] => Boolean,  // a predicate for filtering problematic cases
-               privateObj: Boolean = false) {  // are we using a private object? 
+               privateObj: Boolean = false) {  // are we using a private object?
 
-    def shouldBeTopLevel = 
+    def shouldBeTopLevel =
       ((depth == 1)
        || (nested.headOption == Some(PrivateMethod))
        || (nested.isEmpty && privateObj))
 
-    val enums = 
+    val enums =
       if (shouldBeTopLevel) Contexts.topLevel else Contexts.values.toList
 
     if (depth == 0) {
@@ -195,7 +195,7 @@ object Test {
                  %s // trigger
                }
              """.format(name, body, trigger), name)
-               
+
           case LazyVal =>
             val name = freshName("lzvalue") + "_" + depth
             ("""
@@ -218,10 +218,10 @@ object Test {
            val name = freshName("Class") + "_" + depth
            ("""
              class %s {
-               { // in primary constructor 
+               { // in primary constructor
                  %s
                  %s // trigger
-               } 
+               }
              }
            """.format(name, body, trigger), "(new %s)".format(name))
 
@@ -229,10 +229,10 @@ object Test {
            val name = freshName("Trait") + "_" + depth
            ("""
              trait %s {
-               { // in primary constructor 
+               { // in primary constructor
                  %s
                  %s // trigger
-               } 
+               }
              }
            """.format(name, body, trigger), "(new %s {})".format(name))
 
@@ -247,7 +247,7 @@ object Test {
     var nesting = structure
     while ((nesting ne Nil) && nesting.head == Object) {
       nesting = nesting.tail
-    } 
+    }
     if (nesting ne Nil)
       !(nesting.head == Val)
     else
@@ -255,7 +255,7 @@ object Test {
   } && !objectInsideLazyVal(structure)
 
   /** Known bug: object inside lazyval leads to deadlock. */
-  private def objectInsideLazyVal(structure: List[Contexts.Value]): Boolean = 
+  private def objectInsideLazyVal(structure: List[Contexts.Value]): Boolean =
     structure.contains(LazyVal)
 
 
@@ -290,12 +290,12 @@ object Test {
 
     val depth = if (args.length < 1) 2 else args(0).toInt
 
-    val header = 
+    val header =
 """
 /* ================================================================================
          Automatically generated on %tF. Do Not Edit (unless you have to).
          (%d-level nesting)
-   ================================================================================ */ 
+   ================================================================================ */
 """.format(new java.util.Date, depth)
 
     generate(depth, payload, "runTest", List(), x => true)

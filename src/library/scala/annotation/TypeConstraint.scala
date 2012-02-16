@@ -10,7 +10,7 @@ package scala.annotation
 
 /** A marker for annotations that, when applied to a type, should be treated
  *  as a constraint on the annotated type.
- *  
+ *
  *  A proper constraint should restrict the type based only on information
  *  mentioned within the type.  A Scala compiler can use this assumption to
  *  rewrite the contents of the constraint as necessary.  To contrast, a type

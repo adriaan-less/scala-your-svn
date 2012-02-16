@@ -17,7 +17,7 @@ package scala.io
  *  Line (Column) numbers greater than `LINE_MASK` (`COLUMN_MASK`) are
  *  replaced by `LINE_MASK` (`COLUMN_MASK`). Furthermore, if the encoded
  *  line number is `LINE_MASK`, the column number is always set to 0.
- *  
+ *
  *  The following properties hold:
  *
  *  the undefined position is 0:   `encode(0,0) == 0`
@@ -49,7 +49,7 @@ abstract class Position {
   /** Encodes a position into a single integer. */
   final def encode(line: Int, column: Int): Int = {
     checkInput(line, column)
-    
+
     if (line >= LINE_MASK)
       LINE_MASK << COLUMN_BITS
     else

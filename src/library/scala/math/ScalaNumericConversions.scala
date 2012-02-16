@@ -13,7 +13,7 @@ import java.{ lang => jl }
 /** Conversions which present a consistent conversion interface
  *  across all the numeric types.
  */
-trait ScalaNumericConversions extends ScalaNumber {  
+trait ScalaNumericConversions extends ScalaNumber {
   /** Returns the value of this as a [[scala.Char]]. This may involve
     * rounding or truncation.
     */
@@ -48,8 +48,8 @@ trait ScalaNumericConversions extends ScalaNumber {
     * rounding or truncation.
     */
   def toDouble = doubleValue
- 
-  /** Returns `true` iff this has a zero fractional part, and is within the 
+
+  /** Returns `true` iff this has a zero fractional part, and is within the
     * range of [[scala.Byte]] MinValue and MaxValue; otherwise returns `false`.
     */
   def isValidByte  = isWhole && (toInt == toByte)
@@ -61,14 +61,14 @@ trait ScalaNumericConversions extends ScalaNumber {
 
   /** Returns `true` iff this has a zero fractional part, and is within the
     * range of [[scala.Int]] MinValue and MaxValue; otherwise returns `false`.
-    */ 
+    */
   def isValidInt   = isWhole && (toLong == toInt)
 
   /** Returns `true` iff this has a zero fractional part, and is within the
     * range of [[scala.Char]] MinValue and MaxValue; otherwise returns `false`.
     */
   def isValidChar  = isWhole && (toInt >= Char.MinValue && toInt <= Char.MaxValue)
-  
+
   protected def unifiedPrimitiveHashcode() = {
     val lv = toLong
     if (lv >= Int.MinValue && lv <= Int.MaxValue) lv.toInt
@@ -83,7 +83,7 @@ trait ScalaNumericConversions extends ScalaNumber {
    *
    *  Additionally, this should only be called if the numeric
    *  type is happy to be converted to Long, Float, and Double.
-   *  If for instance a BigInt much larger than the Long range is 
+   *  If for instance a BigInt much larger than the Long range is
    *  sent here, it will claim equality with whatever Long is left
    *  in its lower 64 bits.  Or a BigDecimal with more precision
    *  than Double can hold: same thing.  There's no way given the

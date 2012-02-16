@@ -16,6 +16,7 @@ abstract class DeadCodeElimination extends SubComponent {
   import global._
   import icodes._
   import icodes.opcodes._
+  import definitions.RuntimePackage
 
   val phaseName = "dce"
 
@@ -41,7 +42,7 @@ abstract class DeadCodeElimination extends SubComponent {
   /** Remove dead code.
    */
   class DeadCode {
-    
+
     def analyzeClass(cls: IClass) {
       cls.methods.foreach { m =>
         this.method = m
@@ -54,27 +55,27 @@ abstract class DeadCodeElimination extends SubComponent {
 
     /** Use-def chain: give the reaching definitions at the beginning of given instruction. */
     var defs: immutable.Map[(BasicBlock, Int), immutable.Set[rdef.lattice.Definition]] = immutable.HashMap.empty
-    
+
     /** Useful instructions which have not been scanned yet. */
     val worklist: mutable.Set[(BasicBlock, Int)] = new mutable.LinkedHashSet
-    
+
     /** what instructions have been marked as useful? */
     val useful: mutable.Map[BasicBlock, mutable.BitSet] = perRunCaches.newMap()
-    
+
     /** what local variables have been accessed at least once? */
     var accessedLocals: List[Local] = Nil
-    
+
     /** the current method. */
     var method: IMethod = _
-    
+
     /** Map instructions who have a drop on some control path, to that DROP instruction. */
-    val dropOf: mutable.Map[(BasicBlock, Int), (BasicBlock, Int)] = perRunCaches.newMap()
-    
+    val dropOf: mutable.Map[(BasicBlock, Int), List[(BasicBlock, Int)]] = perRunCaches.newMap()
+
     def dieCodeDie(m: IMethod) {
-      if (m.code ne null) {
+      if (m.hasCode) {
         log("dead code elimination on " + m);
-        dropOf.clear
-        m.code.blocks.clear
+        dropOf.clear()
+        m.code.blocks.clear()
         accessedLocals = m.params.reverse
         m.code.blocks ++= linearizer.linearize(m)
         collectRDef(m)
@@ -89,24 +90,24 @@ abstract class DeadCodeElimination extends SubComponent {
     }
 
     /** collect reaching definitions and initial useful instructions for this method. */
-    def collectRDef(m: IMethod): Unit = if (m.code ne null) {
-      defs = immutable.HashMap.empty; worklist.clear; useful.clear;
+    def collectRDef(m: IMethod): Unit = if (m.hasCode) {
+      defs = immutable.HashMap.empty; worklist.clear(); useful.clear();
       rdef.init(m);
       rdef.run;
-     
-      for (bb <- m.code.blocks.toList) {
+
+      m foreachBlock { bb =>
         useful(bb) = new mutable.BitSet(bb.size)
         var rd = rdef.in(bb);
         for (Pair(i, idx) <- bb.toList.zipWithIndex) {
           i match {
-            case LOAD_LOCAL(l) => 
+            case LOAD_LOCAL(l) =>
               defs = defs + Pair(((bb, idx)), rd.vars)
 //              Console.println(i + ": " + (bb, idx) + " rd: " + rd + " and having: " + defs)
             case RETURN(_) | JUMP(_) | CJUMP(_, _, _, _) | CZJUMP(_, _, _, _) | STORE_FIELD(_, _) |
-                 THROW(_)   | STORE_ARRAY_ITEM(_) | SCOPE_ENTER(_) | SCOPE_EXIT(_) | STORE_THIS(_) |
+                 THROW(_)   | LOAD_ARRAY_ITEM(_) | STORE_ARRAY_ITEM(_) | SCOPE_ENTER(_) | SCOPE_EXIT(_) | STORE_THIS(_) |
                  LOAD_EXCEPTION(_) | SWITCH(_, _) | MONITOR_ENTER() | MONITOR_EXIT() => worklist += ((bb, idx))
             case CALL_METHOD(m1, _) if isSideEffecting(m1) => worklist += ((bb, idx)); log("marking " + m1)
-            case CALL_METHOD(m1, SuperCall(_)) => 
+            case CALL_METHOD(m1, SuperCall(_)) =>
               worklist += ((bb, idx)) // super calls to constructor
             case DROP(_) =>
               val necessary = rdef.findDefs(bb, idx, 1) exists { p =>
@@ -114,9 +115,9 @@ abstract class DeadCodeElimination extends SubComponent {
                 bb1(idx1) match {
                   case CALL_METHOD(m1, _) if isSideEffecting(m1) => true
                   case LOAD_EXCEPTION(_) | DUP(_) | LOAD_MODULE(_) => true
-                  case _ => 
-                    dropOf((bb1, idx1)) = (bb, idx)
-//                    println("DROP is innessential: " + i + " because of: " + bb1(idx1) + " at " + bb1 + ":" + idx1) 
+                  case _ =>
+                    dropOf((bb1, idx1)) = (bb,idx) :: dropOf.getOrElse((bb1, idx1), Nil)
+//                    println("DROP is innessential: " + i + " because of: " + bb1(idx1) + " at " + bb1 + ":" + idx1)
                     false
                 }
               }
@@ -136,15 +137,14 @@ abstract class DeadCodeElimination extends SubComponent {
       while (!worklist.isEmpty) {
         val (bb, idx) = worklist.iterator.next
         worklist -= ((bb, idx))
-        if (settings.debug.value)
-          log("Marking instr: \tBB_" + bb + ": " + idx + " " + bb(idx))
-          
+        debuglog("Marking instr: \tBB_" + bb + ": " + idx + " " + bb(idx))
+
         val instr = bb(idx)
         if (!useful(bb)(idx)) {
           useful(bb) += idx
-          dropOf.get(bb, idx) match {
-            case Some((bb1, idx1)) => useful(bb1) += idx1
-            case None => ()
+          dropOf.get(bb, idx) foreach {
+              for ((bb1, idx1) <- _)
+                useful(bb1) += idx1
           }
           instr match {
             case LOAD_LOCAL(l1) =>
@@ -152,7 +152,7 @@ abstract class DeadCodeElimination extends SubComponent {
                 log("\tAdding " + bb1(idx1))
                 worklist += ((bb1, idx1))
               }
-                
+
             case nw @ NEW(REFERENCE(sym)) =>
               assert(nw.init ne null, "null new.init at: " + bb + ": " + idx + "(" + instr + ")")
               worklist += findInstruction(bb, nw.init)
@@ -170,7 +170,7 @@ abstract class DeadCodeElimination extends SubComponent {
 
             case LOAD_EXCEPTION(_) =>
               ()
-              
+
             case _ =>
               for ((bb1, idx1) <- rdef.findDefs(bb, idx, instr.consumed) if !useful(bb1)(idx1)) {
                 log("\tAdding " + bb1(idx1))
@@ -180,11 +180,11 @@ abstract class DeadCodeElimination extends SubComponent {
         }
       }
     }
-    
+
     def sweep(m: IMethod) {
       val compensations = computeCompensations(m)
-      
-      for (bb <- m.code.blocks.toList) {
+
+      m foreachBlock { bb =>
 //        Console.println("** Sweeping block " + bb + " **")
         val oldInstr = bb.toList
         bb.open
@@ -199,7 +199,7 @@ abstract class DeadCodeElimination extends SubComponent {
             }
             // check for accessed locals
             i match {
-              case LOAD_LOCAL(l) if !l.arg => 
+              case LOAD_LOCAL(l) if !l.arg =>
                 accessedLocals = l :: accessedLocals
               case STORE_LOCAL(l) if !l.arg =>
                 accessedLocals = l :: accessedLocals
@@ -207,11 +207,11 @@ abstract class DeadCodeElimination extends SubComponent {
             }
           } else {
             i match {
-              case NEW(REFERENCE(sym)) => 
+              case NEW(REFERENCE(sym)) =>
                 log("skipped object creation: " + sym + "inside " + m)
               case _ => ()
             }
-            if (settings.debug.value) log("Skipped: bb_" + bb + ": " + idx + "( " + i + ")")
+            debuglog("Skipped: bb_" + bb + ": " + idx + "( " + i + ")")
           }
         }
 
@@ -219,11 +219,11 @@ abstract class DeadCodeElimination extends SubComponent {
         else log("empty block encountered")
       }
     }
-    
+
     private def computeCompensations(m: IMethod): mutable.Map[(BasicBlock, Int), List[Instruction]] = {
       val compensations: mutable.Map[(BasicBlock, Int), List[Instruction]] = new mutable.HashMap
-      
-      for (bb <- m.code.blocks) {
+
+      m foreachBlock { bb =>
         assert(bb.closed, "Open block in computeCompensations")
         for ((i, idx) <- bb.toList.zipWithIndex) {
           if (!useful(bb)(idx)) {
@@ -252,15 +252,15 @@ abstract class DeadCodeElimination extends SubComponent {
       }
       compensations
     }
-    
+
     private def withClosed[a](bb: BasicBlock)(f: => a): a = {
       if (bb.nonEmpty) bb.close
       val res = f
       if (bb.nonEmpty) bb.open
       res
     }
-    
-    private def findInstruction(bb: BasicBlock, i: Instruction): (BasicBlock, Int) = {      
+
+    private def findInstruction(bb: BasicBlock, i: Instruction): (BasicBlock, Int) = {
       for (b <- linearizer.linearizeAt(method, bb)) {
         val idx = b.toList indexWhere (_ eq i)
         if (idx != -1)
@@ -269,15 +269,12 @@ abstract class DeadCodeElimination extends SubComponent {
       abort("could not find init in: " + method)
     }
 
+    private def isPure(sym: Symbol) = (
+         (sym.isGetter && sym.isEffectivelyFinal && !sym.isLazy)
+      || (sym.isPrimaryConstructor && (sym.enclosingPackage == RuntimePackage || inliner.isClosureClass(sym.owner)))
+    )
     /** Is 'sym' a side-effecting method? TODO: proper analysis.  */
-    private def isSideEffecting(sym: Symbol): Boolean = {
-      !((sym.isGetter && sym.isFinal && !sym.isLazy)
-       || (sym.isConstructor 
-           && !(sym.owner == method.symbol.owner && method.symbol.isConstructor) // a call to another constructor  
-           && sym.owner.owner == definitions.RuntimePackage.moduleClass)
-       || (sym.isConstructor && inliner.isClosureClass(sym.owner))
-/*       || definitions.isBox(sym)
-       || definitions.isUnbox(sym)*/)
-    }
+    private def isSideEffecting(sym: Symbol) = !isPure(sym)
+
   } /* DeadCode */
 }

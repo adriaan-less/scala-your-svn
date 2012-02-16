@@ -15,11 +15,11 @@ import scala.concurrent.ManagedBlocker
 
 /**
  * This scheduler class uses a `ThreadPoolExecutor` to execute `Actor`s.
- * 
+ *
  * The scheduler attempts to shut down itself and the underlying
  * `ThreadPoolExecutor` only if `terminate` is set to true. Otherwise,
  * the scheduler must be shut down explicitly.
- * 
+ *
  * @author Philipp Haller
  */
 class ResizableThreadPoolScheduler(protected val terminate: Boolean,
@@ -123,7 +123,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
               if (executor.getActiveCount() == 0) {
                 Debug.info(this+": initiating shutdown...")
                 Debug.info(this+": corePoolSize = "+coreSize+", maxPoolSize = "+maxSize)
-                
+
                 terminating = true
                 throw new QuitControl
               }

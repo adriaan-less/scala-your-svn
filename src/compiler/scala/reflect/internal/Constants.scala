@@ -45,7 +45,7 @@ trait Constants extends api.Constants {
       case x: Char      => CharTag
       case x: Type      => ClassTag
       case x: Symbol    => EnumTag
-      case _            => throw new Error("bad constant value: " + value)
+      case _            => throw new Error("bad constant value: " + value + " of class " + value.getClass)
     }
 
     def isByteRange: Boolean  = isIntRange && Byte.MinValue <= intValue && intValue <= Byte.MaxValue
@@ -55,6 +55,8 @@ trait Constants extends api.Constants {
     def isLongRange: Boolean  = ByteTag <= tag && tag <= LongTag
     def isFloatRange: Boolean = ByteTag <= tag && tag <= FloatTag
     def isNumeric: Boolean    = ByteTag <= tag && tag <= DoubleTag
+    def isNonUnitAnyVal       = BooleanTag <= tag && tag <= DoubleTag
+    def isAnyVal              = UnitTag <= tag && tag <= DoubleTag
 
     def tpe: Type = tag match {
       case UnitTag    => UnitClass.tpe
@@ -80,8 +82,8 @@ trait Constants extends api.Constants {
     /** We need the equals method to take account of tags as well as values.
      */
     override def equals(other: Any): Boolean = other match {
-      case that: Constant => 
-        this.tag == that.tag && 
+      case that: Constant =>
+        this.tag == that.tag &&
         (this.value == that.value || this.isNaN && that.isNaN)
       case _ => false
     }
@@ -92,7 +94,7 @@ trait Constants extends api.Constants {
       case _ => false
     }
 
-    def booleanValue: Boolean = 
+    def booleanValue: Boolean =
       if (tag == BooleanTag) value.asInstanceOf[Boolean]
       else throw new Error("value " + value + " is not a boolean");
 
@@ -211,16 +213,11 @@ trait Constants extends api.Constants {
       case '"'  => "\\\""
       case '\'' => "\\\'"
       case '\\' => "\\\\"
-      case _    => String.valueOf(ch)
+      case _    => if (ch.isControl) "\\0" + toOctalString(ch) else String.valueOf(ch)
     }
 
     def escapedStringValue: String = {
-      def escape(text: String): String = {
-        text map { ch =>
-          if (ch.isControl) "\\0" + toOctalString(ch)
-          else escapedChar(ch)
-        } mkString ""        
-      }
+      def escape(text: String): String = text flatMap escapedChar
       tag match {
         case NullTag   => "null"
         case StringTag => "\"" + escape(stringValue) + "\""
@@ -235,6 +232,6 @@ trait Constants extends api.Constants {
 
     override def hashCode: Int = value.## * 41 + 17
   }
-  
+
   object Constant extends ConstantExtractor
 }

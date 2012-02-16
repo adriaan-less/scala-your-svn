@@ -6,41 +6,39 @@
 package scala.reflect
 package internal
 
+import annotation.switch
+
 object ClassfileConstants {
 
   final val JAVA_MAGIC = 0xCAFEBABE
   final val JAVA_MAJOR_VERSION = 45
   final val JAVA_MINOR_VERSION = 3
 
-  /** <p>
-   *    (see http://java.sun.com/docs/books/jvms/second_edition/jvms-clarify.html)
-   *  </p>
-   *  <p>
-   *    If the <code>ACC_INTERFACE</code> flag is set, the <code>ACC_ABSTRACT</code>
-   *    flag must also be set (ch. 2.13.1).
-   *  </p>
-   *  <p>
-   *    A class file cannot have both its <code>ACC_FINAL</code> and
-   *    <code>ACC_ABSTRACT</code> flags set (ch. 2.8.2).
-   *  </p>
-   *  <p>
-   *    A field may have at most one of its <code>ACC_PRIVATE</code>,
-   *    <code>ACC_PROTECTED</code>, <code>ACC_PUBLIC</code> flags set (ch. 2.7.4).
-   *  </p>
-   *  <p>
-   *    A field may not have both its <code>ACC_FINAL</code> and
-   *    <code>ACC_VOLATILE</code> flags set (ch. 2.9.1).
-   *  </p>
-   *  <p>
-   *    If a method has its <code>ACC_ABSTRACT</code> flag set it must not
-   *    have any of its <code>ACC_FINAL</code>, <code>ACC_NATIVE</code>,
-   *    <code>ACC_PRIVATE</code>, <code>ACC_STATIC</code>, <code>ACC_STRICT</code>,
-   *    or <code>ACC_SYNCHRONIZED</code> flags set (ch. 2.13.3.2).
-   *  </p>
-   *  <p>
-   *    All interface methods must have their <code>ACC_ABSTRACT</code> and
-   *    <code>ACC_PUBLIC</code> flags set.
-   *  </p>
+  /** (see http://java.sun.com/docs/books/jvms/second_edition/jvms-clarify.html)
+   *
+   *  If the `ACC_INTERFACE` flag is set, the `ACC_ABSTRACT` flag must also
+   *  be set (ch. 2.13.1).
+   *
+   *  A class file cannot have both its `ACC_FINAL` and `ACC_ABSTRACT` flags
+   *  set (ch. 2.8.2).
+   *
+   *  A field may have at most one of its `ACC_PRIVATE`, `ACC_PROTECTED`,
+   *  `ACC_PUBLIC` flags set (ch. 2.7.4).
+   *
+   *  A field may not have both its `ACC_FINAL` and `ACC_VOLATILE` flags set
+   *  (ch. 2.9.1).
+   *
+   *  If a method has its `ACC_ABSTRACT` flag set it must not have any of its
+   *  `ACC_FINAL`, `ACC_NATIVE`, `ACC_PRIVATE`, `ACC_STATIC`, `ACC_STRICT`,
+   *  or `ACC_SYNCHRONIZED` flags set (ch. 2.13.3.2).
+   *
+   *  All interface methods must have their `ACC_ABSTRACT` and
+   *  `ACC_PUBLIC` flags set.
+   *
+   *  Note for future reference: see this thread on ACC_SUPER and
+   *  how its enforcement differs on the android vm.
+   *    https://groups.google.com/forum/?hl=en#!topic/jvm-languages/jVhzvq8-ZIk
+   *
    */                                        // Class   Field   Method
   final val JAVA_ACC_PUBLIC       = 0x0001   //   X       X        X
   final val JAVA_ACC_PRIVATE      = 0x0002   //           X        X
@@ -90,11 +88,12 @@ object ClassfileConstants {
   final val ARRAY_TAG  = '['
   final val VOID_TAG   = 'V'
   final val TVAR_TAG   = 'T'
+  final val OBJECT_TAG = 'L'
   final val ANNOTATION_TAG = '@'
   final val SCALA_NOTHING = "scala.runtime.Nothing$"
   final val SCALA_NULL = "scala.runtime.Null$"
 
-  
+
   // tags describing the type of newarray
   final val T_BOOLEAN = 4
   final val T_CHAR    = 5
@@ -109,14 +108,14 @@ object ClassfileConstants {
   final val nop         = 0x00
   final val aconst_null = 0x01
   final val iconst_m1   = 0x02
-  
+
   final val iconst_0    = 0x03
   final val iconst_1    = 0x04
   final val iconst_2    = 0x05
   final val iconst_3    = 0x06
   final val iconst_4    = 0x07
   final val iconst_5    = 0x08
-	
+
   final val lconst_0    = 0x09
   final val lconst_1    = 0x0a
   final val fconst_0    = 0x0b
@@ -130,13 +129,13 @@ object ClassfileConstants {
   final val ldc         = 0x12
   final val ldc_w       = 0x13
   final val ldc2_w      = 0x14
-  	  
+
   final val iload       = 0x15
   final val lload       = 0x16
   final val fload       = 0x17
   final val dload       = 0x18
   final val aload       = 0x19
-  	  
+
   final val iload_0     = 0x1a
   final val iload_1     = 0x1b
   final val iload_2     = 0x1c
@@ -165,7 +164,7 @@ object ClassfileConstants {
   final val baload      = 0x33
   final val caload      = 0x34
   final val saload      = 0x35
-  	  
+
   final val istore      = 0x36
   final val lstore      = 0x37
   final val fstore      = 0x38
@@ -199,7 +198,7 @@ object ClassfileConstants {
   final val bastore     = 0x54
   final val castore     = 0x55
   final val sastore     = 0x56
-	
+
   final val pop         = 0x57
   final val pop2        = 0x58
   final val dup         = 0x59
@@ -209,7 +208,7 @@ object ClassfileConstants {
   final val dup2_x1     = 0x5d
   final val dup2_x2     = 0x5e
   final val swap        = 0x5f
-  	  
+
   final val iadd        = 0x60
   final val ladd        = 0x61
   final val fadd        = 0x62
@@ -230,12 +229,12 @@ object ClassfileConstants {
   final val lrem        = 0x71
   final val frem        = 0x72
   final val drem        = 0x73
-  	  
+
   final val ineg        = 0x74
   final val lneg        = 0x75
   final val fneg        = 0x76
   final val dneg        = 0x77
-	
+
   final val ishl        = 0x78
   final val lshl        = 0x79
   final val ishr        = 0x7a
@@ -249,7 +248,7 @@ object ClassfileConstants {
   final val ixor        = 0x82
   final val lxor        = 0x83
   final val iinc        = 0x84
-  	  
+
   final val i2l         = 0x85
   final val i2f         = 0x86
   final val i2d         = 0x87
@@ -265,13 +264,13 @@ object ClassfileConstants {
   final val i2b         = 0x91
   final val i2c         = 0x92
   final val i2s         = 0x93
-  	  
+
   final val lcmp        = 0x94
   final val fcmpl       = 0x95
   final val fcmpg       = 0x96
   final val dcmpl       = 0x97
   final val dcmpg       = 0x98
-  	  
+
   final val ifeq        = 0x99
   final val ifne        = 0x9a
   final val iflt        = 0x9b
@@ -302,20 +301,20 @@ object ClassfileConstants {
   final val putstatic   = 0xb3
   final val getfield    = 0xb4
   final val putfield    = 0xb5
-  	  	
+
   final val invokevirtual   = 0xb6
   final val invokespecial   = 0xb7
   final val invokestatic    = 0xb8
   final val invokeinterface = 0xb9
   final val xxxunusedxxxx   = 0xba
-  	  
+
   final val new_          = 0xbb
   final val newarray      = 0xbc
   final val anewarray     = 0xbd
   final val arraylength   = 0xbe
   final val athrow        = 0xbf
   final val checkcast     = 0xc0
-  final val instanceof    = 0xc1    
+  final val instanceof    = 0xc1
   final val monitorenter  = 0xc2
   final val monitorexit   = 0xc3
   final val wide          = 0xc4
@@ -324,33 +323,68 @@ object ClassfileConstants {
   final val ifnonnull     = 0xc7
   final val goto_w        = 0xc8
   final val jsr_w         = 0xc9
-  	  
+
   // reserved opcodes
   final val breakpoint    = 0xca
   final val impdep1       = 0xfe
-  final val impdep2       = 0xff  
-  
-  def toScalaFlags(flags: Int, isClass: Boolean): Long = {
-    import Flags._
-    var res = 0l
-    if ((flags & JAVA_ACC_PRIVATE) != 0)
-      res = res | PRIVATE
-    else if ((flags & JAVA_ACC_PROTECTED) != 0)
-      res = res | PROTECTED
-    if ((flags & JAVA_ACC_ABSTRACT) != 0 && (flags & JAVA_ACC_ANNOTATION) == 0)
-      res = res | DEFERRED
-    if ((flags & JAVA_ACC_FINAL) != 0)
-      res = res | FINAL
-    if (((flags & JAVA_ACC_INTERFACE) != 0) &&
-        ((flags & JAVA_ACC_ANNOTATION) == 0))
-      res = res | TRAIT | INTERFACE | ABSTRACT
-    if ((flags & JAVA_ACC_SYNTHETIC) != 0)
-      res = res | SYNTHETIC
-    if ((flags & JAVA_ACC_STATIC) != 0)
-      res = res | STATIC
-    if (isClass && ((res & DEFERRED) != 0L))
-        res = res & ~DEFERRED | ABSTRACT
+  final val impdep2       = 0xff
 
-    res | JAVA
+  abstract class FlagTranslation {
+    import Flags._
+
+    private var isAnnotation = false
+    private var isClass      = false
+    private def initFields(flags: Int) = {
+      isAnnotation = (flags & JAVA_ACC_ANNOTATION) != 0
+      isClass      = false
+    }
+    private def translateFlag(jflag: Int): Long = (jflag: @switch) match {
+      case JAVA_ACC_PRIVATE    => PRIVATE
+      case JAVA_ACC_PROTECTED  => PROTECTED
+      case JAVA_ACC_FINAL      => FINAL
+      case JAVA_ACC_SYNTHETIC  => SYNTHETIC
+      case JAVA_ACC_STATIC     => STATIC
+      case JAVA_ACC_ABSTRACT   => if (isAnnotation) 0L else if (isClass) ABSTRACT else DEFERRED
+      case JAVA_ACC_INTERFACE  => if (isAnnotation) 0L else TRAIT | INTERFACE | ABSTRACT
+      case _                   => 0L
+    }
+    private def translateFlags(jflags: Int, baseFlags: Long): Long = {
+      var res: Long = JAVA | baseFlags
+      /** fast, elegant, maintainable, pick any two... */
+      res |= translateFlag(jflags & JAVA_ACC_PRIVATE)
+      res |= translateFlag(jflags & JAVA_ACC_PROTECTED)
+      res |= translateFlag(jflags & JAVA_ACC_FINAL)
+      res |= translateFlag(jflags & JAVA_ACC_SYNTHETIC)
+      res |= translateFlag(jflags & JAVA_ACC_STATIC)
+      res |= translateFlag(jflags & JAVA_ACC_ABSTRACT)
+      res |= translateFlag(jflags & JAVA_ACC_INTERFACE)
+      res
+    }
+      
+    def classFlags(jflags: Int): Long = {
+      initFields(jflags)
+      isClass = true
+      translateFlags(jflags, 0)
+    }
+    def fieldFlags(jflags: Int): Long = {
+      initFields(jflags)
+      translateFlags(jflags, if ((jflags & JAVA_ACC_FINAL) == 0) MUTABLE else 0)
+    }
+    def methodFlags(jflags: Int): Long = {
+      initFields(jflags)
+      translateFlags(jflags, 0)
+    }
   }
+  object FlagTranslation extends FlagTranslation { }
+  
+  def toScalaMethodFlags(flags: Int): Long = FlagTranslation methodFlags flags
+  def toScalaClassFlags(flags: Int): Long  = FlagTranslation classFlags flags
+  def toScalaFieldFlags(flags: Int): Long  = FlagTranslation fieldFlags flags
+  
+  @deprecated("Use another method in this object", "2.10.0")
+  def toScalaFlags(flags: Int, isClass: Boolean = false, isField: Boolean = false): Long = (
+    if (isClass) toScalaClassFlags(flags)
+    else if (isField) toScalaFieldFlags(flags)
+    else toScalaMethodFlags(flags)
+  )
 }

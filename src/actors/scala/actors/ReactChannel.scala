@@ -46,7 +46,7 @@ private[actors] class ReactChannel[Msg](receiver: ReplyReactor) extends InputCha
 
   /**
    * Receives a message from this `ReactChannel`.
-   * 
+   *
    * This method ''never'' returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *
@@ -62,7 +62,7 @@ private[actors] class ReactChannel[Msg](receiver: ReplyReactor) extends InputCha
 
   /**
    * Receives a message from this `ReactChannel` within a certain time span.
-   * 
+   *
    * This method ''never'' returns. Therefore, the rest of the computation
    * has to be contained in the actions of the partial function.
    *

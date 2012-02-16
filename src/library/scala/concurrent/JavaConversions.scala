@@ -12,7 +12,7 @@ import java.util.concurrent.{ExecutorService, Executor}
 
 /** The `JavaConversions` object provides implicit converstions supporting
  *  interoperability between Scala and Java concurrency classes.
- *  
+ *
  *  @author Philipp Haller
  */
 object JavaConversions {

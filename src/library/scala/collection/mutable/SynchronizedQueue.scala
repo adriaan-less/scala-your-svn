@@ -15,9 +15,9 @@ package mutable
 /** This is a synchronized version of the `Queue[T]` class. It
  *  implements a data structure that allows one to insert and retrieve
  *  elements in a first-in-first-out (FIFO) manner.
- *  
+ *
  *  @tparam A     type of elements contained in this synchronized queue.
- *  
+ *
  *  @author  Matthias Zenger
  *  @version 1.0, 03/05/2004
  *  @since   1
@@ -59,7 +59,7 @@ class SynchronizedQueue[A] extends Queue[A] {
    *  @return the first element of the queue.
    */
   override def dequeue(): A = synchronized { super.dequeue }
-  
+
   /** Returns the first element in the queue which satisfies the
    *  given predicate, and removes this element from the queue.
    *
@@ -67,7 +67,7 @@ class SynchronizedQueue[A] extends Queue[A] {
    *  @return the first element of the queue for which p yields true
    */
   override def dequeueFirst(p: A => Boolean): Option[A] = synchronized { super.dequeueFirst(p) }
-  
+
   /** Returns all elements in the queue which satisfy the
    *  given predicate, and removes those elements from the queue.
    *
@@ -76,7 +76,7 @@ class SynchronizedQueue[A] extends Queue[A] {
    *             p yields true.
    */
   override def dequeueAll(p: A => Boolean): Seq[A] = synchronized { super.dequeueAll(p) }
-  
+
   /** Returns the first element in the queue, or throws an error if there
    *  is no element contained in the queue.
    *

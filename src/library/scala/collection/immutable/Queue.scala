@@ -15,25 +15,38 @@ import annotation.tailrec
 
 /** `Queue` objects implement data structures that allow to
  *  insert and retrieve elements in a first-in-first-out (FIFO) manner.
- *  
+ *
+ *  `Queue` is implemented as a pair of `List`s, one containing the ''in'' elements and the other the ''out'' elements.
+ *  Elements are added to the ''in'' list and removed from the ''out'' list. When the ''out'' list runs dry, the
+ *  queue is pivoted by replacing the ''out'' list by ''in.reverse'', and ''in'' by ''Nil''.
+ *
+ *  Adding items to the queue always has cost `O(1)`. Removing items has cost `O(1)`, except in the case
+ *  where a pivot is required, in which case, a cost of `O(n)` is incurred, where `n` is the number of elements in the queue. When this happens,
+ *  `n` remove operations with `O(1)` cost are guaranteed. Removing an item is on average `O(1)`.
+ *
  *  @author  Erik Stenman
  *  @version 1.0, 08/07/2003
  *  @since   1
+ *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-immutable-collection-classes.html#immutable_queues "Scala's Collection Library overview"]]
+ *  section on `Immutable Queues` for more information.
+ *
  *  @define Coll immutable.Queue
  *  @define coll immutable queue
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
+
 @SerialVersionUID(-7622936493364270175L)
 class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
-            extends LinearSeq[A]
+         extends AbstractSeq[A]
+            with LinearSeq[A]
             with GenericTraversableTemplate[A, Queue]
             with LinearSeqLike[A, Queue[A]]
             with Serializable {
 
-  override def companion: GenericCompanion[Queue] = Queue  
+  override def companion: GenericCompanion[Queue] = Queue
 
-  /** Returns the `n`-th element of this queue. 
+  /** Returns the `n`-th element of this queue.
    *  The first element is at position `0`.
    *
    *  @param  n index of the element to return
@@ -61,10 +74,10 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
   override def isEmpty: Boolean = in.isEmpty && out.isEmpty
 
   override def head: A =
-    if (out.nonEmpty) out.head 
+    if (out.nonEmpty) out.head
     else if (in.nonEmpty) in.last
     else throw new NoSuchElementException("head on empty queue")
-    
+
   override def tail: Queue[A] =
     if (out.nonEmpty) new Queue(in, out.tail)
     else if (in.nonEmpty) new Queue(Nil, in.reverse.tail)
@@ -74,7 +87,7 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
    */
   override def length = in.length + out.length
 
-  /** Creates a new queue with element added at the end 
+  /** Creates a new queue with element added at the end
    *  of the old queue.
    *
    *  @param  elem        the element to insert
@@ -90,7 +103,7 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
    *  @param  iter        an iterable object
    */
   def enqueue[B >: A](iter: Iterable[B]) =
-    new Queue(iter.toList.reverse ::: in, out)
+    new Queue(iter.toList reverse_::: in, out)
 
   /** Returns a tuple with the first element in the queue,
    *  and a new queue with this element removed.
@@ -129,7 +142,4 @@ object Queue extends SeqFactory[Queue] {
   override def apply[A](xs: A*): Queue[A] = new Queue[A](Nil, xs.toList)
 
   private object EmptyQueue extends Queue[Nothing](Nil, Nil) { }
-
-  @deprecated("Use Queue.empty instead", "2.8.0")
-  val Empty: Queue[Nothing] = Queue()
 }
