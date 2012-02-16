@@ -1,28 +1,25 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2005-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2005-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id: ThreadPoolScheduler.scala 18948 2009-10-06 17:30:27Z phaller $
-
 package scala.actors.scheduler
 
-import scala.actors.threadpool.{ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue}
+import scala.actors.threadpool.{ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue,
+                                ThreadFactory}
 import scala.actors.{Debug, IScheduler}
 import scala.concurrent.ManagedBlocker
 
 /**
- * This scheduler class uses a <code>ThreadPoolExecutor</code>
- * to execute <code>Actor</code>s.
- * 
+ * This scheduler class uses a `ThreadPoolExecutor` to execute `Actor`s.
+ *
  * The scheduler attempts to shut down itself and the underlying
- * <code>ThreadPoolExecutor</code> only if <code>terminate</code>
- * is set to true. Otherwise, the scheduler must be shut down
- * explicitly.
- * 
+ * `ThreadPoolExecutor` only if `terminate` is set to true. Otherwise,
+ * the scheduler must be shut down explicitly.
+ *
  * @author Philipp Haller
  */
 class ResizableThreadPoolScheduler(protected val terminate: Boolean,
@@ -48,6 +45,15 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
 
   protected val CHECK_FREQ = 10
 
+  private class DaemonThreadFactory extends ThreadFactory {
+    def newThread(r: Runnable): Thread = {
+      val t = new Thread(r)
+      t.setDaemon(daemon)
+      t
+    }
+  }
+  private val threadFac = new DaemonThreadFactory
+
   private def makeNewPool(): ThreadPoolExecutor = {
     val workQueue = new LinkedBlockingQueue
     new ThreadPoolExecutor(coreSize,
@@ -55,6 +61,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
                            60000L,
                            TimeUnit.MILLISECONDS,
                            workQueue,
+                           threadFac,
                            new ThreadPoolExecutor.CallerRunsPolicy)
   }
 
@@ -101,7 +108,7 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
           }
 
           if (terminating)
-            throw new QuitException
+            throw new QuitControl
 
           if (!suspending) {
             gc()
@@ -111,26 +118,26 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
             if (coreSize - activeBlocked < numCores && coreSize < maxSize) {
               coreSize = numCores + activeBlocked
               executor.setCorePoolSize(coreSize)
-            } else if (terminate && allTerminated) {
+            } else if (terminate && allActorsTerminated) {
               // if all worker threads idle terminate
               if (executor.getActiveCount() == 0) {
                 Debug.info(this+": initiating shutdown...")
                 Debug.info(this+": corePoolSize = "+coreSize+", maxPoolSize = "+maxSize)
-                
+
                 terminating = true
-                throw new QuitException
+                throw new QuitControl
               }
             }
           } else {
             drainedTasks = executor.shutdownNow()
             Debug.info(this+": drained "+drainedTasks.size()+" tasks")
             terminating = true
-            throw new QuitException
+            throw new QuitControl
           }
         } // sync
       }
     } catch {
-      case _: QuitException =>
+      case _: QuitControl =>
         executor.shutdown()
         // allow thread to exit
     }
@@ -166,14 +173,14 @@ class ResizableThreadPoolScheduler(protected val terminate: Boolean,
   }
 
   /** Resumes the execution of the scheduler if it was previously
-   *  suspended using <code>snapshot</code>.
+   *  suspended using `snapshot`.
    */
   def restart() {
     synchronized {
       if (!suspending)
-        error("snapshot has not been invoked")
+        sys.error("snapshot has not been invoked")
       else if (isActive)
-        error("scheduler is still active")
+        sys.error("scheduler is still active")
       else
         suspending = false
 

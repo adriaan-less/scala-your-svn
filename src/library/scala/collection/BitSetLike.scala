@@ -1,60 +1,113 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
 
 import BitSetLike._
 import generic._
+import mutable.StringBuilder
 
-/** common base class for mutable and immutable bit sets
+/** A template trait for bitsets.
+ *  $bitsetinfo
  *
+ * This trait provides most of the operations of a `BitSet` independently of its representation.
+ * It is inherited by all concrete implementations of bitsets.
+ *
+ *  @tparam  This the type of the bitset itself.
+ *
+ *  @define bitsetinfo
+ *  Bitsets are sets of non-negative integers which are represented as
+ *  variable-size arrays of bits packed into 64-bit words. The memory footprint of a bitset is
+ *  determined by the largest number stored in it.
+ *  @author  Martin Odersky
+ *  @version 2.8
  *  @since 2.8
+ *  @define coll bitset
+ *  @define Coll BitSet
  */
-trait BitSetLike[+This <: BitSetLike[This] with Set[Int]] extends SetLike[Int, This] { self =>
+trait BitSetLike[+This <: BitSetLike[This] with SortedSet[Int]] extends SortedSetLike[Int, This] { self =>
 
   def empty: This
 
   /** The number of words (each with 64 bits) making up the set */
   protected def nwords: Int
 
-  /** The words at index `idx', or 0L if outside the range of the set
-   *  @pre idx >= 0
+  /** The words at index `idx`, or 0L if outside the range of the set
+   *  '''Note:''' requires `idx >= 0`
    */
   protected def word(idx: Int): Long
 
-  /** Create a new set of this kind from an array of longs
+  /** Creates a new set of this kind from an array of longs
    */
-  protected def fromArray(elems: Array[Long]): This
+  protected def fromBitMaskNoCopy(elems: Array[Long]): This
 
-  /** The number of elements in the bitset.
+  /** Creates a bit mask for this set as a new array of longs
    */
+  def toBitMask: Array[Long] = {
+    val a = new Array[Long](nwords)
+    var i = a.length
+    while(i > 0) {
+      i -= 1
+      a(i) = word(i)
+    }
+    a
+  }
+
   override def size: Int = {
     var s = 0
     var i = nwords
     while (i > 0) {
       i -= 1
-      s += popCount(word(i))
+      s += java.lang.Long.bitCount(word(i))
     }
     s
   }
 
-  def iterator = new Iterator[Int] {
+  implicit def ordering: Ordering[Int] = Ordering.Int
+
+  def rangeImpl(from: Option[Int], until: Option[Int]): This = {
+    val a = toBitMask
+    val len = a.length
+    if(from.isDefined) {
+      var f = from.get
+      var pos = 0
+      while(f >= 64 && pos < len) {
+        f -= 64
+        a(pos) = 0
+        pos += 1
+      }
+      if(f > 0 && pos < len) a(pos) &= ~((1L << f)-1)
+    }
+    if(until.isDefined) {
+      val u = until.get
+      val w = u / 64
+      val b = u % 64
+      var clearw = w+1
+      while(clearw < len) {
+        a(clearw) = 0
+        clearw += 1
+      }
+      if(w < len) a(w) &= (1L << b)-1
+    }
+    fromBitMaskNoCopy(a)
+  }
+
+  def iterator: Iterator[Int] = new AbstractIterator[Int] {
     private var current = 0
     private val end = nwords * WordLength
     def hasNext: Boolean = {
       while (current < end && !self.contains(current)) current += 1
       current < end
     }
-    def next(): Int = 
-      if (hasNext) { val r = current; current += 1; r } 
+    def next(): Int =
+      if (hasNext) { val r = current; current += 1; r }
       else Iterator.empty.next
   }
 
@@ -67,58 +120,77 @@ trait BitSetLike[+This <: BitSetLike[This] with Set[Int]] extends SetLike[Int, T
     }
   }
 
-  /** A new bitset which is the logical or of this set and the given argument set.
+  /** Computes the union between this bitset and another bitset by performing
+   *  a bitwise "or".
+   *
+   *  @param   other  the bitset to form the union with.
+   *  @return  a new bitset consisting of all bits that are in this
+   *           bitset or in the given bitset `other`.
    */
   def | (other: BitSet): This = {
     val len = this.nwords max other.nwords
     val words = new Array[Long](len)
     for (idx <- 0 until len)
       words(idx) = this.word(idx) | other.word(idx)
-    fromArray(words)
+    fromBitMaskNoCopy(words)
   }
 
-  /** A new bitset which is the logical and of this set and the given argument set.
+  /** Computes the intersection between this bitset and another bitset by performing
+   *  a bitwise "and".
+   *  @param   that  the bitset to intersect with.
+   *  @return  a new bitset consisting of all elements that are both in this
+   *  bitset and in the given bitset `other`.
    */
   def & (other: BitSet): This = {
     val len = this.nwords min other.nwords
     val words = new Array[Long](len)
     for (idx <- 0 until len)
       words(idx) = this.word(idx) & other.word(idx)
-    fromArray(words)
+    fromBitMaskNoCopy(words)
   }
 
-  /** A new bitset which is the logical and-not of this set and the given argument set.
+  /** Computes the difference of this bitset and another bitset by performing
+   *  a bitwise "and-not".
+   *
+   *  @param that the set of bits to exclude.
+   *  @return     a bitset containing those bits of this
+   *              bitset that are not also contained in the given bitset `other`.
    */
   def &~ (other: BitSet): This = {
     val len = this.nwords
     val words = new Array[Long](len)
     for (idx <- 0 until len)
       words(idx) = this.word(idx) & ~other.word(idx)
-    fromArray(words)
+    fromBitMaskNoCopy(words)
   }
 
-  /** A new bitset which is the logical exclusive or of this set and the given argument set.
+  /** Computes the symmetric difference of this bitset and another bitset by performing
+   *  a bitwise "exclusive-or".
+   *
+   *  @param that the other bitset to take part in the symmetric difference.
+   *  @return     a bitset containing those bits of this
+   *              bitset or the other bitset that are not contained in both bitsets.
    */
   def ^ (other: BitSet): This = {
     val len = this.nwords max other.nwords
     val words = new Array[Long](len)
     for (idx <- 0 until len)
       words(idx) = this.word(idx) ^ other.word(idx)
-    fromArray(words)
+    fromBitMaskNoCopy(words)
   }
 
-  /** Does the set contain the given element?
-   */
   def contains(elem: Int): Boolean =
     0 <= elem && (word(elem >> LogWL) & (1L << elem)) != 0L
 
-  /** Is the set a subset of the given bitset
+  /** Tests whether this bitset is a subset of another bitset.
+   *
+   *  @param that  the bitset to test.
+   *  @return     `true` if this bitset is a subset of `other`, i.e. if
+   *              every bit of this set is also an element in `other`.
    */
-  def subSet(other: BitSet): Boolean =
+  def subsetOf(other: BitSet): Boolean =
     (0 until nwords) forall (idx => (this.word(idx) & ~ other.word(idx)) == 0L)
 
-  /** Add bitset elements as numbers to string buffer
-   */
   override def addString(sb: StringBuilder, start: String, sep: String, end: String) = {
     sb append start
     var pre = ""
@@ -129,8 +201,11 @@ trait BitSetLike[+This <: BitSetLike[This] with Set[Int]] extends SetLike[Int, T
       }
     sb append end
   }
+
+  override def stringPrefix = "BitSet"
 }
 
+/** Companion object for BitSets. Contains private data only */
 object BitSetLike {
   private[collection] val LogWL = 6
   private val WordLength = 64
@@ -145,16 +220,5 @@ object BitSetLike {
     if (idx < newlen) newelems(idx) = w
     else assert(w == 0L)
     newelems
-  }
-
-  private val pc1: Array[Int] = {
-    def countBits(x: Int): Int = if (x == 0) 0 else x % 2 + countBits(x >>> 1)
-    Array.tabulate(256)(countBits _)
-  }
-
-  private def popCount(w: Long): Int = {
-    def pc2(w: Int) = if (w == 0) 0 else pc1(w & 0xff) + pc1(w >>> 8)
-    def pc4(w: Int) = if (w == 0) 0 else pc2(w & 0xffff) + pc2(w >>> 16)
-    if (w == 0L) 0 else pc4(w.toInt) + pc4((w >>> 32).toInt)
   }
 }
