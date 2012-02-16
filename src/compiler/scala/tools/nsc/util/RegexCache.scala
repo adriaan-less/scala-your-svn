@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Lex Spoon
  */
 
@@ -14,7 +14,7 @@ object RegexCache {
 
   /** Lists the regexes that have been recorded in order */
   private val regexList = new mutable.Queue[String]
-  
+
   private val regexesToCache = 1000
 
   /** Compile a regex and add it to the cache */
