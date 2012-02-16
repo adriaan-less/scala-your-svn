@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2007-2010 LAMP/EPFL
+ * Copyright 2007-2011 LAMP/EPFL
  * @author  David Bernard, Manohar Jonnalagedda
  */
 
@@ -12,9 +12,10 @@ import model._
 
 import scala.collection._
 import scala.xml._
+import scala.util.parsing.json.{JSONObject, JSONArray}
 
-class Index(universe: Universe, indexModel: IndexModelFactory#IndexModel) extends HtmlPage {
-  
+class Index(universe: doc.Universe, index: doc.Index) extends HtmlPage {
+
   def path = List("index.html")
 
   def title = {
@@ -36,56 +37,34 @@ class Index(universe: Universe, indexModel: IndexModelFactory#IndexModel) extend
   val body =
     <body>
       <div id="library">
-        <img class='class icon' width="13" height="13" src={ relativeLinkTo{List("class.png", "lib")} }/>
-        <img class='trait icon' width="13" height="13" src={ relativeLinkTo{List("trait.png", "lib")} }/>
-        <img class='object icon' width="13" height="13" src={ relativeLinkTo{List("object.png", "lib")} }/>
-        <img class='package icon' width="13" height="13" src={ relativeLinkTo{List("package.png", "lib")} }/>
+        <img class='class icon' src={ relativeLinkTo{List("class.png", "lib")} }/>
+        <img class='trait icon' src={ relativeLinkTo{List("trait.png", "lib")} }/>
+        <img class='object icon' src={ relativeLinkTo{List("object.png", "lib")} }/>
+        <img class='package icon' src={ relativeLinkTo{List("package.png", "lib")} }/>
       </div>
       { browser }
       <div id="content" class="ui-layout-center">
         <iframe name="template" src={ relativeLinkTo{List("package.html")} }/>
       </div>
     </body>
-  
+
   def browser =
-	<xml:group>    
     <div id="browser" class="ui-layout-west">
-      <div class="ui-west-north">{
-        <div class="letters">
-	      { for(l <- indexModel.keySet.toList.sortBy( _.toString )) yield { // TODO there should be a better way to do that
-	          val ch = if(l=='#') "%23" else l // url encoding if needed	          
-              <a target="template" href={"index/index-"+ch+".html"}>{l.toUpper}</a> ++ xml.Text(" ")
-          } }
-	    </div>
-      }</div>
       <div class="ui-west-center">
       <div id="filter"></div>
       <div class="pack" id="tpl">{
-        def isExcluded(dtpl: DocTemplateEntity) = {
-          val qname = dtpl.qualifiedName
-          ( ( qname.startsWith("scala.Tuple") || qname.startsWith("scala.Product") ||
-              qname.startsWith("scala.Function") || qname.startsWith("scala.runtime.AbstractFunction")
-            ) && !(
-              qname == "scala.Tuple1" || qname == "scala.Tuple2" ||
-              qname == "scala.Product" || qname == "scala.Product1" || qname == "scala.Product2" ||
-              qname == "scala.Function" || qname == "scala.Function1" || qname == "scala.Function2" ||
-              qname == "scala.runtime.AbstractFunction0" || qname == "scala.runtime.AbstractFunction1" ||
-              qname == "scala.runtime.AbstractFunction2"
-            )
-          )
-        }
         def packageElem(pack: model.Package): NodeSeq = {
           <xml:group>
             { if (!pack.isRootPackage)
-                <h3><a class="tplshow" href={ relativeLinkTo(pack) }>{ pack.qualifiedName }</a></h3>
+                <a class="tplshow" href={ relativeLinkTo(pack) } target="template">{ pack.qualifiedName }</a>
               else NodeSeq.Empty
             }
             <ol class="templates">{
               val tpls: Map[String, Seq[DocTemplateEntity]] =
                 (pack.templates filter (t => !t.isPackage && !isExcluded(t) )) groupBy (_.name)
-              
+
               val placeholderSeq: NodeSeq = <div class="placeholder"></div>
-              
+
               def createLink(entity: DocTemplateEntity, includePlaceholder: Boolean, includeText: Boolean) = {
                 val entityType = docEntityKindToString(entity)
                 val linkContent = (
@@ -93,7 +72,7 @@ class Index(universe: Universe, indexModel: IndexModelFactory#IndexModel) extend
                   ++
                   { if (includeText) <span class="tplLink">{ Text(packageQualifiedName(entity)) }</span> else NodeSeq.Empty }
                 )
-                <a class="tplshow" href={ relativeLinkTo(entity) }><span class={ entityType }>({ Text(entityType) })</span>{ linkContent }</a>
+                <a class="tplshow" href={ relativeLinkTo(entity) } target="template"><span class={ entityType }>({ Text(entityType) })</span>{ linkContent }</a>
               }
 
               for (tn <- tpls.keySet.toSeq sortBy (_.toLowerCase)) yield {
@@ -116,9 +95,7 @@ class Index(universe: Universe, indexModel: IndexModelFactory#IndexModel) extend
                     placeholderSeq ++ createLink(entry, includePlaceholder = false, includeText = true)
                 }
 
-                <li title={ entities.head.qualifiedName }>{
-                  itemContents
-                }</li>
+                <li title={ entities.head.qualifiedName }>{ itemContents }</li>
               }
             }</ol>
             <ol class="packages"> {
@@ -128,11 +105,11 @@ class Index(universe: Universe, indexModel: IndexModelFactory#IndexModel) extend
           </xml:group>
         }
         packageElem(universe.rootPackage)
-      }</div></div>      
+      }</div></div><script src="index.js"></script>
     </div>
-    </xml:group>
-    
+
   def packageQualifiedName(ety: DocTemplateEntity): String =
-    if (ety.inTemplate.isPackage) ety.name else (packageQualifiedName(ety.inTemplate) + "." + ety.name)
+    if (ety.inTemplate.isPackage) ety.name
+    else (packageQualifiedName(ety.inTemplate) + "." + ety.name)
 
 }
