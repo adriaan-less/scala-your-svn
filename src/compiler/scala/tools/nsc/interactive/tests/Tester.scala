@@ -1,3 +1,7 @@
+/* NSC -- new Scala compiler
+ * Copyright 2009-2011 Scala Solutions and LAMP/EPFL
+ * @author Martin Odersky
+ */
 package scala.tools.nsc
 package interactive
 package tests
@@ -38,7 +42,7 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
   def askTypeCompletion(pos: Position) = askAndListen("type at", pos, compiler.askTypeCompletion)
   def askScopeCompletion(pos: Position) = askAndListen("type at", pos, compiler.askScopeCompletion)
 
-  val rand = new java.util.Random() 
+  val rand = new java.util.Random()
 
   private def randomInverse(n: Int) = n / (rand.nextInt(n) + 1)
 
@@ -71,7 +75,7 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
     private var pos = start
     private var deleted: List[Char] = List()
 
-    override def toString = 
+    override def toString =
       "In "+inputs(sfidx)+" at "+start+" take "+nchars+" to "+
       (if (toLeft) "left" else "right")
 
@@ -90,7 +94,7 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
           if (pos > 0 && pos <= inputs(sfidx).length) {
             pos -= 1
             deleteOne()
-          } 
+          }
         } else {
           if (pos  < inputs(sfidx).length) {
             deleteOne()
@@ -98,7 +102,7 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
         }
       }
     }
-    
+
     def insertAll() {
       for (chr <- if (toLeft) deleted else deleted.reverse) {
         val sf = inputs(sfidx)
@@ -138,7 +142,7 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
       val changes = Vector.fill(/**/randomChangesPerBatch()) {
         /**/
         new Change(sfidx, randomPositionIn(inputs(sfidx)), randomNumChars(), rand.nextBoolean())
-      } 
+      }
       doTest(sfidx, changes, testPositions, otherTest) match {
         case Some(errortrace) =>
           println(errortrace)
@@ -151,21 +155,21 @@ class Tester(ntests: Int, inputs: Array[SourceFile], settings: Settings) {
   def doTest(sfidx: Int, changes: Seq[Change], testPositions: Seq[Int], otherTest: () => Unit): Option[ErrorTrace] = {
     print("new round with "+changes.length+" changes:")
     changes foreach (_.deleteAll())
-    otherTest() 
+    otherTest()
     def errorCount() = compiler.ask(() => reporter.ERROR.count)
-    println("\nhalf test round: "+errorCount())
+//    println("\nhalf test round: "+errorCount())
     changes.view.reverse foreach (_.insertAll())
     otherTest()
     println("done test round: "+errorCount())
     if (errorCount() != 0)
       Some(ErrorTrace(sfidx, changes, reporter.infos, inputs(sfidx).content))
-    else 
+    else
       None
   }
 
   case class ErrorTrace(
     sfidx: Int, changes: Seq[Change], infos: collection.Set[reporter.Info], content: Array[Char]) {
-    override def toString = 
+    override def toString =
       "Sourcefile: "+inputs(sfidx)+
       "\nChanges:\n  "+changes.mkString("\n  ")+
       "\nErrors:\n  "+infos.mkString("\n  ")+
@@ -199,6 +203,6 @@ object Tester {
     println("filenames = "+filenames)
     val files = filenames.toArray map (str => new BatchSourceFile(AbstractFile.getFile(str)): SourceFile)
     new Tester(args(0).toInt, files, settings).run()
-    system.exit(0)
+    sys.exit(0)
   }
-} 
+}
