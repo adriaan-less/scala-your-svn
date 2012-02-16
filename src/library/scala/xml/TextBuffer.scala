@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 package scala.xml
 
@@ -16,10 +15,10 @@ object TextBuffer {
   def fromString(str: String): TextBuffer = new TextBuffer() append str
 }
 
-/** The class <code>TextBuffer</code> is for creating text nodes without
- *  surplus whitespace. All occurrences of one or more whitespace in strings
- *  appended with the <code>append</code> method will be replaced by a single
- *  space character, and leading and trailing space will be removed completely.
+/** The class `TextBuffer` is for creating text nodes without surplus
+ *  whitespace. All occurrences of one or more whitespace in strings
+ *  appended with the `append` method will be replaced by a single space
+ *  character, and leading and trailing space will be removed completely.
  */
 class TextBuffer
 {
@@ -31,7 +30,7 @@ class TextBuffer
    *  @return ...
    */
   def append(cs: Seq[Char]): this.type = {
-    cs foreach { c => 
+    cs foreach { c =>
       if (!isSpace(c)) sb append c
       else if (sb.isEmpty || !isSpace(sb.last)) sb append ' '
     }

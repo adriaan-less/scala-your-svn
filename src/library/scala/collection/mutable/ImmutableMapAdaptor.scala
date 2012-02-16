@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.collection
@@ -15,9 +14,9 @@ package mutable
 import annotation.migration
 
 /** This class can be used as an adaptor to create mutable maps from
- *  immutable map implementations. Only method <code>empty</code> has
+ *  immutable map implementations. Only method `empty` has
  *  to be redefined if the immutable map on which this mutable map is
- *  originally based is not empty. <code>empty</code> is supposed to
+ *  originally based is not empty. `empty` is supposed to
  *  return the representation of an empty map.
  *
  *  @author  Matthias Zenger
@@ -25,9 +24,10 @@ import annotation.migration
  *  @version 2.0, 01/01/2007
  *  @since   1
  */
-@serializable
 class ImmutableMapAdaptor[A, B](protected var imap: immutable.Map[A, B])
-extends Map[A, B]
+extends AbstractMap[A, B]
+   with Map[A, B]
+   with Serializable
 {
 
   override def size: Int = imap.size
@@ -46,18 +46,15 @@ extends Map[A, B]
 
   override def keysIterator: Iterator[A] = imap.keysIterator
 
-  @migration(2, 8, "As of 2.8, keys returns Iterable[A] rather than Iterator[A].")
+  @migration("`keys` returns Iterable[A] rather than Iterator[A].", "2.8.0")
   override def keys: collection.Iterable[A] = imap.keys
 
   override def valuesIterator: Iterator[B] = imap.valuesIterator
 
-  @migration(2, 8, "As of 2.8, values returns Iterable[B] rather than Iterator[B].")
+  @migration("`values` returns Iterable[B] rather than Iterator[B].", "2.8.0")
   override def values: collection.Iterable[B] = imap.values
 
   def iterator: Iterator[(A, B)] = imap.iterator
-
-  @deprecated("use `iterator' instead")
-  override def elements = iterator
 
   override def toList: List[(A, B)] = imap.toList
 
@@ -71,7 +68,7 @@ extends Map[A, B]
 
   override def transform(f: (A, B) => B): this.type = { imap = imap.transform(f); this }
 
-  override def retain(p: (A, B) => Boolean): this.type = { 
+  override def retain(p: (A, B) => Boolean): this.type = {
     imap = imap.filter(xy => p(xy._1, xy._2))
     this
   }

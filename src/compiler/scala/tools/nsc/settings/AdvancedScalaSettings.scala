@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -8,18 +8,19 @@ package settings
 
 trait AdvancedScalaSettings {
   self: AbsScalaSettings =>
-  
+
   abstract class X extends SettingGroup("-X") {
     val assemextdirs: StringSetting
     val assemname: StringSetting
     val assempath: StringSetting
     val checkinit: BooleanSetting
     val disableassertions: BooleanSetting
-    val elidelevel: IntSetting
+    val elidebelow: IntSetting
     val experimental: BooleanSetting
     val future: BooleanSetting
     val generatephasegraph: StringSetting
     val logimplicits: BooleanSetting
+    val mainClass: StringSetting
     val migration: BooleanSetting
     val noforwarders: BooleanSetting
     val nojline: BooleanSetting
@@ -41,8 +42,8 @@ trait AdvancedScalaSettings {
     val showphases: BooleanSetting
     val sourcedir: StringSetting
     val sourcereader: StringSetting
-  }  
-  // def Xexperimental = X.experimental  
+  }
+  // def Xexperimental = X.experimental
   // def Xmigration28 = X.migration
   // def Xnojline = X.nojline
   // def Xprint = X.print

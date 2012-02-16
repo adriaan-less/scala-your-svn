@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -8,26 +8,23 @@
 
 package scala.xml
 
-/** In an attempt to contain the damage being inflicted on
- *  consistency by the ad hoc equals methods spread around
- *  xml, the logic is centralized and all the xml classes
- *  go through the xml.Equality trait.  There are two forms
- *  of xml comparison.
+/** In an attempt to contain the damage being inflicted on consistency by the
+ *  ad hoc `equals` methods spread around `xml`, the logic is centralized and
+ *  all the `xml` classes go through the `xml.Equality trait`.  There are two
+ *  forms of `xml` comparison.
  *
- *  1) def strict_==(other: xml.Equality)
+ *  1. `'''def''' strict_==(other: xml.Equality)`
  *
- *  This one tries to honor the little things like symmetry
- *  and hashCode contracts.  The equals method routes all
- *  comparisons through this.
+ *  This one tries to honor the little things like symmetry and hashCode
+ *  contracts.  The `equals` method routes all comparisons through this.
  *
- *  2) xml_==(other: Any)
+ *  1. `xml_==(other: Any)`
  *
- *  This one picks up where strict_== leaves off.  It might
- *  declare any two things equal.
+ *  This one picks up where `strict_==` leaves off.  It might declare any two
+ *  things equal.
  *
- *  As things stood, the logic not only made a mockery of
- *  the collections equals contract, but also laid waste to
- *  that of case classes.
+ *  As things stood, the logic not only made a mockery of the collections
+ *  equals contract, but also laid waste to that of case classes.
  *
  *  Among the obstacles to sanity are/were:
  *
@@ -43,7 +40,7 @@ package scala.xml
 
 object Equality {
   def asRef(x: Any): AnyRef = x.asInstanceOf[AnyRef]
-  
+
   /** Note - these functions assume strict equality has already failed.
    */
   def compareBlithely(x1: AnyRef, x2: String): Boolean = x1 match {
@@ -68,15 +65,13 @@ object Equality {
 }
 import Equality._
 
-private[xml]
 trait Equality extends scala.Equals {
-  def basisForHashCode: Seq[Any]
+  protected def basisForHashCode: Seq[Any]
+
   def strict_==(other: Equality): Boolean
   def strict_!=(other: Equality) = !strict_==(other)
 
-  private def hashOf(x: Any) = if (x == null) 1 else x.hashCode()
-  
-  /** We insist we're only equal to other xml.Equality implementors,
+  /** We insist we're only equal to other `xml.Equality` implementors,
    *  which heads off a lot of inconsistency up front.
    */
   override def canEqual(other: Any): Boolean = other match {
@@ -90,10 +85,7 @@ trait Equality extends scala.Equals {
    *  are final since clearly individual classes cannot be trusted
    *  to maintain a semblance of order.
    */
-  override def hashCode() = basisForHashCode match {
-    case Nil      => 0
-    case x :: xs  => hashOf(x) * 41 + (xs map hashOf).foldLeft(0)(_ * 7 + _)
-  }
+  override def hashCode()         = basisForHashCode.##
   override def equals(other: Any) = doComparison(other, false)
   final def xml_==(other: Any)    = doComparison(other, true)
   final def xml_!=(other: Any)    = !xml_==(other)
@@ -108,8 +100,7 @@ trait Equality extends scala.Equals {
       case x: Equality            => (x canEqual this) && (this strict_== x)
       case _                      => false
     }
-    
+
     strictlyEqual || (blithe && compareBlithely(this, asRef(other)))
   }
 }
-
