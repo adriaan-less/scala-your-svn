@@ -1,3 +1,12 @@
+/*                     __                                               *\
+**     ________ ___   / /  ___     Scala API                            **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
+** /____/\___/_/ |_/____/_/ | |                                         **
+**                          |/                                          **
+\*                                                                      */
+
+
 package scala.collection.parallel
 
 
@@ -8,28 +17,31 @@ import scala.collection.generic.Sizing
 
 
 /** The base trait for all combiners.
- *  A combiner lets one construct collections incrementally just like
+ *  A combiner incremental collection construction just like
  *  a regular builder, but also implements an efficient merge operation of two builders
  *  via `combine` method. Once the collection is constructed, it may be obtained by invoking
  *  the `result` method.
- *  
+ *
+ *  The complexity of the `combine` method should be less than linear for best
+ *  performance. The `result` method doesn't have to be a constant time operation,
+ *  but may be performed in parallel.
+ *
  *  @tparam Elem   the type of the elements added to the builder
  *  @tparam To     the type of the collection the builder produces
- *  
- *  @author prokopec
+ *
+ *  @author Aleksandar Prokopec
+ *  @since 2.9
  */
-trait Combiner[-Elem, +To] extends Builder[Elem, To] with Sizing with Parallel with TaskSupport {
-self: EnvironmentPassingCombiner[Elem, To] =>
-  
-  type EPC = EnvironmentPassingCombiner[Elem, To]
-  
+trait Combiner[-Elem, +To] extends Builder[Elem, To] with Sizing with Parallel {
+//self: EnvironmentPassingCombiner[Elem, To] =>
+
   /** Combines the contents of the receiver builder and the `other` builder,
    *  producing a new builder containing both their elements.
-   *  
+   *
    *  This method may combine the two builders by copying them into a larger collection,
    *  by producing a lazy view that gets evaluated once `result` is invoked, or use
    *  a merge operation specific to the data structure in question.
-   *  
+   *
    *  Note that both the receiver builder and `other` builder become invalidated
    *  after the invocation of this method, and should be cleared (see `clear`)
    *  if they are to be used again.
@@ -40,9 +52,9 @@ self: EnvironmentPassingCombiner[Elem, To] =>
    *  {{{
    *  c1.combine(c2)
    *  }}}
-   *  
+   *
    *  always does nothing and returns `c1`.
-   *  
+   *
    *  @tparam N      the type of elements contained by the `other` builder
    *  @tparam NewTo  the type of collection produced by the `other` builder
    *  @param other   the other builder
@@ -50,17 +62,24 @@ self: EnvironmentPassingCombiner[Elem, To] =>
    */
   def combine[N <: Elem, NewTo >: To](other: Combiner[N, NewTo]): Combiner[N, NewTo]
   
+  /** Returns `true` if this combiner has a thread-safe `+=` and is meant to be shared
+   *  across several threads constructing the collection.
+   *  
+   *  By default, this method returns `false`.
+   */
+  def canBeShared: Boolean = false
+  
 }
 
 
-trait EnvironmentPassingCombiner[-Elem, +To] extends Combiner[Elem, To] {
+/*
+private[collection] trait EnvironmentPassingCombiner[-Elem, +To] extends Combiner[Elem, To] {
   abstract override def result = {
     val res = super.result
-    if (res.isInstanceOf[TaskSupport]) res.asInstanceOf[TaskSupport].environment = environment
     res
   }
 }
-
+*/
 
 
 
