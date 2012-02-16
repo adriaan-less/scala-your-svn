@@ -1,6 +1,6 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
@@ -23,13 +23,15 @@ object Stack {
 
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
- *  
+ *
  *  @tparam A    type of the elements contained in this stack.
- *  
+ *
  *  @author  Matthias Zenger
  *  @author  Martin Odersky
  *  @version 2.8
  *  @since   1
+ *  @see [[http://docs.scala-lang.org/overviews/collections/concrete-mutable-collection-classes.html#stacks"Scala's Collection Library overview"]]
+ *  section on `Stacks` for more information.
  *  @define Coll Stack
  *  @define coll stack
  *  @define orderDependent
@@ -42,6 +44,8 @@ class Stack[A] private (var elems: List[A]) extends Seq[A] with Cloneable[Stack[
 
   def this() = this(Nil)
 
+  override def companion = Stack
+
   /** Checks if the stack is empty.
    *
    *  @return true, iff there is no element on the stack
@@ -51,7 +55,14 @@ class Stack[A] private (var elems: List[A]) extends Seq[A] with Cloneable[Stack[
   /** The number of elements in the stack */
   override def length = elems.length
 
-  /** Retrieve n'th element from stack, where top of stack has index 0 */
+  /** Retrieve `n`-th element from stack, where top of stack has index `0`.
+   *
+   *  This is a linear time operation.
+   *
+   *  @param index     the index of the element to return
+   *  @return          the element at the specified index
+   *  @throws IndexOutOfBoundsException if the index is out of bounds
+   */
   override def apply(index: Int) = elems(index)
 
   /** Replace element at index <code>n</code> with the new element
@@ -81,18 +92,13 @@ class Stack[A] private (var elems: List[A]) extends Seq[A] with Cloneable[Stack[
   def push(elem1: A, elem2: A, elems: A*): this.type =
     this.push(elem1).push(elem2).pushAll(elems)
 
-  /** Push all elements in the given traversable object onto
-   *  the stack. The last element in the traversable object
-   *  will be on top of the new stack.
+  /** Push all elements in the given traversable object onto the stack. The
+   *  last element in the traversable object will be on top of the new stack.
    *
    *  @param xs the traversable object.
    *  @return the stack with the new elements on top.
    */
-  def pushAll(xs: TraversableOnce[A]): this.type = { xs foreach push ; this }
-
-  @deprecated("use pushAll")
-  @migration(2, 8, "Stack ++= now pushes arguments on the stack from left to right.")
-  def ++=(xs: TraversableOnce[A]): this.type = pushAll(xs)
+  def pushAll(xs: TraversableOnce[A]): this.type = { xs.seq foreach push ; this }
 
   /** Returns the top element of the stack. This method will not remove
    *  the element from the stack. An error is signaled if there is no
@@ -124,22 +130,22 @@ class Stack[A] private (var elems: List[A]) extends Seq[A] with Cloneable[Stack[
   /** Returns an iterator over all elements on the stack. This iterator
    *  is stable with respect to state changes in the stack object; i.e.
    *  such changes will not be reflected in the iterator. The iterator
-   *  issues elements in the reversed order they were inserted into the stack
-   *  (LIFO order).
+   *  issues elements in the reversed order they were inserted into the
+   *  stack (LIFO order).
    *
    *  @return an iterator over all stack elements.
    */
-  @migration(2, 8, "Stack iterator and foreach now traverse in FIFO order.")
+  @migration("`iterator` traverses in FIFO order.", "2.8.0")
   override def iterator: Iterator[A] = elems.iterator
 
   /** Creates a list of all stack elements in LIFO order.
    *
    *  @return the created list.
    */
-  @migration(2, 8, "Stack iterator and foreach now traverse in FIFO order.")
+  @migration("`toList` traverses in FIFO order.", "2.8.0")
   override def toList: List[A] = elems
 
-  @migration(2, 8, "Stack iterator and foreach now traverse in FIFO order.")
+  @migration("`foreach` traverses in FIFO order.", "2.8.0")
   override def foreach[U](f: A => U): Unit = super.foreach(f)
 
   /** This method clones the stack.
@@ -147,9 +153,4 @@ class Stack[A] private (var elems: List[A]) extends Seq[A] with Cloneable[Stack[
    *  @return  a stack with the same elements.
    */
   override def clone(): Stack[A] = new Stack[A](elems)
-}
-
-// !!! TODO - integrate
-object Stack {
-  def apply[A](xs: A*): Stack[A] = new Stack[A] pushAll xs
 }
