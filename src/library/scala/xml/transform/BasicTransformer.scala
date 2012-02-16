@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2002-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2002-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.xml
@@ -38,7 +37,7 @@ abstract class BasicTransformer extends Function1[Node,Node]
    */
   def transform(ns: Seq[Node]): Seq[Node] = {
     val (xs1, xs2) = ns span (n => unchanged(n, transform(n)))
-    
+
     if (xs2.isEmpty) ns
     else xs1 ++ transform(xs2.head) ++ transform(xs2.tail)
   }
@@ -49,7 +48,7 @@ abstract class BasicTransformer extends Function1[Node,Node]
       case _          =>
         val ch = n.child
         val nch = transform(ch)
-        
+
         if (ch eq nch) n
         else           Elem(n.prefix, n.label, n.attributes, n.scope, nch: _*)
     }

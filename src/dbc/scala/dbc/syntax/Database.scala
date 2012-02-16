@@ -1,12 +1,11 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
 
 
 package scala.dbc
@@ -15,8 +14,8 @@ package syntax;
 
 import java.net.URI;
 
-object Database {
-  
+@deprecated(DbcIsDeprecated, "2.9.0") object Database {
+
   def database (server:String, username:String, password:String): dbc.Database = {
     val uri = new URI(server);
     // Java 1.5 if (uri.toString().contains("postgres")) {
@@ -30,5 +29,5 @@ object Database {
       throw new Exception("No DBMS vendor support could be found for the given URI");
     }
   }
-  
+
 }
