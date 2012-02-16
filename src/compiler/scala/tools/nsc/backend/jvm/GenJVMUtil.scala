@@ -1,33 +1,22 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Iulian Dragos
  */
-
 
 package scala.tools.nsc
 package backend.jvm
 
-import java.nio.ByteBuffer
-
 import scala.collection.{ mutable, immutable }
-import scala.tools.nsc.io.AbstractFile
-import scala.tools.nsc.symtab._
-import scala.tools.nsc.symtab.classfile.ClassfileConstants._
-
 import ch.epfl.lamp.fjbg._
-import JAccessFlags._
-import JObjectType.{ JAVA_LANG_STRING, JAVA_LANG_OBJECT }
-import java.io.{ DataOutputStream }
-import reflect.generic.{ PickleFormat, PickleBuffer }
 
 trait GenJVMUtil {
   self: GenJVM =>
-  
+
   import global._
   import icodes._
   import icodes.opcodes._
   import definitions._
-  
+
   /** Map from type kinds to the Java reference types. It is used for
    *  loading class constants. @see Predef.classOf.
    */
@@ -43,12 +32,20 @@ trait GenJVMUtil {
     DOUBLE -> new JObjectType("java.lang.Double")
   )
 
-  /** This trait may be used by tools who need access to 
+  // Don't put this in per run caches.
+  private val javaNameCache = new mutable.WeakHashMap[Symbol, Name]() ++= List(
+    NothingClass        -> binarynme.RuntimeNothing,
+    RuntimeNothingClass -> binarynme.RuntimeNothing,
+    NullClass           -> binarynme.RuntimeNull,
+    RuntimeNullClass    -> binarynme.RuntimeNull
+  )
+
+  /** This trait may be used by tools who need access to
    *  utility methods like javaName and javaType. (for instance,
    *  the Eclipse plugin uses it).
    */
   trait BytecodeUtil {
-    
+
     val conds = immutable.Map[TestOp, Int](
       EQ -> JExtendedCode.COND_EQ,
       NE -> JExtendedCode.COND_NE,
@@ -66,6 +63,13 @@ trait GenJVMUtil {
       GE -> LT
     )
 
+    /** Specialized array conversion to prevent calling
+     *  java.lang.reflect.Array.newInstance via TraversableOnce.toArray
+     */
+
+    def mkArray(xs: Traversable[JType]): Array[JType] = { val a = new Array[JType](xs.size); xs.copyToArray(a); a }
+    def mkArray(xs: Traversable[String]): Array[String] = { val a = new Array[String](xs.size); xs.copyToArray(a); a }
+
     /** Return the a name of this symbol that can be used on the Java
      *  platform.  It removes spaces from names.
      *
@@ -79,29 +83,16 @@ trait GenJVMUtil {
      *  references from method signatures to these types, because such classes can
      *  not exist in the classpath: the type checker will be very confused.
      */
-    def javaName(sym: Symbol): String = {
-      val suffix = moduleSuffix(sym)
+    def javaName(sym: Symbol): String =
+      javaNameCache.getOrElseUpdate(sym, {
+        sym.name.newName(
+          if (sym.isClass || (sym.isModule && !sym.isMethod))
+            sym.javaBinaryName
+          else
+            sym.javaSimpleName
+        )
+      }).toString
 
-      if (sym == NothingClass)    javaName(RuntimeNothingClass)
-      else if (sym == NullClass)  javaName(RuntimeNullClass)
-      else getPrimitiveCompanion(sym.companionModule) match {
-        case Some(sym)  => javaName(sym)
-        case _          =>
-          val prefix =
-            if (sym.isClass || (sym.isModule && !sym.isMethod)) sym.fullName('/')
-            else sym.simpleName.toString.trim()
-        
-          prefix + suffix
-      }
-    }
-
-    def javaNames(syms: List[Symbol]): Array[String] = {
-      val res = new Array[String](syms.length)
-      var i = 0
-      syms foreach (s => { res(i) = javaName(s); i += 1 })
-      res
-    }
-    
     def javaType(t: TypeKind): JType = (t: @unchecked) match {
       case UNIT            => JType.VOID
       case BOOL            => JType.BOOLEAN
@@ -122,17 +113,11 @@ trait GenJVMUtil {
       if (s.isMethod)
         new JMethodType(
           if (s.isClassConstructor) JType.VOID else javaType(s.tpe.resultType),
-          s.tpe.paramTypes.map(javaType).toArray)
+          mkArray(s.tpe.paramTypes map javaType)
+        )
       else
         javaType(s.tpe)
 
-    def javaTypes(ts: List[TypeKind]): Array[JType] = {
-      val res = new Array[JType](ts.length)
-      var i = 0
-      ts foreach ( t => { res(i) = javaType(t); i += 1 } );
-      res
-    }
-    
     protected def genConstant(jcode: JExtendedCode, const: Constant) {
       const.tag match {
         case UnitTag    => ()
