@@ -1,7 +1,6 @@
 package scala.actors
 package scheduler
 
-import java.lang.Thread.State
 import java.util.{Collection, ArrayList}
 import scala.concurrent.forkjoin._
 
@@ -10,11 +9,12 @@ import scala.concurrent.forkjoin._
  *
  * @author Philipp Haller
  */
-class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean) extends Runnable with IScheduler with TerminationMonitor {
+class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean, fair: Boolean)
+      extends Runnable with IScheduler with TerminationMonitor {
 
-  private var pool = makeNewPool()
-  private var terminating = false
-  private var snapshoting = false
+  private var pool = makeNewPool() // guarded by this
+  private var terminating = false  // guarded by this
+  private var snapshoting = false  // guarded by this
 
   // this has to be a java.util.Collection, since this is what
   // the ForkJoinPool returns.
@@ -22,12 +22,19 @@ class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean
 
   protected val CHECK_FREQ = 10
 
+  // this random number generator is only used in fair mode
+  private lazy val random = new java.util.Random // guarded by random
+
+  def this(d: Boolean, f: Boolean) {
+    this(ThreadPoolConfig.corePoolSize, ThreadPoolConfig.maxPoolSize, d, f)
+  }
+
   def this(d: Boolean) {
-    this(ThreadPoolConfig.corePoolSize, ThreadPoolConfig.maxPoolSize, d)
+    this(d, true) // default is fair
   }
 
   def this() {
-    this(false)
+    this(false) // default is non-daemon
   }
 
   private def makeNewPool(): DrainableForkJoinPool = {
@@ -55,15 +62,6 @@ class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean
     }
   }
 
-  private def allWorkersBlocked: Boolean =
-    (pool.workers != null) &&
-    pool.workers.forall(t => {
-      (t == null) || {
-        val s = t.getState()
-        s == State.BLOCKED || s == State.WAITING || s == State.TIMED_WAITING
-      }
-    })
-
   override def run() {
     try {
       while (true) {
@@ -75,32 +73,28 @@ class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean
           }
 
           if (terminating)
-            throw new QuitException
+            throw new QuitControl
 
-          if (allTerminated) {
-            //Debug.info(this+": all actors terminated")
-            throw new QuitException
+          if (allActorsTerminated) {
+            Debug.info(this+": all actors terminated")
+            terminating = true
+            throw new QuitControl
           }
 
           if (!snapshoting) {
             gc()
-
-            // check if we need more threads to avoid deadlock
-            val poolSize = pool.getPoolSize()
-            if (allWorkersBlocked && (poolSize < ThreadPoolConfig.maxPoolSize)) {
-              pool.setParallelism(poolSize + 1)
-            }
           } else if (pool.isQuiescent()) {
             val list = new ArrayList[ForkJoinTask[_]]
             val num = pool.drainTasksTo(list)
             Debug.info(this+": drained "+num+" tasks")
             drainedTasks = list
-            throw new QuitException
+            terminating = true
+            throw new QuitControl
           }
         }
       }
     } catch {
-      case _: QuitException =>
+      case _: QuitControl =>
         Debug.info(this+": initiating shutdown...")
         while (!pool.isQuiescent()) {
           try {
@@ -120,11 +114,11 @@ class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean
   }
 
   override def executeFromActor(task: Runnable) {
-    // TODO: only pass RecursiveAction (with Runnable), and cast to it
-    val recAction = new RecursiveAction {
-      def compute() = task.run()
-    }
-    recAction.fork()
+    // in fair mode: 2% chance of submitting to global task queue
+    if (fair && random.synchronized { random.nextInt(50) == 1 })
+      pool.execute(task)
+    else
+      task.asInstanceOf[RecursiveAction].fork()
   }
 
   /** Submits a closure for execution.
@@ -142,8 +136,9 @@ class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean
     terminating = true
   }
 
-  def isActive =
-    (pool ne null) && !pool.isShutdown()
+  def isActive = synchronized {
+    !terminating && (pool ne null) && !pool.isShutdown()
+  }
 
   override def managedBlock(blocker: scala.concurrent.ManagedBlocker) {
     ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker {
@@ -165,13 +160,14 @@ class ForkJoinScheduler(val initCoreSize: Int, val maxSize: Int, daemon: Boolean
   def restart() {
     synchronized {
       if (!snapshoting)
-        error("snapshot has not been invoked")
+        sys.error("snapshot has not been invoked")
       else if (isActive)
-        error("scheduler is still active")
+        sys.error("scheduler is still active")
       else
         snapshoting = false
+
+      pool = makeNewPool()
     }
-    pool = makeNewPool()
     val iter = drainedTasks.iterator()
     while (iter.hasNext()) {
       pool.execute(iter.next())
