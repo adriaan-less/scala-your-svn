@@ -1,15 +1,15 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |                                         **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id:Statement.scala 6853 2006-03-20 16:58:47 +0100 (Mon, 20 Mar 2006) dubochet $
 
 
-package scala.dbc.syntax;
+package scala.dbc
+package syntax;
 
 
 import java.math.BigDecimal;
@@ -31,7 +31,7 @@ FIXED:
 
 */
 
-object Statement {
+@deprecated(DbcIsDeprecated, "2.9.0") object Statement {
 
   // SELECT ZYGOTE ...
 
@@ -69,7 +69,7 @@ object Statement {
       override val fieldType = Some(datatype);
     }
   }
-  
+
   implicit def statementFieldToSelectDerivedField (fv:StatementField): SelectDerivedField = new SelectDerivedField {
     val fieldValue = fv;
   }
@@ -77,7 +77,7 @@ object Statement {
   implicit def stringToSelectDerivedField (fv:String): SelectDerivedField = new SelectDerivedField {
     val fieldValue: StatementField = StatementExpression.stringToStatementField(fv);
   }
-  
+
   abstract class SelectDerivedColumns {
     def selectList: List[statement.DerivedColumn];
     def selectTypes: List[DataType];
@@ -187,7 +187,7 @@ object Statement {
       val fieldTypes = Nil;
     });
   }
-  
+
   implicit def selectToSelectSourceTables (sct:statement.Select): SelectSourceTables = new SelectSourceTables {
     val fromClause = List(sct);
   }
@@ -195,7 +195,7 @@ object Statement {
   implicit def selectSourceTableToSelectSourceTables (sct:SelectSourceTable): SelectSourceTables = new SelectSourceTables {
     val fromClause = List(sct.fromRelation);
   }
-    
+
   // SELECT BEYOND ...
 
   abstract class SelectBeyond {
@@ -270,5 +270,5 @@ object Statement {
       val fieldName = se;
     });
   }
-  
+
 }

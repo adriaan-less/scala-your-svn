@@ -1,4 +1,7 @@
-package scala.tools.scalap.scalax.rules.scalasig
+package scala.tools.scalap
+package scalax
+package rules
+package scalasig
 
 import ScalaSigEntryParsers._
 
@@ -20,7 +23,7 @@ case object NoSymbol extends Symbol {
 abstract class ScalaSigSymbol extends Symbol {
   def applyRule[A](rule : EntryParser[A]) : A = expect(rule)(entry)
   def applyScalaSigRule[A](rule : ScalaSigParsers.Parser[A]) = ScalaSigParsers.expect(rule)(entry.scalaSig)
-    
+
   def entry : ScalaSig#Entry
   def index = entry.index
 
@@ -38,7 +41,7 @@ case class SymbolInfo(name : String, owner : Symbol, flags : Int, privateWithin 
     case sym : SymbolInfoSymbol => sym.index.toString
     case other => other.toString
   }
-    
+
   override def toString = name + ", owner=" + symbolString(owner) + ", flags=" + flags.toHexString + ", info=" + info + (privateWithin match {
     case Some(any) => ", privateWithin=" + symbolString(any)
     case None => " "
@@ -47,11 +50,11 @@ case class SymbolInfo(name : String, owner : Symbol, flags : Int, privateWithin 
 
 abstract class SymbolInfoSymbol extends ScalaSigSymbol {
   def symbolInfo : SymbolInfo
-  
+
   def entry = symbolInfo.entry
   def name = symbolInfo.name
   def parent = Some(symbolInfo.owner)
-  def hasFlag(flag : Long) = (symbolInfo.flags & flag) != 0
+  def hasFlag(flag : Long) = (symbolInfo.flags & flag) != 0L
 
   lazy val infoType = applyRule(parseEntry(typeEntry)(symbolInfo.info))
 }

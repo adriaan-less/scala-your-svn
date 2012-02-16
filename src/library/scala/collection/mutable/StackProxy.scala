@@ -1,31 +1,30 @@
-/* TODO: Reintegrate
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2009, LAMP/EPFL             **
-**  __\ \/ /__/ __ |/ /__/ __ |                                         **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
+**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
-package scala.collection.mutable
-
+package scala.collection
+package mutable
 
 /** A stack implements a data structure which allows to store and retrieve
  *  objects in a last-in-first-out (LIFO) fashion.
  *
+ *  @tparam A   type of the elements in this stack proxy.
+ *
  *  @author  Matthias Zenger
  *  @version 1.0, 10/05/2004
+ *  @since   1
  */
-trait StackProxy[A] extends Stack[A] with SeqProxy[A] {
+trait StackProxy[A] extends Stack[A] with Proxy {
 
   def self: Stack[A]
 
-  /** Access element number <code>n</code>.
+  /** Access element number `n`.
    *
-   *  @return  the element at index <code>n</code>.
+   *  @return  the element at index `n`.
    */
   override def apply(n: Int): A = self.apply(n)
 
@@ -43,30 +42,17 @@ trait StackProxy[A] extends Stack[A] with SeqProxy[A] {
    *
    *  @param  elem        the element to push onto the stack
    */
-  override def +=(elem: A): Unit = self += elem
+  def +=(elem: A): this.type = {
+    self push elem
+    this
+  }
 
-  /** Pushes all elements provided by an <code>Iterable</code> object
-   *  on top of the stack. The elements are pushed in the order they
-   *  are given out by the iterator.
-   *
-   *  @param  iter        an iterable object
-   */
-    override def ++=(iter: Iterable[A]): Unit = self ++= iter
+  override def pushAll(xs: TraversableOnce[A]): this.type = { self pushAll xs; this }
 
-  /** Pushes all elements provided by an iterator
-   *  on top of the stack. The elements are pushed in the order they
-   *  are given out by the iterator.
-   *
-   *  @param  iter        an iterator
-   */
-  override def ++=(it: Iterator[A]): Unit = self ++= it
-
-  /** Pushes a sequence of elements on top of the stack. The first element
-   *  is pushed first, etc.
-   *
-   *  @param  elems       a sequence of elements
-   */
-  override def push(elems: A*): Unit = self ++= elems
+  override def push(elem1: A, elem2: A, elems: A*): this.type = {
+    self.push(elem1).push(elem2).pushAll(elems)
+    this
+  }
 
   /** Returns the top element of the stack. This method will not remove
    *  the element from the stack. An error is signaled if there is no
@@ -110,4 +96,3 @@ trait StackProxy[A] extends Stack[A] with SeqProxy[A] {
     def self = StackProxy.this.self.clone()
   }
 }
-*/

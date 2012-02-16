@@ -1,15 +1,15 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id: SyntaxAnalyzer.scala 17080 2009-02-10 17:19:16Z rytz $
 
-package scala.tools.nsc.ast.parser
+package scala.tools.nsc
+package ast.parser
 
 import javac._
 
 /** An nsc sub-component.
- */ 
+ */
 abstract class SyntaxAnalyzer extends SubComponent with Parsers with MarkupParsers with Scanners with JavaParsers with JavaScanners {
 
   val phaseName = "parser"
@@ -18,11 +18,18 @@ abstract class SyntaxAnalyzer extends SubComponent with Parsers with MarkupParse
 
   class ParserPhase(prev: scala.tools.nsc.Phase) extends StdPhase(prev) {
     override val checkable = false
+    override val keepsTypeParams = false
+
     def apply(unit: global.CompilationUnit) {
-      global.informProgress("parsing " + unit)
-      unit.body =     
-        if (unit.source.file.name.endsWith(".java")) new JavaUnitParser(unit).parse()
-        else new UnitParser(unit).parse()
+      import global._
+      informProgress("parsing " + unit)
+      unit.body =
+        if (unit.isJava) new JavaUnitParser(unit).parse()
+        else if (reporter.incompleteHandled) new UnitParser(unit).parse()
+        else new UnitParser(unit).smartParse()
+
+      if (settings.Yrangepos.value && !reporter.hasErrors)
+        validatePositions(unit.body)
     }
   }
 }

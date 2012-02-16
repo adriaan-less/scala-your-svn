@@ -1,10 +1,10 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2009 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author Martin Odersky
  */
-// $Id$
 
-package scala.tools.nsc.transform
+package scala.tools.nsc
+package transform
 
 /** <p>
  *    A base class for transforms.
