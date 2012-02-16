@@ -6,8 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.xml
 
 import parsing.NoBindingFactoryAdapter
@@ -30,15 +28,15 @@ object Source
 }
 import Source._
 
-/** The object <code>XML</code> provides constants, and functions to load
+/** The object `XML` provides constants, and functions to load
  *  and save XML elements. Use this when data binding is not desired, i.e.
- *  when XML is handled using <code>Symbol</code> nodes.
+ *  when XML is handled using `Symbol` nodes.
  *
  *  @author  Burak Emir
  *  @version 1.0, 25/04/2005
  */
 object XML extends XMLLoader[Elem]
-{  
+{
   val xml       = "xml"
   val xmlns     = "xmlns"
   val namespace = "http://www.w3.org/XML/1998/namespace"
@@ -46,19 +44,11 @@ object XML extends XMLLoader[Elem]
   val space     = "space"
   val lang      = "lang"
   val encoding  = "ISO-8859-1"
-  
+
   /** Returns an XMLLoader whose load* methods will use the supplied SAXParser. */
   def withSAXParser(p: SAXParser): XMLLoader[Elem] =
     new XMLLoader[Elem] { override val parser: SAXParser = p }
 
-  @deprecated("Use save() instead", "2.8.0")
-  final def saveFull(filename: String, node: Node, xmlDecl: Boolean, doctype: dtd.DocType): Unit = 
-    save(filename, node, encoding, xmlDecl, doctype)
-    
-  @deprecated("Use save() instead", "2.8.0")
-  final def saveFull(filename: String, node: Node, enc: String, xmlDecl: Boolean, doctype: dtd.DocType): Unit = 
-    save(filename, node, enc, xmlDecl, doctype)
-  
   /** Saves a node to a file with given filename using given encoding
    *  optionally with xmldecl and doctype declaration.
    *
@@ -74,11 +64,11 @@ object XML extends XMLLoader[Elem]
     enc: String = encoding,
     xmlDecl: Boolean = false,
     doctype: dtd.DocType = null
-    ): Unit = 
+    ): Unit =
   {
     val fos = new FileOutputStream(filename)
     val w = Channels.newWriter(fos.getChannel(), enc)
-    
+
     ultimately(w.close())(
       write(w, node, enc, xmlDecl, doctype)
     )
@@ -87,9 +77,9 @@ object XML extends XMLLoader[Elem]
   /** Writes the given node using writer, optionally with xml decl and doctype.
    *  It's the caller's responsibility to close the writer.
    *
-   *  @param w        the writer 
+   *  @param w        the writer
    *  @param node     the xml node we want to write
-   *  @param enc      the string to be used in <code>xmlDecl</code>
+   *  @param enc      the string to be used in `xmlDecl`
    *  @param xmlDecl  if true, write xml declaration
    *  @param doctype  if not null, write doctype declaration
    */

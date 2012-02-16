@@ -16,13 +16,13 @@ package scala.concurrent
  */
 class SyncVar[A] {
   private var isDefined: Boolean = false
-  private var value: A = _
+  private var value: Option[A] = None
 
-  def get = synchronized {
+  def get: A = synchronized {
     while (!isDefined) wait()
-    value
+    value.get
   }
-  
+
   /** Waits `timeout` millis. If `timeout <= 0` just returns 0. If the system clock
    *  went backward, it will return 0, so it never returns negative results.
    */
@@ -36,7 +36,7 @@ class SyncVar[A] {
   /** Waits for this SyncVar to become defined at least for
    *  `timeout` milliseconds (possibly more), and gets its
    *  value.
-   *  
+   *
    *  @param timeout     the amount of milliseconds to wait, 0 means forever
    *  @return            `None` if variable is undefined after `timeout`, `Some(value)` otherwise
    */
@@ -50,32 +50,34 @@ class SyncVar[A] {
       val elapsed = waitMeasuringElapsed(rest)
       rest -= elapsed
     }
-    if (isDefined) Some(value)
-    else None
+    value
   }
-  
-  def take() = synchronized {
+
+  def take(): A = synchronized {
     try get
     finally unset()
   }
 
-  def set(x: A) = synchronized {
-    value = x
+  // TODO: this method should be private
+  def set(x: A): Unit = synchronized {
     isDefined = true
+    value = Some(x)
     notifyAll()
   }
 
-  def put(x: A) = synchronized {
+  def put(x: A): Unit = synchronized {
     while (isDefined) wait()
     set(x)
   }
-  
+
   def isSet: Boolean = synchronized {
     isDefined
   }
 
+  // TODO: this method should be private
   def unset(): Unit = synchronized {
     isDefined = false
+    value = None
     notifyAll()
   }
 }

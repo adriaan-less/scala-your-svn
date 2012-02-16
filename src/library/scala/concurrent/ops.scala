@@ -6,14 +6,12 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala.concurrent
 
 import java.lang.Thread
 import scala.util.control.Exception.allCatch
 
-/** The object <code>ops</code> ...
+/** The object `ops` ...
  *
  *  @author  Martin Odersky, Stepan Koltsov, Philipp Haller
  */
@@ -39,9 +37,9 @@ object ops
     runner execute runner.functionAsTask(() => p)
   }
 
-  /** Evaluates an expression asynchronously, and returns a closure for retrieving
-   *  the result.
-   *  
+  /** Evaluates an expression asynchronously, and returns a closure for
+   *  retrieving the result.
+   *
    *  @param  p the expression to evaluate
    *  @return   a closure which returns the result once it has been computed
    */
@@ -51,34 +49,16 @@ object ops
 
   /** Evaluates two expressions in parallel. Invoking `par` blocks the current
    *  thread until both expressions have been evaluated.
-   *  
+   *
    *  @param  xp the first expression to evaluate
    *  @param  yp the second expression to evaluate
-   *  
+   *
    *  @return    a pair holding the evaluation results
    */
   def par[A, B](xp: => A, yp: => B)(implicit runner: TaskRunner = defaultRunner): (A, B) = {
     val y = new SyncVar[Either[Throwable, B]]
     spawn { y set tryCatch(yp) }
     (xp, getOrThrow(y.get))
-  }
-
-  /**
-   *  @param start ...
-   *  @param end   ...
-   *  @param p     ...
-   */
-  @deprecated("use `collection.parallel.ParIterable.foreach` instead", "2.9.0")
-  def replicate(start: Int, end: Int)(p: Int => Unit)(implicit runner: TaskRunner = defaultRunner) {
-    if (start == end) 
-      ()
-    else if (start + 1 == end)
-      p(start)
-    else {
-      val mid = (start + end) / 2
-      spawn { replicate(start, mid)(p) }
-      replicate(mid, end)(p)
-    }
   }
 
 /*

@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------*\
 **  ScalaCheck                                                             **
-**  Copyright (c) 2007-2010 Rickard Nilsson. All rights reserved.          **
+**  Copyright (c) 2007-2011 Rickard Nilsson. All rights reserved.          **
 **  http://www.scalacheck.org                                              **
 **                                                                         **
 **  This software is released under the terms of the Revised BSD License.  **
@@ -29,8 +29,8 @@ trait Prop {
     for(r1 <- this; r2 <- p) yield f(r1,r2)
 
   /** Convenience method that checks this property with the given parameters
-   *  and reports the result on the console. If you need to get the results 
-   *  from the test use the <code>check</code> methods in <code>Test</code> 
+   *  and reports the result on the console. If you need to get the results
+   *  from the test use the <code>check</code> methods in <code>Test</code>
    *  instead. */
   def check(prms: Test.Params): Unit = Test.check(
     prms copy (testCallback = ConsoleReporter(1) chain prms.testCallback), this
@@ -39,17 +39,35 @@ trait Prop {
   /** Convenience method that checks this property and reports the
    *  result on the console. If you need to get the results from the test use
    *  the <code>check</code> methods in <code>Test</code> instead. */
-  def check(): Unit = check(Test.Params())
+  def check: Unit = check(Test.Params())
 
-  /** Convenience method that makes it possible to use a this property
-   *  as an application that checks itself on execution */
-  def main(args: Array[String]): Unit = 
+  /** The logic for main, separated out to make it easier to
+   *  avoid System.exit calls.  Returns exit code.
+   */
+  def mainRunner(args: Array[String]): Int = {
     Test.cmdLineParser.parseParams(args) match {
-      case Success(params, _) => Test.check(params, this)
+      case Success(params, _) =>
+        if (Test.check(params, this).passed) 0
+        else 1
       case e: NoSuccess =>
         println("Incorrect options:"+"\n"+e+"\n")
         Test.cmdLineParser.printHelp
+        -1
     }
+  }
+
+  /** Whether main should call System.exit with an exit code.
+   *  Defaults to true; override to change.
+   */
+  def mainCallsExit = false
+
+  /** Convenience method that makes it possible to use this property
+   *  as an application that checks itself on execution */
+  def main(args: Array[String]): Unit = {
+    val code = mainRunner(args)
+    if (mainCallsExit)
+      System exit code
+  }
 
   /** Returns a new property that holds if and only if both this
    *  and the given property hold. If one of the properties doesn't
@@ -78,7 +96,7 @@ trait Prop {
    *  same status. Note that this means that if one of the properties is
    *  proved, and the other one passed, then the resulting property
    *  will fail. */
-  def ==(p: Prop) = this.flatMap { r1 => 
+  def ==(p: Prop) = this.flatMap { r1 =>
     p.map { r2 =>
       Result.merge(r1, r2, if(r1.status == r2.status) True else False)
     }
@@ -88,9 +106,9 @@ trait Prop {
    *  and the given property generates a result with the exact
    *  same status. Note that this means that if one of the properties is
    *  proved, and the other one passed, then the resulting property
-   *  will fail. 
+   *  will fail.
    *  @deprecated Use <code>==</code> instead */
-  @deprecated("Use == instead.")
+  @deprecated("Use == instead.", "1.7")
   def ===(p: Prop): Prop = this == p
 
   override def toString = "Prop"
@@ -308,7 +326,7 @@ object Prop {
   /** A property that denotes an exception */
   lazy val exception: Prop = exception(null)
 
-  def ?=[T](x: T, y: T)(implicit pp: T => Pretty): Prop = 
+  def ?=[T](x: T, y: T)(implicit pp: T => Pretty): Prop =
     if(x == y) proved else falsified :| {
       val exp = Pretty.pretty[T](y, Pretty.Params(0))
       val act = Pretty.pretty[T](x, Pretty.Params(0))
@@ -318,12 +336,14 @@ object Prop {
   def =?[T](x: T, y: T)(implicit pp: T => Pretty): Prop = ?=(y, x)
 
   /** A property that depends on the generator size */
-  def sizedProp(f: Int => Prop): Prop = Prop(prms => f(prms.genPrms.size)(prms))
+  def sizedProp(f: Int => Prop): Prop = Prop { prms =>
+    provedToTrue(f(prms.genPrms.size)(prms))
+  }
 
-  /** Implication 
+  /** Implication
    *  @deprecated Use the implication operator of the Prop class instead
    */
-  @deprecated("Use the implication operator of the Prop class instead")
+  @deprecated("Use the implication operator of the Prop class instead", "1.7")
   def ==>(b: => Boolean, p: => Prop): Prop = (b: Prop) ==> p
 
   /** Implication with several conditions */
@@ -384,15 +404,15 @@ object Prop {
     try { p: Prop } catch { case e => exception(e) }
 
   /** Existential quantifier for an explicit generator. */
-  def exists[A,P](f: A => P)(implicit 
-    pv: P => Prop, 
+  def exists[A,P](f: A => P)(implicit
+    pv: P => Prop,
     pp: A => Pretty,
     aa: Arbitrary[A]
   ): Prop = exists(aa.arbitrary)(f)
 
   /** Existential quantifier for an explicit generator. */
-  def exists[A,P](g: Gen[A])(f: A => P)(implicit 
-    pv: P => Prop, 
+  def exists[A,P](g: Gen[A])(f: A => P)(implicit
+    pv: P => Prop,
     pp: A => Pretty
   ): Prop = Prop { prms =>
     g(prms.genPrms) match {
@@ -412,8 +432,8 @@ object Prop {
    *  test cases. */
   def forAllNoShrink[T1,P](
     g1: Gen[T1])(
-    f: T1 => P)(implicit 
-    pv: P => Prop, 
+    f: T1 => P)(implicit
+    pv: P => Prop,
     pp1: T1 => Pretty
   ): Prop = Prop { prms =>
     g1(prms.genPrms) match {
@@ -517,7 +537,7 @@ object Prop {
 
   /** Universal quantifier for an explicit generator. Shrinks failed arguments
    *  with the given shrink function */
-  def forAllShrink[T <% Pretty, P <% Prop](g: Gen[T], 
+  def forAllShrink[T <% Pretty, P <% Prop](g: Gen[T],
     shrink: T => Stream[T])(f: T => P
   ): Prop = Prop { prms =>
 
@@ -557,8 +577,8 @@ object Prop {
    *  with the default shrink function for the type */
   def forAll[T1,P](
     g1: Gen[T1])(
-    f: T1 => P)(implicit 
-    p: P => Prop, 
+    f: T1 => P)(implicit
+    p: P => Prop,
     s1: Shrink[T1],
     pp1: T1 => Pretty
   ): Prop = forAllShrink(g1, shrink[T1])(f)
