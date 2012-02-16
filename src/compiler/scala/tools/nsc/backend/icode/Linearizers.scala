@@ -6,45 +6,47 @@
 
 package scala.tools.nsc
 package backend
-package icode;
+package icode
 
 import scala.tools.nsc.ast._
-import scala.collection.mutable.{Stack, HashSet, BitSet, ListBuffer}
+import scala.collection.{ mutable, immutable }
+import mutable.ListBuffer
 
-trait Linearizers { self: ICodes =>
-  import opcodes._;
+trait Linearizers {
+  self: ICodes =>
+
+  import global.debuglog
+  import opcodes._
 
   abstract class Linearizer {
-    def linearize(c: IMethod): List[BasicBlock];
+    def linearize(c: IMethod): List[BasicBlock]
     def linearizeAt(c: IMethod, start: BasicBlock): List[BasicBlock]
   }
 
-  /** 
-   * A simple linearizer which predicts all branches to 
+  /**
+   * A simple linearizer which predicts all branches to
    * take the 'success' branch and tries to schedule those
    * blocks immediately after the test. This is in sync with
-   * how 'while' statements are translated (if the test is 
+   * how 'while' statements are translated (if the test is
    * 'true', the loop continues).
    */
   class NormalLinearizer extends Linearizer with WorklistAlgorithm {
-    type Elem = BasicBlock;
+    type Elem = BasicBlock
+    val worklist: WList = new mutable.Stack()
+    var blocks: List[BasicBlock] = Nil
 
-    val worklist: WList = new Stack();
-
-    var blocks: List[BasicBlock] = Nil;
-    
     def linearize(m: IMethod): List[BasicBlock] = {
-      val b = m.code.startBlock;
+      val b = m.startBlock;
       blocks = Nil;
 
       run {
         worklist pushAll (m.exh map (_.startBlock));
-        worklist.push(b); 
+        worklist.push(b);
       }
 
       blocks.reverse;
     }
-    
+
     def linearizeAt(m: IMethod, start: BasicBlock): List[BasicBlock] = {
       blocks = Nil
       worklist.clear()
@@ -58,11 +60,11 @@ trait Linearizers { self: ICodes =>
       blocks.reverse;
     }
 
-    def processElement(b: BasicBlock) = 
-      if (b.size > 0) {
+    def processElement(b: BasicBlock) =
+      if (b.nonEmpty) {
         add(b);
         b.lastInstruction match {
-          case JUMP(whereto) => 
+          case JUMP(whereto) =>
             add(whereto);
           case CJUMP(success, failure, _, _) =>
             add(success);
@@ -73,14 +75,14 @@ trait Linearizers { self: ICodes =>
           case SWITCH(_, labels) =>
             add(labels);
           case RETURN(_) => ();
-          case THROW() =>   ();
+          case THROW(clasz) =>   ();
         }
       }
 
     def dequeue: Elem = worklist.pop;
 
-    /** 
-     * Prepend b to the list, if not already scheduled. 
+    /**
+     * Prepend b to the list, if not already scheduled.
      * TODO: use better test than linear search
      */
     def add(b: BasicBlock) {
@@ -100,35 +102,33 @@ trait Linearizers { self: ICodes =>
    */
   class DepthFirstLinerizer extends Linearizer {
     var blocks: List[BasicBlock] = Nil;
-    
+
     def linearize(m: IMethod): List[BasicBlock] = {
       blocks = Nil;
 
-      dfs(m.code.startBlock);
+      dfs(m.startBlock);
       m.exh foreach (b => dfs(b.startBlock));
 
       blocks.reverse
     }
-    
+
     def linearizeAt(m: IMethod, start: BasicBlock): List[BasicBlock] = {
       blocks = Nil
       dfs(start)
       blocks.reverse
     }
 
-    def dfs(b: BasicBlock): Unit = 
-      if (b.size > 0 && add(b))
+    def dfs(b: BasicBlock): Unit =
+      if (b.nonEmpty && add(b))
         b.successors foreach dfs;
 
-    /** 
-     * Prepend b to the list, if not already scheduled. 
+    /**
+     * Prepend b to the list, if not already scheduled.
      * TODO: use better test than linear search
      * @return Returns true if the block was added.
      */
-    def add(b: BasicBlock): Boolean = 
-      if (blocks.contains(b))
-        false
-      else {
+    def add(b: BasicBlock): Boolean =
+      !(blocks contains b) && {
         blocks = b :: blocks;
         true
       }
@@ -140,51 +140,54 @@ trait Linearizers { self: ICodes =>
    * This way, it is constructed already in reverse post order.
    */
   class ReversePostOrderLinearizer extends Linearizer {
-    var blocks: List[BasicBlock] = Nil;
-    var visited: HashSet[BasicBlock] = new HashSet;
-    val added: BitSet = new BitSet
-    
+    var blocks: List[BasicBlock] = Nil
+    val visited = new mutable.HashSet[BasicBlock]
+    val added = new mutable.BitSet
+
     def linearize(m: IMethod): List[BasicBlock] = {
       blocks = Nil;
-      visited.clear;
+      visited.clear()
       added.clear;
 
       m.exh foreach (b => rpo(b.startBlock));
-      rpo(m.code.startBlock);
-      
-      // if the start block has predecessors, it won't be the first one 
+      rpo(m.startBlock);
+
+      // if the start block has predecessors, it won't be the first one
       // in the linearization, so we need to enforce it here
-      if (m.code.startBlock.predecessors eq Nil)
+      if (m.startBlock.predecessors eq Nil)
         blocks
       else
-        m.code.startBlock :: (blocks.filterNot(_ == m.code.startBlock))
+        m.startBlock :: (blocks.filterNot(_ == m.startBlock))
     }
 
     def linearizeAt(m: IMethod, start: BasicBlock): List[BasicBlock] = {
       blocks = Nil
-      visited.clear
-      added.clear
-      
+      visited.clear()
+      added.clear()
+
       rpo(start)
       blocks
     }
-    
-    def rpo(b: BasicBlock): Unit = 
-      if (b.size > 0 && !(visited contains b)) {
+
+    def rpo(b: BasicBlock): Unit =
+      if (b.nonEmpty && !visited(b)) {
         visited += b;
-        b.successors foreach rpo;
-        add(b);
+        b.successors foreach rpo
+        add(b)
       }
 
-    /** 
-     * Prepend b to the list, if not already scheduled. 
+    /**
+     * Prepend b to the list, if not already scheduled.
      * @return Returns true if the block was added.
      */
-    def add(b: BasicBlock) = 
+    def add(b: BasicBlock) = {
+      debuglog("Linearizer adding block " + b.label)
+
       if (!added(b.label)) {
         added += b.label
         blocks = b :: blocks;
       }
+    }
   }
 
   /** A 'dump' of the blocks in this method, which does not
@@ -192,12 +195,8 @@ trait Linearizers { self: ICodes =>
    *  the last instruction being a jump).
    */
   class DumpLinearizer extends Linearizer {
-    def linearize(m: IMethod): List[BasicBlock] =
-      m.code.blocks.toList;
-    
-    def linearizeAt(m: IMethod, start: BasicBlock): List[BasicBlock] = {
-      error("not implemented")
-    }
+    def linearize(m: IMethod): List[BasicBlock] = m.blocks
+    def linearizeAt(m: IMethod, start: BasicBlock): List[BasicBlock] = sys.error("not implemented")
   }
 
   /** The MSIL linearizer is used only for methods with at least one exception handler.
@@ -238,10 +237,9 @@ trait Linearizers { self: ICodes =>
       }
 
       val tryBlocks = handlersByCovered.keys.toList sortBy size
+      var result    = normalLinearizer.linearize(m)
+      val frozen    = mutable.HashSet[BasicBlock](result.head)
 
-      var result = normalLinearizer.linearize(m)
-
-      val frozen = HashSet[BasicBlock](result.head)
       for (tryBlock <- tryBlocks) {
         result = groupBlocks(m, result, handlersByCovered(tryBlock), frozen)
       }
@@ -251,8 +249,8 @@ trait Linearizers { self: ICodes =>
     /** @param handlers a list of handlers covering the same blocks (same try, multiple catches)
      *  @param frozen blocks can't be moved (fist block of a method, blocks directly following a try-catch)
      */
-    def groupBlocks(method: IMethod, blocks: List[BasicBlock], handlers: List[ExceptionHandler], frozen: HashSet[BasicBlock]) = {
-      assert(blocks.head == method.code.startBlock, method)
+    def groupBlocks(method: IMethod, blocks: List[BasicBlock], handlers: List[ExceptionHandler], frozen: mutable.HashSet[BasicBlock]) = {
+      assert(blocks.head == method.startBlock, method)
 
       // blocks before the try, and blocks for the try
       val beforeAndTry = new ListBuffer[BasicBlock]()
@@ -281,12 +279,12 @@ trait Linearizers { self: ICodes =>
       }
 
       // reorder the blocks in "catches" so that the "firstBlock" is actually first
-      for ((lb, handler) <- catches.zip(handlers)) {
+      (catches, handlers).zipped foreach { (lb, handler) =>
         lb -= handler.startBlock
         handler.startBlock +=: lb
       }
 
-      // The first block emitted after a try-catch must be the the one that the try / catch
+      // The first block emitted after a try-catch must be the one that the try / catch
       // blocks jump to (because in msil, these jumps cannot be emitted manually)
       var firstAfter: Option[BasicBlock] = None
 
@@ -305,7 +303,7 @@ trait Linearizers { self: ICodes =>
       }
       if (firstAfter.isDefined) {
         val b = firstAfter.get
-        if (frozen contains b) {
+        if (frozen(b)) {
           assert(after contains b, b +", "+ method)
         } else {
           frozen += b
@@ -328,14 +326,14 @@ trait Linearizers { self: ICodes =>
      *  that list, i.e. successors outside the `blocks` list.
      */
     private def leavingBlocks(blocks: List[BasicBlock]) = {
-      val res = new HashSet[BasicBlock]()
+      val res = new mutable.HashSet[BasicBlock]()
       for (b <- blocks; s <- b.directSuccessors; if (!blocks.contains(s)))
         res += s
       res
     }
 
     def linearizeAt(m: IMethod, start: BasicBlock): List[BasicBlock] = {
-      error("not implemented")
+      sys.error("not implemented")
     }
   }
 }

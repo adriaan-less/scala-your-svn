@@ -3,21 +3,52 @@
 
 
 import org.scalacheck._
+
 import scala.collection.parallel._
 
 
 class ParCollProperties extends Properties("Parallel collections") {
+  /*   Collections   */
+  
   // parallel arrays
-  //include(mutable.IntParallelArrayCheck)
+  include(mutable.IntParallelArrayCheck)
   
   // parallel ranges
-  //include(immutable.ParallelRangeCheck)
+  include(immutable.ParallelRangeCheck)
+  
+  // parallel immutable hash maps (tries)
+  include(immutable.IntIntParallelHashMapCheck)
+  
+  // parallel immutable hash sets (tries)
+  include(immutable.IntParallelHashSetCheck)
+  
+  // parallel mutable hash maps (tables)
+  include(mutable.IntIntParallelHashMapCheck)
+  
+  // parallel ctrie
+  include(mutable.IntIntParallelCtrieCheck)
+  
+  // parallel mutable hash sets (tables)
+  include(mutable.IntParallelHashSetCheck)
+  
+  // parallel vectors
+  include(immutable.IntParallelVectorCheck)
 }
 
 
 object Test {
   def main(args: Array[String]) {
-    val results = org.scalacheck.Test.checkProperties(new ParCollProperties)
-    if (!results.forall(_._2.passed)) println("Test results: " + results.mkString("\n"))
+    val pc = new ParCollProperties
+    org.scalacheck.Test.checkProperties(
+      org.scalacheck.Test.Params(
+        rng = new java.util.Random(5134L),
+        testCallback = new ConsoleReporter(0),
+        workers = 1,
+        minSize = 0,
+        maxSize = 4000,
+        minSuccessfulTests = 5
+      ),
+      pc
+    )
   }
 }
