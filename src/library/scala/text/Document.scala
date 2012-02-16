@@ -1,16 +1,12 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2003-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.text
-
 
 import java.io.Writer
 
@@ -35,8 +31,8 @@ abstract class Document {
   def :/:(hd: String): Document = hd :: DocBreak :: this
 
   /**
-   * Format this document on <code>writer</code> and try to set line
-   * breaks so that the result fits in <code>width</code> columns.
+   * Format this document on `writer` and try to set line
+   * breaks so that the result fits in `width` columns.
    *
    * @param width  ...
    * @param writer ...

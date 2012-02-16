@@ -1,5 +1,5 @@
 /* NSC -- new Scala compiler
- * Copyright 2006-2010 LAMP/EPFL
+ * Copyright 2006-2011 LAMP/EPFL
  * @author  Paul Phillips
  */
 
@@ -7,157 +7,140 @@ package scala.tools
 package util
 
 import java.net.{ URL, MalformedURLException }
-import nsc.{ Settings }
+import scala.tools.reflect.WrappedProperties.AccessControl
+import nsc.{ Settings, GenericRunnerSettings }
 import nsc.util.{ ClassPath, JavaClassPath, ScalaClassLoader }
-import nsc.io.{ File, Directory, Path }
-import ClassPath.DefaultJavaContext
-import File.{ pathSeparator }
+import nsc.io.{ File, Directory, Path, AbstractFile }
+import ClassPath.{ JavaContext, DefaultJavaContext, join, split }
 import PartialFunction.condOpt
 
-// Mostly based on the specification at:
-// https://lampsvn.epfl.ch/trac/scala/wiki/Classpath
-//
+// Loosely based on the draft specification at:
+// https://wiki.scala-lang.org/display/SW/Classpath
 
 object PathResolver {
-  private def propOrElse(name: String, alt: String) = System.getProperty(name, alt)
-  private def envOrElse(name: String, alt: String)  = Option(System getenv name) getOrElse alt
-  
-  private def fileOpt(f: Path): Option[String]      = f ifFile (_.path)
-  private def dirOpt(d: Path): Option[String]       = d ifDirectory (_.path)
-  private def expandToPath(p: Path)                 = joincp(ClassPath.expandPath(p.path, true))
-  private def expandToContents(p: Path)             = joincp(ClassPath.expandDir(p.path))
-  private def joincp(xs: Seq[String]): String       = xs filterNot (_ == "") mkString pathSeparator
-  private def splitcp(cp: String): Seq[String]      = cp split pathSeparator filterNot (_ == "") toSeq
+  // Imports property/environment functions which suppress
+  // security exceptions.
+  import AccessControl._
+
+  def firstNonEmpty(xs: String*)            = xs find (_ != "") getOrElse ""
+
+  /** Map all classpath elements to absolute paths and reconstruct the classpath.
+    */
+  def makeAbsolute(cp: String) = ClassPath.map(cp, x => Path(x).toAbsolute.path)
 
   /** pretty print class path */
-  def ppcp(s: String) = splitcp(s) match {
+  def ppcp(s: String) = split(s) match {
     case Nil      => ""
     case Seq(x)   => x
     case xs       => xs map ("\n" + _) mkString
   }
-  
+
   /** Values found solely by inspecting environment or property variables.
    */
   object Environment {
-    private def searchForBootClasspath = {
-      import scala.collection.JavaConversions._
-      System.getProperties find (_._1 endsWith ".boot.class.path") map (_._2) getOrElse ""
-    } 
-    
-    def classPathEnv        =  envOrElse("CLASSPATH", "")
-    def toolPathEnv         =  envOrElse("TOOL_CLASSPATH", "")
-    def classPathProp       = propOrElse("java.class.path", "")
-    def javaBootClassPath   = propOrElse("sun.boot.class.path", searchForBootClasspath)
-    def javaExtDirs         = propOrElse("java.ext.dirs", "")
-    def userHome            = propOrElse("user.home", "")
-    def scalaHome           = propOrElse("scala.home", "")
+    private def searchForBootClasspath = (
+      systemProperties find (_._1 endsWith ".boot.class.path") map (_._2) getOrElse ""
+    )
 
-    def classPath           = List(classPathProp, classPathEnv) find (_ != "") getOrElse "."
-    
+    /** Environment variables which java pays attention to so it
+     *  seems we do as well.
+     */
+    def classPathEnv        =  envOrElse("CLASSPATH", "")
+    def sourcePathEnv       =  envOrElse("SOURCEPATH", "")
+
+    def javaBootClassPath   = propOrElse("sun.boot.class.path", searchForBootClasspath)
+    def javaExtDirs         = propOrEmpty("java.ext.dirs")
+    def scalaHome           = propOrEmpty("scala.home")
+    def scalaExtDirs        = propOrEmpty("scala.ext.dirs")
+
+    /** The java classpath and whether to use it. */
+    def javaUserClassPath   = propOrElse("java.class.path", "")
+    def useJavaClassPath    = propOrFalse("scala.usejavacp")
+
     override def toString = """
       |object Environment {
-      |  classPathEnv       = %s
-      |  toolPathEnv        = %s
-      |  classPathProp      = %s
-      |  javaBootClassPath  = %s
+      |  scalaHome          = %s (useJavaClassPath = %s)
+      |  javaBootClassPath  = <%d chars>
       |  javaExtDirs        = %s
-      |  userHome           = %s
-      |  scalaHome          = %s
+      |  javaUserClassPath  = %s
+      |  scalaExtDirs       = %s
       |}""".trim.stripMargin.format(
-      classPathEnv, toolPathEnv, ppcp(classPathProp), ppcp(javaBootClassPath),
-      javaExtDirs, userHome, scalaHome
-    )
+        scalaHome, useJavaClassPath,
+        javaBootClassPath.length,
+        ppcp(javaExtDirs),
+        ppcp(javaUserClassPath),
+        ppcp(scalaExtDirs)
+      )
   }
-  
-  /** Default values based on those in Environment as interpretered according
+
+  /** Default values based on those in Environment as interpreted according
    *  to the path resolution specification.
    */
   object Defaults {
-    private lazy val guessedScalaHome = {
-      for (url <- ScalaClassLoader originOfClass classOf[ScalaObject] ; if url.getProtocol == "file") yield
-        File(url.getFile).parent.path
-    } getOrElse ""
-    
-    private def translateScalaHome(s: String) = s.replaceAll("""${SCALA_HOME}""", scalaHome)
+    def scalaSourcePath   = Environment.sourcePathEnv
+    def javaBootClassPath = Environment.javaBootClassPath
+    def javaUserClassPath = Environment.javaUserClassPath
+    def javaExtDirs       = Environment.javaExtDirs
+    def useJavaClassPath  = Environment.useJavaClassPath
 
-    def scalaHome         = Environment.scalaHome match { case "" => guessedScalaHome ; case x => x }
+    def scalaHome         = Environment.scalaHome
     def scalaHomeDir      = Directory(scalaHome)
+    def scalaHomeExists   = scalaHomeDir.isDirectory
     def scalaLibDir       = Directory(scalaHomeDir / "lib")
     def scalaClassesDir   = Directory(scalaHomeDir / "classes")
-    
-    def scalaLibJar       = File(scalaLibDir / "scala-library.jar")
-    def scalaLibClassDir  = Directory(scalaClassesDir / "library")
-    def scalaLibFound: Option[Directory] =
-      if (scalaLibJar.isFile) Some(scalaLibDir)
-      else if (scalaLibClassDir.isDirectory) Some(scalaClassesDir)
+
+    def scalaLibAsJar     = File(scalaLibDir / "scala-library.jar")
+    def scalaLibAsDir     = Directory(scalaClassesDir / "library")
+
+    def scalaLibDirFound: Option[Directory] =
+      if (scalaLibAsJar.isFile) Some(scalaLibDir)
+      else if (scalaLibAsDir.isDirectory) Some(scalaClassesDir)
       else None
-    def scalaLibPath      = scalaLibFound map (_.path) getOrElse ""
-    
-    def scalaExtDirs          = scalaLibFound map (_.path) getOrElse ""
-    def expandedScalaExtDirs  = if (scalaExtDirs == "") "" else expandToContents(scalaExtDirs)
-    def expandedClassPath     = expandToPath(Environment.classPath)
-    
-    val pluginSearchPath    = List("misc", "scala-devel", "plugins")
-    def scalaPluginDir      = pluginSearchPath map (scalaHomeDir / _) find (_.isDirectory) map (_.path) getOrElse ""
-    
-    // The class path that a runner script uses to interpret a program is called the “execution class path”.
-    // The execution class path is the concatenation of the following sub-path.
-    // If a class is available in multiple locations, it must be loaded from that with the lowest number.
-    def executionPath = List(
-      // 1. The Java bootstrap class path.
-      Environment.javaBootClassPath,
-      // 2. The Java extension class path.
-      Environment.javaExtDirs,
-      // 3. The first available path below.
-      //    * The fixed class path (TOOL_CLASSPATH) set in the runner script when it was generated
-      //      (which can be set as the "classpath" attribute when using the scalatool Ant task).
-      //      This path may contain absolute locations, or locations relative to Scala's home by using
-      //      the shell variable ${SCALA_HOME} in the path.
-      //    * The class path formed by all JAR and ZIP files and all folders in Scala's home lib folder.
-      Environment.toolPathEnv match {
-        case "" => Defaults.expandedScalaExtDirs
-        case x  => expandToPath(translateScalaHome(x))
-      }
-    )
-    
+
+    def scalaLibFound =
+      if (scalaLibAsJar.isFile) scalaLibAsJar.path
+      else if (scalaLibAsDir.isDirectory) scalaLibAsDir.path
+      else ""
+
+    // XXX It must be time for someone to figure out what all these things
+    // are intended to do.  This is disabled here because it was causing all
+    // the scala jars to end up on the classpath twice: one on the boot
+    // classpath as set up by the runner (or regular classpath under -nobootcp)
+    // and then again here.
+    def scalaBootClassPath  = ""
+    // scalaLibDirFound match {
+    //   case Some(dir) if scalaHomeExists =>
+    //     val paths = ClassPath expandDir dir.path
+    //     join(paths: _*)
+    //   case _                            => ""
+    // }
+
+    def scalaExtDirs = Environment.scalaExtDirs
+
+    def scalaPluginPath = (scalaHomeDir / "misc" / "scala-devel" / "plugins").path
+
     override def toString = """
       |object Defaults {
       |  scalaHome            = %s
-      |  scalaLibFound       = %s
-      |  scalaPluginDir       = %s
-      |  expandedClassPath    = %s
+      |  javaBootClassPath    = %s
+      |  scalaLibDirFound     = %s
+      |  scalaLibFound        = %s
+      |  scalaBootClassPath   = %s
+      |  scalaPluginPath      = %s
       |}""".trim.stripMargin.format(
-        scalaHome, scalaLibFound, scalaPluginDir,
-        ppcp(expandedScalaExtDirs), ppcp(expandedClassPath)
+        scalaHome,
+        ppcp(javaBootClassPath),
+        scalaLibDirFound, scalaLibFound,
+        ppcp(scalaBootClassPath), ppcp(scalaPluginPath)
       )
   }
-  
-  def executionPath = joincp(Defaults.executionPath)
-  
-  /** The original logic of MainGenericRunner.
-   */
-  def basicScalaClassPath(includeCwd: Boolean): String = {
-    // this is to make the interpreter work when running without the scala script
-    // (e.g. from eclipse). Before, "java.class.path" was added to the user classpath
-    // in Settings; this was changed to match the behavior of Sun's javac.
-    def maincp =
-      if (Environment.scalaHome == "") Defaults.expandedClassPath
-      else Defaults.expandedScalaExtDirs
-    def dotcp = if (includeCwd) "." else ""
-    
-    joincp(Seq(maincp, dotcp))
+
+  def fromPathString(path: String, context: JavaContext = DefaultJavaContext): JavaClassPath = {
+    val s = new Settings()
+    s.classpath.value = path
+    new PathResolver(s, context) result
   }
-  
-  /** XXX not yet used.
-   */
-  def toJavaClassPath(settings: Settings): JavaClassPath = {
-    new JavaClassPath(
-      settings.bootclasspath.value, settings.extdirs.value,
-      settings.classpath.value, settings.sourcepath.value,
-      settings.Xcodebase.value, DefaultJavaContext
-    ) 
-  }
-  
+
   /** With no arguments, show the interesting values in Environment and Defaults.
    *  If there are arguments, show those in Calculated as if those options had been
    *  given to a scala runner.
@@ -169,80 +152,19 @@ object PathResolver {
     }
     else {
       val settings = new Settings()
-      val rest = settings.processArguments(args.toList)._2
+      val rest = settings.processArguments(args.toList, false)._2
       val pr = new PathResolver(settings)
       println(" COMMAND: 'scala %s'".format(args.mkString(" ")))
       println("RESIDUAL: 'scala %s'\n".format(rest.mkString(" ")))
-      println(pr.Calculated)
+      pr.result.show
     }
-  }
-  
-  /**
-   * Split command line parameters by space, properly process quoted parameter
-   */
-  def splitParams(line: String, errorFn: String => Unit): List[String] = {
-    def parse(from: Int, i: Int, args: List[String]): List[String] = {
-      if (i < line.length) {
-        line.charAt(i) match {
-          case ' ' =>
-            val args1 = fetchArg(from, i) :: args
-            val j = skipS(i + 1)
-            if (j >= 0) {
-              parse(j, j, args1)
-            } else args1
-          case '"' =>
-            val j = skipTillQuote(i + 1)
-            if (j > 0) {
-              parse(from, j + 1, args)
-            } else {
-              errorFn("Parameters '" + line + "' with unmatched quote at " + i + ".")
-              Nil
-            }
-          case _ => parse(from, i + 1, args)
-        }
-      } else { // done
-        if (i > from) {
-          fetchArg(from, i) :: args
-        } else args
-      }
-    }
-
-    def fetchArg(from: Int, until: Int) = {
-      if (line.charAt(from) == '"') {
-        line.substring(from + 1, until - 1)
-      } else {
-        line.substring(from, until)
-      }
-    }
-
-    def skipTillQuote(i: Int): Int = {
-      if (i < line.length) {
-        line.charAt(i) match {
-          case '"' => i
-          case _ => skipTillQuote(i + 1)
-        }
-      } else -1
-    }
-
-    def skipS(i: Int): Int = {
-      if (i < line.length) {
-        line.charAt(i) match {
-          case ' ' => skipS(i + 1)
-          case _ => i
-        }
-      } else -1
-    }
-
-    // begin split
-    val j = skipS(0)
-    if (j >= 0) {
-      parse(j, j, Nil).reverse
-    } else Nil
   }
 }
-import PathResolver.{ Defaults, Environment, joincp, splitcp, ppcp }
+import PathResolver.{ Defaults, Environment, firstNonEmpty, ppcp }
 
-class PathResolver(settings: Settings) {  
+class PathResolver(settings: Settings, context: JavaContext) {
+  def this(settings: Settings) = this(settings, if (settings.inline.value) new JavaContext else DefaultJavaContext)
+
   private def cmdLineOrElse(name: String, alt: String) = {
     (commandLineFor(name) match {
       case Some("") => None
@@ -257,57 +179,85 @@ class PathResolver(settings: Settings) {
     case "extdirs"            => settings.extdirs.value
     case "classpath" | "cp"   => settings.classpath.value
     case "sourcepath"         => settings.sourcepath.value
-    case "Ycodebase"          => settings.Xcodebase.value
   }
-  
+
   /** Calculated values based on any given command line options, falling back on
    *  those in Defaults.
    */
   object Calculated {
-    def javaBootClassPath   = cmdLineOrElse("javabootclasspath", Environment.javaBootClassPath)
-    def javaExtDirs         = cmdLineOrElse("javaextdirs", Environment.javaExtDirs)
-    def scalaBootClassPath  = cmdLineOrElse("bootclasspath", Defaults.scalaLibPath)
+    def scalaHome           = Defaults.scalaHome
+    def useJavaClassPath    = settings.usejavacp.value || Defaults.useJavaClassPath
+    def javaBootClassPath   = cmdLineOrElse("javabootclasspath", Defaults.javaBootClassPath)
+    def javaExtDirs         = cmdLineOrElse("javaextdirs", Defaults.javaExtDirs)
+    def javaUserClassPath   = if (useJavaClassPath) Defaults.javaUserClassPath else ""
+    def scalaBootClassPath  = cmdLineOrElse("bootclasspath", Defaults.scalaBootClassPath)
     def scalaExtDirs        = cmdLineOrElse("extdirs", Defaults.scalaExtDirs)
-    def sourcePath          = cmdLineOrElse("sourcepath", "")
-    def codeBase            = cmdLineOrElse("Ycodebase", "")   // XXX
-    def classPath           = cmdLineOrElse("cp", Environment.classPath)
-    
-    def referencePath = List(
-      // 1. The value of -javabootclasspath if it is set, or the Java bootstrap class path.
-      javaBootClassPath,
-      // 2. The value of -bootclasspath if it is set,
-      //    or the lib/scala-library.jar file of Scala's home if it is available,
-      //    or the classes/library folder of Scala's home if it is available.
-      scalaBootClassPath,
-      // 3. All JAR and ZIP files present in any folder listed by the value of -javaextdirs, if it is set,
-      //    or the Java extension class path.
-      javaExtDirs,
-      // 4. All JAR and ZIP files present in any folder listed by the value of -extdirs, if it is set.
-      scalaExtDirs,
-      // 5. The first available path below.
-      //    * The value of -classpath or -cp.
-      //    * The value of the CLASSPATH environment variable.
-      //    * The current directory (that is the location of ".").
-      //
-      // XXX doesn't mention java.class.path
-      classPath
+    def sourcePath          = cmdLineOrElse("sourcepath", Defaults.scalaSourcePath)
+
+    /** Against my better judgment, giving in to martin here and allowing
+     *  CLASSPATH to be used automatically.  So for the user-specified part
+     *  of the classpath:
+     *
+     *  - If -classpath or -cp is given, it is that
+     *  - Otherwise, if CLASSPATH is set, it is that
+     *  - If neither of those, then "." is used.
+     */
+    def userClassPath = (
+      if (!settings.classpath.isDefault)
+        settings.classpath.value
+      else sys.env.getOrElse("CLASSPATH", ".")
     )
+
+    import context._
+
+    // Assemble the elements!
+    def basis = List[Traversable[ClassPath[AbstractFile]]](
+      classesInPath(javaBootClassPath),             // 1. The Java bootstrap class path.
+      contentsOfDirsInPath(javaExtDirs),            // 2. The Java extension class path.
+      classesInExpandedPath(javaUserClassPath),     // 3. The Java application class path.
+      classesInPath(scalaBootClassPath),            // 4. The Scala boot class path.
+      contentsOfDirsInPath(scalaExtDirs),           // 5. The Scala extension class path.
+      classesInExpandedPath(userClassPath),         // 6. The Scala application class path.
+      sourcesInPath(sourcePath)                     // 7. The Scala source path.
+    )
+
+    lazy val containers = basis.flatten.distinct
 
     override def toString = """
       |object Calculated {
+      |  scalaHome            = %s
       |  javaBootClassPath    = %s
       |  javaExtDirs          = %s
+      |  javaUserClassPath    = %s
+      |    useJavaClassPath   = %s
       |  scalaBootClassPath   = %s
       |  scalaExtDirs         = %s
+      |  userClassPath        = %s
       |  sourcePath           = %s
-      |  codeBase             = %s
-      |  classPath            = %s
       |}""".trim.stripMargin.format(
-        ppcp(javaBootClassPath), ppcp(javaExtDirs),
-        ppcp(scalaBootClassPath), ppcp(scalaExtDirs),
-        ppcp(sourcePath), codeBase, ppcp(classPath)
+        scalaHome,
+        ppcp(javaBootClassPath), ppcp(javaExtDirs), ppcp(javaUserClassPath),
+        useJavaClassPath,
+        ppcp(scalaBootClassPath), ppcp(scalaExtDirs), ppcp(userClassPath),
+        ppcp(sourcePath)
       )
   }
-  
-  def referencePath = joincp(Calculated.referencePath)
+
+  def containers = Calculated.containers
+
+  lazy val result = {
+    val cp = new JavaClassPath(containers.toIndexedSeq, context)
+    if (settings.Ylogcp.value) {
+      Console.println("Classpath built from " + settings.toConciseString)
+      Console.println("Defaults: " + PathResolver.Defaults)
+      Console.println("Calculated: " + Calculated)
+
+      val xs = (Calculated.basis drop 2).flatten.distinct
+      println("After java boot/extdirs classpath has %d entries:" format xs.size)
+      xs foreach (x => println("  " + x))
+    }
+    cp
+  }
+
+  def asURLs = result.asURLs
 }

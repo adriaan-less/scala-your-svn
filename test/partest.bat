@@ -1,9 +1,9 @@
 @echo off
 
 rem ##########################################################################
-rem # Scala code runner 2.7.0-final
+rem # Scala code runner 2.9.1.final
 rem ##########################################################################
-rem # (c) 2002-2010 LAMP/EPFL
+rem # (c) 2002-2011 LAMP/EPFL
 rem #
 rem # This is free software; see the distribution for copying conditions.
 rem # There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A
@@ -19,7 +19,7 @@ if "%OS%"=="Windows_NT" (
   call :set_home
   set _ARGS=%*
 ) else (
-  set _SCALA_HOME=%SCALA_HOME%
+  set _SCALA_HOME="%SCALA_HOME%"
   rem The following line tests SCALA_HOME instead of _SCALA_HOME, because
   rem the above change to _SCALA_HOME is not visible within this block.
   if "%SCALA_HOME%"=="" goto error1
@@ -30,9 +30,13 @@ rem We use the value of the JAVACMD environment variable if defined
 set _JAVACMD=%JAVACMD%
 if "%_JAVACMD%"=="" set _JAVACMD=java
 
+rem We use the value of the JAVACCMD environment variable if defined
+set _JAVACCMD=%JAVACCMD%
+if "%_JAVACCMD%"=="" set _JAVACCMD=javac
+
 rem We use the value of the JAVA_OPTS environment variable if defined
 set _JAVA_OPTS=%JAVA_OPTS%
-if "%_JAVA_OPTS%"=="" set _JAVA_OPTS=-Xmx256M -Xms16M
+if "%_JAVA_OPTS%"=="" set _JAVA_OPTS=-Xmx1024M -Xms64M
 
 rem We use the value of the SCALAC_OPTS environment variable if defined
 set _SCALAC_OPTS=%SCALAC_OPTS%
@@ -53,7 +57,7 @@ if "%_EXTENSION_CLASSPATH%"=="" (
   )
 )
 
-set _PROPS=-Dscala.home="%_SCALA_HOME%" -Dscalatest.javacmd="%_JAVACMD%" -Dscalatest.java_options="%_JAVA_OPTS%" -Dscalatest.scalac_options="%_SCALAC_OPTS%" -Dscalatest.javac_cmd="%JAVA_HOME%\bin\javac"
+set _PROPS=-Dscala.home="%_SCALA_HOME%" -Dpartest.javacmd="%_JAVACMD%" -Dpartest.java_options="%_JAVA_OPTS%" -Dpartest.scalac_options="%_SCALAC_OPTS%" -Dpartest.javac_cmd="%_JAVACCMD%"
 
 rem echo %_JAVACMD% %_JAVA_OPTS% %_PROPS% -cp "%_EXTENSION_CLASSPATH%" scala.tools.partest.nest.NestRunner %_ARGS%
 %_JAVACMD% %_JAVA_OPTS% %_PROPS% -cp "%_EXTENSION_CLASSPATH%" scala.tools.partest.nest.NestRunner %_ARGS%
@@ -97,3 +101,4 @@ goto end
 
 :end
 if "%OS%"=="Windows_NT" @endlocal
+exit /b %errorlevel%
