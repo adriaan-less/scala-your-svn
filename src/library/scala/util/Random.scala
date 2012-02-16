@@ -1,24 +1,22 @@
 /*                     __                                               *\
 **     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2006-2010, LAMP/EPFL             **
+**    / __/ __// _ | / /  / _ |    (c) 2006-2011, LAMP/EPFL             **
 **  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
 ** /____/\___/_/ |_/____/_/ | |                                         **
 **                          |/                                          **
 \*                                                                      */
 
-// $Id$
-
-
 package scala.util
 
-import collection.immutable.List
+import collection.mutable.ArrayBuffer
+import collection.generic.CanBuildFrom
+import scala.collection.immutable.{ List, Stream }
 
 /**
  *  @author Stephane Micheloud
  *
  */
 class Random(val self: java.util.Random) {
-
   /** Creates a new random number generator using a single long seed. */
   def this(seed: Long) = this(new java.util.Random(seed))
 
@@ -69,7 +67,7 @@ class Random(val self: java.util.Random) {
    *  from this random number generator's sequence.
    */
   def nextLong(): Long = self.nextLong()
-  
+
   /** Returns a pseudorandomly generated String.  This routine does
    *  not take any measures to preserve the randomness of the distribution
    *  in the face of factors like unicode's variable-length encoding,
@@ -85,33 +83,55 @@ class Random(val self: java.util.Random) {
       val res = nextInt(surrogateStart - 1) + 1
       res.toChar
     }
-    
+
     List.fill(length)(safeChar()).mkString
   }
-  
+
   /** Returns the next pseudorandom, uniformly distributed value
    *  from the ASCII range 33-126.
    */
   def nextPrintableChar(): Char = {
-    val (low, high) = (33, 126)
+    val low  = 33
+    val high = 127
     (self.nextInt(high - low) + low).toChar
   }
 
   def setSeed(seed: Long) { self.setSeed(seed) }
+
+  /** Returns a new collection of the same type in a randomly chosen order.
+   *
+   *  @param  coll    the [[scala.collection.TraversableOnce]] to shuffle
+   *  @return         the shuffled [[scala.collection.TraversableOnce]]
+   */
+  def shuffle[T, CC[X] <: TraversableOnce[X]](xs: CC[T])(implicit bf: CanBuildFrom[CC[T], T, CC[T]]): CC[T] = {
+    val buf = new ArrayBuffer[T] ++= xs
+
+    def swap(i1: Int, i2: Int) {
+      val tmp = buf(i1)
+      buf(i1) = buf(i2)
+      buf(i2) = tmp
+    }
+
+    for (n <- buf.length to 2 by -1) {
+      val k = nextInt(n)
+      swap(n - 1, k)
+    }
+
+    bf(xs) ++= buf result
+  }
+
 }
 
-/** The object <code>Random</code> offers a default implementation
+/** The object `Random` offers a default implementation
  *  of scala.util.Random and random-related convenience methods.
  *
  *  @since 2.8
  */
 object Random extends Random {
-  import collection.mutable.ArrayBuffer
-  import collection.generic.CanBuildFrom
-  
+
   /** Returns a Stream of pseudorandomly chosen alphanumeric characters,
    *  equally chosen from A-Z, a-z, and 0-9.
-   * 
+   *
    *  @since 2.8
    */
   def alphanumeric: Stream[Char] = {
@@ -120,25 +140,4 @@ object Random extends Random {
     Stream continually nextPrintableChar filter isAlphaNum
   }
 
-  /** Returns a new collection of the same type in a randomly chosen order.
-   * 
-   *  @param  coll    the TraversableOnce to shuffle
-   *  @return         the shuffled TraversableOnce
-   */
-  def shuffle[T, CC[X] <: TraversableOnce[X]](xs: CC[T])(implicit bf: CanBuildFrom[CC[T], T, CC[T]]): CC[T] = {
-    val buf = new ArrayBuffer[T] ++= xs
-        
-    def swap(i1: Int, i2: Int) {
-      val tmp = buf(i1)
-      buf(i1) = buf(i2)
-      buf(i2) = tmp
-    }
-    
-    for (n <- buf.length to 2 by -1) {
-      val k = nextInt(n)
-      swap(n - 1, k)
-    }
-    
-    bf(xs) ++= buf result
-  }
 }

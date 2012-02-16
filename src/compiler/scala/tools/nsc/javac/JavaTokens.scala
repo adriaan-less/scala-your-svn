@@ -1,8 +1,7 @@
 /* NSC -- new Scala compiler
- * Copyright 2005-2010 LAMP/EPFL
+ * Copyright 2005-2011 LAMP/EPFL
  * @author  Martin Odersky
  */
-// $Id$
 
 package scala.tools.nsc
 package javac
@@ -28,7 +27,7 @@ object JavaTokens extends ast.parser.Tokens {
   final val CHAR = 27
   final val CLASS = 28
   final val CONST = 29
-  final val CONTINUE = 30 
+  final val CONTINUE = 30
   final val DEFAULT = 31
   final val DO = 32
   final val DOUBLE = 33
@@ -71,7 +70,7 @@ object JavaTokens extends ast.parser.Tokens {
 
   def isKeyword(code : Int) =
     code >= ABSTRACT && code <= WHILE
-  
+
   /** special symbols */
   final val COMMA = 70
   final val SEMI = 71
